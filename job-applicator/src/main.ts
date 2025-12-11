@@ -31,7 +31,6 @@ ipcMain.on("renderer-log", (_event, level: string, args: unknown[]) => {
 // Import shared types and utilities
 import type {
   CliProvider,
-  PersonalInfo,
   ContentItem,
   FormField,
   FillInstruction,
@@ -43,39 +42,40 @@ import type {
 } from "./types.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
-  normalizeUrl,
   resolveDocumentPath,
   buildPrompt,
-  buildEnhancedPrompt,
+  buildPromptFromProfileText,
   buildExtractionPrompt,
-  fetchWithRetry,
-  parseApiError,
   getUserFriendlyErrorMessage,
 } from "./utils.js"
+// Typed API client
+import {
+  fetchPersonalInfo,
+  fetchApplicatorProfile,
+  fetchContentItems,
+  fetchJobMatches,
+  fetchJobMatch,
+  findJobMatchByUrl,
+  updateJobMatchStatus,
+  fetchDocuments,
+  fetchGeneratorRequest,
+  startGeneration,
+  executeGenerationStep,
+  submitJobToQueue,
+} from "./api-client.js"
 
-// Configuration from environment
-// The API URL defaults to localhost:3000 which connects to the local development server.
-// The server's firebase-auth middleware always bypasses authentication for localhost requests.
-const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
 const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
-
-// Helper to create fetch options
-function fetchOptions(options: RequestInit = {}): RequestInit {
-  const headers = new Headers(options.headers)
-  headers.set("Content-Type", "application/json")
-  return { ...options, headers }
-}
-
-// Note: HTTP is expected for localhost API (localhost:3000) - it's secure because
-// the port is only bound to 127.0.0.1 and the backend explicitly trusts same-host traffic
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
 
-// CLI timeout constant
-const CLI_TIMEOUT_MS = 60000
+// CLI timeout and warning thresholds
+// 2 minutes for complex form fills - increased from 60s to handle large forms
+// Warning intervals help identify if operations are taking unusually long
+const CLI_TIMEOUT_MS = 120000
+const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
 
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
@@ -219,7 +219,7 @@ async function createWindow(): Promise<void> {
 }
 
 // Navigate to URL
-ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string }> => {
+ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string; aborted?: boolean }> => {
   try {
     if (!browserView) {
       return { success: false, message: "Browser not initialized. Please restart the application." }
@@ -248,6 +248,11 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
     if (message.includes("ERR_CERT")) {
       return { success: false, message: "SSL certificate error. The website may not be secure." }
     }
+    if (message.includes("ERR_ABORTED")) {
+      // Navigation was aborted (e.g., user navigated again quickly, or page redirected)
+      // This is often not a real error, so we return success but indicate it was aborted
+      return { success: true, aborted: true }
+    }
     return { success: false, message: `Navigation failed: ${message}` }
   }
 })
@@ -265,12 +270,11 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get profile and work history from job-finder backend
-      // Use Promise.allSettled so one failure doesn't block the other
+      // 1. Get profile and work history from job-finder backend using typed API client
       logger.info("Fetching profile from backend...")
       const [profileResult, contentResult] = await Promise.allSettled([
-        fetchWithRetry(`${API_URL}/config/personal-info`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 }),
-        fetchWithRetry(`${API_URL}/content-items?limit=100`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+        fetchPersonalInfo(),
+        fetchContentItems({ limit: 100 }) // Get all content for complete work history
       ])
 
       // Profile is required
@@ -278,13 +282,7 @@ ipcMain.handle(
         const errorMsg = getUserFriendlyErrorMessage(profileResult.reason, logger)
         throw new Error(`Failed to fetch profile: ${errorMsg}`)
       }
-      const profileRes = profileResult.value
-      if (!profileRes.ok) {
-        const errorMsg = await parseApiError(profileRes)
-        throw new Error(`Failed to fetch profile: ${errorMsg}`)
-      }
-      const profileData = await profileRes.json()
-      const profile: PersonalInfo = profileData.data || profileData
+      const profile = profileResult.value
 
       // Validate required profile fields
       if (!profile.name || !profile.email) {
@@ -293,9 +291,8 @@ ipcMain.handle(
 
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
-      if (contentResult.status === "fulfilled" && contentResult.value.ok) {
-        const contentData = await contentResult.value.json()
-        workHistory = contentData.data || []
+      if (contentResult.status === "fulfilled") {
+        workHistory = contentResult.value
         logger.info(`Fetched ${workHistory.length} work history items`)
       } else {
         logger.warn("Work history unavailable, continuing with profile only")
@@ -433,14 +430,8 @@ ipcMain.handle(
           return { success: false, message: "Invalid document ID format" }
         }
 
-        // Fetch document details from backend
-        const docRes = await fetch(`${API_URL}/generator/requests/${options.documentId}`, fetchOptions())
-        if (!docRes.ok) {
-          logger.error(`Failed to fetch document: ${docRes.status} for documentId: ${options.documentId}`)
-          return { success: false, message: `Failed to fetch document: ${docRes.status}` }
-        }
-        const docData = await docRes.json()
-        const doc = docData.data || docData
+        // Fetch document details from backend using typed API client
+        const doc = await fetchGeneratorRequest(options.documentId)
 
         // Get the appropriate URL based on type
         const docType = options.type || "resume"
@@ -515,30 +506,18 @@ ipcMain.handle(
       const extracted = await runCliForExtraction(provider, extractPrompt)
       logger.info("Extracted job details:", extracted)
 
-      // 4. Submit to backend API with bypassFilter
+      // 4. Submit to backend API using typed API client
       logger.info("Submitting job to queue...")
-      const res = await fetch(`${API_URL}/queue/jobs`, fetchOptions({
-        method: "POST",
-        body: JSON.stringify({
-          url,
-          title: extracted.title,
-          description: extracted.description,
-          location: extracted.location,
-          techStack: extracted.techStack,
-          companyName: extracted.companyName,
-          bypassFilter: true,
-          source: "user_submission",
-        }),
-      }))
+      const result = await submitJobToQueue({
+        url,
+        title: extracted.title,
+        description: extracted.description,
+        location: extracted.location,
+        techStack: extracted.techStack,
+        companyName: extracted.companyName,
+      })
 
-      if (!res.ok) {
-        const errorText = await res.text()
-        return { success: false, message: `API error (${res.status}): ${errorText.slice(0, 100)}` }
-      }
-
-      const result = await res.json()
-      const queueId = result.data?.id || result.id || "unknown"
-      return { success: true, message: `Job submitted (queue ID: ${queueId})` }
+      return { success: true, message: `Job submitted (queue ID: ${result.id})` }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error("Submit job error:", message)
@@ -575,7 +554,7 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   }
 })
 
-// Get job matches from backend
+// Get job matches from backend using typed API client
 ipcMain.handle(
   "get-job-matches",
   async (
@@ -583,37 +562,10 @@ ipcMain.handle(
     options?: { limit?: number; status?: string }
   ): Promise<{ success: boolean; data?: JobMatchWithListing[]; message?: string }> => {
     try {
-      const limit = options?.limit || 50
-      const status = options?.status || "active"
-      const url = `${API_URL}/job-matches/?limit=${limit}&status=${status}&sortBy=updated&sortOrder=desc`
-
-      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
-
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-
-      const json = await res.json()
-
-      // Validate response structure
-      if (!json || typeof json !== "object") {
-        return { success: false, message: "Invalid response from server" }
-      }
-
-      if (!json.success) {
-        return {
-          success: false,
-          message: json.error?.message || "Failed to fetch job matches",
-        }
-      }
-
-      // Safely access nested data with validation
-      const matches = json.data?.matches
-      if (!Array.isArray(matches)) {
-        return { success: false, message: "Invalid response format: missing matches array" }
-      }
-
+      const matches = await fetchJobMatches({
+        limit: options?.limit,
+        status: options?.status as "active" | "ignored" | "applied" | "all" | undefined,
+      })
       return { success: true, data: matches }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -622,19 +574,12 @@ ipcMain.handle(
   }
 )
 
-// Get single job match with full details
+// Get single job match with full details using typed API client
 ipcMain.handle(
   "get-job-match",
-  async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: unknown; message?: string }> => {
+  async (_event: IpcMainInvokeEvent, id: string): Promise<{ success: boolean; data?: JobMatchWithListing; message?: string }> => {
     try {
-      const res = await fetchWithRetry(`${API_URL}/job-matches/${id}`, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-      const data = await res.json()
-      // Safely access nested data
-      const match = data?.data?.match || data?.data || data?.match || data
+      const match = await fetchJobMatch(id)
       return { success: true, data: match }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -643,31 +588,12 @@ ipcMain.handle(
   }
 )
 
-// Get documents for a job match
+// Get documents for a job match using typed API client
 ipcMain.handle(
   "get-documents",
   async (_event: IpcMainInvokeEvent, jobMatchId: string): Promise<{ success: boolean; data?: unknown[]; message?: string }> => {
     try {
-      const url = `${API_URL}/generator/job-matches/${jobMatchId}/documents`
-      const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
-
-      if (!res.ok) {
-        // 404 is fine - means no documents yet
-        if (res.status === 404) {
-          return { success: true, data: [] }
-        }
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-
-      const data = await res.json()
-      // Handle both wrapped and unwrapped response formats with null safety
-      let documents: unknown[] = []
-      if (Array.isArray(data)) {
-        documents = data
-      } else if (data && typeof data === "object" && Array.isArray(data.data)) {
-        documents = data.data
-      }
+      const documents = await fetchDocuments(jobMatchId)
       return { success: true, data: documents }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -676,7 +602,7 @@ ipcMain.handle(
   }
 )
 
-// Update job match status (mark as applied, ignored, etc.)
+// Update job match status (mark as applied, ignored, etc.) using typed API client
 ipcMain.handle(
   "update-job-match-status",
   async (
@@ -684,18 +610,7 @@ ipcMain.handle(
     options: { id: string; status: "active" | "ignored" | "applied" }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
-      const res = await fetchWithRetry(
-        `${API_URL}/job-matches/${options.id}/status`,
-        fetchOptions({
-          method: "PATCH",
-          body: JSON.stringify({ status: options.status }),
-        }),
-        { maxRetries: 2, timeoutMs: 15000 }
-      )
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
+      await updateJobMatchStatus(options.id, options.status)
       return { success: true }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
@@ -704,50 +619,16 @@ ipcMain.handle(
   }
 )
 
-// Find job match by URL (for auto-detection)
+// Find job match by URL (for auto-detection) using typed API client
 ipcMain.handle(
   "find-job-match-by-url",
   async (
     _event: IpcMainInvokeEvent,
     url: string
-  ): Promise<{ success: boolean; data?: unknown; message?: string }> => {
+  ): Promise<{ success: boolean; data?: JobMatchWithListing | null; message?: string }> => {
     try {
-      // Normalize the URL for comparison
-      const normalizedUrl = normalizeUrl(url)
-
-      // Fetch recent job matches and compare URLs
-      const res = await fetchWithRetry(
-        `${API_URL}/job-matches/?limit=100&sortBy=updated&sortOrder=desc`,
-        fetchOptions(),
-        { maxRetries: 2, timeoutMs: 15000 }
-      )
-      if (!res.ok) {
-        const errorMsg = await parseApiError(res)
-        return { success: false, message: errorMsg }
-      }
-      const data = await res.json()
-
-      // Safely access matches array with validation
-      let matches: unknown[] = []
-      if (data?.data?.matches && Array.isArray(data.data.matches)) {
-        matches = data.data.matches
-      } else if (Array.isArray(data?.data)) {
-        matches = data.data
-      } else if (Array.isArray(data)) {
-        matches = data
-      }
-
-      // Find a match where the listing URL matches (normalized)
-      for (const match of matches) {
-        if (match && typeof match === "object" && "listing" in match) {
-          const listing = (match as { listing?: { url?: string } }).listing
-          if (listing?.url && normalizeUrl(listing.url) === normalizedUrl) {
-            return { success: true, data: match }
-          }
-        }
-      }
-
-      return { success: true, data: null } // No match found
+      const match = await findJobMatchByUrl(url)
+      return { success: true, data: match }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
       return { success: false, message }
@@ -755,7 +636,7 @@ ipcMain.handle(
   }
 )
 
-// Start document generation (simple - returns requestId only)
+// Start document generation (simple - returns requestId only) using typed API client
 ipcMain.handle(
   "start-generation",
   async (
@@ -763,38 +644,8 @@ ipcMain.handle(
     options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }
   ): Promise<{ success: boolean; requestId?: string; message?: string }> => {
     try {
-      // First get the job match to get job details
-      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
-      if (!matchRes.ok) {
-        return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
-      }
-      const matchData = await matchRes.json()
-      const match = matchData.data || matchData
-
-      // Start generation
-      const res = await fetch(`${API_URL}/generator/start`, fetchOptions({
-        method: "POST",
-        body: JSON.stringify({
-          generateType: options.type,
-          job: {
-            role: match.listing?.title || "Unknown Role",
-            company: match.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: match.listing?.url,
-            jobDescriptionText: match.listing?.description,
-            location: match.listing?.location,
-          },
-          jobMatchId: options.jobMatchId,
-          date: new Date().toLocaleDateString(),
-        }),
-      }))
-
-      if (!res.ok) {
-        const errorText = await res.text()
-        return { success: false, message: `Generation failed: ${errorText.slice(0, 100)}` }
-      }
-
-      const data = await res.json()
-      return { success: true, requestId: data.requestId || data.data?.requestId || data.id }
+      const result = await startGeneration(options)
+      return { success: true, requestId: result.requestId }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { success: false, message }
@@ -803,7 +654,7 @@ ipcMain.handle(
 )
 
 // Run full document generation with sequential step execution (matches frontend pattern)
-// This sends progress updates via IPC as steps complete
+// This sends progress updates via IPC as steps complete, using typed API client
 ipcMain.handle(
   "run-generation",
   async (
@@ -815,43 +666,14 @@ ipcMain.handle(
     message?: string
   }> => {
     try {
-      // First get the job match to get job details
-      const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
-      if (!matchRes.ok) {
-        return { success: false, message: `Failed to fetch job match: ${matchRes.status}` }
-      }
-      const matchData = await matchRes.json()
-      const match = matchData.data || matchData
-
-      // Start generation
+      // Start generation using typed API client
       logger.info("Starting document generation...")
-      const startRes = await fetch(`${API_URL}/generator/start`, fetchOptions({
-        method: "POST",
-        body: JSON.stringify({
-          generateType: options.type,
-          job: {
-            role: match.listing?.title || "Unknown Role",
-            company: match.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: match.listing?.url,
-            jobDescriptionText: match.listing?.description,
-            location: match.listing?.location,
-          },
-          jobMatchId: options.jobMatchId,
-          date: new Date().toLocaleDateString(),
-        }),
-      }))
-
-      if (!startRes.ok) {
-        const errorText = await startRes.text()
-        return { success: false, message: `Generation failed to start: ${errorText.slice(0, 100)}` }
-      }
-
-      const startData = await startRes.json()
-      const requestId = startData.requestId || startData.data?.requestId
-      let nextStep = startData.data?.nextStep || startData.nextStep
-      let currentSteps: GenerationStep[] = startData.data?.steps || startData.steps || []
-      let resumeUrl = startData.data?.resumeUrl || startData.resumeUrl
-      let coverLetterUrl = startData.data?.coverLetterUrl || startData.coverLetterUrl
+      const startResult = await startGeneration(options)
+      const requestId = startResult.requestId
+      let nextStep = startResult.nextStep
+      let currentSteps: GenerationStep[] = startResult.steps || []
+      let resumeUrl = startResult.resumeUrl
+      let coverLetterUrl = startResult.coverLetterUrl
 
       logger.info(`Generation started: ${requestId}, next step: ${nextStep}`)
 
@@ -889,27 +711,7 @@ ipcMain.handle(
         }
 
         logger.info(`Executing step: ${nextStep}`)
-        const stepRes = await fetch(`${API_URL}/generator/step/${requestId}`, fetchOptions({
-          method: "POST",
-          body: JSON.stringify({}),
-        }))
-
-        if (!stepRes.ok) {
-          const errorText = await stepRes.text()
-          return {
-            success: false,
-            message: `Step execution failed: ${errorText.slice(0, 100)}`,
-            data: {
-              requestId,
-              status: "failed",
-              steps: currentSteps,
-              error: errorText.slice(0, 100),
-            },
-          }
-        }
-
-        const stepData = await stepRes.json()
-        const stepResult = stepData.data || stepData
+        const stepResult = await executeGenerationStep(requestId)
 
         // Check for failure
         if (stepResult.status === "failed") {
@@ -987,6 +789,7 @@ ipcMain.handle(
 )
 
 // Enhanced form fill with EEO, job match context, and results tracking
+// Uses the optimized /api/applicator/profile endpoint for pre-formatted profile data
 ipcMain.handle(
   "fill-form-enhanced",
   async (
@@ -998,39 +801,34 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get profile with EEO from backend
-      logger.info("Fetching profile from backend...")
-      const profileRes = await fetch(`${API_URL}/config/personal-info`, fetchOptions())
-      if (!profileRes.ok) {
-        throw new Error(`Failed to fetch profile: ${profileRes.status}`)
-      }
-      const profileData = await profileRes.json()
-      const profile: PersonalInfo = profileData.data || profileData
+      // 1. Get pre-formatted profile text from optimized applicator endpoint
+      // This includes personal info, EEO, work history, education, and skills - all pre-serialized
+      logger.info("Fetching applicator profile from backend...")
+      const profileText = await fetchApplicatorProfile()
+      logger.info(`Received profile text (${profileText.length} chars)`)
 
-      // Validate required profile fields
-      if (!profile.name || !profile.email) {
-        throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
+      // Validate profile has content - empty profile would result in poor form filling
+      if (!profileText || profileText.trim().length < 50) {
+        throw new Error("Profile data is empty or incomplete. Please configure your profile before filling forms.")
       }
 
-      // 2. Get content items (work history)
-      const contentRes = await fetch(`${API_URL}/content-items?limit=100`, fetchOptions())
-      let workHistory: ContentItem[] = []
-      if (contentRes.ok) {
-        const contentData = await contentRes.json()
-        workHistory = contentData.data || []
-      }
-
-      // 3. Get job match data if provided
-      let jobMatchData: Record<string, unknown> | null = null
+      // 2. Get job match context if provided
+      let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
       if (options.jobMatchId) {
-        const matchRes = await fetch(`${API_URL}/job-matches/${options.jobMatchId}`, fetchOptions())
-        if (matchRes.ok) {
-          const matchJson = await matchRes.json()
-          jobMatchData = matchJson.data || matchJson
+        try {
+          const match = await fetchJobMatch(options.jobMatchId)
+          jobContext = {
+            company: match.listing?.companyName,
+            role: match.listing?.title,
+            matchedSkills: match.matchedSkills as string[] | undefined,
+          }
+        } catch (err) {
+          // Non-critical - continue without job match data, but log for debugging
+          logger.warn("Failed to fetch job match data, continuing without it:", err)
         }
       }
 
-      // 4. Extract form fields from page
+      // 3. Extract form fields from page
       logger.info("Extracting form fields...")
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
       logger.info(`Found ${fields.length} form fields`)
@@ -1039,8 +837,8 @@ ipcMain.handle(
         return { success: false, message: "No form fields found on page" }
       }
 
-      // 5. Build enhanced prompt
-      const prompt = buildEnhancedPrompt(fields, profile, workHistory, jobMatchData)
+      // 4. Build prompt using pre-formatted profile text (much more efficient)
+      const prompt = buildPromptFromProfileText(fields, profileText, jobContext)
       logger.info(`Calling ${options.provider} CLI for enhanced field mapping...`)
 
       // 6. Call CLI for fill instructions with skip tracking
@@ -1104,7 +902,16 @@ ipcMain.handle(
   }
 )
 
-// CLI command configurations
+/**
+ * CLI command configurations for different AI providers.
+ *
+ * Note: Each CLI has different output formats:
+ * - Claude CLI: Returns a wrapper object {"type":"result","result":"[...]"} where "result"
+ *   is a string containing the actual JSON (escaped). Must parse wrapper first, then parse result.
+ * - Codex/Gemini: Return raw JSON arrays directly.
+ *
+ * The runCli and runEnhancedCli functions handle these format differences automatically.
+ */
 const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
   codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
@@ -1119,10 +926,22 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     let stdout = ""
     let stderr = ""
 
+    // Set up warning timers for long-running operations
+    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
+      setTimeout(() => {
+        logger.warn(`[CLI] ${provider} form fill still running after ${ms / 1000}s...`)
+      }, ms)
+    )
+
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
       reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
     }, CLI_TIMEOUT_MS)
+
+    const clearAllTimers = () => {
+      warningTimers.forEach(clearTimeout)
+      clearTimeout(timeout)
+    }
 
     child.stdin.write(prompt)
     child.stdin.end()
@@ -1131,7 +950,7 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     child.stderr.on("data", (d) => (stderr += d))
 
     child.on("error", (err) => {
-      clearTimeout(timeout)
+      clearAllTimers()
       // Provide helpful error if CLI tool is not installed
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
@@ -1141,31 +960,47 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     })
 
     child.on("close", (code) => {
-      clearTimeout(timeout)
+      clearAllTimers()
       if (code === 0) {
         try {
-          // Find first [ and last ] for more robust JSON extraction
-          const startIdx = stdout.indexOf("[")
-          const endIdx = stdout.lastIndexOf("]")
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            const jsonStr = stdout.substring(startIdx, endIdx + 1)
-            const parsed = JSON.parse(jsonStr)
-            if (!Array.isArray(parsed)) {
-              reject(new Error(`${provider} CLI did not return an array`))
+          let jsonStr: string
+
+          // Claude CLI returns a wrapper object: {"type":"result","result":"[...]"}
+          // where "result" contains the JSON array as an escaped string
+          if (stdout.trim().startsWith("{") && stdout.includes('"result"')) {
+            const wrapper = JSON.parse(stdout)
+            if (wrapper.result && typeof wrapper.result === "string") {
+              jsonStr = wrapper.result
+            } else {
+              reject(new Error(`${provider} CLI wrapper missing result field`))
               return
             }
-            resolve(
-              parsed.map((item: Record<string, unknown>) => ({
-                selector: String(item.selector || ""),
-                value: item.value != null ? String(item.value) : null,
-                status: item.status === "skipped" ? "skipped" : "filled",
-                reason: item.reason ? String(item.reason) : undefined,
-                label: item.label ? String(item.label) : undefined,
-              }))
-            )
           } else {
-            reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
+            // Fallback: find first [ and last ] for raw JSON array
+            const startIdx = stdout.indexOf("[")
+            const endIdx = stdout.lastIndexOf("]")
+            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+              jsonStr = stdout.substring(startIdx, endIdx + 1)
+            } else {
+              reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
+              return
+            }
           }
+
+          const parsed = JSON.parse(jsonStr)
+          if (!Array.isArray(parsed)) {
+            reject(new Error(`${provider} CLI did not return an array`))
+            return
+          }
+          resolve(
+            parsed.map((item: Record<string, unknown>) => ({
+              selector: String(item.selector || ""),
+              value: item.value != null ? String(item.value) : null,
+              status: item.status === "skipped" ? "skipped" : "filled",
+              reason: item.reason ? String(item.reason) : undefined,
+              label: item.label ? String(item.label) : undefined,
+            }))
+          )
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}`))
@@ -1292,31 +1127,47 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
       clearTimeout(timeout)
       if (code === 0) {
         try {
-          // Find first [ and last ] for more robust JSON extraction
-          const startIdx = stdout.indexOf("[")
-          const endIdx = stdout.lastIndexOf("]")
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            const jsonStr = stdout.substring(startIdx, endIdx + 1)
-            const parsed = JSON.parse(jsonStr)
-            // Validate the response structure
-            if (!Array.isArray(parsed)) {
-              reject(new Error(`${provider} CLI did not return an array`))
+          let jsonStr: string
+
+          // Claude CLI returns a wrapper object: {"type":"result","result":"[...]"}
+          // where "result" contains the JSON array as an escaped string
+          if (stdout.trim().startsWith("{") && stdout.includes('"result"')) {
+            const wrapper = JSON.parse(stdout)
+            if (wrapper.result && typeof wrapper.result === "string") {
+              jsonStr = wrapper.result
+            } else {
+              reject(new Error(`${provider} CLI wrapper missing result field`))
               return
             }
-            for (const item of parsed) {
-              if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
-                reject(new Error(`${provider} CLI returned invalid FillInstruction format`))
-                return
-              }
-            }
-            resolve(parsed)
           } else {
-            reject(
-              new Error(
-                `${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
+            // Fallback: find first [ and last ] for raw JSON array
+            const startIdx = stdout.indexOf("[")
+            const endIdx = stdout.lastIndexOf("]")
+            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+              jsonStr = stdout.substring(startIdx, endIdx + 1)
+            } else {
+              reject(
+                new Error(
+                  `${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
+                )
               )
-            )
+              return
+            }
           }
+
+          const parsed = JSON.parse(jsonStr)
+          // Validate the response structure
+          if (!Array.isArray(parsed)) {
+            reject(new Error(`${provider} CLI did not return an array`))
+            return
+          }
+          for (const item of parsed) {
+            if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
+              reject(new Error(`${provider} CLI returned invalid FillInstruction format`))
+              return
+            }
+          }
+          resolve(parsed)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           reject(
