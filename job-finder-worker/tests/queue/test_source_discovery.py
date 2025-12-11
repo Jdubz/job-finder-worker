@@ -128,8 +128,17 @@ def mock_dependencies() -> Dict[str, Any]:
             "maxBonus": 25,
             "maxPenalty": -15,
             "analogGroups": [],
+            "missingIgnore": [],
         },
-        "salary": {"minimum": None, "target": None, "belowTargetScore": -2},
+        "salary": {
+            "minimum": None,
+            "target": None,
+            "belowTargetScore": -2,
+            "missingSalaryScore": 0,
+            "meetsTargetScore": 0,
+            "equityScore": 0,
+            "contractScore": 0,
+        },
         "experience": {"maxRequired": 15, "overqualifiedScore": -5},
         "freshness": {
             "freshDays": 2,
@@ -172,6 +181,7 @@ def mock_dependencies() -> Dict[str, Any]:
     sources_manager.create_from_discovery.return_value = "source-123"
     sources_manager.get_source_by_company_and_aggregator.return_value = None
     sources_manager.get_source_by_name.return_value = None
+    sources_manager.find_duplicate_candidate.return_value = None
 
     company_info_fetcher = MagicMock()
     ai_matcher = MagicMock()

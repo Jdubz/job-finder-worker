@@ -331,7 +331,7 @@ class SourceProcessor(BaseProcessor):
                 "sample": response.text[:5000],  # Truncate for context
             }
 
-        except requests.RequestException as e:
+        except Exception as e:  # catch broad to surface hint even for non-requests errors/mocks
             status = getattr(getattr(e, "response", None), "status_code", None)
             error_type = "fetch_error"
 

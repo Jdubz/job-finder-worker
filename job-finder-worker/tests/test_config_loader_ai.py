@@ -210,8 +210,17 @@ class TestConfigLoaderIntegration:
                 "maxBonus": 25,
                 "maxPenalty": -15,
                 "analogGroups": [],
+                "missingIgnore": [],
             },
-            "salary": {"minimum": None, "target": None, "belowTargetScore": -2},
+            "salary": {
+                "minimum": None,
+                "target": None,
+                "belowTargetScore": -2,
+                "missingSalaryScore": 0,
+                "meetsTargetScore": 0,
+                "equityScore": 0,
+                "contractScore": 0,
+            },
             "experience": {"maxRequired": 15, "overqualifiedScore": -5},
             "freshness": {
                 "freshDays": 2,

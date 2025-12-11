@@ -166,16 +166,9 @@ def _check_codex_config() -> Dict[str, Any]:
                 "message": "API key configured",
             }
 
-        # Check for API key in environment
-        if os.getenv("OPENAI_API_KEY"):
-            return {
-                "healthy": True,
-                "message": "API key configured (from environment)",
-            }
-
         # Check for OAuth tokens
-        tokens = auth.get("tokens", {})
-        if tokens.get("refresh_token"):
+        tokens = auth.get("tokens") or {}
+        if isinstance(tokens, dict) and tokens.get("refresh_token"):
             # Try to extract email from id_token
             id_token = tokens.get("id_token")
             if id_token:
@@ -189,6 +182,13 @@ def _check_codex_config() -> Dict[str, Any]:
             return {
                 "healthy": True,
                 "message": "OAuth credentials configured",
+            }
+
+        # Check for API key in environment
+        if os.getenv("OPENAI_API_KEY"):
+            return {
+                "healthy": True,
+                "message": "API key configured (from environment)",
             }
 
         return {

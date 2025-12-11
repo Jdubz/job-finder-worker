@@ -29,6 +29,7 @@ const defaultSkillMatch: SkillMatchFormValues = {
   yearsMultiplier: 0.5,
   maxYearsBonus: 5,
   missingScore: -1,
+  missingIgnore: [],
   analogScore: 0,
   maxBonus: 25,
   maxPenalty: -15,
@@ -75,6 +76,7 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
       yearsMultiplier: skillValues.yearsMultiplier,
       maxYearsBonus: skillValues.maxYearsBonus,
       missingScore: skillValues.missingScore,
+      missingIgnore: cleanList(skillValues.missingIgnore),
       analogScore: skillValues.analogScore,
       maxBonus: skillValues.maxBonus,
       maxPenalty: skillValues.maxPenalty,
@@ -90,6 +92,10 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     minimum: values.salary.minimum,
     target: values.salary.target,
     belowTargetScore: values.salary.belowTargetScore,
+    missingSalaryScore: values.salary.missingSalaryScore,
+    meetsTargetScore: values.salary.meetsTargetScore,
+    equityScore: values.salary.equityScore,
+    contractScore: values.salary.contractScore,
   },
   experience: {
     maxRequired: values.experience.maxRequired,
@@ -413,6 +419,14 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   description="Penalty applied for each job skill that is missing."
                   info="Applied for every job skill not present in your profile."
                 />
+                <StringListField
+                  control={form.control}
+                  name="skillMatch.missingIgnore"
+                  label="Ignore Missing Skills"
+                  placeholder="api, cloud infrastructure"
+                  description="Skills to ignore when computing missing penalties."
+                  info="Useful for generic buckets like 'api' or 'cloud infrastructure'."
+                />
                 <NumericField
                   control={form.control}
                   name="skillMatch.analogScore"
@@ -509,6 +523,32 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   label="Below Target Score"
                   description="Points per $10k below target (negative)."
                   info="Score adjustment for each $10k the salary is below target."
+                />
+                <NumericField
+                  control={form.control}
+                  name="salary.missingSalaryScore"
+                  label="Missing Salary Score"
+                  description="Adjustment when salary is not listed."
+                  info="Set to 0 for neutral, negative to penalize."
+                />
+                <NumericField
+                  control={form.control}
+                  name="salary.meetsTargetScore"
+                  label="Meets/Exceeds Target Bonus"
+                  description="Bonus when salary meets/exceeds target."
+                />
+                <NumericField
+                  control={form.control}
+                  name="salary.equityScore"
+                  label="Equity Bonus"
+                  description="Bonus when equity is mentioned."
+                />
+                <NumericField
+                  control={form.control}
+                  name="salary.contractScore"
+                  label="Contract Penalty"
+                  description="Penalty for contract roles."
+                  info="Use negative numbers (e.g., -15)."
                 />
               </div>
             </section>

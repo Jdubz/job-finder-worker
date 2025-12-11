@@ -78,5 +78,9 @@ def get_scraping_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
 
 def get_fetch_delay_seconds(db_path: Optional[str] = None) -> float:
     """Get delay between detail page fetches (default: 1 second)."""
-    scraping = get_scraping_settings(db_path)
-    return float(scraping.get("fetchDelaySeconds", 1))
+    try:
+        scraping = get_scraping_settings(db_path)
+        return float(scraping.get("fetchDelaySeconds", 1))
+    except Exception:
+        logger.debug("Using default fetch delay (0s) due to missing settings")
+        return 0.0

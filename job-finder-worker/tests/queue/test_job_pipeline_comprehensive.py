@@ -154,11 +154,16 @@ def test_job_pipeline_full_path(tmp_path: Path):
                             "maxBonus": 25,
                             "maxPenalty": -15,
                             "analogGroups": [],
+                            "missingIgnore": [],
                         },
                         "salary": {
                             "minimum": None,
                             "target": None,
                             "belowTargetScore": -2,
+                            "missingSalaryScore": 0,
+                            "meetsTargetScore": 0,
+                            "equityScore": 0,
+                            "contractScore": 0,
                         },
                         "experience": {
                             "maxRequired": 15,

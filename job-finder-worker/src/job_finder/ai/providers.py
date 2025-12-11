@@ -56,12 +56,12 @@ class AIProvider(ABC):
 class ClaudeProvider(AIProvider):
     """Anthropic Claude provider (API interface)."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None):
         """
         Initialize Claude provider.
 
         Args:
-            model: Model identifier (required - from ai-settings config).
+            model: Model identifier (defaults to CLAUDE_DEFAULT_MODEL env or claude-3-opus).
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var).
         """
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -70,7 +70,7 @@ class ClaudeProvider(AIProvider):
                 "Anthropic API key must be provided or set in ANTHROPIC_API_KEY environment variable"
             )
 
-        self.model = model
+        self.model = model or os.getenv("CLAUDE_DEFAULT_MODEL") or "claude-3-opus"
         self.client = Anthropic(api_key=self.api_key)
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
@@ -90,12 +90,12 @@ class ClaudeProvider(AIProvider):
 class OpenAIProvider(AIProvider):
     """OpenAI GPT provider (API interface)."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None):
         """
         Initialize OpenAI provider.
 
         Args:
-            model: Model identifier (required - from ai-settings config).
+            model: Model identifier (defaults to OPENAI_DEFAULT_MODEL env or gpt-4o).
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var).
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -104,7 +104,7 @@ class OpenAIProvider(AIProvider):
                 "OpenAI API key must be provided or set in OPENAI_API_KEY environment variable"
             )
 
-        self.model = model
+        self.model = model or os.getenv("OPENAI_DEFAULT_MODEL") or "gpt-4o"
         self.client = OpenAI(api_key=self.api_key)
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
@@ -124,12 +124,12 @@ class OpenAIProvider(AIProvider):
 class GeminiProvider(AIProvider):
     """Google Gemini provider (API interface)."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None):
         """
         Initialize Gemini provider.
 
         Args:
-            model: Model identifier (required - from ai-settings config).
+            model: Model identifier (defaults to GEMINI_DEFAULT_MODEL env or gemini-2.0-flash).
             api_key: Google API key (defaults to GOOGLE_API_KEY or GEMINI_API_KEY env var).
         """
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
@@ -138,7 +138,7 @@ class GeminiProvider(AIProvider):
                 "Google API key must be provided or set in GOOGLE_API_KEY/GEMINI_API_KEY environment variable"
             )
 
-        self.model = model
+        self.model = model or os.getenv("GEMINI_DEFAULT_MODEL") or "gemini-2.0-flash"
         # Lazy import to avoid dependency if not used
         try:
             import google.generativeai as genai
@@ -285,7 +285,7 @@ class CodexCLIProvider(AIProvider):
             model: Model identifier. If omitted, CLI uses its configured default.
             timeout: Command timeout in seconds (default 60s).
         """
-        self.model = model
+        self.model = model or os.getenv("CODEX_DEFAULT_MODEL") or "gpt-5-codex"
         self.timeout = timeout
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:

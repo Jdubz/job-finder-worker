@@ -217,8 +217,17 @@ export const baseMatchPolicy: MatchPolicy = {
     maxBonus: 25,
     maxPenalty: -15,
     analogGroups: [],
+    missingIgnore: [],
   },
-  salary: { minimum: 100000, target: 170000, belowTargetScore: -10 },
+  salary: {
+    minimum: 100000,
+    target: 170000,
+    belowTargetScore: -10,
+    missingSalaryScore: 0,
+    meetsTargetScore: 0,
+    equityScore: 0,
+    contractScore: 0,
+  },
   experience: { maxRequired: 12, overqualifiedScore: -5 },
   freshness: {
     freshDays: 2,

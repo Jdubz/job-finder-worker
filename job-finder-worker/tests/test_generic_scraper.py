@@ -2,9 +2,25 @@
 
 from unittest.mock import Mock, patch
 import pytest
+import sqlite3
 
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
+
+
+@pytest.fixture(autouse=True)
+def temp_db_env(tmp_path, monkeypatch):
+    """Ensure SQLITE_DB_PATH points to a real temp db for scraper tests."""
+    db_path = tmp_path / "test.db"
+    sqlite3.connect(db_path).close()
+    monkeypatch.setenv("SQLITE_DB_PATH", str(db_path))
+    yield
+
+
+@pytest.fixture(autouse=True)
+def disable_enrich(monkeypatch):
+    """Avoid hitting detail pages in unit tests."""
+    monkeypatch.setattr(GenericScraper, "_should_enrich", lambda self, job: False)
 
 
 class TestSourceConfig:
@@ -154,6 +170,7 @@ class TestGenericScraperAPI:
                     "link": "https://example.com/job/1",
                     "location": "Remote",
                     "posted_date": "2024-01-01T00:00:00Z",
+                    "description": "Great role",
                 }
             ]
         }
@@ -169,9 +186,11 @@ class TestGenericScraperAPI:
                 "url": "link",
                 "location": "location",
                 "posted_date": "posted_date",
+                "description": "description",
             },
         )
         scraper = GenericScraper(config)
+        scraper._should_enrich = lambda job: False  # avoid detail fetch in unit test
         jobs = scraper.scrape()
 
         assert len(jobs) == 1
@@ -197,6 +216,7 @@ class TestGenericScraperAPI:
             auth_type="bearer",
         )
         scraper = GenericScraper(config)
+        scraper._should_enrich = lambda job: False
         scraper.scrape()
 
         # Check that Authorization header was set
@@ -223,6 +243,7 @@ class TestGenericScraperAPI:
             auth_param="api_key",
         )
         scraper = GenericScraper(config)
+        scraper._should_enrich = lambda job: False
         scraper.scrape()
 
         # Check that URL contains auth param

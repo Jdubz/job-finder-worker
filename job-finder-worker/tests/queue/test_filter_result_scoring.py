@@ -155,6 +155,7 @@ def mock_config_loader():
             "maxBonus": 25,
             "maxPenalty": -15,
             "analogGroups": [],
+            "missingIgnore": [],
         },
         "salary": {
             "minimum": None,

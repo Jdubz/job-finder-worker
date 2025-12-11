@@ -287,6 +287,8 @@ export interface SkillMatchConfig {
   maxYearsBonus: number
   /** Penalty per missing job skill (negative) */
   missingScore: number
+  /** Skills to ignore when calculating missing penalties (case-insensitive) */
+  missingIgnore: string[]
   /** Points when an analog skill is present */
   analogScore: number
   /** Cap on total bonus from skill matching */
@@ -305,10 +307,14 @@ export interface SalaryConfig {
   target: number | null
   /** Score adjustment per $10k below target (negative) */
   belowTargetScore: number
+  /** Score adjustment when salary missing (negative, 0 for neutral) */
+  missingSalaryScore: number
+  /** Score adjustment when salary meets/exceeds target */
+  meetsTargetScore: number
   /** Score adjustment for positions with equity (positive) */
-  equityScore?: number
+  equityScore: number
   /** Score adjustment for contract positions (negative) */
-  contractScore?: number
+  contractScore: number
 }
 
 /** Experience level preferences */

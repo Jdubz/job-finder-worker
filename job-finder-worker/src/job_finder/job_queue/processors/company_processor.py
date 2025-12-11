@@ -17,7 +17,7 @@ from job_finder.ai.agent_manager import AgentManager, NoAgentsAvailableError
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import InitializationError
 
-from job_finder.ai.search_client import get_search_client
+from job_finder.ai.search_client import SearchResult, get_search_client
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.logging_config import format_company_name
 from job_finder.job_queue.models import (
@@ -373,6 +373,133 @@ class CompanyProcessor(BaseProcessor):
             return provided_url
 
         return None
+
+    def _find_best_career_url(
+        self, results: List["SearchResult"], company_name: str
+    ) -> Optional[str]:
+        """
+        Heuristic chooser for the best career page URL from search results.
+
+        Priorities (highest → lowest):
+        - Known ATS/hosted career platforms (greenhouse/lever/workday/ashby/etc.)
+        - Careers subdomains (careers.example.com)
+        - /careers or /jobs paths on the company domain
+        - Other URLs that include the company name in the domain
+        Aggregators (indeed/linkedin/glassdoor) are discarded.
+        """
+
+        if not results:
+            return None
+
+        company_lower = (company_name or "").lower()
+        ats_hosts = ("greenhouse.io", "lever.co", "ashbyhq.com", "workday", "icims.com", "jobvite")
+        aggregators = ("indeed.com", "linkedin.com", "glassdoor.com")
+
+        def score(res) -> Optional[int]:
+            url = (res.url or "").strip()
+            if not url:
+                return None
+            url_lower = url.lower()
+            if any(block in url_lower for block in aggregators):
+                return None
+
+            s = 0
+            if any(host in url_lower for host in ats_hosts):
+                s += 100
+            if "://careers." in url_lower or url_lower.startswith("careers."):
+                s += 30
+            if "/careers" in url_lower or "/jobs" in url_lower:
+                s += 20
+            if company_lower and company_lower.split()[0] in url_lower:
+                s += 10
+            title = (getattr(res, "title", "") or "").lower()
+            if "career" in title or "job" in title:
+                s += 5
+            return s
+
+        scored: List[tuple[int, str]] = []
+        for res in results:
+            sc = score(res)
+            if sc is None:
+                continue
+            scored.append((sc, res.url))
+
+        if not scored:
+            return None
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored[0][1]
+
+    def _search_for_career_page(self, company_name: str) -> Optional[str]:
+        """Lightweight search (no agent) to find a career page using heuristics."""
+        search_client = get_search_client()
+        if not search_client:
+            return None
+
+        results: List[SearchResult] = []
+        try:
+            results.extend(
+                search_client.search(f"{company_name} careers jobs", max_results=5) or []
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Career search failed for %s: %s", company_name, exc)
+
+        return self._find_best_career_url(results, company_name)
+
+    def _agent_select_career_url(
+        self, company_name: str, results: List[SearchResult], heuristic_choice: Optional[str]
+    ) -> Optional[str]:
+        """
+        Ask the agent to pick the best URL; fall back to heuristic_choice on failure.
+        """
+        if not results:
+            return heuristic_choice
+
+        try:
+            trimmed: List[Dict[str, str]] = []
+            max_serialized_len = 4000
+            for idx, r in enumerate(results):
+                candidate = {
+                    "rank": idx + 1,
+                    "title": (r.title or "")[:120],
+                    "url": r.url or "",
+                    "snippet": (r.snippet or "")[:200],
+                }
+                prospective = trimmed + [candidate]
+                if len(json.dumps(prospective)) > max_serialized_len:
+                    break
+                trimmed.append(candidate)
+                if len(trimmed) >= 8:
+                    break
+
+            prompt = (
+                "You must choose the single best career page / job board URL for a company.\n"
+                f"Company: {company_name}\n"
+                "Prefer company-specific boards (ATS hosts like Greenhouse/Lever/Workday/Ashby) "
+                "or company-owned /careers or /jobs pages. Avoid generic aggregators (LinkedIn, Indeed, Glassdoor).\n"
+                'Return JSON only as {"best_url": "<url or null>", "reason": "short reason"}.\n'
+                f"Search results: {json.dumps(trimmed)}\n"
+            )
+
+            agent_result = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=prompt,
+                max_tokens=400,
+                temperature=0.0,
+            )
+            data = json.loads(extract_json_from_response(agent_result.text))
+            best_url = data.get("best_url")
+            if isinstance(best_url, str) and best_url.strip():
+                return best_url.strip()
+        except NoAgentsAvailableError as exc:
+            logger.info("Agent unavailable for career page selection: %s", exc)
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to decode agent JSON response: %s", exc)
+            return heuristic_choice
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Career page agent selection failed for %s: %s", company_name, exc)
+
+        return heuristic_choice
 
     def _find_career_page_if_needed(
         self,

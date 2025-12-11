@@ -11,6 +11,18 @@ const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 const CRON_API_KEY = env.CRON_API_KEY
 
 const isTestEnv = () => process.env.NODE_ENV === 'test'
+const buildBypassUser = (): AuthenticatedUser => ({
+  uid: 'localhost-desktop',
+  email: 'desktop@localhost',
+  name: 'Desktop App',
+  roles: ['editor']
+})
+
+function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
+  if (isTestEnv()) return null
+  if (!isLocalhostRequest(req)) return null
+  return buildBypassUser()
+}
 
 export interface AuthenticatedUser {
   uid: string
@@ -132,26 +144,17 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     }
   }
 
+  const bypassUser = tryLocalhostBypass(req)
+  if (bypassUser) {
+    ;(req as AuthenticatedRequest).user = bypassUser
+    return next()
+  }
+
   // Check session cookie
   const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (!sessionToken) {
-    // No session cookie: allow localhost bypass when running on host/bridge.
-    // This is intentionally always-on (no feature flag) because the
-    // job-applicator runs on the same machine and must function without
-    // an interactive login. Trust boundary is the host's loopback/bridge
-    // interfaces; requests must originate locally and tests force-disable it.
-    if (!isTestEnv() && isLocalhostRequest(req)) {
-      const bypassUser: AuthenticatedUser = {
-        uid: 'localhost-desktop',
-        email: 'desktop@localhost',
-        name: 'Desktop App',
-        roles: ['admin']
-      }
-      ;(req as AuthenticatedRequest).user = bypassUser
-      return next()
-    }
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Authentication required', { status: 401 })
     )
@@ -160,17 +163,6 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const sessionUser = userRepository.findBySessionToken(sessionToken)
   if (!sessionUser) {
     clearSessionCookie(res)
-    // Invalid session: still allow localhost bypass on host/bridge
-    if (!isTestEnv() && isLocalhostRequest(req)) {
-      const bypassUser: AuthenticatedUser = {
-        uid: 'localhost-desktop',
-        email: 'desktop@localhost',
-        name: 'Desktop App',
-        roles: ['admin']
-      }
-      ;(req as AuthenticatedRequest).user = bypassUser
-      return next()
-    }
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid session', { status: 401 })
     )
@@ -183,17 +175,6 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   if (expiryMs <= Date.now()) {
     clearSessionCookie(res)
     userRepository.clearSession(sessionUser.id)
-    // Expired session: still allow localhost bypass on host/bridge
-    if (!isTestEnv() && isLocalhostRequest(req)) {
-      const bypassUser: AuthenticatedUser = {
-        uid: 'localhost-desktop',
-        email: 'desktop@localhost',
-        name: 'Desktop App',
-        roles: ['admin']
-      }
-      ;(req as AuthenticatedRequest).user = bypassUser
-      return next()
-    }
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Session expired', { status: 401 })
     )

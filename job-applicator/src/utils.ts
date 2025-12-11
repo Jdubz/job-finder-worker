@@ -80,6 +80,7 @@
  */
 
 import * as path from "path"
+import type { JobMatchWithListing } from "./types.js"
 
 // Configuration from environment (can be overridden in tests)
 export const getConfig = () => ({
@@ -116,6 +117,51 @@ export function resolveDocumentPath(documentUrl: string, artifactsDir?: string):
   }
   // Otherwise treat as relative to artifacts dir
   return path.join(baseDir, documentUrl)
+}
+
+// Normalize varying API response shapes for job match payloads
+export type ListingInfo = {
+  title?: string
+  companyName?: string
+  url?: string
+  description?: string
+  location?: string
+}
+
+export function unwrapJobMatch(response: unknown): JobMatchWithListing | Record<string, unknown> | unknown {
+  if (!response || typeof response !== "object") return response
+  const obj = response as Record<string, unknown>
+  const data = obj.data
+  if (data && typeof data === "object") {
+    const dataObj = data as Record<string, unknown>
+    if (dataObj.match) return dataObj.match
+    return dataObj
+  }
+  if (obj.match) return obj.match
+  return response
+}
+
+// Normalize generator documents listing payloads
+export function unwrapDocuments(response: unknown): unknown[] {
+  if (Array.isArray(response)) return response
+  if (response && typeof response === "object") {
+    const data = (response as Record<string, unknown>).data
+    if (Array.isArray(data)) return data
+    if (data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).requests)) {
+      return (data as Record<string, unknown>).requests as unknown[]
+    }
+  }
+  return []
+}
+
+// Safely extract listing information from a match payload
+export function getListingFromMatch(match: unknown): ListingInfo | undefined {
+  if (!match || typeof match !== "object" || !("listing" in match)) return undefined
+  const listing = (match as { listing?: ListingInfo }).listing
+  if (listing && typeof listing === "object") {
+    return listing
+  }
+  return undefined
 }
 
 // EEO display values for form filling
