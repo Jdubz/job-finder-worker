@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
-import { buildResumePrompt, buildCoverLetterPrompt } from '../workflow/prompts'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import type { ContentItem, PersonalInfo } from '@shared/types'
 
-// Mock prompts config to avoid DB dependency in unit tests
+// Mock prompts config to avoid DB dependency in unit tests. The mock must be
+// registered before importing the module under test so the real repository is
+// never instantiated.
 vi.mock('../../prompts/prompts.repository', () => {
   class PromptsRepository {
     getPrompts() {
@@ -15,6 +16,15 @@ vi.mock('../../prompts/prompts.repository', () => {
     }
   }
   return { PromptsRepository }
+})
+
+let buildResumePrompt: any
+let buildCoverLetterPrompt: any
+
+beforeAll(async () => {
+  const mod = await import('../workflow/prompts')
+  buildResumePrompt = mod.buildResumePrompt
+  buildCoverLetterPrompt = mod.buildCoverLetterPrompt
 })
 
 // Minimal fixtures

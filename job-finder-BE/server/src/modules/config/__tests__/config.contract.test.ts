@@ -92,7 +92,11 @@ describe('config contract', () => {
       jobMatching: 'd',
     })
 
-    repo.upsert('personal-info', { name: 'Test User', email: 'user@example.com' })
+    repo.upsert('personal-info', {
+      name: 'Test User',
+      email: 'user@example.com',
+      applicationInfo: 'EEO and application details as free text',
+    })
 
     repo.upsert('prefilter-policy', {
       title: { requiredKeywords: ['engineer'], excludedKeywords: ['intern'] },
