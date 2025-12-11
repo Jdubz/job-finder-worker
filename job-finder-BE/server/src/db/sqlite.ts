@@ -55,3 +55,13 @@ export function closeDb(): void {
   db.close()
   db = null
 }
+
+/**
+ * Run a passive WAL checkpoint to ensure external writes are visible.
+ * Call this before reading config that may have been modified externally (e.g., via sqlite3 CLI).
+ * Passive mode does not block writers and is safe to call frequently.
+ */
+export function checkpointWal(): void {
+  if (!db) return
+  db.pragma('wal_checkpoint(PASSIVE)')
+}
