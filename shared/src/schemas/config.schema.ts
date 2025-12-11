@@ -302,7 +302,8 @@ export const personalInfoSchema = z.object({
   avatar: z.string().optional(),
   logo: z.string().optional(),
   accentColor: z.string().optional(),
-})
+  applicationInfo: z.string().min(1, 'applicationInfo is required'),
+}).strict()
 
 export const configPayloadSchemaMap = {
   "ai-settings": aiSettingsSchema,

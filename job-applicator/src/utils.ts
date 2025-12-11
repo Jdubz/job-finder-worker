@@ -164,45 +164,10 @@ export function getListingFromMatch(match: unknown): ListingInfo | undefined {
   return undefined
 }
 
-// EEO display values for form filling
-export const EEO_DISPLAY: Record<string, Record<string, string>> = {
-  race: {
-    american_indian_alaska_native: "American Indian or Alaska Native",
-    asian: "Asian",
-    black_african_american: "Black or African American",
-    native_hawaiian_pacific_islander: "Native Hawaiian or Other Pacific Islander",
-    white: "White",
-    two_or_more_races: "Two or More Races",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  hispanicLatino: {
-    yes: "Yes",
-    no: "No",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  gender: {
-    male: "Male",
-    female: "Female",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  veteranStatus: {
-    not_protected_veteran: "I am not a protected veteran",
-    protected_veteran: "I identify as one or more of the classifications of a protected veteran",
-    disabled_veteran: "I am a disabled veteran",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-  disabilityStatus: {
-    yes: "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
-    no: "No, I Don't Have A Disability",
-    decline_to_identify: "Decline to Self-Identify",
-  },
-}
-
-// Format EEO value for display
-export function formatEEOValue(field: string, value: string | undefined): string {
-  if (!value) return "Not provided - skip this field"
-  return EEO_DISPLAY[field]?.[value] || value
-}
+// NOTE: EEO data is now provided as free-form text via personalInfo.eeoDemographics.
+// Legacy structured fields remain supported as a fallback for older configs, but we no
+// longer maintain static option maps here. The prompt builder will pass through the
+// text directly when present.
 
 // Re-export types from types.ts for backwards compatibility
 export type {
@@ -335,16 +300,10 @@ export function buildEnhancedPrompt(
   workHistory: ContentItem[],
   jobMatch: Record<string, unknown> | null
 ): string {
-  const eeoSection = profile.eeo
-    ? `
-## EEO Information (US Equal Employment Opportunity)
-Race: ${formatEEOValue("race", profile.eeo.race)}
-Hispanic/Latino: ${formatEEOValue("hispanicLatino", profile.eeo.hispanicLatino)}
-Gender: ${formatEEOValue("gender", profile.eeo.gender)}
-Veteran Status: ${formatEEOValue("veteranStatus", profile.eeo.veteranStatus)}
-Disability Status: ${formatEEOValue("disabilityStatus", profile.eeo.disabilityStatus)}
-`
-    : "\n## EEO Information\nNot provided - skip EEO fields\n"
+  const appInfo = profile.applicationInfo?.trim()
+  const eeoSection = appInfo
+    ? `\n## Application Information (EEO + other disclosures)\n${appInfo}\n`
+    : "\n## Application Information\nNot provided - skip these fields\n"
 
   // Helper to safely extract nested properties with type checking
   const getNestedString = (obj: Record<string, unknown>, ...keys: string[]): string => {

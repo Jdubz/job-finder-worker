@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest"
 import {
   normalizeUrl,
   resolveDocumentPath,
-  formatEEOValue,
   formatWorkHistory,
   buildPrompt,
   buildEnhancedPrompt,
@@ -15,7 +14,6 @@ import {
   parseCliObjectOutput,
   unwrapJobMatch,
   unwrapDocuments,
-  EEO_DISPLAY,
   type ContentItem,
   type PersonalInfo,
   type FormField,
@@ -109,63 +107,6 @@ describe("CLI_COMMANDS", () => {
   it("uses stdin placeholder for claude non-interactive prompt", () => {
     const [, args] = CLI_COMMANDS.claude
     expect(args).toContain("-")
-  })
-})
-
-describe("formatEEOValue", () => {
-  it("should return display value for valid race", () => {
-    expect(formatEEOValue("race", "asian")).toBe("Asian")
-    expect(formatEEOValue("race", "white")).toBe("White")
-    expect(formatEEOValue("race", "black_african_american")).toBe("Black or African American")
-  })
-
-  it("should return display value for valid gender", () => {
-    expect(formatEEOValue("gender", "male")).toBe("Male")
-    expect(formatEEOValue("gender", "female")).toBe("Female")
-    expect(formatEEOValue("gender", "decline_to_identify")).toBe("Decline to Self-Identify")
-  })
-
-  it("should return display value for veteran status", () => {
-    expect(formatEEOValue("veteranStatus", "not_protected_veteran")).toBe("I am not a protected veteran")
-    expect(formatEEOValue("veteranStatus", "protected_veteran")).toContain("protected veteran")
-  })
-
-  it("should return display value for disability status", () => {
-    expect(formatEEOValue("disabilityStatus", "yes")).toContain("Disability")
-    expect(formatEEOValue("disabilityStatus", "no")).toContain("Don't Have")
-  })
-
-  it("should return 'Not provided' message for undefined value", () => {
-    expect(formatEEOValue("race", undefined)).toBe("Not provided - skip this field")
-  })
-
-  it("should return original value for unknown field", () => {
-    expect(formatEEOValue("unknownField", "someValue")).toBe("someValue")
-  })
-
-  it("should return original value for unknown enum value", () => {
-    expect(formatEEOValue("race", "unknown_race")).toBe("unknown_race")
-  })
-})
-
-describe("EEO_DISPLAY", () => {
-  it("should have all race options", () => {
-    expect(Object.keys(EEO_DISPLAY.race)).toHaveLength(7)
-    expect(EEO_DISPLAY.race.american_indian_alaska_native).toBeDefined()
-    expect(EEO_DISPLAY.race.asian).toBeDefined()
-    expect(EEO_DISPLAY.race.white).toBeDefined()
-  })
-
-  it("should have all gender options", () => {
-    expect(Object.keys(EEO_DISPLAY.gender)).toHaveLength(3)
-  })
-
-  it("should have all veteran status options", () => {
-    expect(Object.keys(EEO_DISPLAY.veteranStatus)).toHaveLength(4)
-  })
-
-  it("should have all disability status options", () => {
-    expect(Object.keys(EEO_DISPLAY.disabilityStatus)).toHaveLength(3)
   })
 })
 
@@ -298,13 +239,7 @@ describe("buildEnhancedPrompt", () => {
   const mockProfile: PersonalInfo = {
     name: "John Doe",
     email: "john@example.com",
-    eeo: {
-      race: "white",
-      gender: "male",
-      hispanicLatino: "no",
-      veteranStatus: "not_protected_veteran",
-      disabilityStatus: "no",
-    },
+    applicationInfo: "Race: White\nGender: Male\nVeteran Status: Not a protected veteran",
   }
 
   const mockFields: FormField[] = [
@@ -313,10 +248,10 @@ describe("buildEnhancedPrompt", () => {
 
   it("should include EEO information when provided", () => {
     const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
-    expect(result).toContain("EEO Information")
-    expect(result).toContain("White")
-    expect(result).toContain("Male")
-    expect(result).toContain("not a protected veteran")
+    expect(result).toContain("Application Information")
+    expect(result).toContain("Race: White")
+    expect(result).toContain("Gender: Male")
+    expect(result).toContain("Veteran Status: Not a protected veteran")
   })
 
   it("should include job context when provided", () => {
@@ -339,10 +274,10 @@ describe("buildEnhancedPrompt", () => {
   })
 
   it("should handle profile without EEO", () => {
-    const profileNoEEO: PersonalInfo = { name: "Jane", email: "jane@test.com" }
+    const profileNoEEO: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "" }
     const result = buildEnhancedPrompt(mockFields, profileNoEEO, [], null)
-    expect(result).toContain("EEO Information")
-    expect(result).toContain("Not provided - skip EEO fields")
+    expect(result).toContain("Application Information")
+    expect(result).toContain("Not provided - skip these fields")
   })
 
   it("should include status field instructions", () => {

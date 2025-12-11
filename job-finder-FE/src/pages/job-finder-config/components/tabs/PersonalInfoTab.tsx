@@ -3,47 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, User, Shield } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { PersonalInfo, EEORace, EEOHispanicLatino, EEOGender, EEOVeteranStatus, EEODisabilityStatus } from "@shared/types"
+import type { PersonalInfo } from "@shared/types"
 
-// EEO display labels for select options
-const EEO_RACE_OPTIONS: Array<{ value: EEORace; label: string }> = [
-  { value: "american_indian_alaska_native", label: "American Indian or Alaska Native" },
-  { value: "asian", label: "Asian" },
-  { value: "black_african_american", label: "Black or African American" },
-  { value: "native_hawaiian_pacific_islander", label: "Native Hawaiian or Other Pacific Islander" },
-  { value: "white", label: "White" },
-  { value: "two_or_more_races", label: "Two or More Races" },
-  { value: "decline_to_identify", label: "Decline to Self-Identify" },
-]
-
-const EEO_HISPANIC_OPTIONS: Array<{ value: EEOHispanicLatino; label: string }> = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
-  { value: "decline_to_identify", label: "Decline to Self-Identify" },
-]
-
-const EEO_GENDER_OPTIONS: Array<{ value: EEOGender; label: string }> = [
-  { value: "male", label: "Male" },
-  { value: "female", label: "Female" },
-  { value: "decline_to_identify", label: "Decline to Self-Identify" },
-]
-
-const EEO_VETERAN_OPTIONS: Array<{ value: EEOVeteranStatus; label: string }> = [
-  { value: "not_protected_veteran", label: "I am not a protected veteran" },
-  { value: "protected_veteran", label: "I identify as a protected veteran" },
-  { value: "disabled_veteran", label: "I am a disabled veteran" },
-  { value: "decline_to_identify", label: "Decline to Self-Identify" },
-]
-
-const EEO_DISABILITY_OPTIONS: Array<{ value: EEODisabilityStatus; label: string }> = [
-  { value: "yes", label: "Yes, I have a disability" },
-  { value: "no", label: "No, I don't have a disability" },
-  { value: "decline_to_identify", label: "Decline to Self-Identify" },
-]
 
 type PersonalInfoTabProps = {
   isSaving: boolean
@@ -57,10 +20,10 @@ type PersonalInfoTabProps = {
 export function PersonalInfoTab({
   isSaving,
   currentPersonalInfo,
-  hasPersonalInfoChanges,
+  hasPersonalInfoChanges: _hasPersonalInfoChanges,
   updatePersonalInfoState,
-  handleSavePersonalInfo,
-  handleResetPersonalInfo,
+  handleSavePersonalInfo: _handleSavePersonalInfo,
+  handleResetPersonalInfo: _handleResetPersonalInfo,
 }: PersonalInfoTabProps) {
   const [uploading, setUploading] = useState<{ avatar: boolean; logo: boolean }>({ avatar: false, logo: false })
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -353,141 +316,33 @@ export function PersonalInfoTab({
           </div>
         </div>
 
-        {/* EEO Demographics Section */}
+        {/* Application / EEO Info Section */}
         <div className="space-y-4 pt-4 border-t">
-          <div>
-            <h3 className="text-lg font-medium">EEO Demographics</h3>
-            <p className="text-sm text-muted-foreground">
-              Optional demographic information for US job applications. This data is used to auto-fill EEO sections on
-              application forms. All fields default to "Decline to Self-Identify" if not set.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="eeo-gender">Gender</Label>
-              <Select
-                value={currentPersonalInfo.eeo?.gender ?? ""}
-                onValueChange={(value) =>
-                  updatePersonalInfoState({
-                    eeo: { ...currentPersonalInfo.eeo, gender: value as EEOGender },
-                  })
-                }
-              >
-                <SelectTrigger id="eeo-gender">
-                  <SelectValue placeholder="Select gender" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EEO_GENDER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex gap-3 items-start">
+            <div className="rounded-full bg-muted p-2">
+              <Shield className="h-4 w-4" />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="eeo-hispanic">Hispanic/Latino</Label>
-              <Select
-                value={currentPersonalInfo.eeo?.hispanicLatino ?? ""}
-                onValueChange={(value) =>
-                  updatePersonalInfoState({
-                    eeo: { ...currentPersonalInfo.eeo, hispanicLatino: value as EEOHispanicLatino },
-                  })
-                }
-              >
-                <SelectTrigger id="eeo-hispanic">
-                  <SelectValue placeholder="Select ethnicity" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EEO_HISPANIC_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="eeo-race">Race</Label>
-              <Select
-                value={currentPersonalInfo.eeo?.race ?? ""}
-                onValueChange={(value) =>
-                  updatePersonalInfoState({
-                    eeo: { ...currentPersonalInfo.eeo, race: value as EEORace },
-                  })
-                }
-              >
-                <SelectTrigger id="eeo-race">
-                  <SelectValue placeholder="Select race" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EEO_RACE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="eeo-veteran">Veteran Status</Label>
-              <Select
-                value={currentPersonalInfo.eeo?.veteranStatus ?? ""}
-                onValueChange={(value) =>
-                  updatePersonalInfoState({
-                    eeo: { ...currentPersonalInfo.eeo, veteranStatus: value as EEOVeteranStatus },
-                  })
-                }
-              >
-                <SelectTrigger id="eeo-veteran">
-                  <SelectValue placeholder="Select veteran status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EEO_VETERAN_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="eeo-disability">Disability Status</Label>
-              <Select
-                value={currentPersonalInfo.eeo?.disabilityStatus ?? ""}
-                onValueChange={(value) =>
-                  updatePersonalInfoState({
-                    eeo: { ...currentPersonalInfo.eeo, disabilityStatus: value as EEODisabilityStatus },
-                  })
-                }
-              >
-                <SelectTrigger id="eeo-disability">
-                  <SelectValue placeholder="Select disability status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EEO_DISABILITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-1">
+              <h3 className="text-lg font-medium">Application Information</h3>
+              <p className="text-sm text-muted-foreground">
+                Free-form text (markdown ok) for EEO and other application disclosures. Leave blank to skip.
+              </p>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" onClick={handleResetPersonalInfo} disabled={isSaving || !hasPersonalInfoChanges}>
-            Reset
-          </Button>
-          <Button onClick={handleSavePersonalInfo} disabled={isSaving || !hasPersonalInfoChanges}>
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
+          <div className="space-y-2">
+            <Label htmlFor="applicationInfo">Application Info</Label>
+            <Textarea
+              id="applicationInfo"
+              rows={6}
+              value={currentPersonalInfo.applicationInfo || currentPersonalInfo.eeoDemographics || ""}
+              onChange={(e) => updatePersonalInfoState({ applicationInfo: e.target.value })}
+              placeholder={
+                "Gender: Non-binary\nRace: Latinx\nVeteran Status: Not a protected veteran\nWork Authorization: US Citizen"
+              }
+            />
+            <p className="text-xs text-muted-foreground">Rendered verbatim into applicator prompts; keep it concise.</p>
+          </div>
         </div>
       </CardContent>
     </Card>

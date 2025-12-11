@@ -98,17 +98,11 @@ describe('applicator routes', () => {
     expect(profileText).toContain('Summary:\nSenior Backend Engineer')
   })
 
-  it('includes EEO information when provided', async () => {
+  it('includes EEO demographics free-text when provided', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Jane Smith',
       email: 'jane@example.com',
-      eeo: {
-        gender: 'female',
-        race: 'asian',
-        hispanicLatino: 'no',
-        veteranStatus: 'not_protected_veteran',
-        disabilityStatus: 'no'
-      }
+      eeoDemographics: 'Gender: Female\nRace: Asian\nVeteran Status: Not a Protected Veteran'
     }
 
     configRepo.upsert('personal-info', personalInfo)
@@ -117,24 +111,16 @@ describe('applicator routes', () => {
     const profileText = response.body.data.profileText as string
 
     expect(profileText).toContain('# EEO Information')
-    expect(profileText).toContain('Gender: female')
+    expect(profileText).toContain('Gender: Female')
     expect(profileText).toContain('Race: Asian')
-    expect(profileText).toContain('Hispanic/Latino: no')
     expect(profileText).toContain('Veteran Status: Not a Protected Veteran')
-    expect(profileText).toContain('Disability Status: no')
   })
 
   it('excludes EEO fields marked as decline_to_identify', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Test User',
       email: 'test@example.com',
-      eeo: {
-        gender: 'decline_to_identify',
-        race: 'asian',
-        hispanicLatino: 'decline_to_identify',
-        veteranStatus: 'decline_to_identify',
-        disabilityStatus: 'no'
-      }
+      eeoDemographics: ''
     }
 
     configRepo.upsert('personal-info', personalInfo)
@@ -142,12 +128,8 @@ describe('applicator routes', () => {
     const response = await request(app).get('/applicator/profile').expect(200)
     const profileText = response.body.data.profileText as string
 
-    // Should only include non-declined fields
-    expect(profileText).not.toContain('Gender:')
-    expect(profileText).toContain('Race: Asian')
-    expect(profileText).not.toContain('Hispanic/Latino:')
-    expect(profileText).not.toContain('Veteran Status:')
-    expect(profileText).toContain('Disability Status: no')
+    // Empty eeoDemographics should omit the section
+    expect(profileText).not.toContain('# EEO Information')
   })
 
   it('formats work history with company, role, and highlights', async () => {
