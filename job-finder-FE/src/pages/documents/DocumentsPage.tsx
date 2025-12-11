@@ -296,38 +296,30 @@ export function DocumentsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
-                        {(() => {
-                          const resumeUrl = doc.resumeUrl ?? undefined
-                          if (!resumeUrl) return null
-                          return (
+                        {doc.resumeUrl && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => {
                               const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
-                              handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
+                              handleDownload(doc.resumeUrl, artifact?.filename || "resume.pdf")
                             }}
                           >
                             Resume
                           </Button>
-                          )
-                        })()}
-                        {(() => {
-                          const coverLetterUrl = doc.coverLetterUrl ?? undefined
-                          if (!coverLetterUrl) return null
-                          return (
+                        )}
+                        {doc.coverLetterUrl && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => {
                               const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
-                              handleDownload(coverLetterUrl, artifact?.filename || "cover-letter.pdf")
+                              handleDownload(doc.coverLetterUrl, artifact?.filename || "cover-letter.pdf")
                             }}
                           >
                             Cover Letter
                           </Button>
-                          )
-                        })()}
+                        )}
                         {!doc.resumeUrl && !doc.coverLetterUrl && (
                           <span className="text-sm text-muted-foreground">—</span>
                         )}
