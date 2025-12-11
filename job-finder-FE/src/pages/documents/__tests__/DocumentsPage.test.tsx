@@ -215,7 +215,7 @@ describe("DocumentsPage", () => {
       await waitFor(() => {
         expect(screen.getAllByText("Resume").length).toBeGreaterThan(0)
         expect(screen.getByText("Both")).toBeInTheDocument()
-        expect(screen.getByText("Cover Letter")).toBeInTheDocument()
+        expect(screen.getAllByText("Cover Letter").length).toBeGreaterThan(0)
       })
     })
   })
