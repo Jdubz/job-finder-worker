@@ -46,6 +46,7 @@ from job_finder.job_queue.models import (
 )
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
+from job_finder.scoring.taxonomy import SkillTaxonomyRepository
 from job_finder.profile.reducer import build_analog_map, load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.utils.company_info import build_company_info_string
@@ -813,9 +814,57 @@ class JobProcessor(BaseProcessor):
         title = job_data.get("title", "")
         description = job_data.get("description", "")
 
+        # Taxonomy enrichment: map unknown tech terms via analysis agent before scoring
+        extraction = ctx.extraction
+        taxonomy_repo = SkillTaxonomyRepository(self.db_path)
+        lookup = taxonomy_repo.load_lookup()
+        unknown_terms: List[str] = []
+        for term in extraction.technologies:
+            if term.lower().strip() not in lookup:
+                unknown_terms.append(term)
+
+        if unknown_terms:
+            try:
+                suggestions = self.agent_manager.execute(
+                    task_type="analysis",
+                    prompt={
+                        "action": "taxonomy_enrich",
+                        "unknown_terms": unknown_terms,
+                        "job_title": title,
+                        "job_description": description,
+                    },
+                    max_attempts=1,
+                )
+                payload = suggestions.get("result") if isinstance(suggestions, dict) else suggestions
+                if isinstance(payload, list):
+                    for item in payload:
+                        term = str(item.get("term", "")).strip().lower()
+                        canonical = str(item.get("canonical", term)).strip().lower()
+                        category = item.get("category")
+                        if not term or not canonical:
+                            continue
+                        existing = lookup.get(canonical)
+                        synonyms = existing.synonyms if existing else []
+                        synonyms = list(set(synonyms + [canonical, term]))
+                        taxonomy_repo.upsert(
+                            canonical=canonical,
+                            category=category,
+                            synonyms_csv=",".join(sorted(synonyms)),
+                        )
+                    lookup = taxonomy_repo.load_lookup()
+            except Exception as e:
+                logger.warning("taxonomy enrichment failed: %s", e)
+
+        # Remap technologies to canonicals (fallback to original term)
+        remapped: List[str] = []
+        for term in extraction.technologies:
+            taxon = lookup.get(term.lower().strip())
+            remapped.append(taxon.canonical if taxon else term)
+        extraction.technologies = remapped
+
         # Pass company_data to scoring engine for company signals
         score_result = self.scoring_engine.score(
-            extraction=ctx.extraction,
+            extraction=extraction,
             job_title=title,
             job_description=description,
             company_data=ctx.company_data,
