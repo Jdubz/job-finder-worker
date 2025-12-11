@@ -169,6 +169,9 @@ class JobProcessor(BaseProcessor):
         db_path = (
             self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
         )
+        # Use the same SQLite file for taxonomy so tests/CI with temp DBs don't try to touch
+        # the default repo path. This also keeps scoring + taxonomy data co-located.
+        taxonomy_repo = SkillTaxonomyRepository(db_path)
         # Extract relevantExperienceStart from experience config (if set)
         relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
         profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start)
@@ -195,6 +198,7 @@ class JobProcessor(BaseProcessor):
             skill_years=profile.skill_years,
             user_experience_years=profile.total_experience_years,
             skill_analogs=analog_map,
+            taxonomy_repo=taxonomy_repo,
         )
 
     def _emit_event(self, event: str, item_id: str, data: Dict[str, Any]) -> None:
