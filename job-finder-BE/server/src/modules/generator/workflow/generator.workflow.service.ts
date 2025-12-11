@@ -606,13 +606,14 @@ export class GeneratorWorkflowService {
       contentItems.flatMap((item) => (item.skills || []).map((s) => s.toLowerCase().trim()))
     )
 
-    // Combine all text content for analysis (defensive: handle missing/malformed fields)
-    const bodyParagraphs = Array.isArray(content.bodyParagraphs) ? content.bodyParagraphs : []
-    const allText = [
+    // Combine all text content for analysis once (DRY)
+    // Note: content.bodyParagraphs is guaranteed to be a valid array by validateCoverLetterContent
+    const combinedContent = [
       content.openingParagraph || '',
-      ...bodyParagraphs,
+      ...content.bodyParagraphs,
       content.closingParagraph || ''
-    ].join(' ').toLowerCase()
+    ].join(' ')
+    const allText = combinedContent.toLowerCase()
 
     // Check for company name mentions that aren't in allowed list
     // This is a heuristic - we look for patterns like "at [Company]" or "with [Company]"
@@ -620,7 +621,7 @@ export class GeneratorWorkflowService {
     let match: RegExpExecArray | null
     const mentionedCompanies: string[] = []
 
-    while ((match = companyMentionPatterns.exec([content.openingParagraph || '', ...bodyParagraphs, content.closingParagraph || ''].join(' '))) !== null) {
+    while ((match = companyMentionPatterns.exec(combinedContent)) !== null) {
       const company = match[1].trim().toLowerCase()
       if (company && !allowedCompanies.has(company) && company.length > 2) {
         mentionedCompanies.push(match[1].trim())
