@@ -169,14 +169,19 @@ Additional Instructions:
 ${variables.additionalInstructions || 'None'}`
 }
 
-/** Format work experience item with its highlight children */
-function formatWorkItem(item: ContentItem, highlights: ContentItem[]): string {
-  // Format main description bullets (role-level achievements, not project-specific)
-  const mainBullets = (item.description || '')
+/** Parse a description string into a list of clean bullet points */
+function parseDescriptionToBullets(description?: string | null): string[] {
+  return (description || '')
     .split(/\r?\n/)
     .filter((line) => line.trim().length)
     .map((line) => line.replace(/^[-•]\s*/, '').trim())
     .filter(Boolean)
+}
+
+/** Format work experience item with its highlight children */
+function formatWorkItem(item: ContentItem, highlights: ContentItem[]): string {
+  // Format main description bullets (role-level achievements, not project-specific)
+  const mainBullets = parseDescriptionToBullets(item.description)
 
   // Format role-level bullets (these are general to the employer, not project-specific)
   const roleBulletsFormatted = mainBullets.length
@@ -190,14 +195,13 @@ function formatWorkItem(item: ContentItem, highlights: ContentItem[]): string {
     .filter((h) => h.title || h.description)
     .map((h) => {
       const projectName = h.title || 'Unnamed Project'
-      const desc = h.description || ''
-      // Include full description to preserve all project details
-      const descLines = desc
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length)
-        .map((line) => line.replace(/^[-•]\s*/, '').trim())
-        .filter(Boolean)
+      const descLines = parseDescriptionToBullets(h.description)
       const projectSkills = h.skills?.length ? `    Technologies: ${h.skills.join(', ')}` : ''
+
+      // Only include the project block if there is actual content (descLines or projectSkills)
+      if (descLines.length === 0 && !projectSkills) {
+        return ''
+      }
 
       return [
         `  [PROJECT: ${projectName}] (ID: ${h.id})`,
