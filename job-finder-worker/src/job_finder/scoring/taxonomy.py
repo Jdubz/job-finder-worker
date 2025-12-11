@@ -49,7 +49,10 @@ class SkillTaxonomyRepository:
                 return
             now = utcnow_iso()
             seeds = [
-                ("react", "frontend", "react,nextjs,javascript,typescript,js,ts", now),
+                ("react", "frontend", "react", now),
+                ("nextjs", "frontend", "nextjs,next.js", now),
+                ("javascript", "frontend", "javascript,js", now),
+                ("typescript", "frontend", "typescript,ts", now),
                 ("node.js", "backend", "node.js,nodejs,node", now),
                 ("python", "backend", "python,py", now),
                 ("graphql", "api", "graphql", now),
