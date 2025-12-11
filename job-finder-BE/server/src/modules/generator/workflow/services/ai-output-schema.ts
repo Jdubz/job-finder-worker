@@ -30,8 +30,8 @@ const resumeContactSchema = z.object({
 const resumePersonalInfoSchema = z.object({
   name: z.string().optional(),
   title: z.string().default(''),
-  summary: z.string().optional().default(''),
-  contact: resumeContactSchema.optional().default({})
+  summary: z.string().default(''),
+  contact: resumeContactSchema.default({})
 }).passthrough()
 
 /**
@@ -40,11 +40,11 @@ const resumePersonalInfoSchema = z.object({
 const resumeExperienceSchema = z.object({
   company: z.string(),
   role: z.string(),
-  location: z.string().optional().default(''),
+  location: z.string().default(''),
   startDate: z.string().default(''),
   endDate: z.union([z.string(), z.null()]).default(null),
   highlights: z.array(z.string()).default([]),
-  technologies: z.array(z.string()).optional().default([])
+  technologies: z.array(z.string()).default([])
 }).passthrough()
 
 /**
@@ -61,20 +61,20 @@ const resumeSkillsCategorySchema = z.object({
 const resumeEducationSchema = z.object({
   institution: z.string(),
   degree: z.string().default(''),
-  field: z.string().optional().default(''),
-  startDate: z.string().optional().default(''),
-  endDate: z.string().optional().default('')
+  field: z.string().default(''),
+  startDate: z.string().default(''),
+  endDate: z.string().default('')
 }).passthrough()
 
 /**
  * Full resume content schema - lenient with recovery
  */
 export const resumeContentSchema = z.object({
-  personalInfo: resumePersonalInfoSchema.optional().default({}),
-  professionalSummary: z.string().optional().default(''),
+  personalInfo: resumePersonalInfoSchema.default({}),
+  professionalSummary: z.string().default(''),
   experience: z.array(resumeExperienceSchema).default([]),
-  skills: z.array(resumeSkillsCategorySchema).optional().default([]),
-  education: z.array(resumeEducationSchema).optional().default([])
+  skills: z.array(resumeSkillsCategorySchema).default([]),
+  education: z.array(resumeEducationSchema).default([])
 }).passthrough()
 
 /**
@@ -102,6 +102,13 @@ export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchem
 /**
  * Attempts to extract JSON from a string that may have markdown code blocks
  * or other text surrounding the JSON.
+ *
+ * Note: The brace-matching algorithm doesn't handle braces inside JSON string
+ * values (e.g., {"text": "Example: {value}"}). This is acceptable because:
+ * 1. AI outputs rarely contain literal braces in string values
+ * 2. The markdown code block extraction runs first and handles most cases
+ * 3. Even if extraction is imperfect, JSON.parse will fail and we'll get
+ *    a clear error rather than silent corruption
  */
 function extractJsonFromText(text: string): string {
   // Try to extract from markdown code block
@@ -212,7 +219,7 @@ function normalizeBodyParagraphs(body: unknown): string[] {
         }
         return ''
       })
-      .filter((s) => s.length > 0)
+      .filter(Boolean)
   }
 
   return []
@@ -307,18 +314,27 @@ export function validateResumeContent(
   }
 
   // Step 3: Apply field-level recovery
+  // Track if skills needed normalization (not already in [{category, items}] format)
   if (parsed.skills) {
-    const originalSkills = parsed.skills
+    const wasAlreadyNormalized = Array.isArray(parsed.skills) &&
+      parsed.skills.length > 0 &&
+      typeof parsed.skills[0] === 'object' &&
+      parsed.skills[0] !== null &&
+      'category' in parsed.skills[0] &&
+      'items' in parsed.skills[0]
     parsed.skills = normalizeSkills(parsed.skills)
-    if (JSON.stringify(originalSkills) !== JSON.stringify(parsed.skills)) {
+    if (!wasAlreadyNormalized && (parsed.skills as unknown[]).length > 0) {
       recoveryActions.push('Normalized skills format')
     }
   }
 
-  if (parsed.experience) {
-    const originalExp = parsed.experience
+  // Track if experience needed normalization (check for alternative field names)
+  if (parsed.experience && Array.isArray(parsed.experience)) {
+    const hadAlternativeFields = parsed.experience.some((e: Record<string, unknown>) =>
+      e && typeof e === 'object' && ('companyName' in e || 'title' in e || 'from' in e || 'bullets' in e)
+    )
     parsed.experience = normalizeExperience(parsed.experience)
-    if (JSON.stringify(originalExp) !== JSON.stringify(parsed.experience)) {
+    if (hadAlternativeFields) {
       recoveryActions.push('Normalized experience entries')
     }
   }
@@ -386,9 +402,11 @@ export function validateCoverLetterContent(
   }
 
   // Step 3: Apply field-level recovery
-  const originalBody = parsed.bodyParagraphs
+  // Track if bodyParagraphs needed normalization (not already a string array)
+  const wasAlreadyStringArray = Array.isArray(parsed.bodyParagraphs) &&
+    parsed.bodyParagraphs.every((p: unknown) => typeof p === 'string')
   parsed.bodyParagraphs = normalizeBodyParagraphs(parsed.bodyParagraphs)
-  if (JSON.stringify(originalBody) !== JSON.stringify(parsed.bodyParagraphs)) {
+  if (!wasAlreadyStringArray && (parsed.bodyParagraphs as string[]).length > 0) {
     recoveryActions.push('Normalized bodyParagraphs format')
   }
 
