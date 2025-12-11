@@ -476,13 +476,6 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
       </Tabs>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 mt-auto border-t flex-shrink-0">
-        {handlers?.onGenerateResume && (
-          <Button onClick={() => handlers.onGenerateResume?.(localMatch)} className="flex-1">
-            <FileText className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Generate Custom Resume</span>
-            <span className="sm:hidden">Generate Resume</span>
-          </Button>
-        )}
         <Button
           variant="secondary"
           onClick={() =>
