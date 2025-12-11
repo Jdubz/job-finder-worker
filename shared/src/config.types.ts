@@ -312,9 +312,9 @@ export interface SalaryConfig {
   /** Score adjustment when salary meets/exceeds target */
   meetsTargetScore: number
   /** Score adjustment for positions with equity (positive) */
-  equityScore?: number
+  equityScore: number
   /** Score adjustment for contract positions (negative) */
-  contractScore?: number
+  contractScore: number
 }
 
 /** Experience level preferences */
