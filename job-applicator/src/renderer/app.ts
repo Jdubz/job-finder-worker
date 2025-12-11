@@ -593,11 +593,16 @@ async function checkUrlForJobMatch(url: string) {
       markAppliedBtn.disabled = match.status === "applied"
       markIgnoredBtn.disabled = match.status === "ignored"
 
-      // Load documents
-      await loadDocuments(match.id ?? "")
-      generateBtn.disabled = false
-
-      setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
+      // Load documents only when we have an id
+      if (match.id) {
+        await loadDocuments(match.id)
+        generateBtn.disabled = false
+        setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
+      } else {
+        console.warn("No match.id found; skipping document load.")
+        generateBtn.disabled = true
+        setStatus("Matched job has no id; cannot load documents", "error")
+      }
     }
   } catch (err) {
     console.warn("Failed to check URL for job match:", err)

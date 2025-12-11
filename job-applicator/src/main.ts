@@ -48,8 +48,8 @@ import {
   buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
-  parseJsonArrayFromOutput,
-  parseJsonObjectFromOutput,
+  parseCliArrayOutput,
+  parseCliObjectOutput,
 } from "./utils.js"
 // Typed API client
 import {
@@ -294,16 +294,11 @@ ipcMain.handle(
 
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
-      let workHistoryWarning: string | null = null
       if (contentResult.status === "fulfilled") {
         workHistory = contentResult.value
         logger.info(`Fetched ${workHistory.length} work history items`)
       } else {
-        workHistoryWarning = getUserFriendlyErrorMessage(
-          contentResult.reason instanceof Error ? contentResult.reason : String(contentResult.reason),
-          logger
-        )
-        logger.warn("Work history unavailable, continuing with profile only:", workHistoryWarning)
+        logger.warn("Work history unavailable, continuing with profile only")
       }
 
       // 2. Extract form fields from page
@@ -349,10 +344,9 @@ ipcMain.handle(
         }
       }
 
-      const messageSuffix = workHistoryWarning ? ` (work history unavailable: ${workHistoryWarning})` : ""
       return {
         success: true,
-        message: `Filled ${filledCount}/${instructions.length} fields${messageSuffix}`,
+        message: `Filled ${filledCount}/${instructions.length} fields`,
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -837,17 +831,6 @@ ipcMain.handle(
         }
       }
 
-      // 2b. Fetch work history to avoid silent degradation (optional but surfaced on failure)
-      let workHistory: ContentItem[] = []
-      let workHistoryWarning: string | null = null
-      try {
-        workHistory = await fetchContentItems({ limit: 100 })
-        logger.info(`Fetched ${workHistory.length} work history items (enhanced fill)`)
-      } catch (err) {
-        workHistoryWarning = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
-        logger.warn("Work history unavailable for enhanced fill, continuing without it:", workHistoryWarning)
-      }
-
       // 3. Extract form fields from page
       logger.info("Extracting form fields...")
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
@@ -913,10 +896,6 @@ ipcMain.handle(
         duration,
       }
 
-      if (workHistoryWarning) {
-        summary.skippedFields.push({ label: "Work history", reason: workHistoryWarning })
-      }
-
       return { success: true, data: summary }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -940,43 +919,6 @@ const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
   codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
   gemini: ["gemini", ["-o", "json", "--yolo"]],
-}
-
-function parseCliArrayOutput(stdout: string): unknown[] {
-  try {
-    const outer = JSON.parse(stdout)
-    if (outer && typeof outer === "object" && typeof (outer as Record<string, unknown>).result === "string") {
-      return parseJsonArrayFromOutput((outer as Record<string, unknown>).result as string)
-    }
-  } catch {
-    // ignore wrapper parse errors
-  }
-  return parseJsonArrayFromOutput(stdout)
-}
-
-function parseCliObjectOutput(stdout: string): Record<string, unknown> {
-  try {
-    const outer = JSON.parse(stdout)
-    if (outer && typeof outer === "object" && typeof (outer as Record<string, unknown>).result === "string") {
-      return parseJsonObjectFromOutput((outer as Record<string, unknown>).result as string)
-    }
-  } catch {
-    // ignore wrapper parse errors
-  }
-  return parseJsonObjectFromOutput(stdout)
-}
-
-function unwrapResultObject(obj: Record<string, unknown>): Record<string, unknown> {
-  if (obj && typeof obj === "object" && "result" in obj) {
-    const inner = (obj as { result: unknown }).result
-    if (typeof inner === "string") {
-      return parseJsonObjectFromOutput(inner)
-    }
-    if (inner && typeof inner === "object") {
-      return inner as Record<string, unknown>
-    }
-  }
-  return obj
 }
 
 function runCliCommon<T>(
@@ -1026,7 +968,17 @@ function runCliCommon<T>(
     child.on("close", (code) => {
       clearAllTimers()
       if (code !== 0) {
-        reject(new Error(`${provider} CLI failed (exit ${code})${stderr ? `: ${stderr}` : stdout ? `: ${stdout}` : ""}`))
+        let errorMsg = `${provider} CLI failed (exit ${code}).`
+        const cleanErr = stderr?.trim()
+        const cleanOut = stdout?.trim()
+        if (cleanErr && cleanOut) {
+          errorMsg += ` Error: ${cleanErr} Output: ${cleanOut}`
+        } else if (cleanErr) {
+          errorMsg += ` Error: ${cleanErr}`
+        } else if (cleanOut) {
+          errorMsg += ` Output: ${cleanOut}`
+        }
+        reject(new Error(errorMsg))
         return
       }
       try {
@@ -1065,9 +1017,7 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
     provider,
     prompt,
     (stdout) => {
-      const rawObj = parseCliObjectOutput(stdout)
-      const jobData = unwrapResultObject(rawObj)
-
+      const jobData = parseCliObjectOutput(stdout)
       logger.info(`[CLI] Parsed job data:`, jobData)
       return {
         title: (jobData.title as string) ?? null,

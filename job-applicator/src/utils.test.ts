@@ -11,6 +11,8 @@ import {
   validateEnhancedFillInstruction,
   parseJsonArrayFromOutput,
   parseJsonObjectFromOutput,
+  parseCliArrayOutput,
+  parseCliObjectOutput,
   unwrapJobMatch,
   unwrapDocuments,
   EEO_DISPLAY,
@@ -472,6 +474,25 @@ More text after
   })
 })
 
+describe("parseCliArrayOutput", () => {
+  it("parses raw array", () => {
+    expect(parseCliArrayOutput('[1,2,3]')).toEqual([1, 2, 3])
+  })
+
+  it("parses wrapper with array result", () => {
+    expect(parseCliArrayOutput('{"result":[{"a":1}]}')).toEqual([{ a: 1 }])
+  })
+
+  it("parses wrapper with stringified result", () => {
+    expect(parseCliArrayOutput('{"result":"[\\"x\\",\\"y\\"]"}')).toEqual(["x", "y"])
+  })
+
+  it("falls back to string search when JSON parse fails", () => {
+    const output = "LOG\n[1,2]\nTAIL"
+    expect(parseCliArrayOutput(output)).toEqual([1, 2])
+  })
+})
+
 describe("parseJsonObjectFromOutput", () => {
   it("should parse clean JSON object", () => {
     const output = '{"title": "Developer", "company": "Acme"}'
@@ -505,6 +526,25 @@ Done!
 
   it("should throw for malformed JSON", () => {
     expect(() => parseJsonObjectFromOutput("{broken: json}")).toThrow()
+  })
+})
+
+describe("parseCliObjectOutput", () => {
+  it("parses raw object", () => {
+    expect(parseCliObjectOutput('{"a":1}')).toEqual({ a: 1 })
+  })
+
+  it("parses wrapper with object result", () => {
+    expect(parseCliObjectOutput('{"result":{"a":2}}')).toEqual({ a: 2 })
+  })
+
+  it("parses wrapper with stringified result", () => {
+    expect(parseCliObjectOutput('{"result":"{\\"b\\":3}"}')).toEqual({ b: 3 })
+  })
+
+  it("falls back to embedded object when parse fails initially", () => {
+    const output = "LOG\n{\"c\":4}\nTAIL"
+    expect(parseCliObjectOutput(output)).toEqual({ c: 4 })
   })
 })
 

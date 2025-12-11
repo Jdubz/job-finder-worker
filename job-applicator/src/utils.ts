@@ -579,6 +579,61 @@ export function parseJsonObjectFromOutput(output: string): Record<string, unknow
   return parsed
 }
 
+/**
+ * Parse CLI output that may include wrapper objects with a `result` field.
+ * Handles:
+ * - Raw arrays
+ * - Objects whose `result` is a string containing JSON
+ * - Objects whose `result` is already an array
+ */
+export function parseCliArrayOutput(output: string): unknown[] {
+  try {
+    const parsed = JSON.parse(output)
+    if (Array.isArray(parsed)) return parsed
+
+    if (parsed && typeof parsed === "object" && "result" in parsed) {
+      const inner = (parsed as { result: unknown }).result
+      if (typeof inner === "string") {
+        return parseJsonArrayFromOutput(inner)
+      }
+      if (Array.isArray(inner)) {
+        return inner
+      }
+    }
+  } catch {
+    // fall through to string search parser
+  }
+  return parseJsonArrayFromOutput(output)
+}
+
+/**
+ * Parse CLI output that may include wrapper objects with a `result` field.
+ * Handles:
+ * - Raw objects
+ * - Objects whose `result` is a string containing JSON
+ * - Objects whose `result` is already an object
+ */
+export function parseCliObjectOutput(output: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(output)
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      if ("result" in parsed) {
+        const inner = (parsed as { result: unknown }).result
+        if (typeof inner === "string") {
+          return parseJsonObjectFromOutput(inner)
+        }
+        if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+          return inner as Record<string, unknown>
+        }
+      }
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    // fall through to string search parser
+  }
+  return parseJsonObjectFromOutput(output)
+}
+
 // =============================================================================
 // HTTP Error Handling Utilities
 // =============================================================================
