@@ -301,8 +301,10 @@ export function DocumentsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
+                              const resumeUrl = doc.resumeUrl
+                              if (!resumeUrl) return
                               const artifact = doc.artifacts.find((a) => a.artifactType === "resume")
-                              handleDownload(doc.resumeUrl, artifact?.filename || "resume.pdf")
+                              handleDownload(resumeUrl, artifact?.filename || "resume.pdf")
                             }}
                           >
                             Resume
@@ -313,8 +315,10 @@ export function DocumentsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
+                              const coverUrl = doc.coverLetterUrl
+                              if (!coverUrl) return
                               const artifact = doc.artifacts.find((a) => a.artifactType === "cover-letter")
-                              handleDownload(doc.coverLetterUrl, artifact?.filename || "cover-letter.pdf")
+                              handleDownload(coverUrl, artifact?.filename || "cover-letter.pdf")
                             }}
                           >
                             Cover Letter
