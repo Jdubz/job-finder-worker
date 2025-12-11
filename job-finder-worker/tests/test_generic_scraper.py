@@ -3,7 +3,6 @@
 from unittest.mock import Mock, patch
 import pytest
 import sqlite3
-import os
 
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
