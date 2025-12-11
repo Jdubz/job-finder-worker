@@ -20,6 +20,7 @@ import {
   type PersonalInfo,
   type FormField,
 } from "./utils.js"
+import { CLI_COMMANDS } from "./cli-config.js"
 
 describe("normalizeUrl", () => {
   it("should extract origin and pathname from valid URL", () => {
@@ -477,6 +478,21 @@ More text after
 describe("parseCliArrayOutput", () => {
   it("parses raw array", () => {
     expect(parseCliArrayOutput('[1,2,3]')).toEqual([1, 2, 3])
+  })
+
+  it("requires claude CLI to include skip-permissions flag", () => {
+    const [, args] = CLI_COMMANDS.claude
+    expect(args).toContain("--dangerously-skip-permissions")
+  })
+
+  it("requires codex CLI to include bypass approvals flag", () => {
+    const [, args] = CLI_COMMANDS.codex
+    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox")
+  })
+
+  it("uses stdin placeholder for claude non-interactive prompt", () => {
+    const [, args] = CLI_COMMANDS.claude
+    expect(args).toContain("-")
   })
 
   it("parses wrapper with array result", () => {

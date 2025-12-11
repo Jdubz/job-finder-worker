@@ -41,6 +41,7 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
+import { getCliCommand } from "./cli-config.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
@@ -915,20 +916,13 @@ ipcMain.handle(
  *
  * The runCli and runEnhancedCli functions handle these format differences automatically.
  */
-const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
-  // Always bypass permission prompts – the Electron shell is non-interactive
-  claude: ["claude", ["--print", "--output-format", "json", "--dangerously-skip-permissions", "-p", "-"]],
-  codex: ["codex", ["exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"]],
-  gemini: ["gemini", ["-o", "json", "--yolo"]],
-}
-
 function runCliCommon<T>(
   provider: CliProvider,
   prompt: string,
   parse: (stdout: string) => T,
   context: string
 ): Promise<T> {
-  const [cmd, args] = CLI_COMMANDS[provider]
+  const [cmd, args] = getCliCommand(provider)
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
