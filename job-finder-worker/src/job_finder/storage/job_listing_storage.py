@@ -176,24 +176,32 @@ class JobListingStorage:
     def listing_exists(self, url: str) -> bool:
         """Return True if normalized URL exists in job_listings OR archive.
 
-        Checks both active listings and archived listings to prevent
-        re-queuing old job postings that have been archived.
+        For older/temp databases (like unit tests) the archive table may not
+        exist; we fall back to job_listings-only in that case to avoid hard
+        failures while keeping production behavior unchanged.
         """
         if not url:
             return False
 
         normalized = normalize_url(url)
         with sqlite_connection(self.db_path) as conn:
-            # Check both active and archived listings
-            row = conn.execute(
-                """
-                SELECT 1 FROM job_listings WHERE url = ?
-                UNION ALL
-                SELECT 1 FROM job_listings_archive WHERE url = ?
-                LIMIT 1
-                """,
-                (normalized, normalized),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    """
+                    SELECT 1 FROM job_listings WHERE url = ?
+                    UNION ALL
+                    SELECT 1 FROM job_listings_archive WHERE url = ?
+                    LIMIT 1
+                    """,
+                    (normalized, normalized),
+                ).fetchone()
+            except sqlite3.OperationalError as exc:
+                if "no such table: job_listings_archive" not in str(exc):
+                    raise
+                row = conn.execute(
+                    "SELECT 1 FROM job_listings WHERE url = ? LIMIT 1",
+                    (normalized,),
+                ).fetchone()
             return row is not None
 
     def batch_check_exists(self, urls: List[str]) -> Dict[str, bool]:
@@ -215,15 +223,20 @@ class JobListingStorage:
             for chunk_start in range(0, len(normalized_urls), chunk_size):
                 chunk = normalized_urls[chunk_start : chunk_start + chunk_size]
                 placeholders = ",".join("?" for _ in chunk)
-                # Check both active and archived listings
-                # Use UNION ALL for performance (url is unique within each table)
                 query = f"""
                     SELECT url FROM job_listings WHERE url IN ({placeholders})
                     UNION ALL
                     SELECT url FROM job_listings_archive WHERE url IN ({placeholders})
                 """
-                # Need to pass chunk twice for both tables
-                rows = conn.execute(query, tuple(chunk) + tuple(chunk)).fetchall()
+                try:
+                    rows = conn.execute(query, tuple(chunk) + tuple(chunk)).fetchall()
+                except sqlite3.OperationalError as exc:
+                    if "no such table: job_listings_archive" not in str(exc):
+                        raise
+                    rows = conn.execute(
+                        f"SELECT url FROM job_listings WHERE url IN ({placeholders})",
+                        tuple(chunk),
+                    ).fetchall()
                 for row in rows:
                     results[row["url"]] = True
 

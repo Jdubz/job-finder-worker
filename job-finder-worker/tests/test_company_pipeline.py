@@ -47,11 +47,16 @@ class TestCompanyPipeline:
                 "maxBonus": 25,
                 "maxPenalty": -15,
                 "analogGroups": [],
+                "missingIgnore": [],
             },
             "salary": {
                 "minimum": None,
                 "target": None,
                 "belowTargetScore": -2,
+                "missingSalaryScore": 0,
+                "meetsTargetScore": 0,
+                "equityScore": 0,
+                "contractScore": 0,
             },
             "experience": {
                 "maxRequired": 15,
@@ -109,6 +114,7 @@ class TestCompanyPipeline:
             "modelRates": {"gemini-2.0-flash": 1.0},
             "options": [],
         }
+        config_loader.get_personal_info.return_value = {}
         config_loader.get_prefilter_policy.return_value = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},
             "freshness": {"maxAgeDays": 0},
