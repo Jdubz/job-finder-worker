@@ -86,7 +86,6 @@ const MIN_MATCH = {
   },
   company: {
     preferredCityScore: 0,
-    preferredCity: undefined,
     remoteFirstScore: 0,
     aiMlFocusScore: 0,
     largeCompanyScore: 0,
