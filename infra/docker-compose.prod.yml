@@ -2,9 +2,9 @@
 # This file is the source of truth - sync to prod with: make deploy-compose
 #
 # Key differences from template:
-# - Uses seed + named volume pattern for CLI credentials (prevents token corruption)
+# - Codex: direct bind mount from host (~/.codex) with flock serialization
+# - Gemini: seed + named volume pattern (separate volumes per container)
 # - Absolute paths for /srv/job-finder structure
-# - Custom entrypoints that copy credentials on first boot
 
 services:
   api:
@@ -28,12 +28,11 @@ services:
       - -c
       - |
         set -e
-        if [ ! -f /home/node/.codex/auth.json ]; then
-          mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/
-        fi
+        # Gemini: seed into named volume if missing
         if [ ! -f /home/node/.gemini/oauth_creds.json ]; then
           mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/
         fi
+        # Codex: direct bind mount from host, no seeding needed
         exec docker-entrypoint.sh node dist/index.js
     volumes:
       - type: bind
@@ -45,12 +44,10 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /logs
-      # Codex: shared volume + seed (ro) for reseed on start
+      # Codex: direct bind mount from host (UID 1000 matches container's node user)
       - type: bind
-        source: /srv/job-finder/codex-seed/.codex
-        target: /codex-seed
-        read_only: true
-      - codex-home-shared:/home/node/.codex
+        source: /home/jdubz/.codex
+        target: /home/node/.codex
       # Gemini: seed (ro) + named volume (rw) for runtime state
       - type: bind
         source: /srv/job-finder/gemini-seed/.gemini
@@ -85,23 +82,20 @@ services:
       - -c
       - |
         set -e
-        if [ ! -f /home/node/.codex/auth.json ]; then
-          mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/
-        fi
+        # Gemini: seed into named volume if missing
         if [ ! -f /home/node/.gemini/oauth_creds.json ]; then
           mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/
         fi
+        # Codex: direct bind mount from host, no seeding needed
         exec /app/entrypoint.sh
     volumes:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
-      # Codex: shared volume + seed (ro) for reseed on start
+      # Codex: direct bind mount from host (UID 1000 matches container's node user)
       - type: bind
-        source: /srv/job-finder/codex-seed/.codex
-        target: /codex-seed
-        read_only: true
-      - codex-home-shared:/home/node/.codex
+        source: /home/jdubz/.codex
+        target: /home/node/.codex
       # Gemini: seed (ro) + named volume (rw) for runtime state
       - type: bind
         source: /srv/job-finder/gemini-seed/.gemini
@@ -180,6 +174,5 @@ networks:
     driver: bridge
 
 volumes:
-  codex-home-shared:
   gemini-home-worker:
   gemini-home-api:

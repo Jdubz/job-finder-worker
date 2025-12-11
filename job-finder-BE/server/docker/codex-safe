@@ -1,0 +1,22 @@
+#!/bin/bash
+# codex-safe: Wrapper for codex CLI that serializes access via flock
+#
+# This prevents OAuth refresh token race conditions when multiple containers
+# share the same ~/.codex/auth.json via bind mount.
+#
+# Usage: codex-safe exec "your prompt"
+#        codex-safe login status
+#
+# The lock ensures only one process refreshes the token at a time.
+# Other processes wait until the lock is released, then read the fresh token.
+
+set -euo pipefail
+
+LOCK_FILE="${CODEX_LOCK_FILE:-/home/node/.codex/.refresh.lock}"
+LOCK_TIMEOUT="${CODEX_LOCK_TIMEOUT:-300}"  # 5 minute timeout
+
+# Ensure lock file exists (flock needs it)
+touch "$LOCK_FILE" 2>/dev/null || true
+
+# Acquire exclusive lock, run codex, release on exit
+exec flock --timeout "$LOCK_TIMEOUT" "$LOCK_FILE" codex "$@"

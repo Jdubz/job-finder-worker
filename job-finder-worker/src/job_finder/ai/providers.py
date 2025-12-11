@@ -7,6 +7,7 @@ The selected provider/interface/model is used for all AI tasks.
 import json
 import logging
 import os
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -275,6 +276,9 @@ class CodexCLIProvider(AIProvider):
     NOTE: The Codex CLI has recently removed the `api chat/completions` surface. We now call
     `codex exec --json` and parse the streamed JSON events to retrieve the final agent message.
     If model is omitted, the CLI uses its configured default from config.toml.
+
+    In containerized environments, use `codex-safe` wrapper (flock-based) to prevent OAuth
+    refresh token race conditions when multiple containers share the same auth.json.
     """
 
     def __init__(self, model: Optional[str] = None, timeout: int = 60):
@@ -299,8 +303,11 @@ class CodexCLIProvider(AIProvider):
 
         def run_codex(include_model: bool = True) -> subprocess.CompletedProcess:
             workdir = os.getenv("CODEX_WORKDIR") or os.getcwd()
+            # Use codex-safe wrapper if available (flock serialization for shared auth.json)
+            # Falls back to bare codex if wrapper not found (e.g., local dev)
+            codex_bin = "codex-safe" if shutil.which("codex-safe") else "codex"
             cmd = [
-                "codex",
+                codex_bin,
                 "exec",
                 "--json",
                 "--skip-git-repo-check",

@@ -72,10 +72,12 @@ COPY scripts/ ./scripts/
 # Copy entrypoint and helper scripts
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/run-now.sh /app/docker/run-now.sh
+COPY docker/codex-safe /usr/local/bin/codex-safe
 
 # Set proper permissions for scripts
 RUN chmod +x /app/entrypoint.sh && \
-    chmod +x /app/docker/run-now.sh
+    chmod +x /app/docker/run-now.sh && \
+    chmod +x /usr/local/bin/codex-safe
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH
