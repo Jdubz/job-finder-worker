@@ -2,7 +2,9 @@ import type { CliProvider } from "./types.js"
 
 // CLI command configurations for different AI providers.
 // These must always run in non-interactive/auto-approved mode because
-// the Electron shell cannot grant permissions interactively.
+// the Electron shell cannot grant permissions interactively. Each command
+// below includes the provider's "full permissions" / "autonomous" flag to
+// skip any approval prompts.
 export const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   claude: [
     "claude",

@@ -78,6 +78,40 @@ describe("resolveDocumentPath", () => {
   })
 })
 
+describe("CLI_COMMANDS", () => {
+  it("requires claude CLI to include skip-permissions flag", () => {
+    const [, args] = CLI_COMMANDS.claude
+    expect(args).toContain("--dangerously-skip-permissions")
+  })
+
+  it("requires codex CLI to include bypass approvals flag", () => {
+    const [, args] = CLI_COMMANDS.codex
+    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox")
+  })
+
+  it("requires gemini CLI to include yolo (non-interactive) flag", () => {
+    const [, args] = CLI_COMMANDS.gemini
+    expect(args).toContain("--yolo")
+  })
+
+  it("ensures each provider has a non-interactive safety bypass flag", () => {
+    const requiredFlags: Record<string, string> = {
+      claude: "--dangerously-skip-permissions",
+      codex: "--dangerously-bypass-approvals-and-sandbox",
+      gemini: "--yolo",
+    }
+    for (const provider of ["claude", "codex", "gemini"] as const) {
+      const [, args] = CLI_COMMANDS[provider]
+      expect(args).toContain(requiredFlags[provider])
+    }
+  })
+
+  it("uses stdin placeholder for claude non-interactive prompt", () => {
+    const [, args] = CLI_COMMANDS.claude
+    expect(args).toContain("-")
+  })
+})
+
 describe("formatEEOValue", () => {
   it("should return display value for valid race", () => {
     expect(formatEEOValue("race", "asian")).toBe("Asian")
@@ -480,27 +514,22 @@ describe("parseCliArrayOutput", () => {
     expect(parseCliArrayOutput('[1,2,3]')).toEqual([1, 2, 3])
   })
 
-  it("requires claude CLI to include skip-permissions flag", () => {
-    const [, args] = CLI_COMMANDS.claude
-    expect(args).toContain("--dangerously-skip-permissions")
-  })
-
-  it("requires codex CLI to include bypass approvals flag", () => {
-    const [, args] = CLI_COMMANDS.codex
-    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox")
-  })
-
-  it("uses stdin placeholder for claude non-interactive prompt", () => {
-    const [, args] = CLI_COMMANDS.claude
-    expect(args).toContain("-")
-  })
-
   it("parses wrapper with array result", () => {
     expect(parseCliArrayOutput('{"result":[{"a":1}]}')).toEqual([{ a: 1 }])
   })
 
   it("parses wrapper with stringified result", () => {
     expect(parseCliArrayOutput('{"result":"[\\"x\\",\\"y\\"]"}')).toEqual(["x", "y"])
+  })
+
+  it("parses wrapper that only exposes output_text", () => {
+    const output = '{"type":"result","output_text":"[{\\"selector\\":\\"#x\\",\\"value\\":\\"foo\\"}]"}'
+    expect(parseCliArrayOutput(output)).toEqual([{ selector: "#x", value: "foo" }])
+  })
+
+  it("parses wrapper with array stored under a different key", () => {
+    const output = '{"type":"result","data":[1,2,3]}'
+    expect(parseCliArrayOutput(output)).toEqual([1, 2, 3])
   })
 
   it("falls back to string search when JSON parse fails", () => {
@@ -556,6 +585,11 @@ describe("parseCliObjectOutput", () => {
 
   it("parses wrapper with stringified result", () => {
     expect(parseCliObjectOutput('{"result":"{\\"b\\":3}"}')).toEqual({ b: 3 })
+  })
+
+  it("parses wrapper with output_text string", () => {
+    const output = '{"type":"result","output_text":"{\\"d\\":5}"}'
+    expect(parseCliObjectOutput(output)).toEqual({ d: 5 })
   })
 
   it("falls back to embedded object when parse fails initially", () => {

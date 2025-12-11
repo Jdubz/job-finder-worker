@@ -44,6 +44,7 @@ export interface JobAnalysisResult {
   missingSkills: string[]
 
   /** How well experience level matches */
+  // Deprecated: experienceMatch was noisy and is no longer surfaced
   experienceMatch: string
 
   /** Key strengths for this application */
