@@ -71,8 +71,11 @@ const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
 const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
 
-// CLI timeout constant
-const CLI_TIMEOUT_MS = 120000 // 2 minutes for complex form fills
+// CLI timeout and warning thresholds
+// 2 minutes for complex form fills - increased from 60s to handle large forms
+// Warning intervals help identify if operations are taking unusually long
+const CLI_TIMEOUT_MS = 120000
+const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
 
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
@@ -804,6 +807,11 @@ ipcMain.handle(
       const profileText = await fetchApplicatorProfile()
       logger.info(`Received profile text (${profileText.length} chars)`)
 
+      // Validate profile has content - empty profile would result in poor form filling
+      if (!profileText || profileText.trim().length < 50) {
+        throw new Error("Profile data is empty or incomplete. Please configure your profile before filling forms.")
+      }
+
       // 2. Get job match context if provided
       let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
       if (options.jobMatchId) {
@@ -918,10 +926,22 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     let stdout = ""
     let stderr = ""
 
+    // Set up warning timers for long-running operations
+    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
+      setTimeout(() => {
+        logger.warn(`[CLI] ${provider} form fill still running after ${ms / 1000}s...`)
+      }, ms)
+    )
+
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
       reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
     }, CLI_TIMEOUT_MS)
+
+    const clearAllTimers = () => {
+      warningTimers.forEach(clearTimeout)
+      clearTimeout(timeout)
+    }
 
     child.stdin.write(prompt)
     child.stdin.end()
@@ -930,7 +950,7 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     child.stderr.on("data", (d) => (stderr += d))
 
     child.on("error", (err) => {
-      clearTimeout(timeout)
+      clearAllTimers()
       // Provide helpful error if CLI tool is not installed
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
@@ -940,7 +960,7 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     })
 
     child.on("close", (code) => {
-      clearTimeout(timeout)
+      clearAllTimers()
       if (code === 0) {
         try {
           let jsonStr: string

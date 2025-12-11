@@ -261,9 +261,12 @@ describe('applicator routes', () => {
     expect(profileText).toContain('Redis')
     expect(profileText).toContain('TypeScript')
 
-    // PostgreSQL should appear only once despite being in both work items
-    const skillsSection = profileText.split('# Skills')[1]
-    const postgresqlCount = (skillsSection.match(/PostgreSQL/g) || []).length
+    // PostgreSQL should appear only once in the skills section despite being in both work items
+    // Extract only the skills section (up to the next section header or separator)
+    const skillsSectionMatch = profileText.match(/# Skills\n([\s\S]*?)(?=\n---|\n#|$)/)
+    expect(skillsSectionMatch).toBeTruthy()
+    const skillsContent = skillsSectionMatch![1]
+    const postgresqlCount = (skillsContent.match(/PostgreSQL/g) || []).length
     expect(postgresqlCount).toBe(1)
   })
 

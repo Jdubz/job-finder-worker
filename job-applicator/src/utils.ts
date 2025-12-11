@@ -197,19 +197,26 @@ export function formatWorkHistory(items: ContentItem[], indent = 0, includeSkill
       lines.push(`${prefix}• ${parts.join(" | ")}`)
 
       // Description on next line (truncate if very long to save tokens)
+      // Truncation thresholds rationale:
+      // - MAX_DESC_LENGTH (500): Balances detail with token efficiency for AI prompts
+      // - MIN_SENTENCE_BOUNDARY (200): Ensures meaningful content before truncating at sentence
+      // - MIN_WORD_BOUNDARY (400): Prefers longer content over awkward mid-phrase cuts
       if (item.description) {
+        const MAX_DESC_LENGTH = 500
+        const MIN_SENTENCE_BOUNDARY = 200
+        const MIN_WORD_BOUNDARY = 400
+
         let desc: string
-        if (item.description.length > 500) {
-          // Try to truncate at the last sentence boundary before 500 chars
-          const truncated = item.description.slice(0, 500)
+        if (item.description.length > MAX_DESC_LENGTH) {
+          const truncated = item.description.slice(0, MAX_DESC_LENGTH)
           const sentenceEnd = truncated.match(/[.!?](?=\s|$)[^.!?]*$/)
-          if (sentenceEnd && sentenceEnd.index !== undefined && sentenceEnd.index > 200) {
-            // Found a sentence boundary after at least 200 chars - use it
+          if (sentenceEnd && sentenceEnd.index !== undefined && sentenceEnd.index > MIN_SENTENCE_BOUNDARY) {
+            // Found a sentence boundary after MIN_SENTENCE_BOUNDARY chars - use it
             desc = truncated.slice(0, sentenceEnd.index + 1) + "..."
           } else {
             // No good sentence boundary - truncate at word boundary
             const lastSpace = truncated.lastIndexOf(" ")
-            desc = (lastSpace > 400 ? truncated.slice(0, lastSpace) : truncated) + "..."
+            desc = (lastSpace > MIN_WORD_BOUNDARY ? truncated.slice(0, lastSpace) : truncated) + "..."
           }
         } else {
           desc = item.description
@@ -372,7 +379,7 @@ export function buildPromptFromProfileText(
 ## Job Context
 Company: ${jobContext.company || "N/A"}
 Role: ${jobContext.role || "N/A"}
-${jobContext.matchedSkills?.length ? `Matched Skills: ${jobContext.matchedSkills.join(", ")}` : ""}
+${jobContext.matchedSkills?.length ? `\n## Key Skills to Highlight\nThese skills match the job requirements - emphasize them in relevant fields:\n${jobContext.matchedSkills.join(", ")}` : ""}
 `
     : ""
 
