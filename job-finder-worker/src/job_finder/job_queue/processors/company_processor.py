@@ -438,7 +438,9 @@ class CompanyProcessor(BaseProcessor):
 
         results: List[SearchResult] = []
         try:
-            results.extend(search_client.search(f"{company_name} careers jobs", max_results=5) or [])
+            results.extend(
+                search_client.search(f"{company_name} careers jobs", max_results=5) or []
+            )
         except Exception as exc:  # noqa: BLE001
             logger.debug("Career search failed for %s: %s", company_name, exc)
 
