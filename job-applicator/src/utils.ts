@@ -594,7 +594,7 @@ function extractJsonStringFromWrapper(obj: Record<string, unknown>): string | un
 
   // As a last resort, scan for any string value that looks like it might be JSON
   for (const value of Object.values(obj)) {
-    if (typeof value === "string" && /[\[\{]/.test(value)) {
+    if (typeof value === "string" && /[[{]/.test(value)) {
       return value
     }
   }
