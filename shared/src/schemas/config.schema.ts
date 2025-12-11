@@ -142,35 +142,44 @@ const locationConfigSchema = z.object({
   perHourScore: z.number(),
   hybridSameCityScore: z.number(),
   userCity: z.string().optional(),
-  remoteScore: z.number().optional(),
-  relocationScore: z.number().optional(),
-  unknownTimezoneScore: z.number().optional(),
+  remoteScore: z.number(),
+  relocationScore: z.number(),
+  unknownTimezoneScore: z.number(),
+  relocationAllowed: z.boolean(),
 })
 
+// Skill relationships (synonyms, implies, parallels) are managed by taxonomy in DB
 const skillMatchConfigSchema = z.object({
   baseMatchScore: z.number(),
   yearsMultiplier: z.number(),
   maxYearsBonus: z.number(),
   missingScore: z.number(),
+  missingIgnore: z.array(z.string()),
   analogScore: z.number(),
   maxBonus: z.number(),
   maxPenalty: z.number(),
-  analogGroups: z.array(z.array(z.string())),
+})
+
+const skillsKeywordConfigSchema = z.object({
+  bonusPerSkill: z.number(),
+  maxSkillBonus: z.number(),
 })
 
 const salaryConfigSchema = z.object({
   minimum: z.number().nullable(),
   target: z.number().nullable(),
   belowTargetScore: z.number(),
-  equityScore: z.number().optional(),
-  contractScore: z.number().optional(),
+  belowTargetMaxPenalty: z.number(),
+  missingSalaryScore: z.number(),
+  meetsTargetScore: z.number(),
+  equityScore: z.number(),
+  contractScore: z.number(),
 })
 
+// Experience scoring is DISABLED - all fields optional for backwards compatibility
 const experienceConfigSchema = z.object({
-  maxRequired: z.number(),
-  overqualifiedScore: z.number(),
   relevantExperienceStart: z.string().nullable().optional(),
-})
+}).optional()
 
 const freshnessConfigSchema = z.object({
   freshDays: z.number(),
@@ -208,6 +217,7 @@ export const matchPolicySchema = z.object({
   seniority: seniorityConfigSchema,
   location: locationConfigSchema,
   skillMatch: skillMatchConfigSchema,
+  skills: skillsKeywordConfigSchema,
   salary: salaryConfigSchema,
   experience: experienceConfigSchema,
   freshness: freshnessConfigSchema,

@@ -1,6 +1,20 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { logger } from '../../../../logger'
 import { isAuthenticationError, isQuotaError } from './auth-error.util'
+
+/**
+ * Get the codex command to use.
+ * Prefers codex-safe wrapper (flock-based) to prevent OAuth refresh token races
+ * when multiple containers share the same auth.json via bind mount.
+ */
+function getCodexCommand(): string {
+  // Check if codex-safe wrapper is available
+  if (existsSync('/usr/local/bin/codex-safe')) {
+    return 'codex-safe'
+  }
+  return 'codex'
+}
 
 // Primary provider is 'codex' (OpenAI/ChatGPT)
 // Other providers are included for future support but not currently active
@@ -72,7 +86,7 @@ function sanitizeCliError(raw?: string): string {
 function buildCommand(provider: CliProvider, prompt: string, model?: string): { cmd: string; args: string[] } {
   if (provider === 'codex') {
     return {
-      cmd: 'codex',
+      cmd: getCodexCommand(),
       // Skip Codex's git repo trust check because production containers don't include the .git folder
       args: [
         CLI_FLAGS.CODEX_EXEC,
@@ -112,7 +126,7 @@ function buildCommand(provider: CliProvider, prompt: string, model?: string): { 
     }
   }
   return {
-    cmd: 'codex',
+    cmd: getCodexCommand(),
     args: [CLI_FLAGS.CODEX_EXEC, CLI_FLAGS.CODEX_CD, process.cwd(), CLI_FLAGS.CODEX_BYPASS_APPROVALS, prompt]
   }
 }

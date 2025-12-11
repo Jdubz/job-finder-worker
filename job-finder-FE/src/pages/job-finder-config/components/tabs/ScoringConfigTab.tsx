@@ -5,14 +5,11 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, For
 import { Input } from "@/components/ui/input"
 import { TabCard } from "../shared"
 import { StringListField, NumericField, CheckboxRow, ImpactBadge, InfoTooltip } from "../shared/form-fields"
-import type { MatchPolicy, SkillMatchConfig } from "@shared/types"
+import type { MatchPolicy, SkillsKeywordConfig } from "@shared/types"
 
-type SkillMatchFormValues = Omit<SkillMatchConfig, "analogGroups"> & {
-  analogGroups: string[]
-}
-
-type MatchPolicyFormValues = Omit<MatchPolicy, "skillMatch"> & {
-  skillMatch: SkillMatchFormValues
+// Skill relationships (synonyms, implies, parallels) are now managed by taxonomy in DB
+type MatchPolicyFormValues = Omit<MatchPolicy, "skills"> & {
+  skills: SkillsKeywordConfig
 }
 
 type MatchPolicyTabProps = {
@@ -24,27 +21,16 @@ type MatchPolicyTabProps = {
 
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
-const defaultSkillMatch: SkillMatchFormValues = {
-  baseMatchScore: 1,
-  yearsMultiplier: 0.5,
-  maxYearsBonus: 5,
-  missingScore: -1,
-  missingIgnore: [],
-  analogScore: 0,
-  maxBonus: 25,
-  maxPenalty: -15,
-  analogGroups: [],
+// No defaults - config is required and validated by backend
+const defaultSkills: SkillsKeywordConfig = {
+  bonusPerSkill: 2,
+  maxSkillBonus: 15,
 }
 
 // No defaults - config is required and validated by backend
 const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => ({
   ...config,
-  skillMatch: {
-    ...(config.skillMatch || defaultSkillMatch),
-    analogGroups: ((config.skillMatch || defaultSkillMatch).analogGroups || []).map((group) =>
-      group.join(", ")
-    ),
-  },
+  skills: config.skills || defaultSkills,
 })
 
 const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
@@ -67,41 +53,40 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     perHourScore: values.location.perHourScore,
     hybridSameCityScore: values.location.hybridSameCityScore,
     userCity: values.location.userCity?.trim() || undefined,
+    remoteScore: values.location.remoteScore,
     relocationScore: values.location.relocationScore,
+    unknownTimezoneScore: values.location.unknownTimezoneScore,
+    relocationAllowed: values.location.relocationAllowed,
   },
-  skillMatch: (() => {
-    const skillValues = values.skillMatch || defaultSkillMatch
-    return {
-      baseMatchScore: skillValues.baseMatchScore,
-      yearsMultiplier: skillValues.yearsMultiplier,
-      maxYearsBonus: skillValues.maxYearsBonus,
-      missingScore: skillValues.missingScore,
-      missingIgnore: cleanList(skillValues.missingIgnore),
-      analogScore: skillValues.analogScore,
-      maxBonus: skillValues.maxBonus,
-      maxPenalty: skillValues.maxPenalty,
-      analogGroups: (skillValues.analogGroups || []).map((line: string) =>
-        line
-          .split(",")
-          .map((item: string) => item.trim())
-          .filter(Boolean)
-      ),
-    }
-  })(),
+  // Skill relationships (synonyms, implies, parallels) are now managed by taxonomy
+  skillMatch: {
+    baseMatchScore: values.skillMatch.baseMatchScore,
+    yearsMultiplier: values.skillMatch.yearsMultiplier,
+    maxYearsBonus: values.skillMatch.maxYearsBonus,
+    missingScore: values.skillMatch.missingScore,
+    missingIgnore: cleanList(values.skillMatch.missingIgnore),
+    analogScore: values.skillMatch.analogScore,
+    maxBonus: values.skillMatch.maxBonus,
+    maxPenalty: values.skillMatch.maxPenalty,
+  },
+  skills: {
+    bonusPerSkill: values.skills.bonusPerSkill,
+    maxSkillBonus: values.skills.maxSkillBonus,
+  },
   salary: {
     minimum: values.salary.minimum,
     target: values.salary.target,
     belowTargetScore: values.salary.belowTargetScore,
+    belowTargetMaxPenalty: values.salary.belowTargetMaxPenalty,
     missingSalaryScore: values.salary.missingSalaryScore,
     meetsTargetScore: values.salary.meetsTargetScore,
     equityScore: values.salary.equityScore,
     contractScore: values.salary.contractScore,
   },
-  experience: {
-    maxRequired: values.experience.maxRequired,
-    overqualifiedScore: values.experience.overqualifiedScore,
+  // Experience scoring is disabled - only keep relevantExperienceStart for profile calculation
+  experience: values.experience ? {
     relevantExperienceStart: values.experience.relevantExperienceStart?.trim() || null,
-  },
+  } : undefined,
   freshness: {
     freshDays: values.freshness.freshDays,
     freshScore: values.freshness.freshScore,
@@ -349,10 +334,36 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
+                  name="location.remoteScore"
+                  label="Remote Score"
+                  description="Points for remote positions (positive)."
+                  info="Score adjustment for fully remote positions."
+                />
+                <NumericField
+                  control={form.control}
                   name="location.relocationScore"
                   label="Relocation Score"
                   description="Points when relocation required (negative)."
                   info="Score adjustment when job requires relocation."
+                />
+                <NumericField
+                  control={form.control}
+                  name="location.unknownTimezoneScore"
+                  label="Unknown TZ Score"
+                  description="Points for unknown timezone (negative)."
+                  info="Score adjustment when job timezone is unknown."
+                />
+                <Controller
+                  control={form.control}
+                  name="location.relocationAllowed"
+                  render={({ field }) => (
+                    <CheckboxRow
+                      label="Relocation Allowed"
+                      description="Willing to relocate for hybrid/onsite."
+                      info="If unchecked, different-city hybrid/onsite jobs are rejected."
+                      field={field}
+                    />
+                  )}
                 />
               </div>
               <FormField
@@ -450,18 +461,38 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   description="Maximum total skill bonus."
                   info="Caps total positive points from skill matching."
                 />
-                <StringListField
-                  control={form.control}
-                  name="skillMatch.analogGroups"
-                  label="Analog Skill Groups"
-                  placeholder="aws, gcp, azure"
-                  description="Enter comma-separated groups of equivalent skills (one group per line)."
-                  info="Skills in the same group are treated as equivalents."
-                />
               </div>
               <p className="text-xs text-muted-foreground">
-                Skills and experience years are derived automatically from your content items.
+                Skills and experience years are derived from your content items.
+                Skill relationships (synonyms, implies, parallels) are managed by the taxonomy system.
               </p>
+            </section>
+
+            {/* Skills Keyword Matching */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">Skill Keyword Matching</h3>
+                <ImpactBadge label="Score adjustment" tone="neutral" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Additional scoring based on your skills found in job descriptions (supplemental to technology extraction).
+              </p>
+              <div className="grid gap-6 md:grid-cols-2">
+                <NumericField
+                  control={form.control}
+                  name="skills.bonusPerSkill"
+                  label="Bonus Per Skill"
+                  description="Points per matched skill in description."
+                  info="Score adjustment for each user skill found in job description text."
+                />
+                <NumericField
+                  control={form.control}
+                  name="skills.maxSkillBonus"
+                  label="Max Skill Bonus"
+                  description="Cap on total keyword skill bonus."
+                  info="Maximum total points from skill keyword matching."
+                />
+              </div>
             </section>
 
             {/* Salary Preferences */}
@@ -526,6 +557,13 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 />
                 <NumericField
                   control={form.control}
+                  name="salary.belowTargetMaxPenalty"
+                  label="Below Target Max Penalty"
+                  description="Maximum penalty for below target (negative)."
+                  info="Caps the total penalty for salaries below target (e.g., -20)."
+                />
+                <NumericField
+                  control={form.control}
                   name="salary.missingSalaryScore"
                   label="Missing Salary Score"
                   description="Adjustment when salary is not listed."
@@ -553,51 +591,7 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
               </div>
             </section>
 
-            {/* Experience Preferences */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold">Experience Level</h3>
-                <ImpactBadge label="Score adjustment" tone="neutral" />
-              </div>
-              <div className="grid gap-6 md:grid-cols-3">
-                <NumericField
-                  control={form.control}
-                  name="experience.maxRequired"
-                  label="Max Required (years)"
-                  description="Reject if job requires more than this."
-                  info="Jobs requiring more experience than this are penalized."
-                />
-                <NumericField
-                  control={form.control}
-                  name="experience.overqualifiedScore"
-                  label="Overqualified Score"
-                  description="Per year overqualified (negative)."
-                  info="Score adjustment per year you exceed the job's max requirement."
-                />
-                <FormField
-                  control={form.control}
-                  name="experience.relevantExperienceStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className="flex items-center gap-1">
-                        <FormLabel>Relevant Experience Start</FormLabel>
-                        <InfoTooltip content="Only count work experience starting from this date. Useful for career changers." />
-                      </div>
-                      <FormControl>
-                        <Input
-                          type="month"
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value || null)}
-                          className="max-w-[11rem]"
-                        />
-                      </FormControl>
-                      <FormDescription>Exclude earlier work (YYYY-MM).</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </section>
+            {/* Experience scoring has been REMOVED - year-based comparisons are fragile and misleading */}
 
             {/* Freshness/Age Scoring */}
             <section className="space-y-4">

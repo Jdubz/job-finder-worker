@@ -268,16 +268,20 @@ export interface LocationConfig {
   /** User's city for hybrid matching. Overridden by personal-info.city if set. */
   userCity?: string
   /** Score adjustment for remote positions (positive) */
-  remoteScore?: number
+  remoteScore: number
   /** Score adjustment when relocation required (negative) */
-  relocationScore?: number
+  relocationScore: number
   /** Score adjustment for unknown timezone (negative) */
-  unknownTimezoneScore?: number
-  /** Whether user is willing to relocate. Set from personal-info.relocationAllowed. Defaults to false. */
-  relocationAllowed?: boolean
+  unknownTimezoneScore: number
+  /** Whether user is willing to relocate. Set from personal-info.relocationAllowed. */
+  relocationAllowed: boolean
 }
 
-/** Skill/technology matching with experience weighting */
+/** Skill/technology matching with experience weighting.
+ *
+ * Skill relationships (synonyms, implies, parallels) are now managed by the
+ * taxonomy system in the database - no more analogGroups in config.
+ */
 export interface SkillMatchConfig {
   /** Base points per matched skill */
   baseMatchScore: number
@@ -289,14 +293,20 @@ export interface SkillMatchConfig {
   missingScore: number
   /** Skills to ignore when calculating missing penalties (case-insensitive) */
   missingIgnore: string[]
-  /** Points when an analog skill is present */
+  /** Points when a parallel skill is present (from taxonomy) */
   analogScore: number
   /** Cap on total bonus from skill matching */
   maxBonus: number
   /** Cap on total penalty from missing skills */
   maxPenalty: number
-  /** Groups of equivalent skills (each inner array is a group) */
-  analogGroups: string[][]
+}
+
+/** Skill keyword matching in job descriptions (supplemental to technology extraction) */
+export interface SkillsKeywordConfig {
+  /** Points per matched user skill found in description */
+  bonusPerSkill: number
+  /** Maximum total bonus from keyword skill matching */
+  maxSkillBonus: number
 }
 
 /** Salary preferences */
@@ -307,6 +317,8 @@ export interface SalaryConfig {
   target: number | null
   /** Score adjustment per $10k below target (negative) */
   belowTargetScore: number
+  /** Maximum penalty for below-target salary (negative, e.g., -20) */
+  belowTargetMaxPenalty: number
   /** Score adjustment when salary missing (negative, 0 for neutral) */
   missingSalaryScore: number
   /** Score adjustment when salary meets/exceeds target */
@@ -317,16 +329,22 @@ export interface SalaryConfig {
   contractScore: number
 }
 
-/** Experience level preferences */
+/**
+ * Experience config - SCORING DISABLED
+ *
+ * Experience-based scoring (underqualified/overqualified bonuses and penalties)
+ * has been removed entirely. Year-based qualification comparisons are fragile
+ * and misleading.
+ *
+ * This interface is kept for backwards compatibility but all fields are optional
+ * and ignored by the scoring engine.
+ */
 export interface ExperienceConfig {
-  /** Maximum years required by job before rejection */
-  maxRequired: number
-  /** Score adjustment per year user is overqualified (negative) */
-  overqualifiedScore: number
   /**
    * Only count work experience starting from this date (YYYY-MM-DD or YYYY-MM).
    * Earlier experience is excluded from total experience calculation.
    * Useful for career changers to exclude irrelevant prior work.
+   * @deprecated Experience scoring is disabled
    */
   relevantExperienceStart?: string | null
 }
@@ -397,10 +415,12 @@ export interface MatchPolicy {
   location: LocationConfig
   /** Skill/technology matching */
   skillMatch: SkillMatchConfig
+  /** Skill keyword matching in descriptions */
+  skills: SkillsKeywordConfig
   /** Salary preferences */
   salary: SalaryConfig
-  /** Experience level preferences */
-  experience: ExperienceConfig
+  /** @deprecated Experience scoring is disabled - this field is ignored */
+  experience?: ExperienceConfig
   /** Freshness/listing age scoring */
   freshness: FreshnessConfig
   /** Role fit scoring (backend, ML, etc.) */

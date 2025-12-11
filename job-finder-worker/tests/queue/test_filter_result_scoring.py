@@ -154,13 +154,17 @@ def mock_config_loader():
             "analogScore": 0,
             "maxBonus": 25,
             "maxPenalty": -15,
-            "analogGroups": [],
             "missingIgnore": [],
+        },
+        "skills": {
+            "bonusPerSkill": 2,
+            "maxSkillBonus": 15,
         },
         "salary": {
             "minimum": None,
             "target": None,
             "belowTargetScore": -2,
+            "belowTargetMaxPenalty": -20,
             "equityScore": 5,
             "contractScore": -15,
             "missingSalaryScore": -5,
