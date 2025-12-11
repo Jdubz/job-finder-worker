@@ -402,3 +402,33 @@ export interface UpdatePersonalInfoData {
   logo?: string
   accentColor?: string
 }
+
+/**
+ * Generator document (simplified request record for job-applicator)
+ * Represents a generated document with its URLs and status
+ */
+export interface GeneratorDocument {
+  id: string
+  generateType: GenerationType
+  status: "pending" | "processing" | "completed" | "failed"
+  resumeUrl?: string | null
+  coverLetterUrl?: string | null
+  jobMatchId?: string | null
+  createdAt: TimestampLike
+  updatedAt?: TimestampLike
+}
+
+/**
+ * Response for GET /generator/job-matches/:id/documents
+ */
+export interface GeneratorDocumentsResponse {
+  requests: GeneratorDocument[]
+  count: number
+}
+
+/**
+ * Response for GET /generator/requests/:id
+ */
+export interface GeneratorSingleDocumentResponse {
+  request: GeneratorDocument
+}

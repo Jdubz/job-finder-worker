@@ -16,6 +16,9 @@ import type {
   PersonalInfo,
   JobMatchWithListing,
   GenerationStep,
+  GeneratorDocument,
+  GeneratorDocumentsResponse,
+  GeneratorSingleDocumentResponse,
 } from "@shared/types"
 import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
@@ -225,16 +228,12 @@ export async function updateJobMatchStatus(
 // Generator API
 // ============================================================================
 
-export interface GeneratorDocument {
-  id: string
-  generateType: "resume" | "coverLetter" | "both"
-  status: "pending" | "processing" | "completed" | "failed"
-  resumeUrl?: string
-  coverLetterUrl?: string
-  createdAt: string
-  jobMatchId?: string
-}
+// Re-export GeneratorDocument for consumers that import it from api-client
+export type { GeneratorDocument } from "@shared/types"
 
+/**
+ * Response from starting document generation
+ */
 export interface GenerationStartResponse {
   requestId: string
   nextStep: string | null
@@ -243,6 +242,9 @@ export interface GenerationStartResponse {
   coverLetterUrl?: string
 }
 
+/**
+ * Response from executing a generation step
+ */
 export interface GenerationStepResponse {
   status: "pending" | "processing" | "completed" | "failed"
   nextStep: string | null
@@ -253,7 +255,8 @@ export interface GenerationStepResponse {
 }
 
 /**
- * Fetch documents for a job match
+ * Fetch documents for a job match.
+ * Uses shared GeneratorDocumentsResponse type for type safety.
  */
 export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocument[]> {
   const url = `${API_URL}/generator/job-matches/${jobMatchId}/documents`
@@ -269,12 +272,13 @@ export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocum
     throw new Error(errorMsg)
   }
 
-  const data: ApiSuccessResponse<{ documents: GeneratorDocument[] }> = await res.json()
-  return data.data.documents || []
+  const data: ApiSuccessResponse<GeneratorDocumentsResponse> = await res.json()
+  return data.data.requests || []
 }
 
 /**
- * Fetch a specific generator request/document by ID
+ * Fetch a specific generator request/document by ID.
+ * Uses shared GeneratorSingleDocumentResponse type for type safety.
  */
 export async function fetchGeneratorRequest(requestId: string): Promise<GeneratorDocument> {
   const res = await fetchWithRetry(
@@ -288,7 +292,7 @@ export async function fetchGeneratorRequest(requestId: string): Promise<Generato
     throw new Error(`Failed to fetch document: ${errorMsg}`)
   }
 
-  const data: ApiSuccessResponse<{ request: GeneratorDocument }> = await res.json()
+  const data: ApiSuccessResponse<GeneratorSingleDocumentResponse> = await res.json()
   return data.data.request
 }
 
