@@ -148,6 +148,7 @@ const locationConfigSchema = z.object({
   relocationAllowed: z.boolean(),
 })
 
+// Skill relationships (synonyms, implies, parallels) are managed by taxonomy in DB
 const skillMatchConfigSchema = z.object({
   baseMatchScore: z.number(),
   yearsMultiplier: z.number(),
@@ -157,7 +158,6 @@ const skillMatchConfigSchema = z.object({
   analogScore: z.number(),
   maxBonus: z.number(),
   maxPenalty: z.number(),
-  analogGroups: z.array(z.array(z.string())),
 })
 
 const skillsKeywordConfigSchema = z.object({

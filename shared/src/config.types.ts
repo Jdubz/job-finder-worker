@@ -277,7 +277,11 @@ export interface LocationConfig {
   relocationAllowed: boolean
 }
 
-/** Skill/technology matching with experience weighting */
+/** Skill/technology matching with experience weighting.
+ *
+ * Skill relationships (synonyms, implies, parallels) are now managed by the
+ * taxonomy system in the database - no more analogGroups in config.
+ */
 export interface SkillMatchConfig {
   /** Base points per matched skill */
   baseMatchScore: number
@@ -289,14 +293,12 @@ export interface SkillMatchConfig {
   missingScore: number
   /** Skills to ignore when calculating missing penalties (case-insensitive) */
   missingIgnore: string[]
-  /** Points when an analog skill is present */
+  /** Points when a parallel skill is present (from taxonomy) */
   analogScore: number
   /** Cap on total bonus from skill matching */
   maxBonus: number
   /** Cap on total penalty from missing skills */
   maxPenalty: number
-  /** Groups of equivalent skills (each inner array is a group) */
-  analogGroups: string[][]
 }
 
 /** Skill keyword matching in job descriptions (supplemental to technology extraction) */

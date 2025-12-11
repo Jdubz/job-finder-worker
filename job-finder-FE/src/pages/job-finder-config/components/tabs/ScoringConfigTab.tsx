@@ -5,14 +5,10 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, For
 import { Input } from "@/components/ui/input"
 import { TabCard } from "../shared"
 import { StringListField, NumericField, CheckboxRow, ImpactBadge, InfoTooltip } from "../shared/form-fields"
-import type { MatchPolicy, SkillMatchConfig, SkillsKeywordConfig } from "@shared/types"
+import type { MatchPolicy, SkillsKeywordConfig } from "@shared/types"
 
-type SkillMatchFormValues = Omit<SkillMatchConfig, "analogGroups"> & {
-  analogGroups: string[]
-}
-
-type MatchPolicyFormValues = Omit<MatchPolicy, "skillMatch" | "skills"> & {
-  skillMatch: SkillMatchFormValues
+// Skill relationships (synonyms, implies, parallels) are now managed by taxonomy in DB
+type MatchPolicyFormValues = Omit<MatchPolicy, "skills"> & {
   skills: SkillsKeywordConfig
 }
 
@@ -26,19 +22,6 @@ type MatchPolicyTabProps = {
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
 // No defaults - config is required and validated by backend
-// These are only used as fallbacks if config somehow loads without these sections
-const defaultSkillMatch: SkillMatchFormValues = {
-  baseMatchScore: 1,
-  yearsMultiplier: 0.5,
-  maxYearsBonus: 5,
-  missingScore: -1,
-  missingIgnore: [],
-  analogScore: 0,
-  maxBonus: 25,
-  maxPenalty: -15,
-  analogGroups: [],
-}
-
 const defaultSkills: SkillsKeywordConfig = {
   bonusPerSkill: 2,
   maxSkillBonus: 15,
@@ -47,12 +30,6 @@ const defaultSkills: SkillsKeywordConfig = {
 // No defaults - config is required and validated by backend
 const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => ({
   ...config,
-  skillMatch: {
-    ...(config.skillMatch || defaultSkillMatch),
-    analogGroups: ((config.skillMatch || defaultSkillMatch).analogGroups || []).map((group) =>
-      group.join(", ")
-    ),
-  },
   skills: config.skills || defaultSkills,
 })
 
@@ -81,25 +58,17 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     unknownTimezoneScore: values.location.unknownTimezoneScore,
     relocationAllowed: values.location.relocationAllowed,
   },
-  skillMatch: (() => {
-    const skillValues = values.skillMatch || defaultSkillMatch
-    return {
-      baseMatchScore: skillValues.baseMatchScore,
-      yearsMultiplier: skillValues.yearsMultiplier,
-      maxYearsBonus: skillValues.maxYearsBonus,
-      missingScore: skillValues.missingScore,
-      missingIgnore: cleanList(skillValues.missingIgnore),
-      analogScore: skillValues.analogScore,
-      maxBonus: skillValues.maxBonus,
-      maxPenalty: skillValues.maxPenalty,
-      analogGroups: (skillValues.analogGroups || []).map((line: string) =>
-        line
-          .split(",")
-          .map((item: string) => item.trim())
-          .filter(Boolean)
-      ),
-    }
-  })(),
+  // Skill relationships (synonyms, implies, parallels) are now managed by taxonomy
+  skillMatch: {
+    baseMatchScore: values.skillMatch.baseMatchScore,
+    yearsMultiplier: values.skillMatch.yearsMultiplier,
+    maxYearsBonus: values.skillMatch.maxYearsBonus,
+    missingScore: values.skillMatch.missingScore,
+    missingIgnore: cleanList(values.skillMatch.missingIgnore),
+    analogScore: values.skillMatch.analogScore,
+    maxBonus: values.skillMatch.maxBonus,
+    maxPenalty: values.skillMatch.maxPenalty,
+  },
   skills: {
     bonusPerSkill: values.skills.bonusPerSkill,
     maxSkillBonus: values.skills.maxSkillBonus,
@@ -492,17 +461,10 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                   description="Maximum total skill bonus."
                   info="Caps total positive points from skill matching."
                 />
-                <StringListField
-                  control={form.control}
-                  name="skillMatch.analogGroups"
-                  label="Analog Skill Groups"
-                  placeholder="aws, gcp, azure"
-                  description="Enter comma-separated groups of equivalent skills (one group per line)."
-                  info="Skills in the same group are treated as equivalents."
-                />
               </div>
               <p className="text-xs text-muted-foreground">
-                Skills and experience years are derived automatically from your content items.
+                Skills and experience years are derived from your content items.
+                Skill relationships (synonyms, implies, parallels) are managed by the taxonomy system.
               </p>
             </section>
 

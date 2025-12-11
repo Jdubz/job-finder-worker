@@ -119,7 +119,6 @@ const minimalMatchPolicy = {
     analogScore: 0,
     maxBonus: 25,
     maxPenalty: -15,
-    analogGroups: [],
     missingIgnore: [],
   },
   salary: {
@@ -526,7 +525,6 @@ describe("Configuration flows", () => {
         analogScore: 0,
         maxBonus: 25,
         maxPenalty: -15,
-        analogGroups: [],
         missingIgnore: [],
       },
       salary: {

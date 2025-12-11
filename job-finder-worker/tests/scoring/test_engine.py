@@ -41,7 +41,6 @@ def default_config():
             "analogScore": 0,
             "maxBonus": 25,
             "maxPenalty": -15,
-            "analogGroups": [["aws", "gcp"], ["node", "node.js"]],
         },
         "skills": {
             "bonusPerSkill": 2,
@@ -102,7 +101,6 @@ def profile():
             "aws": 2,
         },
         "total_years": 12,
-        "analogs": {"node": {"node.js"}, "node.js": {"node"}},
     }
 
 
@@ -114,7 +112,6 @@ def engine_factory(default_config, profile):
             cfg,
             skill_years=profile["skill_years"],
             user_experience_years=profile["total_years"],
-            skill_analogs=profile["analogs"],
         )
 
     return _create
@@ -224,7 +221,6 @@ class TestScoringEngine:
             default_config,
             skill_years={"python": 3, "typescript": 2},
             user_experience_years=profile["total_years"],
-            skill_analogs=profile["analogs"],
         )
 
         extraction = JobExtractionResult(
@@ -241,32 +237,34 @@ class TestScoringEngine:
         skill_adjustments = [a for a in result.adjustments if a.category == "skills"]
         assert len(skill_adjustments) == 1
 
-    def test_analog_skill_applies_score(self, default_config, profile):
-        """Analog skills are treated as matches when configured.
+    def test_parallel_skill_prevents_penalty(self, default_config, profile):
+        """Parallel skills from taxonomy prevent missing penalty but don't give bonus.
 
-        Analogs are parallel skills that prevent penalty but don't give full bonus.
-        E.g., user has AWS, job wants GCP - they're parallel clouds, not synonyms.
+        Parallels are alternative skills: user has AWS, job wants GCP.
+        They're parallel clouds defined in taxonomy, not the same technology.
         """
         cfg = {
             **default_config,
             "skillMatch": {
                 **default_config["skillMatch"],
-                "analogScore": 1,
+                "analogScore": 1,  # Score for parallel match (prevents penalty)
             },
         }
-        # User has AWS but not GCP
+        # User has AWS but not GCP - taxonomy defines aws.parallels = [gcp, azure]
         engine = ScoringEngine(
             cfg,
             skill_years={"aws": 3},
             user_experience_years=profile["total_years"],
-            skill_analogs={"gcp": {"aws"}, "aws": {"gcp"}},  # AWS <-> GCP are analogs
         )
         extraction = JobExtractionResult(technologies=["gcp"])  # Job wants GCP
 
         result = engine.score(extraction, "Cloud Engineer", "GCP role")
 
+        # AWS parallels GCP in taxonomy, so user should get analog adjustment not missing
         analog_adjustments = [a for a in result.adjustments if "Analog" in a.reason]
-        assert analog_adjustments, "Expected analog adjustment when equivalent skill exists"
+        assert (
+            analog_adjustments
+        ), "Expected analog adjustment when parallel skill exists in taxonomy"
         assert any(adj.points == cfg["skillMatch"]["analogScore"] for adj in analog_adjustments)
 
     def test_timezone_penalty(self, engine_factory):
@@ -544,12 +542,12 @@ class TestScoringEngine:
         """Implies relationship is one-way - REST does not imply express.
 
         User has REST knowledge, job wants express. Since REST doesn't imply express,
-        user should NOT qualify through implies (might still match via analog groups).
+        user should NOT qualify through implies. REST and graphql are parallels in
+        taxonomy, but express is NOT a parallel of REST.
         """
         engine = ScoringEngine(
             default_config,
             skill_years={"rest": 5},  # User has REST
-            skill_analogs={},  # No analogs configured
         )
         extraction = JobExtractionResult(
             technologies=["express"],  # Job wants express
@@ -561,6 +559,7 @@ class TestScoringEngine:
         # REST does NOT imply express, so there should be no implied match
         implied_adjustments = [a for a in result.adjustments if "Implied" in a.reason]
         assert not implied_adjustments, "REST should not imply express (one-way relationship)"
-        # Should have a missing skill penalty for express
+        # Should have a missing skill penalty for express (or parallel match)
+        # Since express parallels flask/django/fastapi but NOT rest, user should get penalty
         missing_adjustments = [a for a in result.adjustments if "Missing" in a.reason]
         assert missing_adjustments, "Expected missing skill adjustment for express"

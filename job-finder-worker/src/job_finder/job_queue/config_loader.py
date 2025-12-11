@@ -110,6 +110,7 @@ class ConfigLoader:
             )
 
         # Enforce required skillMatch fields (no defaults)
+        # Note: analogGroups removed - skill parallels now managed by taxonomy system
         skill_match = config.get("skillMatch", {})
         skill_required = [
             "baseMatchScore",
@@ -119,7 +120,6 @@ class ConfigLoader:
             "analogScore",
             "maxBonus",
             "maxPenalty",
-            "analogGroups",
             "missingIgnore",
         ]
         skill_missing = [k for k in skill_required if k not in skill_match]

@@ -317,7 +317,7 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     return false
   }
 
-  // Check skillMatch
+  // Check skillMatch (analogGroups removed - now in taxonomy)
   if (!isObject(v.skillMatch)) return false
   const skillMatch = v.skillMatch as any
   if (
@@ -329,12 +329,8 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     !skillMatch.missingIgnore.every(isString) ||
     typeof skillMatch.analogScore !== "number" ||
     typeof skillMatch.maxBonus !== "number" ||
-    typeof skillMatch.maxPenalty !== "number" ||
-    !Array.isArray(skillMatch.analogGroups)
+    typeof skillMatch.maxPenalty !== "number"
   ) {
-    return false
-  }
-  if (!skillMatch.analogGroups.every((g: unknown) => Array.isArray(g) && g.every(isString))) {
     return false
   }
 

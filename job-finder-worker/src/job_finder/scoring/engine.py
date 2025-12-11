@@ -105,7 +105,6 @@ class ScoringEngine:
         config: Dict[str, Any],
         skill_years: Optional[Dict[str, float]] = None,
         user_experience_years: float = 0.0,
-        skill_analogs: Optional[Dict[str, Set[str]]] = None,
         taxonomy_repo: Optional[SkillTaxonomyRepository] = None,
     ):
         """
@@ -115,7 +114,7 @@ class ScoringEngine:
             config: MatchPolicy dictionary from config loader (required, no defaults)
             skill_years: Derived mapping of skill -> years of experience
             user_experience_years: Total years of experience
-            skill_analogs: Map of skill -> set of equivalent skills
+            taxonomy_repo: Optional taxonomy repository (uses default if not provided)
 
         Raises:
             KeyError: If required config sections are missing
@@ -137,7 +136,6 @@ class ScoringEngine:
         # Derived profile
         self.skill_years = skill_years or {}
         self.user_experience_years = user_experience_years
-        self.skill_analogs = skill_analogs or {}
         self.taxonomy_lookup = (taxonomy_repo or SkillTaxonomyRepository()).load_lookup()
 
         def _map(term: str) -> str:
@@ -158,9 +156,7 @@ class ScoringEngine:
         # Build "implied skills" for each user skill
         # If user has "express" which implies "rest", add "rest" to their implied skills
         # This enables one-way matching: express qualifies for REST jobs
-        self.user_implied_skills: Dict[str, str] = (
-            {}
-        )  # implied_skill -> source_skill (for tracking)
+        self.user_implied_skills: Dict[str, str] = {}  # implied_skill -> source_skill
         for user_skill in self.canonical_user_skills:
             taxon = self.taxonomy_lookup.get(user_skill)
             if taxon and taxon.implies:
@@ -168,6 +164,21 @@ class ScoringEngine:
                     # Only add if user doesn't already have it directly
                     if implied not in self.canonical_user_skills:
                         self.user_implied_skills[implied] = user_skill
+
+        # Build "parallel skills" lookup from taxonomy
+        # If user has "aws" which parallels "gcp", track that for analog matching
+        # Parallels prevent missing penalty but don't give bonus
+        self.user_parallel_skills: Dict[str, str] = {}  # parallel_skill -> source_skill
+        for user_skill in self.canonical_user_skills:
+            taxon = self.taxonomy_lookup.get(user_skill)
+            if taxon and taxon.parallels:
+                for parallel in taxon.parallels:
+                    # Only add if user doesn't already have it directly or via implies
+                    if (
+                        parallel not in self.canonical_user_skills
+                        and parallel not in self.user_implied_skills
+                    ):
+                        self.user_parallel_skills[parallel] = user_skill
 
         # Pre-process seniority lists (required fields)
         self._preferred_seniority = {s.lower() for s in self.seniority_config["preferred"]}
@@ -597,9 +608,8 @@ class ScoringEngine:
         total_bonus = 0.0
         total_implied_bonus = 0.0
 
-        for original, mapped in zip(job_technologies, mapped_terms):
+        for _, mapped in zip(job_technologies, mapped_terms):
             skill_lower = mapped.lower()
-            original_lower = original.lower()
 
             # 1. Direct match: user has the exact skill (canonical form)
             if skill_lower in self.canonical_user_skills:
@@ -620,14 +630,11 @@ class ScoringEngine:
                 implied.append((mapped, source_skill, years, points))
                 total_implied_bonus += points
 
-            # 3. Analog match: user has a parallel skill (e.g., AWS for GCP job)
-            #    Only prevents missing penalty, no bonus
-            elif self._has_analog(skill_lower):
-                analog = self._get_analog(skill_lower)
-                analogs.append((mapped, analog))
-            elif original_lower != skill_lower and self._has_analog(original_lower):
-                analog = self._get_analog(original_lower)
-                analogs.append((mapped, analog))
+            # 3. Parallel match: user has a parallel skill (e.g., AWS for GCP job)
+            #    Only prevents missing penalty, no bonus (from taxonomy parallels)
+            elif skill_lower in self.user_parallel_skills:
+                source_skill = self.user_parallel_skills[skill_lower]
+                analogs.append((mapped, source_skill))
 
             # 4. Missing: skill is in taxonomy but user doesn't have it or equivalent
             elif skill_lower not in missing_ignore and skill_lower in self.taxonomy_lookup:
@@ -680,15 +687,6 @@ class ScoringEngine:
             )
 
         return {"points": combined_bonus + analog_points + penalty, "adjustments": adjustments}
-
-    def _has_analog(self, skill: str) -> bool:
-        analogs = self.skill_analogs.get(skill, set())
-        return bool(analogs & self.user_skills)
-
-    def _get_analog(self, skill: str) -> str:
-        analogs = self.skill_analogs.get(skill, set())
-        match = analogs & self.user_skills
-        return next(iter(match)) if match else ""
 
     def _score_salary(
         self,

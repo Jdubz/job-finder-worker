@@ -36,6 +36,10 @@ const MIN_MATCH = {
     maxTimezoneDiffHours: 8,
     perHourScore: -1,
     hybridSameCityScore: 0,
+    remoteScore: 5,
+    relocationScore: -50,
+    unknownTimezoneScore: -5,
+    relocationAllowed: false,
   },
   skillMatch: {
     baseMatchScore: 1,
@@ -45,19 +49,24 @@ const MIN_MATCH = {
     analogScore: 0,
     maxBonus: 25,
     maxPenalty: -15,
-    analogGroups: [],
     missingIgnore: [],
+  },
+  skills: {
+    bonusPerSkill: 2,
+    maxSkillBonus: 15,
   },
   salary: {
     minimum: null,
     target: null,
     belowTargetScore: 0,
+    belowTargetMaxPenalty: -20,
     missingSalaryScore: 0,
     meetsTargetScore: 0,
     equityScore: 0,
     contractScore: 0,
   },
-  experience: { maxRequired: 20, overqualifiedScore: 0 },
+  // Experience scoring is disabled
+  experience: {},
   freshness: {
     freshDays: 30,
     freshScore: 0,

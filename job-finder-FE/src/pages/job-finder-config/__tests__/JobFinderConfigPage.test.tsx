@@ -51,7 +51,6 @@ const matchPolicy: MatchPolicy = {
     analogScore: 0,
     maxBonus: 25,
     maxPenalty: -15,
-    analogGroups: [],
   },
   skills: {
     bonusPerSkill: 2,

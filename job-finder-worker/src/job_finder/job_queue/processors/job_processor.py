@@ -47,7 +47,7 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.scoring.taxonomy import SkillTaxonomyRepository
-from job_finder.profile.reducer import build_analog_map, load_scoring_profile
+from job_finder.profile.reducer import load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
@@ -165,7 +165,11 @@ class JobProcessor(BaseProcessor):
         self.ai_matcher.min_match_score = match_policy["minScore"]
 
     def _build_scoring_engine(self, match_policy: Dict[str, Any]) -> ScoringEngine:
-        """Create ScoringEngine with derived profile, analog map, and personal info."""
+        """Create ScoringEngine with derived profile and personal info.
+
+        Skill relationships (synonyms, implies, parallels) are now managed entirely
+        by the taxonomy system - no more analogGroups in config.
+        """
         db_path = (
             self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
         )
@@ -175,8 +179,6 @@ class JobProcessor(BaseProcessor):
         # Extract relevantExperienceStart from experience config (if set)
         relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
         profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start)
-        analog_groups = match_policy.get("skillMatch", {}).get("analogGroups", [])
-        analog_map = build_analog_map(analog_groups)
 
         # Merge personal-info into location config for scoring
         # Personal info values override static config values (userTimezone, userCity)
@@ -197,7 +199,6 @@ class JobProcessor(BaseProcessor):
             match_policy,
             skill_years=profile.skill_years,
             user_experience_years=profile.total_experience_years,
-            skill_analogs=analog_map,
             taxonomy_repo=taxonomy_repo,
         )
 

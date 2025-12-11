@@ -137,7 +137,7 @@ describe('config contract', () => {
       analogScore: 0,
       maxBonus: 25,
       maxPenalty: -15,
-      analogGroups: [],
+      missingIgnore: [],
     },
     salary: { minimum: 90000, target: 150000, belowTargetScore: -2 },
     experience: { maxRequired: 12, overqualifiedScore: -1 },
