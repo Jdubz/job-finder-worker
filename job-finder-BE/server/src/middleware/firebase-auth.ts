@@ -24,6 +24,10 @@ function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
   const host = req.headers.host ?? ''
   const origin = req.headers.origin ?? ''
 
+  // If headers are present, ensure they align with local access; otherwise allow.
+  const hostProvided = host.length > 0
+  const originProvided = origin.length > 0
+
   const hostIsLocal =
     /^localhost(?::\d+)?$/i.test(host) ||
     /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
@@ -36,7 +40,8 @@ function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
     /^https?:\/\/\[::1\](?::\d+)?$/i.test(origin) ||
     /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin)
 
-  if (!(hostIsLocal || originIsLocal)) return null
+  const headersConsistent = (!hostProvided || hostIsLocal) && (!originProvided || originIsLocal)
+  if (!headersConsistent) return null
 
   return buildBypassUser()
 }
@@ -128,7 +133,6 @@ export function isLocalhostRequest(req: Request): boolean {
  * Localhost requests: Bypass auth for desktop app running on same machine
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
-  // Machine key bypass (for internal cron or other trusted automation)
   // In development/test mode, check for dev tokens first
   if (IS_DEVELOPMENT || isTestEnv()) {
     const bearerToken = extractBearerToken(req)
