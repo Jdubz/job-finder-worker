@@ -13,6 +13,7 @@ import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
+import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
 
 export class UserFacingError extends Error {}
 
@@ -389,8 +390,22 @@ export class GeneratorWorkflowService {
       'AI resume raw output preview'
     )
 
+    // Validate and recover AI output using schema validation
+    const validation = validateResumeContent(agentResult.output, this.log)
+    if (!validation.success) {
+      this.log.error(
+        { errors: validation.errors, output: agentResult.output.slice(0, 500), recoveryActions: validation.recoveryActions },
+        'Resume validation failed even after recovery attempts'
+      )
+      throw new Error(`AI returned invalid resume content: ${validation.errors?.join(', ')}`)
+    }
+
+    if (validation.recovered) {
+      this.log.info({ recoveryActions: validation.recoveryActions }, 'Resume content recovered from malformed AI output')
+    }
+
     try {
-      const parsed = JSON.parse(agentResult.output) as ResumeContent
+      const parsed = validation.data as ResumeContent
 
       // Filter work experience items (new taxonomy: 'work')
       const workItems = contentItems.filter((item) => item.aiContext === 'work')
@@ -548,17 +563,26 @@ export class GeneratorWorkflowService {
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
     const agentResult = await this.agentManager.execute('document', prompt)
 
-    try {
-      const parsed = JSON.parse(agentResult.output) as CoverLetterContent
-
-      // Validate cover letter content against source data to catch potential hallucinations
-      this.warnOnPotentialHallucinations(parsed, contentItems, payload)
-
-      return parsed
-    } catch (error) {
-      this.log.error({ err: error, output: agentResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
-      throw new Error('AI returned invalid JSON for cover letter content', { cause: error })
+    // Validate and recover AI output using schema validation
+    const validation = validateCoverLetterContent(agentResult.output, this.log)
+    if (!validation.success) {
+      this.log.error(
+        { errors: validation.errors, output: agentResult.output.slice(0, 500), recoveryActions: validation.recoveryActions },
+        'Cover letter validation failed even after recovery attempts'
+      )
+      throw new Error(`AI returned invalid cover letter content: ${validation.errors?.join(', ')}`)
     }
+
+    if (validation.recovered) {
+      this.log.info({ recoveryActions: validation.recoveryActions }, 'Cover letter content recovered from malformed AI output')
+    }
+
+    const parsed = validation.data as CoverLetterContent
+
+    // Validate cover letter content against source data to catch potential hallucinations
+    this.warnOnPotentialHallucinations(parsed, contentItems, payload)
+
+    return parsed
   }
 
   /**
@@ -582,12 +606,15 @@ export class GeneratorWorkflowService {
       contentItems.flatMap((item) => (item.skills || []).map((s) => s.toLowerCase().trim()))
     )
 
-    // Combine all text content for analysis
-    const allText = [
-      content.openingParagraph,
-      ...content.bodyParagraphs,
-      content.closingParagraph
-    ].join(' ').toLowerCase()
+    // Combine all text content for analysis once (DRY)
+    // Defensive: ensure content.bodyParagraphs is an array before spreading
+    const bodyParagraphs = Array.isArray(content.bodyParagraphs) ? content.bodyParagraphs : []
+    const combinedContent = [
+      content.openingParagraph || '',
+      ...bodyParagraphs,
+      content.closingParagraph || ''
+    ].join(' ')
+    const allText = combinedContent.toLowerCase()
 
     // Check for company name mentions that aren't in allowed list
     // This is a heuristic - we look for patterns like "at [Company]" or "with [Company]"
@@ -595,7 +622,7 @@ export class GeneratorWorkflowService {
     let match: RegExpExecArray | null
     const mentionedCompanies: string[] = []
 
-    while ((match = companyMentionPatterns.exec([content.openingParagraph, ...content.bodyParagraphs, content.closingParagraph].join(' '))) !== null) {
+    while ((match = companyMentionPatterns.exec(combinedContent)) !== null) {
       const company = match[1].trim().toLowerCase()
       if (company && !allowedCompanies.has(company) && company.length > 2) {
         mentionedCompanies.push(match[1].trim())
