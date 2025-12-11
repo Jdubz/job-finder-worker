@@ -916,8 +916,9 @@ ipcMain.handle(
  * The runCli and runEnhancedCli functions handle these format differences automatically.
  */
 const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
-  claude: ["claude", ["--print", "--output-format", "json", "-p", "-"]],
-  codex: ["codex", ["exec", "--json", "--skip-git-repo-check"]],
+  // Always bypass permission prompts – the Electron shell is non-interactive
+  claude: ["claude", ["--print", "--output-format", "json", "--dangerously-skip-permissions", "-p", "-"]],
+  codex: ["codex", ["exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"]],
   gemini: ["gemini", ["-o", "json", "--yolo"]],
 }
 
