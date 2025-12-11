@@ -84,8 +84,8 @@ const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s,
 const MAX_GENERATION_STEPS = 20
 
 // Global state
-let mainWindow: any | null = null
-let browserView: any | null = null
+let mainWindow: BrowserWindow | null = null
+let browserView: BrowserView | null = null
 
 // Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
 function updateBrowserViewBounds(): void {
