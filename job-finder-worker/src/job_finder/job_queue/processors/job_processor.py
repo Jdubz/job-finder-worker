@@ -24,7 +24,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.agent_manager import AgentManager
