@@ -39,11 +39,8 @@ The `profileText` contains the following sections:
 - GitHub, LinkedIn
 - Professional summary
 
-### 2. EEO Information (free-text, if provided)
-- Gender
-- Race/ethnicity
-- Veteran status
-- Disability status
+### 2. Application Information (free-text, if provided)
+- User-provided text used for EEO/disclosures/work authorization; format is not prescribed
 
 ### 3. Work Experience
 Hierarchical format with companies, roles, and highlights:
