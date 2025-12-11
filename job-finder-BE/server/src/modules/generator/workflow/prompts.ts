@@ -169,31 +169,49 @@ Additional Instructions:
 ${variables.additionalInstructions || 'None'}`
 }
 
-/** Format work experience item with its highlight children */
-function formatWorkItem(item: ContentItem, highlights: ContentItem[]): string {
-  // Format main description bullets
-  const mainBullets = (item.description || '')
+/** Parse a description string into a list of clean bullet points */
+function parseDescriptionToBullets(description?: string | null): string[] {
+  return (description || '')
     .split(/\r?\n/)
     .filter((line) => line.trim().length)
     .map((line) => line.replace(/^[-•]\s*/, '').trim())
     .filter(Boolean)
+}
 
-  // Format highlight children as additional bullets
-  const highlightBullets = highlights
+/** Format work experience item with its highlight children */
+function formatWorkItem(item: ContentItem, highlights: ContentItem[]): string {
+  // Format main description bullets (role-level achievements, not project-specific)
+  const mainBullets = parseDescriptionToBullets(item.description)
+
+  // Format role-level bullets (these are general to the employer, not project-specific)
+  const roleBulletsFormatted = mainBullets.length
+    ? '  Role-Level Achievements (general to this employer):\n' +
+      mainBullets.map((b) => `    - ${b}`).join('\n')
+    : ''
+
+  // Format highlight children as SEPARATE PROJECTS with clear boundaries
+  // Each highlight is a distinct project/case study - they must NOT be mixed
+  const projectsFormatted = highlights
     .filter((h) => h.title || h.description)
     .map((h) => {
-      const title = h.title || ''
-      const desc = h.description
-        ? h.description.split(/\r?\n/)[0]?.slice(0, 150) || ''
-        : ''
-      return title + (desc ? `: ${desc}` : '')
+      const projectName = h.title || 'Unnamed Project'
+      const descLines = parseDescriptionToBullets(h.description)
+      const projectSkills = h.skills?.length ? `    Technologies: ${h.skills.join(', ')}` : ''
+
+      // Only include the project block if there is actual content (descLines or projectSkills)
+      if (descLines.length === 0 && !projectSkills) {
+        return ''
+      }
+
+      return [
+        `  [PROJECT: ${projectName}] (ID: ${h.id})`,
+        `    IMPORTANT: All content below belongs ONLY to this project. Do not mix with other projects.`,
+        ...descLines.map((line) => `    - ${line}`),
+        projectSkills
+      ].filter(Boolean).join('\n')
     })
     .filter(Boolean)
-
-  const allBullets = [...mainBullets, ...highlightBullets]
-  const bulletsFormatted = allBullets.length
-    ? allBullets.map((b) => `    - ${b}`).join('\n')
-    : ''
+    .join('\n\n')
 
   // Collect skills from work item and highlights
   const skills = [
@@ -206,8 +224,9 @@ function formatWorkItem(item: ContentItem, highlights: ContentItem[]): string {
     `- Role: ${item.role || 'Unknown Role'}`,
     `  Company: ${item.title || 'Unknown Company'}${item.location ? ` (${item.location})` : ''}`,
     `  Dates: ${item.startDate || 'unspecified'} - ${item.endDate || 'Present'}`,
-    bulletsFormatted ? `  Highlights:\n${bulletsFormatted}` : null,
-    uniqueSkills.length ? `  Skills: ${uniqueSkills.join(', ')}` : null,
+    roleBulletsFormatted || null,
+    projectsFormatted ? `\n  Projects/Highlights (each is a SEPARATE case study - never combine content across projects):\n${projectsFormatted}` : null,
+    uniqueSkills.length ? `  All Skills for this Role: ${uniqueSkills.join(', ')}` : null,
     item.website ? `  Website: ${item.website}` : null
   ]
     .filter(Boolean)
