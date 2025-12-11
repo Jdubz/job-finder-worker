@@ -17,6 +17,28 @@ export const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   gemini: ["gemini", ["-o", "json", "--yolo"]],
 }
 
+// Streaming CLI config for Claude - outputs NDJSON with token-by-token updates
+export const CLI_COMMANDS_STREAMING: Record<CliProvider, [string, string[]] | null> = {
+  claude: [
+    "claude",
+    [
+      "--print",
+      "--output-format", "stream-json",
+      "--verbose",
+      "--include-partial-messages",
+      "--dangerously-skip-permissions",
+      "-p", "-"
+    ],
+  ],
+  // Other providers don't support streaming yet
+  codex: null,
+  gemini: null,
+}
+
 export function getCliCommand(provider: CliProvider): [string, string[]] {
   return CLI_COMMANDS[provider]
+}
+
+export function getStreamingCliCommand(provider: CliProvider): [string, string[]] | null {
+  return CLI_COMMANDS_STREAMING[provider]
 }
