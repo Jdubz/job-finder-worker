@@ -9,6 +9,8 @@ type SQLiteOpenOptions = Database.Options & { uri?: boolean }
 
 let db: Database.Database | null = null
 let migrationsApplied = false
+let lastCheckpoint = 0
+const CHECKPOINT_THROTTLE_MS = 1000
 
 export function getDb(): Database.Database {
   if (db) {
@@ -63,9 +65,6 @@ export function closeDb(): void {
  * Passive mode does not block writers and is safe to call frequently.
  * Throttled to run at most once per second to avoid unnecessary disk I/O.
  */
-let lastCheckpoint = 0
-const CHECKPOINT_THROTTLE_MS = 1000
-
 export function checkpointWal(): void {
   if (!db) return
 

@@ -131,27 +131,27 @@ function unwrapCliOutput(text: string): string {
  *    a clear error rather than silent corruption
  */
 function extractJsonFromText(text: string): string {
-  // First, unwrap CLI output format if present
-  const unwrapped = unwrapCliOutput(text)
+  // Note: CLI output unwrapping is handled by callers (validateResumeContent, validateCoverLetterContent)
+  // before this function is called, so we don't need to unwrap here.
 
   // Try to extract from markdown code block
-  const codeBlockMatch = unwrapped.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (codeBlockMatch) {
     return codeBlockMatch[1].trim()
   }
 
   // Try to find the first balanced JSON object using brace matching
-  const firstBrace = unwrapped.indexOf('{')
+  const firstBrace = text.indexOf('{')
   if (firstBrace === -1) {
-    return unwrapped
+    return text
   }
 
   let braceCount = 0
   let end = -1
-  for (let i = firstBrace; i < unwrapped.length; i++) {
-    if (unwrapped[i] === '{') {
+  for (let i = firstBrace; i < text.length; i++) {
+    if (text[i] === '{') {
       braceCount++
-    } else if (unwrapped[i] === '}') {
+    } else if (text[i] === '}') {
       braceCount--
       if (braceCount === 0) {
         end = i
@@ -161,10 +161,10 @@ function extractJsonFromText(text: string): string {
   }
 
   if (end !== -1) {
-    return unwrapped.slice(firstBrace, end + 1)
+    return text.slice(firstBrace, end + 1)
   }
 
-  return unwrapped
+  return text
 }
 
 /**
