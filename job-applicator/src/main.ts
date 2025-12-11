@@ -1,4 +1,4 @@
-import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu } from "electron"
+import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
 import type { WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
 import * as path from "path"
@@ -65,6 +65,7 @@ import {
   startGeneration,
   executeGenerationStep,
   submitJobToQueue,
+  API_URL,
 } from "./api-client.js"
 
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
@@ -600,6 +601,30 @@ ipcMain.handle(
       return { success: true, data: documents }
     } catch (err) {
       const message = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
+      return { success: false, message }
+    }
+  }
+)
+
+// Open document URL in external browser
+// Document URLs from the API are relative paths like "/api/generator/artifacts/..."
+// We need to resolve them to full URLs using the API base URL
+ipcMain.handle(
+  "open-document",
+  async (_event: IpcMainInvokeEvent, documentPath: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      // API_URL is like "http://localhost:3000/api"
+      // documentPath is like "/api/generator/artifacts/2025-12-11/file.pdf"
+      // We need to construct the full URL by using the origin from API_URL
+      const apiUrlObj = new URL(API_URL)
+      const fullUrl = `${apiUrlObj.origin}${documentPath}`
+
+      logger.info(`Opening document: ${fullUrl}`)
+      await shell.openExternal(fullUrl)
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`Failed to open document: ${message}`)
       return { success: false, message }
     }
   }

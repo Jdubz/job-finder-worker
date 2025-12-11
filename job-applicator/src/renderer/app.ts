@@ -40,6 +40,7 @@ interface ElectronAPI {
     data?: DocumentInfo[]
     message?: string
   }>
+  openDocument: (documentPath: string) => Promise<{ success: boolean; message?: string }>
   startGeneration: (options: {
     jobMatchId: string
     type: "resume" | "coverLetter" | "both"
@@ -340,10 +341,15 @@ function renderDocumentsList() {
 
   // Add click handlers for view buttons
   documentsList.querySelectorAll(".btn-view").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
+    btn.addEventListener("click", async (e) => {
       e.stopPropagation()
       const url = (btn as HTMLElement).dataset.url
-      if (url) window.open(url, "_blank")
+      if (url) {
+        const result = await api.openDocument(url)
+        if (!result.success) {
+          console.error("[app.ts] Failed to open document:", result.message)
+        }
+      }
     })
   })
 }
