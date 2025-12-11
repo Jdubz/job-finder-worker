@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { JobFinderConfigEntry } from '@shared/types'
-import { getDb } from '../../db/sqlite'
+import { getDb, checkpointWal } from '../../db/sqlite'
 
 type ConfigRow = {
   id: string
@@ -43,6 +43,9 @@ export class ConfigRepository {
   }
 
   get<TPayload = unknown>(id: string): JobFinderConfigEntry<TPayload> | null {
+    // Checkpoint WAL to ensure external writes (e.g., via sqlite3 CLI) are visible
+    checkpointWal()
+
     const row = this.db
       .prepare('SELECT id, payload_json, updated_at, updated_by FROM job_finder_config WHERE id = ?')
       .get(id) as ConfigRow | undefined
