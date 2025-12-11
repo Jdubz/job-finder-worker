@@ -307,7 +307,7 @@ export function buildEnhancedPrompt(
   const getNestedString = (obj: Record<string, unknown>, ...keys: string[]): string => {
     let current: unknown = obj
     for (const key of keys) {
-      if (current && typeof current === "object" && current !== null && key in current) {
+      if (current !== null && typeof current === "object" && key in current) {
         current = (current as Record<string, unknown>)[key]
       } else {
         return "N/A"

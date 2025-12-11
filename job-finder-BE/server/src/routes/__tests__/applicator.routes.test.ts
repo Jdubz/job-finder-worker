@@ -118,6 +118,24 @@ describe('applicator routes', () => {
     expect(profileText).toContain('Veteran Status: Not a Protected Veteran')
   })
 
+  it('returns error when applicationInfo is missing or empty', async () => {
+    const personalInfo: PersonalInfo = {
+      name: 'No App Info',
+      email: 'empty@app.test',
+      // Intentionally empty to exercise validation
+      applicationInfo: ''
+    }
+
+    configRepo.upsert('personal-info', personalInfo)
+
+    const response = await request(app).get('/applicator/profile')
+    expect(response.status).toBeGreaterThanOrEqual(500)
+    const payload = typeof response.body === 'object' && Object.keys(response.body).length > 0
+      ? JSON.stringify(response.body)
+      : response.text
+    expect(payload).toMatch(/applicationInfo/i)
+  })
+
   it('formats work history with company, role, and highlights', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Engineer',

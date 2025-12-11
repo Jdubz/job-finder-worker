@@ -39,8 +39,8 @@ The `profileText` contains the following sections:
 - GitHub, LinkedIn
 - Professional summary
 
-### 2. Application Information (free-text, if provided)
-- User-provided text used for EEO/disclosures/work authorization; format is not prescribed
+### 2. Application Information (free-text, required)
+- User-provided text used for EEO/disclosures/work authorization; this section is required and must be present; format is not prescribed
 
 ### 3. Work Experience
 Hierarchical format with companies, roles, and highlights:

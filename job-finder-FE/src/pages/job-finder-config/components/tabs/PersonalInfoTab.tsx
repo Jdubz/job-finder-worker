@@ -326,7 +326,7 @@ export function PersonalInfoTab({
             <div className="space-y-1">
               <h3 className="text-lg font-medium">Application Information</h3>
               <p className="text-sm text-muted-foreground">
-                Free-form text (markdown ok) for EEO and other application disclosures. Leave blank to skip.
+                Free-form text (markdown ok) for EEO and other application disclosures. Required for profile generation.
               </p>
             </div>
           </div>

@@ -199,7 +199,7 @@ export function buildApplicatorRouter() {
 
         // Application Information (required)
         const appInfo = personalInfo.applicationInfo?.trim()
-        if (!appInfo) {
+        if (!appInfo || appInfo.length === 0) {
           throw new Error('Personal info is missing required applicationInfo text')
         }
         sections.push(`# Application Information\n${appInfo}`)
