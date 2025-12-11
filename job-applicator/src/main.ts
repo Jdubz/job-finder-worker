@@ -74,7 +74,7 @@ const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
 
 // CLI timeout and warning thresholds
-// 2 minutes for complex form fills - increased from 60s to handle large forms
+// 5 minutes for complex form fills - increased from 2 minutes (120s) to handle large forms
 // Warning intervals help identify if operations are taking unusually long
 const CLI_TIMEOUT_MS = 300000 // 5 minutes
 const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
@@ -202,8 +202,9 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
   }
 
   // Open DevTools in development for debugging
+  // Note: DevTools may not open automatically with electronmon (make watch)
+  // Use Cmd+Shift+I or View menu to toggle manually
   if (process.env.NODE_ENV !== "production") {
-    logger.info("Opening DevTools...")
     mainWindow.webContents.openDevTools({ mode: "detach" })
   }
 
@@ -1067,22 +1068,46 @@ ipcMain.handle(
             instruction.value,
             fieldType
           )
-          if (filled) filledCount++
 
-          // Send progress after filling
-          sendFormFillProgress({
-            phase: "filling",
-            message: `Filled: ${instruction.label || instruction.selector}`,
-            totalFields: instructions.length,
-            processedFields: i + 1,
-            currentField: {
-              label: instruction.label || instruction.selector || "Unknown",
-              selector: instruction.selector,
-              status: "filled",
-            },
-          })
+          if (filled) {
+            filledCount++
+            // Send progress after successful fill
+            sendFormFillProgress({
+              phase: "filling",
+              message: `Filled: ${instruction.label || instruction.selector}`,
+              totalFields: instructions.length,
+              processedFields: i + 1,
+              currentField: {
+                label: instruction.label || instruction.selector || "Unknown",
+                selector: instruction.selector,
+                status: "filled",
+              },
+            })
+          } else {
+            // fillFormField returned false (element not found, etc.)
+            logger.warn(`Failed to fill ${instruction.selector}: element not found or fill failed`)
+            skippedFields.push({
+              label: instruction.label || instruction.selector || "Unknown field",
+              reason: "Element not found or fill failed",
+            })
+            sendFormFillProgress({
+              phase: "filling",
+              message: `Failed: ${instruction.label || instruction.selector}`,
+              totalFields: instructions.length,
+              processedFields: i + 1,
+              currentField: {
+                label: instruction.label || instruction.selector || "Unknown",
+                selector: instruction.selector,
+                status: "skipped",
+              },
+            })
+          }
         } catch (err) {
           logger.warn(`Failed to fill ${instruction.selector}:`, err)
+          skippedFields.push({
+            label: instruction.label || instruction.selector || "Unknown field",
+            reason: err instanceof Error ? err.message : "Fill error",
+          })
         }
       }
 

@@ -683,11 +683,12 @@ function handleFormFillProgress(progress: FormFillProgress) {
 // Show form fill progress UI
 function showFormFillProgress(progress: FormFillProgress) {
   let progressHtml = ""
+  const safeMessage = escapeHtml(progress.message)
 
   if (progress.phase === "starting") {
     progressHtml = `
       <div class="fill-progress">
-        <div class="fill-phase">${progress.message}</div>
+        <div class="fill-phase">${safeMessage}</div>
         <div class="fill-spinner"></div>
       </div>
     `
@@ -706,18 +707,20 @@ function showFormFillProgress(progress: FormFillProgress) {
         : []
 
       const charCount = progress.streamingText.length
+      // Escape labels to prevent XSS from malicious form field names
+      const safeLabels = lastLabels.map((l) => escapeHtml(l)).join(", ")
       streamingInfo = `
         <div class="streaming-info">
           <div class="streaming-stat"><span class="stat-value">${fieldCount}</span> fields analyzed</div>
           <div class="streaming-stat"><span class="stat-value">${Math.round(charCount / 1024)}KB</span> received</div>
-          ${lastLabels.length > 0 ? `<div class="streaming-recent">Recent: ${lastLabels.join(", ")}</div>` : ""}
+          ${lastLabels.length > 0 ? `<div class="streaming-recent">Recent: ${safeLabels}</div>` : ""}
         </div>
       `
     }
 
     progressHtml = `
       <div class="fill-progress">
-        <div class="fill-phase">${progress.message}</div>
+        <div class="fill-phase">${safeMessage}</div>
         ${progress.isStreaming ? '<div class="fill-spinner"></div>' : ""}
         ${streamingInfo}
       </div>
@@ -729,7 +732,7 @@ function showFormFillProgress(progress: FormFillProgress) {
 
     progressHtml = `
       <div class="fill-progress">
-        <div class="fill-phase">${progress.message}</div>
+        <div class="fill-phase">${safeMessage}</div>
         <div class="fill-progress-bar">
           <div class="fill-progress-fill" style="width: ${percent}%"></div>
         </div>
@@ -762,6 +765,12 @@ async function fillForm() {
     setButtonsEnabled(false)
     setStatus(`Filling form with ${provider}...`, "loading")
     setWorkflowStep("fill", "active")
+
+    // Clean up any existing subscription before creating a new one
+    if (unsubscribeFormFillProgress) {
+      unsubscribeFormFillProgress()
+      unsubscribeFormFillProgress = null
+    }
 
     // Subscribe to progress events
     unsubscribeFormFillProgress = api.onFormFillProgress(handleFormFillProgress)
