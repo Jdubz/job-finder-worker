@@ -129,6 +129,70 @@ function StatusBadge({ reason }: { reason: string | null }) {
   )
 }
 
+/** Expandable error details panel for disabled agents */
+function DisabledReasonPanel({ reason, scope }: { reason: string; scope: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const badge = getReasonBadge(reason)
+
+  // Extract a summary from the reason (first line or first 100 chars)
+  const getSummary = (text: string): string => {
+    // For error: prefix, extract the main error message
+    if (text.startsWith("error:")) {
+      const errorText = text.slice(7).trim()
+      // Try to find the most relevant error line
+      const lines = errorText.split("\n")
+      const errorLine = lines.find(l =>
+        l.includes("Your access token") ||
+        l.includes("failed to start") ||
+        l.includes("timed out") ||
+        l.includes("not found")
+      ) || lines[0]
+
+      // Clean up JSON formatting if present
+      try {
+        const parsed = JSON.parse(errorLine)
+        return parsed.message || errorLine
+      } catch {
+        return errorLine.length > 120 ? errorLine.slice(0, 120) + "..." : errorLine
+      }
+    }
+    return text.length > 120 ? text.slice(0, 120) + "..." : text
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-destructive">
+              {scope} disabled: {badge?.label || "Unknown"}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {getSummary(reason)}
+          </p>
+          {reason.includes("\n") && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+              className="h-auto p-0 text-xs mt-1"
+            >
+              {expanded ? "Hide details" : "Show full error"}
+            </Button>
+          )}
+          {expanded && (
+            <pre className="mt-2 text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+              {reason}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AISettingsTab({
   isSaving,
   aiSettings,
@@ -368,6 +432,13 @@ export function AISettingsTab({
                         )}
                       </div>
                     </div>
+                    {/* Show detailed error panels when agents are disabled with reasons */}
+                    {workerState.reason && workerState.reason.startsWith("error:") && (
+                      <DisabledReasonPanel reason={workerState.reason} scope="Worker" />
+                    )}
+                    {backendState.reason && backendState.reason.startsWith("error:") && (
+                      <DisabledReasonPanel reason={backendState.reason} scope="Backend" />
+                    )}
                   </div>
                 )
               })}

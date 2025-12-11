@@ -374,6 +374,71 @@ describe("AISettingsTab", () => {
 
       expect(screen.getByText("Error")).toBeInTheDocument()
     })
+
+    it("shows detailed error panel for errors with multiline reasons", () => {
+      const multilineError = `error: Codex CLI failed (exit 1): {"type":"error","message":"MCP client failed"}
+{"type":"error","message":"Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again."}`
+
+      const settingsWithDetailedError: AISettings = {
+        ...mockAISettings,
+        agents: {
+          ...mockAISettings.agents,
+          "codex.cli": {
+            ...mockAISettings.agents["codex.cli"]!,
+            runtimeState: {
+              worker: { enabled: false, reason: multilineError },
+              backend: { enabled: true, reason: null },
+            },
+          } as AgentConfig,
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithDetailedError} />)
+
+      // Should show the error panel with scope and type
+      expect(screen.getByText(/Worker disabled:/)).toBeInTheDocument()
+      // Should have expandable details button for multiline errors
+      expect(screen.getByText("Show full error")).toBeInTheDocument()
+    })
+
+    it("expands error details when Show full error is clicked", async () => {
+      const user = userEvent.setup()
+      const multilineError = `error: Codex CLI failed (exit 1): {"type":"error","message":"MCP client failed"}
+{"type":"error","message":"Your access token could not be refreshed"}`
+
+      const settingsWithDetailedError: AISettings = {
+        ...mockAISettings,
+        agents: {
+          ...mockAISettings.agents,
+          "codex.cli": {
+            ...mockAISettings.agents["codex.cli"]!,
+            runtimeState: {
+              worker: { enabled: false, reason: multilineError },
+              backend: { enabled: true, reason: null },
+            },
+          } as AgentConfig,
+        },
+      }
+
+      render(<AISettingsTab {...defaultProps} aiSettings={settingsWithDetailedError} />)
+
+      await user.click(screen.getByText("Show full error"))
+
+      // After clicking, should show "Hide details" and the full error
+      expect(screen.getByText("Hide details")).toBeInTheDocument()
+      // The pre element with full error should be visible
+      expect(screen.getByText(/Codex CLI failed/)).toBeInTheDocument()
+    })
+
+    it("does not show error panel for quota exhausted reasons", () => {
+      // quota_exhausted: reasons should show badge but not the detailed panel
+      render(<AISettingsTab {...defaultProps} />)
+
+      // The quota exhausted badge should show
+      expect(screen.getByText("Quota Exhausted")).toBeInTheDocument()
+      // But no error panel (only shows for error: prefix)
+      expect(screen.queryByText(/Worker disabled:/)).not.toBeInTheDocument()
+    })
   })
 
   describe("Remove Agent from Fallback Chain", () => {
