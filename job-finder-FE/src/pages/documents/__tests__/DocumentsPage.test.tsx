@@ -410,21 +410,11 @@ describe("DocumentsPage", () => {
       })
     })
 
-    it("should show view buttons for completed documents with URLs", async () => {
-      renderWithRouter(<DocumentsPage />)
-
-      await waitFor(() => {
-        // Should have view buttons for documents with resumeUrl or coverLetterUrl
-        const viewButtons = screen.getAllByTitle(/view/i)
-        expect(viewButtons.length).toBeGreaterThan(0)
-      })
-    })
-
     it("should show download buttons for completed documents", async () => {
       renderWithRouter(<DocumentsPage />)
 
       await waitFor(() => {
-        const downloadButtons = screen.getAllByTitle(/download/i)
+        const downloadButtons = screen.getAllByRole("button", { name: /resume|cover letter/i })
         expect(downloadButtons.length).toBeGreaterThan(0)
       })
     })
@@ -445,26 +435,6 @@ describe("DocumentsPage", () => {
     })
   })
 
-  describe("Preview Modal", () => {
-    it("should open preview modal when view button is clicked", async () => {
-      const user = userEvent.setup({ pointerEventsCheck: 0 })
-      renderWithRouter(<DocumentsPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText("Tech Corp")).toBeInTheDocument()
-      })
-
-      // Click the first view button
-      const viewButtons = screen.getAllByTitle(/view resume/i)
-      await user.click(viewButtons[0])
-
-      // Modal should open with title
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument()
-      })
-    })
-  })
-
   describe("Document Path Format", () => {
     /**
      * CRITICAL: Verify the frontend correctly handles the 2-segment path format
@@ -480,10 +450,9 @@ describe("DocumentsPage", () => {
         expect(screen.getByText("Tech Corp")).toBeInTheDocument()
       })
 
-      // The mock data uses the correct 2-segment format
-      // Verify the page renders without errors
-      const viewButtons = screen.getAllByTitle(/view resume/i)
-      expect(viewButtons.length).toBeGreaterThan(0)
+      // The mock data uses the correct 2-segment format; presence of download button is enough
+      const downloadButtons = screen.getAllByRole("button", { name: /resume|cover letter/i })
+      expect(downloadButtons.length).toBeGreaterThan(0)
     })
 
     it("should handle documents with both resume and cover letter URLs", async () => {
@@ -495,10 +464,9 @@ describe("DocumentsPage", () => {
         expect(bothRow).toBeInTheDocument()
 
         if (bothRow) {
-          // Should have buttons for both resume and cover letter
-          const viewButtons = within(bothRow).getAllByRole("button")
-          // 2 view + 2 download = 4 buttons
-          expect(viewButtons.length).toBe(4)
+          // Should have download buttons for both resume and cover letter
+          const buttons = within(bothRow).getAllByRole("button", { name: /resume|cover letter/i })
+          expect(buttons.length).toBe(2)
         }
       })
     })

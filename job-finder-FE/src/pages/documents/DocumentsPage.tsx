@@ -191,7 +191,7 @@ export function DocumentsPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle>Generation History</CardTitle>
-              <CardDescription>Click view to preview documents</CardDescription>
+              <CardDescription>Download generated documents</CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative">
@@ -335,13 +335,6 @@ export function DocumentsPage() {
         </CardContent>
       </Card>
 
-      {/* Preview Modal */}
-      <DocumentPreviewModal
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        url={previewUrl}
-        title={previewTitle}
-      />
     </div>
   )
 }
