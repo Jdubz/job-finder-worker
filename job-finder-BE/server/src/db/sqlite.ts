@@ -54,6 +54,7 @@ export function closeDb(): void {
   logger.info('Closing SQLite database')
   db.close()
   db = null
+  lastCheckpoint = 0 // Reset throttle so fresh connections checkpoint immediately
 }
 
 /**

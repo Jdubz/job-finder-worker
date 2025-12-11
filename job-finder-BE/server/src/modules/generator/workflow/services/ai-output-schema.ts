@@ -315,11 +315,17 @@ export function validateResumeContent(
 ): ValidationResult<ResumeContent> {
   const recoveryActions: string[] = []
 
-  // Step 1: Extract JSON from potentially wrapped text
-  let jsonStr = rawOutput
-  if (!rawOutput.trim().startsWith('{')) {
-    jsonStr = extractJsonFromText(rawOutput)
-    if (jsonStr !== rawOutput) {
+  // Step 1: Unwrap CLI output format if present (e.g., Claude CLI's {"type":"result","result":"..."})
+  let unwrapped = unwrapCliOutput(rawOutput)
+  if (unwrapped !== rawOutput) {
+    recoveryActions.push('Unwrapped CLI JSON output format')
+  }
+
+  // Step 2: Extract JSON from potentially wrapped text (markdown code blocks, surrounding text)
+  let jsonStr = unwrapped
+  if (!unwrapped.trim().startsWith('{')) {
+    jsonStr = extractJsonFromText(unwrapped)
+    if (jsonStr !== unwrapped) {
       recoveryActions.push('Extracted JSON from markdown code block or surrounding text')
     }
   }
@@ -403,11 +409,17 @@ export function validateCoverLetterContent(
 ): ValidationResult<CoverLetterContent> {
   const recoveryActions: string[] = []
 
-  // Step 1: Extract JSON from potentially wrapped text
-  let jsonStr = rawOutput
-  if (!rawOutput.trim().startsWith('{')) {
-    jsonStr = extractJsonFromText(rawOutput)
-    if (jsonStr !== rawOutput) {
+  // Step 1: Unwrap CLI output format if present (e.g., Claude CLI's {"type":"result","result":"..."})
+  let unwrapped = unwrapCliOutput(rawOutput)
+  if (unwrapped !== rawOutput) {
+    recoveryActions.push('Unwrapped CLI JSON output format')
+  }
+
+  // Step 2: Extract JSON from potentially wrapped text (markdown code blocks, surrounding text)
+  let jsonStr = unwrapped
+  if (!unwrapped.trim().startsWith('{')) {
+    jsonStr = extractJsonFromText(unwrapped)
+    if (jsonStr !== unwrapped) {
       recoveryActions.push('Extracted JSON from markdown code block or surrounding text')
     }
   }
