@@ -258,10 +258,10 @@ test.describe("API contract (shared schemas)", () => {
     expect(docsRes.ok()).toBeTruthy()
     const docsBody = await docsRes.json()
     const docsParse = generatorDocumentsResponseSchema.safeParse(docsBody.data)
-    expect(docsParse.success).toBe(true)
-    if (!docsParse.success) {
-      console.error("Documents response validation failed:", docsParse.error.format())
-    }
+    expect(
+      docsParse.success,
+      `Documents response validation failed: ${!docsParse.success ? JSON.stringify(docsParse.error.format(), null, 2) : ""}`
+    ).toBe(true)
 
     // Test GET /generator/requests/:id (single document)
     if (requestId) {
@@ -271,10 +271,10 @@ test.describe("API contract (shared schemas)", () => {
       expect(singleDocRes.ok()).toBeTruthy()
       const singleDocBody = await singleDocRes.json()
       const singleDocParse = generatorSingleDocumentResponseSchema.safeParse(singleDocBody.data)
-      expect(singleDocParse.success).toBe(true)
-      if (!singleDocParse.success) {
-        console.error("Single document response validation failed:", singleDocParse.error.format())
-      }
+      expect(
+        singleDocParse.success,
+        `Single document response validation failed: ${!singleDocParse.success ? JSON.stringify(singleDocParse.error.format(), null, 2) : ""}`
+      ).toBe(true)
     }
 
     // Also test empty documents response (different job match with no documents)

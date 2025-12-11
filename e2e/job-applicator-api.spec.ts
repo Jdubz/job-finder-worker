@@ -56,10 +56,10 @@ test.describe("Job Applicator API Integration", () => {
 
       // Validate job match response conforms to shared schema
       const matchParse = jobMatchWithListingSchema.safeParse(matchBody.data.match)
-      expect(matchParse.success).toBe(true)
-      if (!matchParse.success) {
-        console.error("Job match schema validation failed:", matchParse.error.format())
-      }
+      expect(
+        matchParse.success,
+        `Job match schema validation failed: ${!matchParse.success ? JSON.stringify(matchParse.error.format(), null, 2) : ""}`
+      ).toBe(true)
 
       // Step 3: Start document generation linked to job match
       const startRes = await request.post(`${API_BASE}/generator/start`, {
@@ -80,10 +80,10 @@ test.describe("Job Applicator API Integration", () => {
 
       // Validate start response schema
       const startParse = generatorStartResponseSchema.safeParse(startBody.data)
-      expect(startParse.success).toBe(true)
-      if (!startParse.success) {
-        console.error("Generator start schema validation failed:", startParse.error.format())
-      }
+      expect(
+        startParse.success,
+        `Generator start schema validation failed: ${!startParse.success ? JSON.stringify(startParse.error.format(), null, 2) : ""}`
+      ).toBe(true)
 
       const requestId = startBody.data?.requestId
       expect(requestId).toBeTruthy()
@@ -100,10 +100,10 @@ test.describe("Job Applicator API Integration", () => {
 
         // Validate step response schema
         const stepParse = generatorStepResponseSchema.safeParse(stepBody.data)
-        expect(stepParse.success).toBe(true)
-        if (!stepParse.success) {
-          console.error("Generator step schema validation failed:", stepParse.error.format())
-        }
+        expect(
+          stepParse.success,
+          `Generator step schema validation failed: ${!stepParse.success ? JSON.stringify(stepParse.error.format(), null, 2) : ""}`
+        ).toBe(true)
 
         lastStepResponse = stepBody.data
         stepCount++
@@ -118,10 +118,10 @@ test.describe("Job Applicator API Integration", () => {
 
       // Validate documents response schema
       const docsParse = generatorDocumentsResponseSchema.safeParse(docsBody.data)
-      expect(docsParse.success).toBe(true)
-      if (!docsParse.success) {
-        console.error("Documents response schema validation failed:", docsParse.error.format())
-      }
+      expect(
+        docsParse.success,
+        `Documents response schema validation failed: ${!docsParse.success ? JSON.stringify(docsParse.error.format(), null, 2) : ""}`
+      ).toBe(true)
 
       // Should have at least one document
       expect(docsBody.data.requests.length).toBeGreaterThanOrEqual(1)
@@ -143,10 +143,10 @@ test.describe("Job Applicator API Integration", () => {
 
       // Validate single document response schema
       const singleDocParse = generatorSingleDocumentResponseSchema.safeParse(singleDocBody.data)
-      expect(singleDocParse.success).toBe(true)
-      if (!singleDocParse.success) {
-        console.error("Single document schema validation failed:", singleDocParse.error.format())
-      }
+      expect(
+        singleDocParse.success,
+        `Single document schema validation failed: ${!singleDocParse.success ? JSON.stringify(singleDocParse.error.format(), null, 2) : ""}`
+      ).toBe(true)
 
       // Verify document matches what we created
       expect(singleDocBody.data.request.id).toBe(requestId)
