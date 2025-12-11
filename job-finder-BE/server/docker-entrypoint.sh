@@ -11,6 +11,8 @@ else
 fi
 
 # Codex CLI auth (bind mounted from host; use codex-safe wrapper for flock serialization)
+# If auth.json already exists (typical for bind mounts), keep it to avoid slow reseed;
+# still fail fast if missing.
 echo "=== Codex CLI Setup ==="
 if [ -f /home/node/.codex/auth.json ]; then
     echo "✓ codex auth.json present (bind mount from host)"
