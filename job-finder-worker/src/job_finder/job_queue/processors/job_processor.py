@@ -819,7 +819,9 @@ class JobProcessor(BaseProcessor):
         taxonomy_repo = None
         lookup = {}
         try:
-            taxonomy_repo = SkillTaxonomyRepository(getattr(self.job_listing_storage, "db_path", None))
+            taxonomy_repo = SkillTaxonomyRepository(
+                getattr(self.job_listing_storage, "db_path", None)
+            )
             lookup = taxonomy_repo.load_lookup()
         except Exception as e:
             logger.warning("taxonomy load skipped: %s", e)
@@ -840,7 +842,9 @@ class JobProcessor(BaseProcessor):
                     },
                     max_attempts=1,
                 )
-                payload = suggestions.get("result") if isinstance(suggestions, dict) else suggestions
+                payload = (
+                    suggestions.get("result") if isinstance(suggestions, dict) else suggestions
+                )
                 if isinstance(payload, list):
                     for item in payload:
                         term = str(item.get("term", "")).strip().lower()
