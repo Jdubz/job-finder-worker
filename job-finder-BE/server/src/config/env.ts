@@ -26,8 +26,8 @@ const EnvSchema = z.object({
   LOG_ROTATE_MAX_BYTES: z.coerce.number().positive().default(100 * 1024 * 1024),
   LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7),
 
-  // Machine-to-machine auth
-  CRON_API_KEY: z.string().optional(),
+  // Machine-to-machine auth (deprecated, kept for schema completeness)
+  CRON_API_KEY: z.string().optional()
 })
 
 export type Env = z.infer<typeof EnvSchema>
