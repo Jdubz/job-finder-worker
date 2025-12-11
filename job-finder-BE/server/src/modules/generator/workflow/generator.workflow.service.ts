@@ -13,6 +13,7 @@ import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
+import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
 
 export class UserFacingError extends Error {}
 
@@ -389,8 +390,22 @@ export class GeneratorWorkflowService {
       'AI resume raw output preview'
     )
 
+    // Validate and recover AI output using schema validation
+    const validation = validateResumeContent(agentResult.output, this.log)
+    if (!validation.success) {
+      this.log.error(
+        { errors: validation.errors, output: agentResult.output.slice(0, 500), recoveryActions: validation.recoveryActions },
+        'Resume validation failed even after recovery attempts'
+      )
+      throw new Error(`AI returned invalid resume content: ${validation.errors?.join(', ')}`)
+    }
+
+    if (validation.recovered) {
+      this.log.info({ recoveryActions: validation.recoveryActions }, 'Resume content recovered from malformed AI output')
+    }
+
     try {
-      const parsed = JSON.parse(agentResult.output) as ResumeContent
+      const parsed = validation.data as ResumeContent
 
       // Filter work experience items (new taxonomy: 'work')
       const workItems = contentItems.filter((item) => item.aiContext === 'work')
@@ -548,33 +563,26 @@ export class GeneratorWorkflowService {
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
     const agentResult = await this.agentManager.execute('document', prompt)
 
-    try {
-      const parsed = JSON.parse(agentResult.output) as CoverLetterContent
-
-      // Normalize bodyParagraphs: ensure it's always an array
-      // AI may return a single string, undefined, or malformed data
-      if (!Array.isArray(parsed.bodyParagraphs)) {
-        if (typeof parsed.bodyParagraphs === 'string' && parsed.bodyParagraphs) {
-          parsed.bodyParagraphs = [parsed.bodyParagraphs]
-        } else {
-          // If bodyParagraphs is missing entirely, try to construct from other fields
-          // or default to empty array
-          parsed.bodyParagraphs = []
-        }
-      }
-
-      // Filter out any non-string or empty entries
-      parsed.bodyParagraphs = parsed.bodyParagraphs
-        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-
-      // Validate cover letter content against source data to catch potential hallucinations
-      this.warnOnPotentialHallucinations(parsed, contentItems, payload)
-
-      return parsed
-    } catch (error) {
-      this.log.error({ err: error, output: agentResult.output.slice(0, 500) }, 'Failed to parse AI cover letter output as JSON')
-      throw new Error('AI returned invalid JSON for cover letter content', { cause: error })
+    // Validate and recover AI output using schema validation
+    const validation = validateCoverLetterContent(agentResult.output, this.log)
+    if (!validation.success) {
+      this.log.error(
+        { errors: validation.errors, output: agentResult.output.slice(0, 500), recoveryActions: validation.recoveryActions },
+        'Cover letter validation failed even after recovery attempts'
+      )
+      throw new Error(`AI returned invalid cover letter content: ${validation.errors?.join(', ')}`)
     }
+
+    if (validation.recovered) {
+      this.log.info({ recoveryActions: validation.recoveryActions }, 'Cover letter content recovered from malformed AI output')
+    }
+
+    const parsed = validation.data as CoverLetterContent
+
+    // Validate cover letter content against source data to catch potential hallucinations
+    this.warnOnPotentialHallucinations(parsed, contentItems, payload)
+
+    return parsed
   }
 
   /**
