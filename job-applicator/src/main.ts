@@ -404,6 +404,7 @@ async function fillFormField(
         // If still no match, try setting directly
         el.value = ${safeValue};
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
       })()
     `)
