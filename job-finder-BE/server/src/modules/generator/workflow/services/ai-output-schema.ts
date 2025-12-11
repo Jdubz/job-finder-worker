@@ -100,6 +100,26 @@ export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchem
 // =============================================================================
 
 /**
+ * Unwrap CLI JSON output format if present.
+ * Claude CLI with --output-format json returns: {"type":"result","result":"<actual content>"}
+ * Gemini CLI with --output json returns similar wrapper.
+ * This extracts the inner result content for further processing.
+ */
+function unwrapCliOutput(text: string): string {
+  try {
+    const parsed = JSON.parse(text)
+    // Check for CLI wrapper format: {type: "result", result: "..."}
+    if (parsed && typeof parsed === 'object' && 'type' in parsed && 'result' in parsed) {
+      // The result field contains the actual AI response
+      return typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result)
+    }
+  } catch {
+    // Not valid JSON or not a wrapper - continue with original text
+  }
+  return text
+}
+
+/**
  * Attempts to extract JSON from a string that may have markdown code blocks
  * or other text surrounding the JSON.
  *
@@ -111,24 +131,27 @@ export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchem
  *    a clear error rather than silent corruption
  */
 function extractJsonFromText(text: string): string {
+  // First, unwrap CLI output format if present
+  const unwrapped = unwrapCliOutput(text)
+
   // Try to extract from markdown code block
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const codeBlockMatch = unwrapped.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (codeBlockMatch) {
     return codeBlockMatch[1].trim()
   }
 
   // Try to find the first balanced JSON object using brace matching
-  const firstBrace = text.indexOf('{')
+  const firstBrace = unwrapped.indexOf('{')
   if (firstBrace === -1) {
-    return text
+    return unwrapped
   }
 
   let braceCount = 0
   let end = -1
-  for (let i = firstBrace; i < text.length; i++) {
-    if (text[i] === '{') {
+  for (let i = firstBrace; i < unwrapped.length; i++) {
+    if (unwrapped[i] === '{') {
       braceCount++
-    } else if (text[i] === '}') {
+    } else if (unwrapped[i] === '}') {
       braceCount--
       if (braceCount === 0) {
         end = i
@@ -138,10 +161,10 @@ function extractJsonFromText(text: string): string {
   }
 
   if (end !== -1) {
-    return text.slice(firstBrace, end + 1)
+    return unwrapped.slice(firstBrace, end + 1)
   }
 
-  return text
+  return unwrapped
 }
 
 /**
