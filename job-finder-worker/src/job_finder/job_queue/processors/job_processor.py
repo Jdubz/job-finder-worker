@@ -816,14 +816,19 @@ class JobProcessor(BaseProcessor):
 
         # Taxonomy enrichment: map unknown tech terms via analysis agent before scoring
         extraction = ctx.extraction
-        taxonomy_repo = SkillTaxonomyRepository(getattr(self.job_listing_storage, "db_path", None))
-        lookup = taxonomy_repo.load_lookup()
+        taxonomy_repo = None
+        lookup = {}
+        try:
+            taxonomy_repo = SkillTaxonomyRepository(getattr(self.job_listing_storage, "db_path", None))
+            lookup = taxonomy_repo.load_lookup()
+        except Exception as e:
+            logger.warning("taxonomy load skipped: %s", e)
         unknown_terms: List[str] = []
         for term in extraction.technologies:
             if term.lower().strip() not in lookup:
                 unknown_terms.append(term)
 
-        if unknown_terms:
+        if taxonomy_repo and unknown_terms:
             try:
                 suggestions = self.agent_manager.execute(
                     task_type="analysis",
@@ -856,11 +861,12 @@ class JobProcessor(BaseProcessor):
                 logger.warning("taxonomy enrichment failed: %s", e)
 
         # Remap technologies to canonicals (fallback to original term)
-        remapped: List[str] = []
-        for term in extraction.technologies:
-            taxon = lookup.get(term.lower().strip())
-            remapped.append(taxon.canonical if taxon else term)
-        extraction.technologies = remapped
+        if lookup:
+            remapped: List[str] = []
+            for term in extraction.technologies:
+                taxon = lookup.get(term.lower().strip())
+                remapped.append(taxon.canonical if taxon else term)
+            extraction.technologies = remapped
 
         # Pass company_data to scoring engine for company signals
         score_result = self.scoring_engine.score(
