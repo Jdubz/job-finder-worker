@@ -39,11 +39,8 @@ The `profileText` contains the following sections:
 - GitHub, LinkedIn
 - Professional summary
 
-### 2. EEO Information (if provided)
-- Gender
-- Race/ethnicity
-- Veteran status
-- Disability status
+### 2. Application Information (free-text, required)
+- User-provided text used for EEO/disclosures/work authorization; this section is required and must be present; format is not prescribed
 
 ### 3. Work Experience
 Hierarchical format with companies, roles, and highlights:
@@ -177,7 +174,7 @@ curl http://localhost:3000/api/applicator/profile \
 
 The endpoint aggregates data from:
 
-1. **job_finder_config table** - Personal info (id: 'personal-info')
+1. **job_finder_config table** - Personal info (id: 'personal-info') including required `applicationInfo` free-text
 2. **content_items table** - Work history, education, skills (all items with tree structure)
 
 ## Performance

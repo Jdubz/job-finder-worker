@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/async-handler'
 import { success } from '../utils/api-response'
 import { ConfigRepository } from '../modules/config/config.repository'
 import { ContentItemRepository } from '../modules/content-items/content-item.repository'
-import type { PersonalInfo, EEOInfo, ContentItem, GetApplicatorProfileResponse } from '@shared/types'
+import type { PersonalInfo, ContentItem, GetApplicatorProfileResponse } from '@shared/types'
 import { logger } from '../logger'
 
 /**
@@ -16,56 +16,6 @@ function formatDateRange(startDate: string | null | undefined, endDate: string |
 }
 
 /**
- * Format EEO information in a compact, readable format.
- *
- * PRIVACY NOTE: This data is included in AI prompts sent to external providers.
- * Only non-declined values are included. Users should be aware that EEO data
- * they provide may be processed by AI services for form filling purposes.
- */
-function formatEEOInfo(eeo: EEOInfo | undefined): string {
-  if (!eeo) return ''
-
-  // Lookup maps for proper label formatting (handles acronyms and special cases)
-  const raceLabelMap: Record<string, string> = {
-    american_indian_alaska_native: 'American Indian or Alaska Native',
-    asian: 'Asian',
-    black_african_american: 'Black or African American',
-    native_hawaiian_pacific_islander: 'Native Hawaiian or Other Pacific Islander',
-    white: 'White',
-    two_or_more_races: 'Two or More Races'
-  }
-
-  const veteranLabelMap: Record<string, string> = {
-    not_protected_veteran: 'Not a Protected Veteran',
-    protected_veteran: 'Protected Veteran',
-    disabled_veteran: 'Disabled Veteran'
-  }
-
-  const parts: string[] = []
-
-  if (eeo.gender && eeo.gender !== 'decline_to_identify') {
-    parts.push(`Gender: ${eeo.gender}`)
-  }
-  if (eeo.race && eeo.race !== 'decline_to_identify') {
-    const raceLabel = raceLabelMap[eeo.race] ||
-      eeo.race.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    parts.push(`Race: ${raceLabel}`)
-  }
-  if (eeo.hispanicLatino && eeo.hispanicLatino !== 'decline_to_identify') {
-    parts.push(`Hispanic/Latino: ${eeo.hispanicLatino}`)
-  }
-  if (eeo.veteranStatus && eeo.veteranStatus !== 'decline_to_identify') {
-    const vetLabel = veteranLabelMap[eeo.veteranStatus] ||
-      eeo.veteranStatus.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    parts.push(`Veteran Status: ${vetLabel}`)
-  }
-  if (eeo.disabilityStatus && eeo.disabilityStatus !== 'decline_to_identify') {
-    parts.push(`Disability Status: ${eeo.disabilityStatus}`)
-  }
-
-  return parts.length > 0 ? parts.join('\n') : ''
-}
-
 /**
  * Build hierarchical work history with roles and highlights
  */
@@ -247,11 +197,12 @@ export function buildApplicatorRouter() {
 
         sections.push(personalLines.join('\n'))
 
-        // EEO Information (optional, separate section)
-        const eeoText = formatEEOInfo(personalInfo.eeo)
-        if (eeoText) {
-          sections.push(`# EEO Information\n${eeoText}`)
+        // Application Information (required)
+        const appInfo = personalInfo.applicationInfo?.trim()
+        if (!appInfo || appInfo.length === 0) {
+          throw new Error('Personal info is missing required applicationInfo text')
         }
+        sections.push(`# Application Information\n${appInfo}`)
       }
 
       // Work Experience Section

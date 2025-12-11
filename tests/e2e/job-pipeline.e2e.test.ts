@@ -12,6 +12,7 @@ const TEST_PERSONAL_INFO: PersonalInfo = {
   city: "",
   timezone: null,
   relocationAllowed: false,
+  applicationInfo: "Application info for tests",
 }
 
 const TEST_PROMPTS: PromptConfig = {

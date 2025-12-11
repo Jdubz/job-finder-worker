@@ -102,9 +102,10 @@ export interface PersonalInfo {
   logo?: string
   accentColor?: string
   /**
-   * EEO demographic information for job applications
+   * Free-form (markdown ok) application info (EEO, disclosures, work authorization, etc.).
+   * This is the only supported way to store EEO/application details.
    */
-  eeo?: EEOInfo
+  applicationInfo: string
 }
 
 /**

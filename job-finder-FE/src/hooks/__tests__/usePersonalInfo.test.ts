@@ -29,6 +29,7 @@ describe("usePersonalInfo", () => {
     avatar: undefined,
     logo: undefined,
     accentColor: "#000000",
+    applicationInfo: "Gender: Decline to self-identify",
   }
 
   beforeEach(() => {

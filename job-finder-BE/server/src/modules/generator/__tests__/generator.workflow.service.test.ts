@@ -171,7 +171,8 @@ class FakePersonalInfoStore {
   private mockData: PersonalInfo = {
     name: 'Test User',
     email: 'test@example.com',
-    accentColor: '#123456'
+    accentColor: '#123456',
+    applicationInfo: 'Gender: Decline to self-identify'
   }
 
   async get(): Promise<PersonalInfo | null> {

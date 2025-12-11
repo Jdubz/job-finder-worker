@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 
 const readFileMock = vi.fn()
 
@@ -11,6 +11,12 @@ const importWithMocks = async () => {
 
   return import('../provider-health.service')
 }
+
+afterAll(() => {
+  vi.unmock('node:fs/promises')
+  vi.unmock('node:os')
+  vi.resetModules()
+})
 
 describe('ensureCliProviderHealthy', () => {
   it('throws for claude when env var missing', async () => {
