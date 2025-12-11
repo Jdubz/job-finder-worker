@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
+    "@types/electron": "^1.4.38",
     "@types/node": "^20.17.50",
     "@vitest/coverage-v8": "^4.0.15",
     "electron": "^33.2.1",
