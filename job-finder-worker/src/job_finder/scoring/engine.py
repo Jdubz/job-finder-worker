@@ -128,7 +128,7 @@ class ScoringEngine:
         self.skill_match_config = config["skillMatch"]
         self.skills_config = config["skills"]
         self.salary_config = config["salary"]
-        self.experience_config = config["experience"]
+        self.experience_config = config.get("experience", {})  # Optional - scoring disabled
         self.freshness_config = config["freshness"]
         self.role_fit_config = config["roleFit"]
         self.company_config = config["company"]
@@ -599,7 +599,7 @@ class ScoringEngine:
         analog_score = self.skill_match_config["analogScore"]
         max_bonus = self.skill_match_config["maxBonus"]
         max_penalty = self.skill_match_config["maxPenalty"]
-        missing_ignore = set(s.lower() for s in self.skill_match_config.get("missingIgnore", []))
+        missing_ignore = set(s.lower() for s in self.skill_match_config["missingIgnore"])
 
         matched: List[tuple[str, float, float]] = []  # (skill, years, points)
         implied: List[tuple[str, str, float, float]] = []  # (job_skill, user_skill, years, points)

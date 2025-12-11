@@ -13,6 +13,8 @@ Matching semantics:
   If user has "express" and job wants "rest", user qualifies (gets bonus).
   But if user has "rest" and job wants "express", NO match.
   This handles: frameworks → patterns, specific → general, etc.
+  NOTE: Implies is NOT transitive. If A implies B and B implies C, A does NOT
+  automatically imply C. Each skill must explicitly list all skills it implies.
 
 - PARALLELS: Bidirectional alternative. "aws parallel gcp"
   If user has "aws" and job wants "gcp", user doesn't get penalized for missing.
@@ -105,12 +107,15 @@ class SkillTaxonomyRepository:
                 ("typescript", "language", "typescript,ts", "javascript", "", now),
                 ("python", "language", "python,py,python3", "", "", now),
                 # Backend frameworks - imply their language + REST
+                # NOTE: Since implies is NOT transitive, we must explicitly list all
+                # implied skills. Express lists "javascript" even though node.js also
+                # implies it, because express->node.js->javascript won't be followed.
                 ("node.js", "backend", "node.js,nodejs,node", "javascript,rest", "", now),
                 (
                     "express",
                     "backend",
                     "express,expressjs,express.js",
-                    "node.js,javascript,rest",
+                    "node.js,javascript,rest",  # All 3 needed since no transitive lookup
                     "fastapi,django,flask",
                     now,
                 ),
