@@ -530,26 +530,3 @@ describe("unwrap helpers", () => {
     expect(unwrapDocuments(docs)).toEqual(docs)
   })
 })
-
-describe("unwrap helpers", () => {
-  it("unwrapJobMatch handles data.match shape", () => {
-    const resp = { data: { match: { listing: { title: "Eng", companyName: "Acme" } } } }
-    expect(unwrapJobMatch(resp)).toEqual(resp.data.match)
-  })
-
-  it("unwrapJobMatch falls back to data", () => {
-    const resp = { data: { listing: { title: "Eng" } } }
-    expect(unwrapJobMatch(resp)).toEqual(resp.data)
-  })
-
-  it("unwrapDocuments handles data.requests shape", () => {
-    const docs = [{ id: "1" }]
-    const resp = { data: { requests: docs, count: 1 } }
-    expect(unwrapDocuments(resp)).toEqual(docs)
-  })
-
-  it("unwrapDocuments handles array directly", () => {
-    const docs = [{ id: "2" }]
-    expect(unwrapDocuments(docs)).toEqual(docs)
-  })
-})

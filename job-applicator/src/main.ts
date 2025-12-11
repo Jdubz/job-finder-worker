@@ -51,6 +51,7 @@ import {
   fetchWithRetry,
   parseApiError,
   getUserFriendlyErrorMessage,
+  getListingFromMatch,
   unwrapJobMatch,
   unwrapDocuments,
 } from "./utils.js"
@@ -766,6 +767,7 @@ ipcMain.handle(
       }
       const matchData = await matchRes.json()
       const match = unwrapJobMatch(matchData)
+      const listing = getListingFromMatch(match)
 
       // Start generation
       const res = await fetch(`${API_URL}/generator/start`, fetchOptions({
@@ -773,11 +775,11 @@ ipcMain.handle(
         body: JSON.stringify({
           generateType: options.type,
           job: {
-            role: (match as any)?.listing?.title || "Unknown Role",
-            company: (match as any)?.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: (match as any)?.listing?.url,
-            jobDescriptionText: (match as any)?.listing?.description,
-            location: (match as any)?.listing?.location,
+            role: listing?.title || "Unknown Role",
+            company: listing?.companyName || "Unknown Company",
+            jobDescriptionUrl: listing?.url,
+            jobDescriptionText: listing?.description,
+            location: listing?.location,
           },
           jobMatchId: options.jobMatchId,
           date: new Date().toLocaleDateString(),
@@ -818,6 +820,7 @@ ipcMain.handle(
       }
       const matchData = await matchRes.json()
       const match = unwrapJobMatch(matchData)
+      const listing = getListingFromMatch(match)
 
       // Start generation
       logger.info("Starting document generation...")
@@ -826,11 +829,11 @@ ipcMain.handle(
         body: JSON.stringify({
           generateType: options.type,
           job: {
-            role: (match as any)?.listing?.title || "Unknown Role",
-            company: (match as any)?.listing?.companyName || "Unknown Company",
-            jobDescriptionUrl: (match as any)?.listing?.url,
-            jobDescriptionText: (match as any)?.listing?.description,
-            location: (match as any)?.listing?.location,
+            role: listing?.title || "Unknown Role",
+            company: listing?.companyName || "Unknown Company",
+            jobDescriptionUrl: listing?.url,
+            jobDescriptionText: listing?.description,
+            location: listing?.location,
           },
           jobMatchId: options.jobMatchId,
           date: new Date().toLocaleDateString(),
