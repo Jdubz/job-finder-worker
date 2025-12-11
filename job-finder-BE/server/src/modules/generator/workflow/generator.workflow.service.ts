@@ -607,10 +607,11 @@ export class GeneratorWorkflowService {
     )
 
     // Combine all text content for analysis once (DRY)
-    // Note: content.bodyParagraphs is guaranteed to be a valid array by validateCoverLetterContent
+    // Defensive: ensure content.bodyParagraphs is an array before spreading
+    const bodyParagraphs = Array.isArray(content.bodyParagraphs) ? content.bodyParagraphs : []
     const combinedContent = [
       content.openingParagraph || '',
-      ...content.bodyParagraphs,
+      ...bodyParagraphs,
       content.closingParagraph || ''
     ].join(' ')
     const allText = combinedContent.toLowerCase()

@@ -60,6 +60,30 @@ describe('AI Output Schema Validation', () => {
       expect(result.recovered).toBe(true)
     })
 
+    it('extracts first balanced JSON object when multiple JSON-like structures exist', () => {
+      const textWithMultipleJson = 'Some text {"inner": {"data": 1}} more text {"other": 2}'
+
+      const result = validateResumeContent(textWithMultipleJson)
+      // Should extract the first complete JSON object: {"inner": {"data": 1}}
+      expect(result.success).toBe(true)
+      expect(result.recovered).toBe(true)
+    })
+
+    it('handles mixed-type skills array by filtering to category objects', () => {
+      const resumeWithMixedSkills = JSON.stringify({
+        professionalSummary: 'Test',
+        experience: [],
+        skills: ['skill1', { category: 'Languages', items: ['TypeScript', 'Python'] }]
+      })
+
+      const result = validateResumeContent(resumeWithMixedSkills)
+      expect(result.success).toBe(true)
+      // Mixed array should be normalized - strings are filtered out, only objects with items kept
+      expect(result.data?.skills).toEqual([
+        { category: 'Languages', items: ['TypeScript', 'Python'] }
+      ])
+    })
+
     it('normalizes skills from string array to category format', () => {
       const resumeWithFlatSkills = JSON.stringify({
         professionalSummary: 'Test',
@@ -209,6 +233,35 @@ describe('AI Output Schema Validation', () => {
       const result = validateCoverLetterContent(coverLetterMissingBody)
       expect(result.success).toBe(true)
       expect(result.data?.bodyParagraphs).toEqual([])
+    })
+
+    it('handles bodyParagraphs as single object with text property', () => {
+      const coverLetterWithObjectBody = JSON.stringify({
+        greeting: 'Hello,',
+        openingParagraph: 'Opening',
+        bodyParagraphs: { text: 'Single paragraph as object' },
+        closingParagraph: 'Closing',
+        signature: 'Best,'
+      })
+
+      const result = validateCoverLetterContent(coverLetterWithObjectBody)
+      expect(result.success).toBe(true)
+      expect(result.recovered).toBe(true)
+      expect(result.data?.bodyParagraphs).toEqual(['Single paragraph as object'])
+    })
+
+    it('handles bodyParagraphs as single object with content property', () => {
+      const coverLetterWithContentObj = JSON.stringify({
+        greeting: 'Hello,',
+        openingParagraph: 'Opening',
+        bodyParagraphs: { content: 'Content from object' },
+        closingParagraph: 'Closing',
+        signature: 'Best,'
+      })
+
+      const result = validateCoverLetterContent(coverLetterWithContentObj)
+      expect(result.success).toBe(true)
+      expect(result.data?.bodyParagraphs).toEqual(['Content from object'])
     })
 
     it('extracts bodyParagraphs from "body" field', () => {

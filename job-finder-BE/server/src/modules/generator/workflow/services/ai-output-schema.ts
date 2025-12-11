@@ -110,11 +110,28 @@ function extractJsonFromText(text: string): string {
     return codeBlockMatch[1].trim()
   }
 
-  // Try to find JSON object boundaries
+  // Try to find the first balanced JSON object using brace matching
   const firstBrace = text.indexOf('{')
-  const lastBrace = text.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    return text.slice(firstBrace, lastBrace + 1)
+  if (firstBrace === -1) {
+    return text
+  }
+
+  let braceCount = 0
+  let end = -1
+  for (let i = firstBrace; i < text.length; i++) {
+    if (text[i] === '{') {
+      braceCount++
+    } else if (text[i] === '}') {
+      braceCount--
+      if (braceCount === 0) {
+        end = i
+        break
+      }
+    }
+  }
+
+  if (end !== -1) {
+    return text.slice(firstBrace, end + 1)
   }
 
   return text
@@ -129,13 +146,13 @@ function extractJsonFromText(text: string): string {
 function normalizeSkills(skills: unknown): Array<{ category: string; items: string[] }> {
   if (!skills) return []
 
-  // If it's a string array, wrap it
-  if (Array.isArray(skills) && skills.length > 0 && typeof skills[0] === 'string') {
+  // If it's a string array (check ALL elements, not just first), wrap it
+  if (Array.isArray(skills) && skills.length > 0 && skills.every((item) => typeof item === 'string')) {
     return [{ category: 'Skills', items: skills as string[] }]
   }
 
   // If it's a single object with items
-  if (skills && typeof skills === 'object' && !Array.isArray(skills) && 'items' in skills) {
+  if (typeof skills === 'object' && !Array.isArray(skills) && 'items' in skills) {
     const obj = skills as { category?: string; items?: unknown[] }
     return [{
       category: obj.category || 'Skills',
@@ -143,7 +160,7 @@ function normalizeSkills(skills: unknown): Array<{ category: string; items: stri
     }]
   }
 
-  // If it's already an array, normalize each entry
+  // If it's already an array, normalize each entry (handles mixed arrays)
   if (Array.isArray(skills)) {
     return skills
       .filter((s): s is object => s !== null && typeof s === 'object')
@@ -175,12 +192,12 @@ function normalizeBodyParagraphs(body: unknown): string[] {
     return body.trim() ? [body.trim()] : []
   }
 
-  // Object with text property
-  if (typeof body === 'object' && !Array.isArray(body) && body !== null) {
+  // Object with text property (trim for consistency with array handling)
+  if (typeof body === 'object' && !Array.isArray(body)) {
     const obj = body as Record<string, unknown>
-    if (typeof obj.text === 'string') return [obj.text]
-    if (typeof obj.content === 'string') return [obj.content]
-    if (typeof obj.paragraph === 'string') return [obj.paragraph]
+    if (typeof obj.text === 'string') return [obj.text.trim()].filter(Boolean)
+    if (typeof obj.content === 'string') return [obj.content.trim()].filter(Boolean)
+    if (typeof obj.paragraph === 'string') return [obj.paragraph.trim()].filter(Boolean)
   }
 
   // Array - filter to valid strings
