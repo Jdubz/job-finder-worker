@@ -60,6 +60,59 @@ describe('AI Output Schema Validation', () => {
       expect(result.recovered).toBe(true)
     })
 
+    it('unwraps Claude CLI JSON output format', () => {
+      // Claude CLI with --output-format json wraps results in {"type":"result","result":"..."}
+      const cliWrapped = JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        result: JSON.stringify({
+          personalInfo: { title: 'Software Engineer' },
+          professionalSummary: 'Experienced developer',
+          experience: []
+        })
+      })
+
+      const result = validateResumeContent(cliWrapped)
+      expect(result.success).toBe(true)
+      expect(result.data?.personalInfo?.title).toBe('Software Engineer')
+      expect(result.data?.professionalSummary).toBe('Experienced developer')
+    })
+
+    it('unwraps CLI output with conversational text and embedded JSON', () => {
+      // AI returns explanation text with JSON in markdown code block inside result field
+      const cliWrappedWithText = JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        result: 'I\'ve synthesized a tailored resume. Here it is:\n\n```json\n{"personalInfo": {"title": "Dev"}, "professionalSummary": "Test summary", "experience": []}\n```\n\nHope this helps!'
+      })
+
+      const result = validateResumeContent(cliWrappedWithText)
+      expect(result.success).toBe(true)
+      expect(result.data?.professionalSummary).toBe('Test summary')
+    })
+
+    it('handles non-CLI-wrapped JSON normally', () => {
+      // Regular JSON without CLI wrapper should still work
+      const directJson = JSON.stringify({
+        personalInfo: { title: 'Engineer' },
+        professionalSummary: 'Direct JSON test',
+        experience: []
+      })
+
+      const result = validateResumeContent(directJson)
+      expect(result.success).toBe(true)
+      expect(result.data?.professionalSummary).toBe('Direct JSON test')
+    })
+
+    it('handles CLI wrapper with non-JSON result content', () => {
+      // If result field contains plain text (no JSON), should fail since we can't extract resume data
+      const wrapperWithPlainText = '{"type": "result", "result": "I cannot generate a resume without more information."}'
+
+      const result = validateResumeContent(wrapperWithPlainText)
+      // Should fail since there's no JSON resume structure in the result
+      expect(result.success).toBe(false)
+    })
+
     it('extracts first balanced JSON object when multiple JSON-like structures exist', () => {
       const textWithMultipleJson = 'Some text {"inner": {"data": 1}} more text {"other": 2}'
 

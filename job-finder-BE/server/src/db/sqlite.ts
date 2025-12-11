@@ -9,6 +9,8 @@ type SQLiteOpenOptions = Database.Options & { uri?: boolean }
 
 let db: Database.Database | null = null
 let migrationsApplied = false
+let lastCheckpoint = 0
+const CHECKPOINT_THROTTLE_MS = 1000
 
 export function getDb(): Database.Database {
   if (db) {
@@ -54,4 +56,25 @@ export function closeDb(): void {
   logger.info('Closing SQLite database')
   db.close()
   db = null
+  lastCheckpoint = 0 // Reset throttle so fresh connections checkpoint immediately
+}
+
+/**
+ * Run a passive WAL checkpoint to ensure external writes are visible.
+ * Call this before reading config that may have been modified externally (e.g., via sqlite3 CLI).
+ * Passive mode does not block writers and is safe to call frequently.
+ * Throttled to run at most once per second to avoid unnecessary disk I/O.
+ */
+export function checkpointWal(): void {
+  if (!db) return
+
+  const now = Date.now()
+  if (now - lastCheckpoint < CHECKPOINT_THROTTLE_MS) return
+  lastCheckpoint = now
+
+  try {
+    db.pragma('wal_checkpoint(PASSIVE)')
+  } catch (err) {
+    logger.warn({ err }, 'Failed to run WAL checkpoint. External DB changes may not be visible.')
+  }
 }
