@@ -580,6 +580,28 @@ export function parseJsonObjectFromOutput(output: string): Record<string, unknow
 }
 
 /**
+ * Extract a JSON-bearing string from a wrapper object. Some CLI tools return
+ * `{ type: "result", output_text: "<json>" }` or similar instead of the
+ * expected `{ result: "<json>" }` shape. This helper finds the first string
+ * value that looks like JSON so we can still parse the payload.
+ */
+function extractJsonStringFromWrapper(obj: Record<string, unknown>): string | undefined {
+  const candidateKeys = ["result", "output_text", "outputText", "text", "completion", "message"]
+  for (const key of candidateKeys) {
+    const value = obj[key]
+    if (typeof value === "string") return value
+  }
+
+  // As a last resort, scan for any string value that looks like it might be JSON
+  for (const value of Object.values(obj)) {
+    if (typeof value === "string" && /[\[\{]/.test(value)) {
+      return value
+    }
+  }
+  return undefined
+}
+
+/**
  * Parse CLI output that may include wrapper objects with a `result` field.
  * Handles:
  * - Raw arrays
@@ -591,14 +613,25 @@ export function parseCliArrayOutput(output: string): unknown[] {
     const parsed = JSON.parse(output)
     if (Array.isArray(parsed)) return parsed
 
-    if (parsed && typeof parsed === "object" && "result" in parsed) {
-      const inner = (parsed as { result: unknown }).result
-      if (typeof inner === "string") {
-        return parseJsonArrayFromOutput(inner)
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>
+      if ("result" in record) {
+        const inner = record.result
+        if (typeof inner === "string") {
+          return parseJsonArrayFromOutput(inner)
+        }
+        if (Array.isArray(inner)) {
+          return inner
+        }
       }
-      if (Array.isArray(inner)) {
-        return inner
+
+      const wrapped = extractJsonStringFromWrapper(record)
+      if (wrapped) {
+        return parseJsonArrayFromOutput(wrapped)
       }
+
+      const firstArray = Object.values(record).find((value): value is unknown[] => Array.isArray(value))
+      if (firstArray) return firstArray
     }
   } catch {
     // fall through to string search parser
@@ -617,8 +650,9 @@ export function parseCliObjectOutput(output: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(output)
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      if ("result" in parsed) {
-        const inner = (parsed as { result: unknown }).result
+      const record = parsed as Record<string, unknown>
+      if ("result" in record) {
+        const inner = record.result
         if (typeof inner === "string") {
           return parseJsonObjectFromOutput(inner)
         }
@@ -626,7 +660,19 @@ export function parseCliObjectOutput(output: string): Record<string, unknown> {
           return inner as Record<string, unknown>
         }
       }
-      return parsed as Record<string, unknown>
+
+      const wrapped = extractJsonStringFromWrapper(record)
+      if (wrapped) {
+        return parseJsonObjectFromOutput(wrapped)
+      }
+
+      const firstObject = Object.values(record).find(
+        (value): value is Record<string, unknown> =>
+          Boolean(value) && typeof value === "object" && !Array.isArray(value)
+      )
+      if (firstObject) return firstObject
+
+      return record
     }
   } catch {
     // fall through to string search parser
