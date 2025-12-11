@@ -362,7 +362,7 @@ Rules:
 1. For select dropdowns, use the "value" property from options (not "text")
 2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
 3. Skip submit buttons - status: "skipped", reason: "Submit button"
-4. For EEO fields, use the display values provided above or skip if not provided
+4. For any EEO/application field, use the user's Application Information text above; if missing, mark status "skipped" with reason
 5. If no data available for a required field, mark status: "skipped" with reason
 6. CRITICAL: Experience/employment history fields MUST exactly match the work history above - this ensures consistency with the uploaded resume. Use exact company names, roles, and dates.
 7. Return ONLY valid JSON array, no markdown, no explanation`

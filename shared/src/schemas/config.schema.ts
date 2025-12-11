@@ -302,7 +302,8 @@ export const personalInfoSchema = z.object({
   avatar: z.string().optional(),
   logo: z.string().optional(),
   accentColor: z.string().optional(),
-  applicationInfo: z.string().min(1, 'applicationInfo is required'),
+  // Allow empty for backward compatibility; downstream generation will error if missing.
+  applicationInfo: z.string().default(''),
 }).strict()
 
 export const configPayloadSchemaMap = {
