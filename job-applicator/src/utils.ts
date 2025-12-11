@@ -218,7 +218,7 @@ export type {
 } from "./types.js"
 
 // Import types for use in this file
-import type { ContentItem, PersonalInfo, FormField, FillInstruction, EnhancedFillInstruction } from "./types.js"
+import type { ContentItem, FormField, FillInstruction, EnhancedFillInstruction } from "./types.js"
 
 /**
  * Format work history for form fill prompts.
@@ -284,133 +284,6 @@ export function formatWorkHistory(items: ContentItem[], indent = 0, includeSkill
   return lines.join("\n")
 }
 
-// Build basic form fill prompt
-export function buildPrompt(fields: FormField[], profile: PersonalInfo, workHistory: ContentItem[]): string {
-  const profileStr = `
-Name: ${profile.name}
-Email: ${profile.email}
-Phone: ${profile.phone || "Not provided"}
-Location: ${profile.location || "Not provided"}
-Website: ${profile.website || "Not provided"}
-GitHub: ${profile.github || "Not provided"}
-LinkedIn: ${profile.linkedin || "Not provided"}
-`.trim()
-
-  const workHistoryStr = workHistory.length > 0 ? formatWorkHistory(workHistory) : "Not provided"
-  const fieldsJson = JSON.stringify(fields, null, 2)
-
-  return `Fill this job application form. Return ONLY a JSON array of fill instructions.
-
-## User Profile
-${profileStr}
-
-## Work History / Experience
-${workHistoryStr}
-
-## Form Fields
-${fieldsJson}
-
-## Instructions
-Return a JSON array where each item has:
-- "selector": the CSS selector from the form fields above
-- "value": the value to fill
-
-Rules:
-1. Only fill fields you're confident about
-2. Skip file upload fields (type="file")
-3. Skip cover letter or free-text fields asking "why do you want this job"
-4. For select dropdowns, use the "value" property from the options array (not the "text")
-5. CRITICAL: Experience/employment history fields MUST exactly match the work history above - this ensures consistency with the uploaded resume
-   Note: The work history above is the authoritative source. If you detect any inconsistencies, always use the work history above and do not attempt to infer or fill in missing details.
-6. Return ONLY valid JSON array, no markdown, no explanation
-
-Example output:
-[{"selector": "#email", "value": "john@example.com"}, {"selector": "#phone", "value": "555-1234"}]`
-}
-
-// Build enhanced form fill prompt with EEO and job context
-export function buildEnhancedPrompt(
-  fields: FormField[],
-  profile: PersonalInfo,
-  workHistory: ContentItem[],
-  jobMatch: Record<string, unknown> | null
-): string {
-  const eeoSection = profile.eeo
-    ? `
-## EEO Information (US Equal Employment Opportunity)
-Race: ${formatEEOValue("race", profile.eeo.race)}
-Hispanic/Latino: ${formatEEOValue("hispanicLatino", profile.eeo.hispanicLatino)}
-Gender: ${formatEEOValue("gender", profile.eeo.gender)}
-Veteran Status: ${formatEEOValue("veteranStatus", profile.eeo.veteranStatus)}
-Disability Status: ${formatEEOValue("disabilityStatus", profile.eeo.disabilityStatus)}
-`
-    : "\n## EEO Information\nNot provided - skip EEO fields\n"
-
-  // Helper to safely extract nested properties with type checking
-  const getNestedString = (obj: Record<string, unknown>, ...keys: string[]): string => {
-    let current: unknown = obj
-    for (const key of keys) {
-      if (current && typeof current === "object" && current !== null && key in current) {
-        current = (current as Record<string, unknown>)[key]
-      } else {
-        return "N/A"
-      }
-    }
-    if (current === null || current === undefined) return "N/A"
-    if (Array.isArray(current)) return current.join(", ") || "N/A"
-    return String(current)
-  }
-
-  const jobContextSection = jobMatch
-    ? `
-## Job-Specific Context
-Company: ${getNestedString(jobMatch, "listing", "companyName")}
-Role: ${getNestedString(jobMatch, "listing", "title")}
-Matched Skills: ${Array.isArray(jobMatch.matchedSkills) ? jobMatch.matchedSkills.join(", ") : "N/A"}
-ATS Keywords: ${getNestedString(jobMatch, "resumeIntakeData", "atsKeywords")}
-`
-    : ""
-
-  return `Fill this job application form. Return a JSON array with status for each field.
-
-## CRITICAL SAFETY RULES
-1. NEVER fill or interact with submit/apply buttons
-2. Skip any field that would submit the form
-3. The user must manually click the final submit button
-
-## User Profile
-Name: ${profile.name}
-Email: ${profile.email}
-Phone: ${profile.phone || "Not provided"}
-Location: ${profile.location || "Not provided"}
-Website: ${profile.website || "Not provided"}
-GitHub: ${profile.github || "Not provided"}
-LinkedIn: ${profile.linkedin || "Not provided"}
-Summary: ${profile.summary || "Not provided"}
-${eeoSection}
-## Work History / Experience
-${workHistory.length > 0 ? formatWorkHistory(workHistory) : "Not provided"}
-${jobContextSection}
-## Form Fields
-${JSON.stringify(fields, null, 2)}
-
-## Response Format
-Return a JSON array. For EACH form field, include a status and label:
-[
-  {"selector": "#email", "label": "Email Address", "value": "user@example.com", "status": "filled"},
-  {"selector": "#coverLetter", "label": "Cover Letter", "value": null, "status": "skipped", "reason": "Requires custom text"}
-]
-
-Rules:
-1. For select dropdowns, use the "value" property from options (not "text")
-2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
-3. Skip submit buttons - status: "skipped", reason: "Submit button"
-4. For EEO fields, use the display values provided above or skip if not provided
-5. If no data available for a required field, mark status: "skipped" with reason
-6. CRITICAL: Experience/employment history fields MUST exactly match the work history above - this ensures consistency with the uploaded resume. Use exact company names, roles, and dates.
-7. Return ONLY valid JSON array, no markdown, no explanation`
-}
-
 /**
  * Build form fill prompt using pre-formatted profile text from the applicator API.
  * This is the preferred method - uses server-side optimized serialization.
@@ -446,15 +319,25 @@ ${JSON.stringify(fields, null, 2)}
 Return a JSON array. For EACH form field:
 [
   {"selector": "#email", "label": "Email", "value": "user@example.com", "status": "filled"},
+  {"selector": "#authorized", "label": "Authorized to work", "value": "true", "status": "filled"},
   {"selector": "#coverLetter", "label": "Cover Letter", "value": null, "status": "skipped", "reason": "Requires custom text"}
 ]
 
-Rules:
-1. For select dropdowns, use the "value" property from options (not "text")
-2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
-3. Skip submit buttons - status: "skipped", reason: "Submit button"
-4. If no data available, mark status: "skipped" with reason
-5. Return ONLY valid JSON array, no markdown, no explanation`
+## Field Type Rules
+1. **Select dropdowns**: Use the "value" property from options (not "text")
+2. **Checkboxes (type="checkbox")**: Use "true" or "false" as the value string:
+   - Work authorization questions: Check profile for citizenship/visa status
+   - Agreement/consent checkboxes: Use "true"
+   - Skills/technologies: Check if profile lists that skill
+   - Accommodation requests: "false" unless profile indicates otherwise
+3. **Radio buttons (type="radio")**: Use the option value that matches profile data
+4. **File uploads (type="file")**: Skip with reason "File upload"
+5. **Submit buttons**: Skip with reason "Submit button"
+6. **Unknown data**: Mark status: "skipped" with specific reason
+
+IMPORTANT: Fill checkboxes and radio buttons when profile data supports an answer. Do not skip them just because they are boolean fields.
+
+Return ONLY valid JSON array, no markdown, no explanation.`
 }
 
 // Build job extraction prompt

@@ -430,9 +430,26 @@ select:focus {
   cursor: not-allowed;
 }
 
-/* Results */
-.results-content {
-  min-height: 60px;
+/* Form Fill Section */
+.fill-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fill-controls .provider-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.fill-controls .btn-fill {
+  flex-shrink: 0;
+}
+
+.fill-output {
+  min-height: 200px;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 .results-summary {
@@ -703,4 +720,102 @@ select:focus {
 .job-status-badge.ignored {
   background: #6b7280;
   color: #fff;
+}
+
+/* Form Fill Progress Styles */
+.fill-progress {
+  padding: 16px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.fill-phase {
+  font-size: 13px;
+  color: #93c5fd;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.fill-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 8px 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fill-progress-bar {
+  height: 8px;
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.fill-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.fill-progress-text {
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.streaming-preview {
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+  font-size: 12px;
+  color: #d1d5db;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 10px;
+  max-height: 350px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.streaming-info {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.streaming-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.streaming-stat .stat-value {
+  font-weight: 600;
+  color: #4ade80;
+  font-size: 16px;
+  min-width: 40px;
+}
+
+.streaming-recent {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }

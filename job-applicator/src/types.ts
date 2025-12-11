@@ -111,6 +111,35 @@ export interface FormFillSummary {
   duration: number
 }
 
+/**
+ * Progress updates for form filling - sent via IPC during the fill process.
+ * Supports streaming CLI output and field-by-field fill progress.
+ */
+export interface FormFillProgress {
+  /** Current phase of the fill process */
+  phase: "starting" | "ai-processing" | "filling" | "completed" | "failed"
+  /** Status message to display */
+  message: string
+  /** Streaming text from AI (token-by-token as it arrives) */
+  streamingText?: string
+  /** Whether AI is still generating */
+  isStreaming?: boolean
+  /** Total form fields detected */
+  totalFields?: number
+  /** Number of fields processed so far */
+  processedFields?: number
+  /** Current field being filled */
+  currentField?: {
+    label: string
+    selector: string
+    status: "processing" | "filled" | "skipped"
+  }
+  /** Final summary (only on completion) */
+  summary?: FormFillSummary
+  /** Error message (only on failure) */
+  error?: string
+}
+
 // ============================================================================
 // Job Extraction Types (app-specific)
 // ============================================================================

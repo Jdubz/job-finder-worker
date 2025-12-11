@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
     />
     <title>Job Applicator</title>
     <link rel="stylesheet" href="styles.css" />
@@ -14,12 +14,6 @@
     <div class="toolbar">
       <input type="text" class="url-input" id="urlInput" placeholder="Enter job application URL..." />
       <button class="btn-go" id="goBtn">Go</button>
-      <select id="providerSelect">
-        <option value="claude">Claude</option>
-        <option value="codex">Codex</option>
-        <option value="gemini">Gemini</option>
-      </select>
-      <button class="btn-fill" id="fillBtn">Fill Form</button>
       <button class="btn-submit" id="submitJobBtn">Submit Job</button>
       <span class="status" id="status">Ready</span>
     </div>
@@ -108,11 +102,19 @@
           </div>
         </section>
 
-        <!-- Results Section -->
-        <section class="sidebar-section" id="resultsSection">
-          <h3 class="section-title">Fill Results</h3>
-          <div class="results-content" id="resultsContent">
-            <div class="empty-placeholder">No results yet</div>
+        <!-- Form Fill Section -->
+        <section class="sidebar-section" id="fillSection">
+          <h3 class="section-title">Form Fill</h3>
+          <div class="fill-controls">
+            <select id="providerSelect" class="provider-select">
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="gemini">Gemini</option>
+            </select>
+            <button class="btn-fill" id="fillBtn">Fill Form</button>
+          </div>
+          <div class="fill-output" id="fillOutput">
+            <div class="empty-placeholder">Ready to fill form</div>
           </div>
         </section>
       </div>

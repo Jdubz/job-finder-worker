@@ -1,6 +1,7 @@
 import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
 import type { WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
+import * as readline from "readline"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
@@ -32,20 +33,18 @@ ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => 
 // Import shared types and utilities
 import type {
   CliProvider,
-  ContentItem,
   FormField,
-  FillInstruction,
   EnhancedFillInstruction,
   FormFillSummary,
+  FormFillProgress,
   JobExtraction,
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import { getCliCommand } from "./cli-config.js"
+import { getCliCommand, getStreamingCliCommand } from "./cli-config.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
-  buildPrompt,
   buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
@@ -54,9 +53,7 @@ import {
 } from "./utils.js"
 // Typed API client
 import {
-  fetchPersonalInfo,
   fetchApplicatorProfile,
-  fetchContentItems,
   fetchJobMatches,
   fetchJobMatch,
   findJobMatchByUrl,
@@ -77,9 +74,9 @@ const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
 
 // CLI timeout and warning thresholds
-// 2 minutes for complex form fills - increased from 60s to handle large forms
+// 5 minutes for complex form fills - increased from 2 minutes (120s) to handle large forms
 // Warning intervals help identify if operations are taking unusually long
-const CLI_TIMEOUT_MS = 120000
+const CLI_TIMEOUT_MS = 300000 // 5 minutes
 const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
 
 // Maximum steps for generation workflow (prevent infinite loops)
@@ -205,8 +202,9 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
   }
 
   // Open DevTools in development for debugging
+  // Note: DevTools may not open automatically with electronmon (make watch)
+  // Use Cmd+Shift+I or View menu to toggle manually
   if (process.env.NODE_ENV !== "production") {
-    logger.info("Opening DevTools...")
     mainWindow.webContents.openDevTools({ mode: "detach" })
   }
 
@@ -268,95 +266,6 @@ ipcMain.handle("get-url", async (): Promise<string> => {
   return browserView.webContents.getURL()
 })
 
-// Fill form with AI
-ipcMain.handle(
-  "fill-form",
-  async (_event: IpcMainInvokeEvent, provider: CliProvider): Promise<{ success: boolean; message: string }> => {
-    try {
-      if (!browserView) throw new Error("BrowserView not initialized")
-
-      // 1. Get profile and work history from job-finder backend using typed API client
-      logger.info("Fetching profile from backend...")
-      const [profileResult, contentResult] = await Promise.allSettled([
-        fetchPersonalInfo(),
-        fetchContentItems({ limit: 100 }) // Get all content for complete work history
-      ])
-
-      // Profile is required
-      if (profileResult.status === "rejected") {
-        const errorMsg = getUserFriendlyErrorMessage(profileResult.reason, logger)
-        throw new Error(`Failed to fetch profile: ${errorMsg}`)
-      }
-      const profile = profileResult.value
-
-      // Validate required profile fields
-      if (!profile.name || !profile.email) {
-        throw new Error("Profile missing required fields (name, email). Please configure your profile first.")
-      }
-
-      // Parse work history (optional - don't fail if unavailable)
-      let workHistory: ContentItem[] = []
-      if (contentResult.status === "fulfilled") {
-        workHistory = contentResult.value
-        logger.info(`Fetched ${workHistory.length} work history items`)
-      } else {
-        logger.warn("Work history unavailable, continuing with profile only")
-      }
-
-      // 2. Extract form fields from page
-      logger.info("Extracting form fields...")
-      const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
-      logger.info(`Found ${fields.length} form fields`)
-
-      if (fields.length === 0) {
-        return { success: false, message: "No form fields found on page" }
-      }
-
-      // 3. Build prompt and call CLI
-      logger.info(`Calling ${provider} CLI for field mapping...`)
-      const prompt = buildPrompt(fields, profile, workHistory)
-      const instructions = await runCli(provider, prompt)
-      logger.info(`Got ${instructions.length} fill instructions`)
-
-      // 4. Fill fields using executeJavaScript
-      logger.info("Filling form fields...")
-      let filledCount = 0
-      for (const instruction of instructions) {
-        try {
-          const safeSelector = JSON.stringify(instruction.selector)
-          const safeValue = JSON.stringify(instruction.value)
-          const filled = await browserView.webContents.executeJavaScript(`
-            (() => {
-              const el = document.querySelector(${safeSelector});
-              if (!el) return false;
-              if (el.tagName.toLowerCase() === 'select') {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              } else {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-              return true;
-            })()
-          `)
-          if (filled) filledCount++
-        } catch (err) {
-          logger.warn(`Failed to fill ${instruction.selector}:`, err)
-        }
-      }
-
-      return {
-        success: true,
-        message: `Filled ${filledCount}/${instructions.length} fields`,
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error("Fill form error:", message)
-      return { success: false, message }
-    }
-  }
-)
 
 // Helper function to set files on a file input using Electron's debugger API
 async function setFileInputFiles(webContents: WebContents, selector: string, filePaths: string[]): Promise<void> {
@@ -398,6 +307,164 @@ async function setFileInputFiles(webContents: WebContents, selector: string, fil
       logger.warn("Failed to detach debugger, this may be expected:", err)
     }
   }
+}
+
+/**
+ * Robust form field filling that works with React/Vue/Angular controlled inputs.
+ *
+ * The problem: Modern frameworks like React intercept the native `value` setter.
+ * Simply setting `el.value = "x"` only updates the DOM, not React's internal state.
+ * When the user interacts with the form, React re-renders using its state (which is
+ * still empty), wiping out all manually-set values.
+ *
+ * The solution: Use the native HTMLInputElement value setter to bypass React's
+ * interception, then dispatch proper events to notify the framework of the change.
+ *
+ * References:
+ * - https://coryrylan.com/blog/trigger-input-updates-with-react-controlled-inputs
+ * - https://github.com/facebook/react/issues/1152
+ */
+async function fillFormField(
+  webContents: WebContents,
+  selector: string,
+  value: string,
+  fieldType?: string
+): Promise<boolean> {
+  const safeSelector = JSON.stringify(selector)
+  const safeValue = JSON.stringify(value)
+
+  // Handle checkboxes and radio buttons differently
+  if (fieldType === "checkbox" || fieldType === "radio") {
+    return await webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${safeSelector});
+        if (!el) return false;
+
+        const shouldBeChecked = ${safeValue}.toLowerCase() === 'true' ||
+                               ${safeValue}.toLowerCase() === 'yes' ||
+                               ${safeValue} === '1';
+
+        if (el.checked !== shouldBeChecked) {
+          // Use native setter for checked property
+          const nativeCheckedSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'checked'
+          )?.set;
+
+          if (nativeCheckedSetter) {
+            nativeCheckedSetter.call(el, shouldBeChecked);
+          } else {
+            el.checked = shouldBeChecked;
+          }
+
+          // Dispatch click and change events
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return true;
+      })()
+    `)
+  }
+
+  // Handle select elements
+  if (fieldType === "select" || fieldType === "select-one" || fieldType === "select-multiple") {
+    return await webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${safeSelector});
+        if (!el || el.tagName.toLowerCase() !== 'select') return false;
+
+        // Find matching option (case-insensitive, trimmed)
+        const targetValue = ${safeValue}.toLowerCase().trim();
+        let matchedValue = null;
+
+        for (const opt of el.options) {
+          if (opt.value.toLowerCase().trim() === targetValue ||
+              opt.textContent?.toLowerCase().trim() === targetValue) {
+            matchedValue = opt.value;
+            break;
+          }
+        }
+
+        if (matchedValue === null) {
+          // Try partial match if exact match not found
+          for (const opt of el.options) {
+            if (opt.value.toLowerCase().includes(targetValue) ||
+                opt.textContent?.toLowerCase().includes(targetValue)) {
+              matchedValue = opt.value;
+              break;
+            }
+          }
+        }
+
+        if (matchedValue !== null) {
+          el.value = matchedValue;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        }
+
+        // If still no match, try setting directly
+        el.value = ${safeValue};
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `)
+  }
+
+  // Handle text inputs, textareas, and other input types
+  // This is the critical fix for React controlled inputs
+  return await webContents.executeJavaScript(`
+    (() => {
+      const el = document.querySelector(${safeSelector});
+      if (!el) return false;
+
+      const tagName = el.tagName.toLowerCase();
+      const isInput = tagName === 'input';
+      const isTextarea = tagName === 'textarea';
+
+      if (!isInput && !isTextarea) return false;
+
+      // Focus the element first (important for some frameworks)
+      el.focus();
+
+      // Get the native value setter to bypass React's interception
+      // React overloads the value setter to track state changes, but we need
+      // to bypass that to set the value directly on the DOM element
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      )?.set;
+
+      // Use the appropriate native setter
+      if (isInput && nativeInputValueSetter) {
+        nativeInputValueSetter.call(el, ${safeValue});
+      } else if (isTextarea && nativeTextAreaValueSetter) {
+        nativeTextAreaValueSetter.call(el, ${safeValue});
+      } else {
+        // Fallback to direct assignment
+        el.value = ${safeValue};
+      }
+
+      // Dispatch events to notify React/Vue/Angular of the change
+      // InputEvent is more reliable than Event for modern frameworks
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: ${safeValue}
+      }));
+
+      // Also dispatch change event for frameworks that listen to it
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Blur to trigger validation and ensure the value is committed
+      el.blur();
+
+      return true;
+    })()
+  `)
 }
 
 // Upload resume/document to form using Electron's debugger API (CDP)
@@ -817,10 +884,10 @@ ipcMain.handle(
   }
 )
 
-// Enhanced form fill with EEO, job match context, and results tracking
-// Uses the optimized /api/applicator/profile endpoint for pre-formatted profile data
+// Fill form with AI using optimized profile endpoint
+// Includes EEO data, job match context, streaming progress, and results tracking
 ipcMain.handle(
-  "fill-form-enhanced",
+  "fill-form",
   async (
     _event: IpcMainInvokeEvent,
     options: { provider: CliProvider; jobMatchId?: string; documentId?: string }
@@ -830,20 +897,53 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get pre-formatted profile text from optimized applicator endpoint
-      // This includes personal info, EEO, work history, education, and skills - all pre-serialized
-      logger.info("Fetching applicator profile from backend...")
-      const profileText = await fetchApplicatorProfile()
-      logger.info(`Received profile text (${profileText.length} chars)`)
+      // Send initial progress
+      sendFormFillProgress({
+        phase: "starting",
+        message: "Preparing to fill form...",
+      })
 
-      // Validate profile has content - empty profile would result in poor form filling
+      // 1. Get pre-formatted profile text from optimized applicator endpoint
+      logger.info("Fetching applicator profile from backend...")
+      sendFormFillProgress({
+        phase: "starting",
+        message: "Loading your profile...",
+      })
+
+      let profileText: string
+      try {
+        profileText = await fetchApplicatorProfile()
+        logger.info(`Received profile text (${profileText.length} chars)`)
+      } catch (err) {
+        const rawMessage = err instanceof Error ? err.message : String(err)
+        logger.error(`Profile fetch failed with raw error: ${rawMessage}`)
+        const errorMsg = `Failed to fetch profile: ${getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(rawMessage), logger)}`
+        sendFormFillProgress({
+          phase: "failed",
+          message: errorMsg,
+          error: errorMsg,
+        })
+        throw new Error(errorMsg)
+      }
+
+      // Validate profile has content
       if (!profileText || profileText.trim().length < 50) {
-        throw new Error("Profile data is empty or incomplete. Please configure your profile before filling forms.")
+        const errorMsg = "Profile data is empty or incomplete. Please configure your profile before filling forms."
+        sendFormFillProgress({
+          phase: "failed",
+          message: errorMsg,
+          error: errorMsg,
+        })
+        throw new Error(errorMsg)
       }
 
       // 2. Get job match context if provided
       let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
       if (options.jobMatchId) {
+        sendFormFillProgress({
+          phase: "starting",
+          message: "Loading job details...",
+        })
         try {
           const match = await fetchJobMatch(options.jobMatchId)
           jobContext = {
@@ -852,64 +952,162 @@ ipcMain.handle(
             matchedSkills: match.matchedSkills as string[] | undefined,
           }
         } catch (err) {
-          // Non-critical - continue without job match data, but log for debugging
           logger.warn("Failed to fetch job match data, continuing without it:", err)
         }
       }
 
       // 3. Extract form fields from page
       logger.info("Extracting form fields...")
+      sendFormFillProgress({
+        phase: "starting",
+        message: "Analyzing form fields...",
+      })
+
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
       logger.info(`Found ${fields.length} form fields`)
 
       if (fields.length === 0) {
+        sendFormFillProgress({
+          phase: "failed",
+          message: "No form fields found on page",
+          error: "No form fields found on page",
+        })
         return { success: false, message: "No form fields found on page" }
       }
 
-      // 4. Build prompt using pre-formatted profile text (much more efficient)
+      // 4. Build prompt
       const prompt = buildPromptFromProfileText(fields, profileText, jobContext)
-      logger.info(`Calling ${options.provider} CLI for enhanced field mapping...`)
+      logger.info(`Calling ${options.provider} CLI for field mapping...`)
 
-      // 6. Call CLI for fill instructions with skip tracking
-      const instructions = await runEnhancedCli(options.provider, prompt)
+      // 5. Call CLI with streaming progress
+      sendFormFillProgress({
+        phase: "ai-processing",
+        message: "AI is analyzing the form...",
+        isStreaming: true,
+        totalFields: fields.length,
+      })
+
+      // Use streaming CLI for real-time progress updates
+      const instructions = await runStreamingCli(
+        options.provider,
+        prompt,
+        (text, isComplete) => {
+          sendFormFillProgress({
+            phase: "ai-processing",
+            message: isComplete ? "AI analysis complete" : "AI is generating fill instructions...",
+            streamingText: text,
+            isStreaming: !isComplete,
+            totalFields: fields.length,
+          })
+        }
+      )
       logger.info(`Got ${instructions.length} fill instructions`)
 
-      // 7. Fill fields and track results
+      // 6. Fill fields with progress updates
+      sendFormFillProgress({
+        phase: "filling",
+        message: "Filling form fields...",
+        totalFields: instructions.length,
+        processedFields: 0,
+      })
+
       let filledCount = 0
       const skippedFields: Array<{ label: string; reason: string }> = []
 
-      for (const instruction of instructions) {
+      // Create a map of selectors to field types
+      const fieldTypeMap = new Map<string, string>()
+      for (const field of fields) {
+        if (field.selector) {
+          fieldTypeMap.set(field.selector, field.type)
+        }
+      }
+
+      for (let i = 0; i < instructions.length; i++) {
+        const instruction = instructions[i]
+
         if (instruction.status === "skipped") {
           skippedFields.push({
             label: instruction.label || instruction.selector || "Unknown field",
             reason: instruction.reason || "No data available",
+          })
+
+          sendFormFillProgress({
+            phase: "filling",
+            message: `Skipped: ${instruction.label || instruction.selector}`,
+            totalFields: instructions.length,
+            processedFields: i + 1,
+            currentField: {
+              label: instruction.label || instruction.selector || "Unknown",
+              selector: instruction.selector,
+              status: "skipped",
+            },
           })
           continue
         }
 
         if (!instruction.value) continue
 
+        // Send progress before filling
+        sendFormFillProgress({
+          phase: "filling",
+          message: `Filling: ${instruction.label || instruction.selector}`,
+          totalFields: instructions.length,
+          processedFields: i,
+          currentField: {
+            label: instruction.label || instruction.selector || "Unknown",
+            selector: instruction.selector,
+            status: "processing",
+          },
+        })
+
         try {
-          const safeSelector = JSON.stringify(instruction.selector)
-          const safeValue = JSON.stringify(instruction.value)
-          const filled = await browserView.webContents.executeJavaScript(`
-            (() => {
-              const el = document.querySelector(${safeSelector});
-              if (!el) return false;
-              if (el.tagName.toLowerCase() === 'select') {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              } else {
-                el.value = ${safeValue};
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-              return true;
-            })()
-          `)
-          if (filled) filledCount++
+          const fieldType = fieldTypeMap.get(instruction.selector)
+          const filled = await fillFormField(
+            browserView.webContents,
+            instruction.selector,
+            instruction.value,
+            fieldType
+          )
+
+          if (filled) {
+            filledCount++
+            // Send progress after successful fill
+            sendFormFillProgress({
+              phase: "filling",
+              message: `Filled: ${instruction.label || instruction.selector}`,
+              totalFields: instructions.length,
+              processedFields: i + 1,
+              currentField: {
+                label: instruction.label || instruction.selector || "Unknown",
+                selector: instruction.selector,
+                status: "filled",
+              },
+            })
+          } else {
+            // fillFormField returned false (element not found, etc.)
+            logger.warn(`Failed to fill ${instruction.selector}: element not found or fill failed`)
+            skippedFields.push({
+              label: instruction.label || instruction.selector || "Unknown field",
+              reason: "Element not found or fill failed",
+            })
+            sendFormFillProgress({
+              phase: "filling",
+              message: `Failed: ${instruction.label || instruction.selector}`,
+              totalFields: instructions.length,
+              processedFields: i + 1,
+              currentField: {
+                label: instruction.label || instruction.selector || "Unknown",
+                selector: instruction.selector,
+                status: "skipped",
+              },
+            })
+          }
         } catch (err) {
           logger.warn(`Failed to fill ${instruction.selector}:`, err)
+          skippedFields.push({
+            label: instruction.label || instruction.selector || "Unknown field",
+            reason: err instanceof Error ? err.message : "Fill error",
+          })
         }
       }
 
@@ -922,10 +1120,26 @@ ipcMain.handle(
         duration,
       }
 
+      // Send completion
+      sendFormFillProgress({
+        phase: "completed",
+        message: `Filled ${filledCount} of ${fields.length} fields`,
+        totalFields: fields.length,
+        processedFields: instructions.length,
+        summary,
+      })
+
       return { success: true, data: summary }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logger.error("Enhanced fill form error:", message)
+      logger.error("Fill form error:", message)
+
+      sendFormFillProgress({
+        phase: "failed",
+        message,
+        error: message,
+      })
+
       return { success: false, message }
     }
   }
@@ -939,7 +1153,7 @@ ipcMain.handle(
  *   is a string containing the actual JSON (escaped). Must parse wrapper first, then parse result.
  * - Codex/Gemini: Return raw JSON arrays directly.
  *
- * The runCli and runEnhancedCli functions handle these format differences automatically.
+ * The CLI wrapper functions handle these format differences automatically.
  */
 function runCliCommon<T>(
   provider: CliProvider,
@@ -1051,24 +1265,181 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
   )
 }
 
-function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
-  return runCliCommon<FillInstruction[]>(
-    provider,
-    prompt,
-    (stdout) => {
-      const parsed = parseCliArrayOutput(stdout)
-      if (!Array.isArray(parsed)) {
-        throw new Error("CLI did not return an array")
-      }
-      for (const item of parsed as Array<Record<string, unknown>>) {
-        if (typeof item.selector !== "string" || typeof item.value !== "string") {
-          throw new Error("CLI returned invalid FillInstruction format")
+/**
+ * Streaming CLI runner for form filling with real-time progress updates.
+ *
+ * Uses Claude CLI's stream-json output format which emits NDJSON:
+ * - {"type":"system",...} - Session init
+ * - {"type":"stream_event","event":{"type":"content_block_delta","delta":{"text":"..."}}} - Token streaming
+ * - {"type":"assistant","message":{...}} - Complete message
+ * - {"type":"result","result":"..."} - Final result
+ *
+ * Falls back to non-streaming for providers that don't support it.
+ */
+function runStreamingCli(
+  provider: CliProvider,
+  prompt: string,
+  onProgress: (text: string, isComplete: boolean) => void
+): Promise<EnhancedFillInstruction[]> {
+  const streamingCommand = getStreamingCliCommand(provider)
+
+  // Fall back to non-streaming if provider doesn't support it
+  if (!streamingCommand) {
+    logger.info(`[CLI] Provider ${provider} doesn't support streaming, using standard mode`)
+    return runEnhancedCli(provider, prompt)
+  }
+
+  const [cmd, args] = streamingCommand
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args)
+    let accumulatedText = ""
+    let finalResult: string | null = null
+    let stderr = ""
+
+    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
+      setTimeout(() => {
+        logger.warn(`[CLI] ${provider} streaming still running after ${ms / 1000}s...`)
+      }, ms)
+    )
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM")
+      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (streaming form-fill)`))
+    }, CLI_TIMEOUT_MS)
+
+    const clearAllTimers = () => {
+      warningTimers.forEach(clearTimeout)
+      clearTimeout(timeout)
+    }
+
+    // Write prompt to stdin
+    child.stdin.write(prompt)
+    child.stdin.end()
+
+    // Process stdout line-by-line (NDJSON format)
+    const rl = readline.createInterface({
+      input: child.stdout,
+      crlfDelay: Infinity,
+    })
+
+    rl.on("line", (line) => {
+      if (!line.trim()) return
+
+      try {
+        const event = JSON.parse(line)
+        logger.debug(`[CLI Streaming] Event type: ${event.type}`)
+
+        // Handle streaming token deltas
+        if (event.type === "stream_event" && event.event?.type === "content_block_delta") {
+          const text = event.event.delta?.text
+          if (text) {
+            accumulatedText += text
+            logger.debug(`[CLI Streaming] Delta text (${text.length} chars), total: ${accumulatedText.length}`)
+            onProgress(accumulatedText, false)
+          }
         }
+
+        // Handle complete assistant message (backup if streaming events missed)
+        if (event.type === "assistant" && event.message?.content) {
+          const content = event.message.content
+          if (Array.isArray(content) && content[0]?.type === "text") {
+            accumulatedText = content[0].text
+            logger.debug(`[CLI Streaming] Assistant message: ${accumulatedText.length} chars`)
+            onProgress(accumulatedText, false)
+          }
+        }
+
+        // Handle final result
+        if (event.type === "result") {
+          finalResult = event.result
+          logger.info(`[CLI Streaming] Result received: ${finalResult?.length || 0} chars`)
+          onProgress(finalResult || accumulatedText, true)
+        }
+      } catch {
+        // Log parse errors but don't fail - might be debug output
+        logger.warn(`[CLI] Failed to parse streaming line: ${line.slice(0, 100)}`)
       }
-      return parsed as FillInstruction[]
-    },
-    "form-fill-basic"
-  )
+    })
+
+    child.stderr.on("data", (d) => (stderr += d))
+
+    child.on("error", (err) => {
+      clearAllTimers()
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+      } else {
+        reject(new Error(`Failed to spawn ${provider} CLI (streaming form-fill): ${err.message}`))
+      }
+    })
+
+    child.on("close", (code) => {
+      clearAllTimers()
+
+      if (code !== 0) {
+        let errorMsg = `${provider} CLI failed (exit ${code}).`
+        if (stderr?.trim()) {
+          errorMsg += ` Error: ${stderr.trim()}`
+        }
+        reject(new Error(errorMsg))
+        return
+      }
+
+      // Parse the final result
+      const resultText = finalResult || accumulatedText
+      logger.info(`[CLI Streaming] Close - finalResult: ${finalResult?.length || 0}, accumulatedText: ${accumulatedText.length}`)
+      logger.debug(`[CLI Streaming] Result text preview: ${resultText?.slice(0, 500)}`)
+
+      if (!resultText) {
+        reject(new Error(`${provider} CLI returned no output (streaming form-fill)`))
+        return
+      }
+
+      try {
+        // The result should be a JSON array of instructions
+        // Try parsing directly first (streaming might give us clean JSON)
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(resultText)
+          logger.debug(`[CLI Streaming] Parsed as direct JSON`)
+        } catch {
+          // Fall back to array extraction if not clean JSON
+          logger.debug(`[CLI Streaming] Direct JSON failed, trying array extraction`)
+          parsed = parseCliArrayOutput(resultText)
+        }
+
+        if (!Array.isArray(parsed)) {
+          logger.error(`[CLI Streaming] Parsed result is not an array: ${typeof parsed}`)
+          throw new Error("CLI did not return an array")
+        }
+
+        logger.info(`[CLI Streaming] Parsed ${parsed.length} instructions`)
+
+        const instructions = (parsed as Array<Record<string, unknown>>).map((item) => ({
+          selector: String(item.selector || ""),
+          value: item.value != null ? String(item.value) : null,
+          status: (item.status === "skipped" ? "skipped" : "filled") as "filled" | "skipped",
+          reason: item.reason ? String(item.reason) : undefined,
+          label: item.label ? String(item.label) : undefined,
+        }))
+
+        resolve(instructions)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`[CLI Streaming] Parse error: ${msg}`)
+        reject(new Error(`${provider} CLI returned invalid JSON (streaming form-fill): ${msg}`))
+      }
+    })
+  })
+}
+
+/**
+ * Helper to send form fill progress to renderer
+ */
+function sendFormFillProgress(progress: FormFillProgress): void {
+  if (mainWindow) {
+    mainWindow.webContents.send("form-fill-progress", progress)
+  }
 }
 
 // App lifecycle

@@ -68,19 +68,24 @@ export async function fetchPersonalInfo(): Promise<PersonalInfo> {
  * as markdown-formatted text ready for injection into prompts.
  */
 export async function fetchApplicatorProfile(): Promise<string> {
-  const res = await fetchWithRetry(
-    `${API_URL}/applicator/profile`,
-    fetchOptions(),
-    { maxRetries: 2, timeoutMs: 15000 }
-  )
+  const url = `${API_URL}/applicator/profile`
+  logger.info(`Fetching applicator profile from: ${url}`)
 
-  if (!res.ok) {
-    const errorMsg = await parseApiError(res)
-    throw new Error(`Failed to fetch applicator profile: ${errorMsg}`)
+  try {
+    const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+
+    if (!res.ok) {
+      const errorMsg = await parseApiError(res)
+      throw new Error(`Failed to fetch applicator profile: ${errorMsg}`)
+    }
+
+    const data: ApiSuccessResponse<GetApplicatorProfileResponse> = await res.json()
+    return data.data.profileText
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`fetchApplicatorProfile failed: ${message}`)
+    throw err
   }
-
-  const data: ApiSuccessResponse<GetApplicatorProfileResponse> = await res.json()
-  return data.data.profileText
 }
 
 // ============================================================================
