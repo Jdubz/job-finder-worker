@@ -263,7 +263,8 @@ function formatProjectItem(item: ContentItem): string {
 
 /** Format skills category */
 function formatSkillsItem(item: ContentItem): string {
-  const categoryName = item.title || 'Skills'
+  // Avoid emitting a generic "Skills" category name, which causes duplicate headers
+  const categoryName = item.title && item.title.trim().length > 0 ? item.title : 'Core Capabilities'
   const skillsList = item.description
     ? item.description.split(/[,\n]/).map((s) => s.trim()).filter(Boolean)
     : item.skills || []

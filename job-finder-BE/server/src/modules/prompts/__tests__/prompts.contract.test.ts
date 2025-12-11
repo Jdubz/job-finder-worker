@@ -2,9 +2,18 @@ import express from 'express'
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { promptConfigSchema } from '@shared/types'
+import { ConfigRepository } from '../../config/config.repository'
 import { buildPromptsRouter } from '../prompts.routes'
 
 const createApp = () => {
+  const configRepo = new ConfigRepository()
+  configRepo.upsert('ai-prompts', {
+    resumeGeneration: 'resume template',
+    coverLetterGeneration: 'cover letter template',
+    jobScraping: 'job scraping template',
+    jobMatching: 'job matching template',
+  })
+
   const app = express()
   app.use(express.json())
   app.use('/prompts', buildPromptsRouter())

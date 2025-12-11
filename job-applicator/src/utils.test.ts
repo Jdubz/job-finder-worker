@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest"
 import {
   normalizeUrl,
   resolveDocumentPath,
-  formatEEOValue,
   formatWorkHistory,
+  buildPrompt,
+  buildEnhancedPrompt,
   buildExtractionPrompt,
   validateFillInstruction,
   validateEnhancedFillInstruction,
@@ -13,8 +14,9 @@ import {
   parseCliObjectOutput,
   unwrapJobMatch,
   unwrapDocuments,
-  EEO_DISPLAY,
   type ContentItem,
+  type PersonalInfo,
+  type FormField,
 } from "./utils.js"
 import { CLI_COMMANDS } from "./cli-config.js"
 
@@ -74,60 +76,37 @@ describe("resolveDocumentPath", () => {
   })
 })
 
-describe("formatEEOValue", () => {
-  it("should return display value for valid race", () => {
-    expect(formatEEOValue("race", "asian")).toBe("Asian")
-    expect(formatEEOValue("race", "white")).toBe("White")
-    expect(formatEEOValue("race", "black_african_american")).toBe("Black or African American")
+describe("CLI_COMMANDS", () => {
+  it("requires claude CLI to include skip-permissions flag", () => {
+    const [, args] = CLI_COMMANDS.claude
+    expect(args).toContain("--dangerously-skip-permissions")
   })
 
-  it("should return display value for valid gender", () => {
-    expect(formatEEOValue("gender", "male")).toBe("Male")
-    expect(formatEEOValue("gender", "female")).toBe("Female")
-    expect(formatEEOValue("gender", "decline_to_identify")).toBe("Decline to Self-Identify")
+  it("requires codex CLI to include bypass approvals flag", () => {
+    const [, args] = CLI_COMMANDS.codex
+    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox")
   })
 
-  it("should return display value for veteran status", () => {
-    expect(formatEEOValue("veteranStatus", "not_protected_veteran")).toBe("I am not a protected veteran")
-    expect(formatEEOValue("veteranStatus", "protected_veteran")).toContain("protected veteran")
+  it("requires gemini CLI to include yolo (non-interactive) flag", () => {
+    const [, args] = CLI_COMMANDS.gemini
+    expect(args).toContain("--yolo")
   })
 
-  it("should return display value for disability status", () => {
-    expect(formatEEOValue("disabilityStatus", "yes")).toContain("Disability")
-    expect(formatEEOValue("disabilityStatus", "no")).toContain("Don't Have")
+  it("ensures each provider has a non-interactive safety bypass flag", () => {
+    const requiredFlags: Record<string, string> = {
+      claude: "--dangerously-skip-permissions",
+      codex: "--dangerously-bypass-approvals-and-sandbox",
+      gemini: "--yolo",
+    }
+    for (const provider of ["claude", "codex", "gemini"] as const) {
+      const [, args] = CLI_COMMANDS[provider]
+      expect(args).toContain(requiredFlags[provider])
+    }
   })
 
-  it("should return 'Not provided' message for undefined value", () => {
-    expect(formatEEOValue("race", undefined)).toBe("Not provided - skip this field")
-  })
-
-  it("should return original value for unknown field", () => {
-    expect(formatEEOValue("unknownField", "someValue")).toBe("someValue")
-  })
-
-  it("should return original value for unknown enum value", () => {
-    expect(formatEEOValue("race", "unknown_race")).toBe("unknown_race")
-  })
-})
-
-describe("EEO_DISPLAY", () => {
-  it("should have all race options", () => {
-    expect(Object.keys(EEO_DISPLAY.race)).toHaveLength(7)
-    expect(EEO_DISPLAY.race.american_indian_alaska_native).toBeDefined()
-    expect(EEO_DISPLAY.race.asian).toBeDefined()
-    expect(EEO_DISPLAY.race.white).toBeDefined()
-  })
-
-  it("should have all gender options", () => {
-    expect(Object.keys(EEO_DISPLAY.gender)).toHaveLength(3)
-  })
-
-  it("should have all veteran status options", () => {
-    expect(Object.keys(EEO_DISPLAY.veteranStatus)).toHaveLength(4)
-  })
-
-  it("should have all disability status options", () => {
-    expect(Object.keys(EEO_DISPLAY.disabilityStatus)).toHaveLength(3)
+  it("uses stdin placeholder for claude non-interactive prompt", () => {
+    const [, args] = CLI_COMMANDS.claude
+    expect(args).toContain("-")
   })
 })
 
@@ -193,6 +172,119 @@ describe("formatWorkHistory", () => {
     ]
     const result = formatWorkHistory(items)
     expect(result).toContain("present")
+  })
+})
+
+describe("buildPrompt", () => {
+  const mockProfile: PersonalInfo = {
+    name: "John Doe",
+    email: "john@example.com",
+    phone: "555-1234",
+    location: "Portland, OR",
+    website: "https://johndoe.dev",
+    github: "johndoe",
+    linkedin: "linkedin.com/in/johndoe",
+    applicationInfo: "Gender: Decline to self-identify",
+  }
+
+  const mockFields: FormField[] = [
+    { selector: "#email", type: "email", label: "Email", placeholder: null, required: true, options: null },
+    { selector: "#name", type: "text", label: "Full Name", placeholder: null, required: true, options: null },
+  ]
+
+  it("should include all profile fields in prompt", () => {
+    const result = buildPrompt(mockFields, mockProfile, [])
+    expect(result).toContain("John Doe")
+    expect(result).toContain("john@example.com")
+    expect(result).toContain("555-1234")
+    expect(result).toContain("Portland, OR")
+    expect(result).toContain("johndoe.dev")
+    expect(result).toContain("GitHub") // Field label is capitalized
+    expect(result).toContain("johndoe") // GitHub username value
+    expect(result).toContain("LinkedIn")
+  })
+
+  it("should include form fields JSON", () => {
+    const result = buildPrompt(mockFields, mockProfile, [])
+    expect(result).toContain("#email")
+    expect(result).toContain("#name")
+    expect(result).toContain("Email")
+    expect(result).toContain("Full Name")
+  })
+
+  it("should include work history when provided", () => {
+    const workHistory: ContentItem[] = [{ id: "1", title: "Past Job", role: "Dev" }]
+    const result = buildPrompt(mockFields, mockProfile, workHistory)
+    expect(result).toContain("Past Job")
+    expect(result).toContain("Dev")
+  })
+
+  it("should handle missing optional profile fields", () => {
+    const minimalProfile: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "Decline" }
+    const result = buildPrompt(mockFields, minimalProfile, [])
+    expect(result).toContain("Jane")
+    expect(result).toContain("jane@test.com")
+    expect(result).toContain("Not provided")
+  })
+
+  it("should include instructions for filling", () => {
+    const result = buildPrompt(mockFields, mockProfile, [])
+    expect(result).toContain("JSON array")
+    expect(result).toContain("selector")
+    expect(result).toContain("value")
+    expect(result).toContain("Skip file upload")
+  })
+})
+
+describe("buildEnhancedPrompt", () => {
+  const mockProfile: PersonalInfo = {
+    name: "John Doe",
+    email: "john@example.com",
+    applicationInfo: "Race: White\nGender: Male\nVeteran Status: Not a protected veteran",
+  }
+
+  const mockFields: FormField[] = [
+    { selector: "#email", type: "email", label: "Email", placeholder: null, required: true, options: null },
+  ]
+
+  it("should include EEO information when provided", () => {
+    const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
+    expect(result).toContain("Application Information")
+    expect(result).toContain("Race: White")
+    expect(result).toContain("Gender: Male")
+    expect(result).toContain("Veteran Status: Not a protected veteran")
+  })
+
+  it("should include job context when provided", () => {
+    const jobMatch = {
+      listing: { companyName: "Acme Corp", title: "Senior Developer" },
+      matchedSkills: ["React", "TypeScript"],
+    }
+    const result = buildEnhancedPrompt(mockFields, mockProfile, [], jobMatch)
+    expect(result).toContain("Acme Corp")
+    expect(result).toContain("Senior Developer")
+    expect(result).toContain("React")
+    expect(result).toContain("TypeScript")
+  })
+
+  it("should include safety rules", () => {
+    const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
+    expect(result).toContain("CRITICAL SAFETY RULES")
+    expect(result).toContain("NEVER fill or interact with submit")
+    expect(result).toContain("user must manually click")
+  })
+
+  it("should handle profile without EEO", () => {
+    const profileNoEEO: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "Decline to provide" }
+    const result = buildEnhancedPrompt(mockFields, profileNoEEO, [], null)
+    expect(result).toContain("Application Information")
+    expect(result).toContain("Decline to provide")
+  })
+
+  it("should include status field instructions", () => {
+    const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
+    expect(result).toContain('"status": "filled"')
+    expect(result).toContain('"status": "skipped"')
   })
 })
 
@@ -358,27 +450,22 @@ describe("parseCliArrayOutput", () => {
     expect(parseCliArrayOutput('[1,2,3]')).toEqual([1, 2, 3])
   })
 
-  it("requires claude CLI to include skip-permissions flag", () => {
-    const [, args] = CLI_COMMANDS.claude
-    expect(args).toContain("--dangerously-skip-permissions")
-  })
-
-  it("requires codex CLI to include bypass approvals flag", () => {
-    const [, args] = CLI_COMMANDS.codex
-    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox")
-  })
-
-  it("uses stdin placeholder for claude non-interactive prompt", () => {
-    const [, args] = CLI_COMMANDS.claude
-    expect(args).toContain("-")
-  })
-
   it("parses wrapper with array result", () => {
     expect(parseCliArrayOutput('{"result":[{"a":1}]}')).toEqual([{ a: 1 }])
   })
 
   it("parses wrapper with stringified result", () => {
     expect(parseCliArrayOutput('{"result":"[\\"x\\",\\"y\\"]"}')).toEqual(["x", "y"])
+  })
+
+  it("parses wrapper that only exposes output_text", () => {
+    const output = '{"type":"result","output_text":"[{\\"selector\\":\\"#x\\",\\"value\\":\\"foo\\"}]"}'
+    expect(parseCliArrayOutput(output)).toEqual([{ selector: "#x", value: "foo" }])
+  })
+
+  it("parses wrapper with array stored under a different key", () => {
+    const output = '{"type":"result","data":[1,2,3]}'
+    expect(parseCliArrayOutput(output)).toEqual([1, 2, 3])
   })
 
   it("falls back to string search when JSON parse fails", () => {
@@ -434,6 +521,11 @@ describe("parseCliObjectOutput", () => {
 
   it("parses wrapper with stringified result", () => {
     expect(parseCliObjectOutput('{"result":"{\\"b\\":3}"}')).toEqual({ b: 3 })
+  })
+
+  it("parses wrapper with output_text string", () => {
+    const output = '{"type":"result","output_text":"{\\"d\\":5}"}'
+    expect(parseCliObjectOutput(output)).toEqual({ d: 5 })
   })
 
   it("falls back to embedded object when parse fails initially", () => {

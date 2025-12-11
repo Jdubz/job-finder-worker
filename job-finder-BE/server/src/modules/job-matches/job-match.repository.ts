@@ -50,6 +50,7 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   matchReasons: parseJsonArray(row.match_reasons),
   keyStrengths: parseJsonArray(row.key_strengths),
   potentialConcerns: parseJsonArray(row.potential_concerns),
+  // experienceMatch deprecated; keep numeric for backward compat but no longer surfaced
   experienceMatch: row.experience_match,
   customizationRecommendations: parseJsonArray(row.customization_recommendations),
   resumeIntakeData: row.resume_intake_json ? JSON.parse(row.resume_intake_json) : undefined,
