@@ -2,9 +2,8 @@
 # This file is the source of truth - sync to prod with: make deploy-compose
 #
 # Key differences from template:
-# - Uses seed + named volume pattern for CLI credentials (prevents token corruption)
+# - CLI credentials: direct bind mount from host with flock serialization
 # - Absolute paths for /srv/job-finder structure
-# - Custom entrypoints that copy credentials on first boot
 
 services:
   api:
@@ -23,18 +22,6 @@ services:
       WORKER_URL: http://worker:5555
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://job-finder.joshwentworth.com}
       TZ: America/Los_Angeles
-    entrypoint:
-      - sh
-      - -c
-      - |
-        set -e
-        if [ ! -f /home/node/.codex/auth.json ]; then
-          mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/
-        fi
-        if [ ! -f /home/node/.gemini/oauth_creds.json ]; then
-          mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/
-        fi
-        exec docker-entrypoint.sh node dist/index.js
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -45,18 +32,13 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /logs
-      # Codex: shared volume + seed (ro) for reseed on start
+      # CLI credentials: direct bind mount from host (UID 1000 matches container's node user)
       - type: bind
-        source: /srv/job-finder/codex-seed/.codex
-        target: /codex-seed
-        read_only: true
-      - codex-home-shared:/home/node/.codex
-      # Gemini: seed (ro) + named volume (rw) for runtime state
+        source: ${CODEX_HOST_PATH:-/home/jdubz/.codex}
+        target: /home/node/.codex
       - type: bind
-        source: /srv/job-finder/gemini-seed/.gemini
-        target: /gemini-seed
-        read_only: true
-      - gemini-home-api:/home/node/.gemini
+        source: ${GEMINI_HOST_PATH:-/home/jdubz/.gemini}
+        target: /home/node/.gemini
     extra_hosts:
       - "chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
       - "www.chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
@@ -80,34 +62,17 @@ services:
       JF_WORKER_ID: default
       CODEX_CONFIG_SOURCE: /codex
       TZ: America/Los_Angeles
-    entrypoint:
-      - sh
-      - -c
-      - |
-        set -e
-        if [ ! -f /home/node/.codex/auth.json ]; then
-          mkdir -p /home/node/.codex && cp -r /codex-seed/. /home/node/.codex/
-        fi
-        if [ ! -f /home/node/.gemini/oauth_creds.json ]; then
-          mkdir -p /home/node/.gemini && cp -r /gemini-seed/. /home/node/.gemini/
-        fi
-        exec /app/entrypoint.sh
     volumes:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
-      # Codex: shared volume + seed (ro) for reseed on start
+      # CLI credentials: direct bind mount from host (UID 1000 matches container's node user)
       - type: bind
-        source: /srv/job-finder/codex-seed/.codex
-        target: /codex-seed
-        read_only: true
-      - codex-home-shared:/home/node/.codex
-      # Gemini: seed (ro) + named volume (rw) for runtime state
+        source: ${CODEX_HOST_PATH:-/home/jdubz/.codex}
+        target: /home/node/.codex
       - type: bind
-        source: /srv/job-finder/gemini-seed/.gemini
-        target: /gemini-seed
-        read_only: true
-      - gemini-home-worker:/home/node/.gemini
+        source: ${GEMINI_HOST_PATH:-/home/jdubz/.gemini}
+        target: /home/node/.gemini
       # Python/local bin for helper scripts (no cron jobs run here)
       - type: bind
         source: /srv/job-finder/codex/local-bin
@@ -179,7 +144,4 @@ networks:
   jobfinder:
     driver: bridge
 
-volumes:
-  codex-home-shared:
-  gemini-home-worker:
-  gemini-home-api:
+volumes: {}

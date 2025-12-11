@@ -51,9 +51,11 @@ COPY infra/sqlite ./infra/sqlite
 RUN rm package-lock.json && npm install --omit=dev --no-package-lock && npm rebuild better-sqlite3
 COPY --from=base /app/dist ./dist
 
-# Copy entrypoint script
+# Copy entrypoint script and codex-safe wrapper
 COPY job-finder-BE/server/docker-entrypoint.sh /usr/local/bin/
+COPY job-finder-BE/server/docker/codex-safe /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/codex-safe \
     && chown -R node:node /app
 
 # Entrypoint fixes volume permissions then drops to node user
