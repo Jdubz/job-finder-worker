@@ -93,7 +93,6 @@ const minimalPrefilterPolicy = {
 
 const minimalMatchPolicy = {
   minScore: 50,
-  weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
   seniority: {
     preferred: ["senior"],
     acceptable: ["mid"],
@@ -110,6 +109,10 @@ const minimalMatchPolicy = {
     maxTimezoneDiffHours: 8,
     perHourScore: -1,
     hybridSameCityScore: 0,
+    remoteScore: 5,
+    relocationScore: -50,
+    unknownTimezoneScore: -5,
+    relocationAllowed: false,
   },
   skillMatch: {
     baseMatchScore: 1,
@@ -121,16 +124,21 @@ const minimalMatchPolicy = {
     maxPenalty: -15,
     missingIgnore: [],
   },
+  skills: {
+    bonusPerSkill: 2,
+    maxSkillBonus: 15,
+  },
   salary: {
     minimum: null,
     target: null,
     belowTargetScore: 0,
+    belowTargetMaxPenalty: -20,
     missingSalaryScore: 0,
     meetsTargetScore: 0,
     equityScore: 0,
     contractScore: 0,
   },
-  experience: { maxRequired: 20, overqualifiedScore: 0 },
+  experience: {},
   freshness: {
     freshDays: 30,
     freshScore: 0,
@@ -150,7 +158,6 @@ const minimalMatchPolicy = {
   },
   company: {
     preferredCityScore: 0,
-    preferredCity: undefined,
     remoteFirstScore: 0,
     aiMlFocusScore: 0,
     largeCompanyScore: 0,
@@ -514,9 +521,8 @@ describe("Configuration flows", () => {
     // Match policy (not seeded by default - must create a complete config)
     const testMatchPolicy = {
       minScore: 65,
-      weights: { skillMatch: 1, experienceMatch: 1, seniorityMatch: 1 },
       seniority: { preferred: ["senior"], acceptable: ["mid"], rejected: ["intern"], preferredScore: 10, acceptableScore: 0, rejectedScore: -100 },
-      location: { allowRemote: true, allowHybrid: true, allowOnsite: false, userTimezone: -8, maxTimezoneDiffHours: 4, perHourScore: -3, hybridSameCityScore: 10 },
+      location: { allowRemote: true, allowHybrid: true, allowOnsite: false, userTimezone: -8, maxTimezoneDiffHours: 4, perHourScore: -3, hybridSameCityScore: 10, remoteScore: 5, relocationScore: -50, unknownTimezoneScore: -5, relocationAllowed: false },
       skillMatch: {
         baseMatchScore: 1,
         yearsMultiplier: 0.5,
@@ -527,16 +533,18 @@ describe("Configuration flows", () => {
         maxPenalty: -15,
         missingIgnore: [],
       },
+      skills: { bonusPerSkill: 2, maxSkillBonus: 15 },
       salary: {
         minimum: 100000,
         target: 150000,
         belowTargetScore: -2,
+        belowTargetMaxPenalty: -20,
         missingSalaryScore: 0,
         meetsTargetScore: 0,
         equityScore: 0,
         contractScore: 0,
       },
-      experience: { maxRequired: 15, overqualifiedScore: -5 },
+      experience: {},
       freshness: { freshDays: 7, freshScore: 5, staleDays: 30, staleScore: -5, veryStaleDays: 60, veryStaleScore: -15, repostScore: -10 },
       roleFit: { preferred: ["backend", "ml-ai", "devops", "data", "security"], acceptable: ["fullstack"], penalized: ["frontend", "consulting"], rejected: ["clearance-required", "management"], preferredScore: 10, penalizedScore: -5 },
       company: { preferredCityScore: 5, remoteFirstScore: 5, aiMlFocusScore: 5, largeCompanyScore: 5, smallCompanyScore: -5, largeCompanyThreshold: 1000, smallCompanyThreshold: 50, startupScore: 0 },
