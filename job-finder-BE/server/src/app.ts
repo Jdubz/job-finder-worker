@@ -22,6 +22,7 @@ import { buildMaintenanceRouter } from './modules/maintenance'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError, apiErrorHandler } from './middleware/api-error'
 import { buildAuthRouter } from './routes/auth.routes'
+import { buildApplicatorRouter } from './routes/applicator.routes'
 import { buildOriginGuard } from './middleware/origin-guard'
 
 export function buildApp() {
@@ -119,6 +120,7 @@ export function buildApp() {
 
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
+  app.use('/api/applicator', buildApplicatorRouter())
   app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-matches', buildJobMatchRouter())
   app.use('/api/job-listings', buildJobListingRouter())

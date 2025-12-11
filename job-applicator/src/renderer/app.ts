@@ -177,6 +177,7 @@ const uploadResumeBtn = getElement<HTMLButtonElement>("uploadResumeBtn")
 const uploadCoverBtn = getElement<HTMLButtonElement>("uploadCoverBtn")
 const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
+const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -295,6 +296,8 @@ async function selectJobMatch(id: string) {
 
   // Load the job URL in BrowserView
   setStatus("Loading job listing...", "loading")
+  // Note: navigate always returns {success, message?, aborted?} but we use optional chaining
+  // as defensive programming for the IPC boundary edge cases
   const navResult = await api.navigate(match.listing.url)
   if (navResult.success) {
     urlInput.value = match.listing.url
@@ -869,6 +872,7 @@ function initializeApp() {
   markIgnoredBtn.addEventListener("click", markAsIgnored)
   uploadResumeBtn.addEventListener("click", uploadResumeFile)
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
+  rescanBtn.addEventListener("click", checkForFileInput)
 
   // Run async initialization
   init()
