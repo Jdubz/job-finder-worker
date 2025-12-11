@@ -1,9 +1,44 @@
-# Production stack for /srv/job-finder deployment
-# This file is the source of truth - sync to prod with: make deploy-compose
+# =============================================================================
+# PRODUCTION DOCKER COMPOSE - Job Finder
+# =============================================================================
 #
-# Key differences from template:
-# - CLI credentials: direct bind mount from host with flock serialization
-# - Absolute paths for /srv/job-finder structure
+# DEPLOY ARCHITECTURE:
+# --------------------
+# 1. CI builds Docker images and pushes to GHCR (github.com/jdubz/job-finder-worker)
+# 2. Watchtower (running here) detects new images and recreates containers
+# 3. This compose file lives at /srv/job-finder/docker-compose.yml
+#
+# WHEN TO SYNC THIS FILE:
+# -----------------------
+# After changing infra/docker-compose.prod.yml, run:
+#   ./scripts/deploy.sh --recreate
+#
+# This copies the file to /srv/job-finder/ and recreates containers.
+# Watchtower only handles IMAGE updates, not compose file changes.
+#
+# CLI CREDENTIALS (Codex/Gemini):
+# -------------------------------
+# Both containers bind-mount ~/.codex and ~/.gemini directly from the host.
+# This means:
+#   - Host and containers share the same OAuth tokens (no sync needed)
+#   - The codex-safe wrapper (in the image) uses flock to prevent race conditions
+#   - UID 1000 on host matches the 'node' user in containers
+#
+# If Codex gets disabled with "refresh token already used" error:
+#   1. Run: codex logout && codex login
+#   2. Clear the disabled state in the UI (Config -> AI Settings)
+#
+# PRODUCTION PATHS:
+# -----------------
+# /srv/job-finder/
+#   ├── docker-compose.yml    <- This file (synced from repo)
+#   ├── data/                  <- SQLite database
+#   ├── artifacts/             <- Generated documents (resumes, cover letters)
+#   ├── logs/                  <- Application logs
+#   ├── secrets/               <- api.env, worker.env
+#   └── cloudflared/           <- Tunnel config
+#
+# =============================================================================
 
 services:
   api:

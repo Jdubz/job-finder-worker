@@ -1,5 +1,14 @@
 name: Deploy
 
+# DEPLOY ARCHITECTURE:
+# This workflow builds Docker images and pushes them to GHCR.
+# Watchtower running on the production host detects new images and recreates containers.
+#
+# The compose file (infra/docker-compose.prod.yml) must be synced manually when changed:
+#   ./scripts/deploy.sh --recreate
+#
+# Frontend is deployed to Firebase Hosting.
+
 on:
   push:
     branches: [main]
@@ -63,9 +72,6 @@ jobs:
       OWNER: ${{ github.repository_owner }}
       API_IMAGE: ghcr.io/jdubz/job-finder-worker/api:latest
       WORKER_IMAGE: ghcr.io/jdubz/job-finder-worker/worker:latest
-    outputs:
-      api_built: ${{ steps.build-api.outcome == 'success' }}
-      worker_built: ${{ steps.build-worker.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - name: Show trigger metadata
@@ -106,35 +112,6 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ env.WORKER_IMAGE }}
-
-  deploy-backend:
-    needs: [detect-changes, build-images]
-    if: |
-      always() &&
-      (github.event.inputs.force_all == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.worker == 'true') &&
-      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Build workspaces
-        run: npm run build
-      - name: Deploy stack
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend }}
-          WORKER_CHANGED: ${{ needs.detect-changes.outputs.worker }}
-          FORCE_ALL: ${{ github.event.inputs.force_all || 'false' }}
-        run: ./scripts/deploy.sh
 
   deploy-frontend:
     needs: detect-changes
