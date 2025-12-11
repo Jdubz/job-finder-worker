@@ -46,8 +46,17 @@ const MIN_MATCH = {
     maxBonus: 25,
     maxPenalty: -15,
     analogGroups: [],
+    missingIgnore: [],
   },
-  salary: { minimum: null, target: null, belowTargetScore: 0 },
+  salary: {
+    minimum: null,
+    target: null,
+    belowTargetScore: 0,
+    missingSalaryScore: 0,
+    meetsTargetScore: 0,
+    equityScore: 0,
+    contractScore: 0,
+  },
   experience: { maxRequired: 20, overqualifiedScore: 0 },
   freshness: {
     freshDays: 30,
