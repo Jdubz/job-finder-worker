@@ -560,6 +560,6 @@ class TestScoringEngine:
         implied_adjustments = [a for a in result.adjustments if "Implied" in a.reason]
         assert not implied_adjustments, "REST should not imply express (one-way relationship)"
         # Should have a missing skill penalty for express (or parallel match)
-        # Since express parallels flask/django/fastapi but NOT rest, user should get penalty
+        # Since express is parallel to flask/django/fastapi (but REST is only parallel to graphql), user should get penalty
         missing_adjustments = [a for a in result.adjustments if "Missing" in a.reason]
         assert missing_adjustments, "Expected missing skill adjustment for express"
