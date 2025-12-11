@@ -47,6 +47,8 @@ import {
   buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
+  parseJsonArrayFromOutput,
+  parseJsonObjectFromOutput,
 } from "./utils.js"
 // Typed API client
 import {
@@ -291,11 +293,16 @@ ipcMain.handle(
 
       // Parse work history (optional - don't fail if unavailable)
       let workHistory: ContentItem[] = []
+      let workHistoryWarning: string | null = null
       if (contentResult.status === "fulfilled") {
         workHistory = contentResult.value
         logger.info(`Fetched ${workHistory.length} work history items`)
       } else {
-        logger.warn("Work history unavailable, continuing with profile only")
+        workHistoryWarning = getUserFriendlyErrorMessage(
+          contentResult.reason instanceof Error ? contentResult.reason : String(contentResult.reason),
+          logger
+        )
+        logger.warn("Work history unavailable, continuing with profile only:", workHistoryWarning)
       }
 
       // 2. Extract form fields from page
@@ -341,9 +348,10 @@ ipcMain.handle(
         }
       }
 
+      const messageSuffix = workHistoryWarning ? ` (work history unavailable: ${workHistoryWarning})` : ""
       return {
         success: true,
-        message: `Filled ${filledCount}/${instructions.length} fields`,
+        message: `Filled ${filledCount}/${instructions.length} fields${messageSuffix}`,
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -828,6 +836,17 @@ ipcMain.handle(
         }
       }
 
+      // 2b. Fetch work history to avoid silent degradation (optional but surfaced on failure)
+      let workHistory: ContentItem[] = []
+      let workHistoryWarning: string | null = null
+      try {
+        workHistory = await fetchContentItems({ limit: 100 })
+        logger.info(`Fetched ${workHistory.length} work history items (enhanced fill)`)
+      } catch (err) {
+        workHistoryWarning = getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(String(err)), logger)
+        logger.warn("Work history unavailable for enhanced fill, continuing without it:", workHistoryWarning)
+      }
+
       // 3. Extract form fields from page
       logger.info("Extracting form fields...")
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
@@ -893,6 +912,10 @@ ipcMain.handle(
         duration,
       }
 
+      if (workHistoryWarning) {
+        summary.skippedFields.push({ label: "Work history", reason: workHistoryWarning })
+      }
+
       return { success: true, data: summary }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -918,7 +941,49 @@ const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   gemini: ["gemini", ["-o", "json", "--yolo"]],
 }
 
-function runEnhancedCli(provider: CliProvider, prompt: string): Promise<EnhancedFillInstruction[]> {
+function parseCliArrayOutput(stdout: string): unknown[] {
+  try {
+    const outer = JSON.parse(stdout)
+    if (outer && typeof outer === "object" && typeof (outer as Record<string, unknown>).result === "string") {
+      return parseJsonArrayFromOutput((outer as Record<string, unknown>).result as string)
+    }
+  } catch {
+    // ignore wrapper parse errors
+  }
+  return parseJsonArrayFromOutput(stdout)
+}
+
+function parseCliObjectOutput(stdout: string): Record<string, unknown> {
+  try {
+    const outer = JSON.parse(stdout)
+    if (outer && typeof outer === "object" && typeof (outer as Record<string, unknown>).result === "string") {
+      return parseJsonObjectFromOutput((outer as Record<string, unknown>).result as string)
+    }
+  } catch {
+    // ignore wrapper parse errors
+  }
+  return parseJsonObjectFromOutput(stdout)
+}
+
+function unwrapResultObject(obj: Record<string, unknown>): Record<string, unknown> {
+  if (obj && typeof obj === "object" && "result" in obj) {
+    const inner = (obj as { result: unknown }).result
+    if (typeof inner === "string") {
+      return parseJsonObjectFromOutput(inner)
+    }
+    if (inner && typeof inner === "object") {
+      return inner as Record<string, unknown>
+    }
+  }
+  return obj
+}
+
+function runCliCommon<T>(
+  provider: CliProvider,
+  prompt: string,
+  parse: (stdout: string) => T,
+  context: string
+): Promise<T> {
   const [cmd, args] = CLI_COMMANDS[provider]
 
   return new Promise((resolve, reject) => {
@@ -926,16 +991,15 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
     let stdout = ""
     let stderr = ""
 
-    // Set up warning timers for long-running operations
     const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
       setTimeout(() => {
-        logger.warn(`[CLI] ${provider} form fill still running after ${ms / 1000}s...`)
+        logger.warn(`[CLI] ${provider} ${context} still running after ${ms / 1000}s...`)
       }, ms)
     )
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
+      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (${context})`))
     }, CLI_TIMEOUT_MS)
 
     const clearAllTimers = () => {
@@ -951,236 +1015,89 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
 
     child.on("error", (err) => {
       clearAllTimers()
-      // Provide helpful error if CLI tool is not installed
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
       } else {
-        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+        reject(new Error(`Failed to spawn ${provider} CLI (${context}): ${err.message}`))
       }
     })
 
     child.on("close", (code) => {
       clearAllTimers()
-      if (code === 0) {
-        try {
-          let jsonStr: string
-
-          // Claude CLI returns a wrapper object: {"type":"result","result":"[...]"}
-          // where "result" contains the JSON array as an escaped string
-          if (stdout.trim().startsWith("{") && stdout.includes('"result"')) {
-            const wrapper = JSON.parse(stdout)
-            if (wrapper.result && typeof wrapper.result === "string") {
-              jsonStr = wrapper.result
-            } else {
-              reject(new Error(`${provider} CLI wrapper missing result field`))
-              return
-            }
-          } else {
-            // Fallback: find first [ and last ] for raw JSON array
-            const startIdx = stdout.indexOf("[")
-            const endIdx = stdout.lastIndexOf("]")
-            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-              jsonStr = stdout.substring(startIdx, endIdx + 1)
-            } else {
-              reject(new Error(`${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}`))
-              return
-            }
-          }
-
-          const parsed = JSON.parse(jsonStr)
-          if (!Array.isArray(parsed)) {
-            reject(new Error(`${provider} CLI did not return an array`))
-            return
-          }
-          resolve(
-            parsed.map((item: Record<string, unknown>) => ({
-              selector: String(item.selector || ""),
-              value: item.value != null ? String(item.value) : null,
-              status: item.status === "skipped" ? "skipped" : "filled",
-              reason: item.reason ? String(item.reason) : undefined,
-              label: item.label ? String(item.label) : undefined,
-            }))
-          )
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}`))
-        }
-      } else {
-        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
+      if (code !== 0) {
+        reject(new Error(`${provider} CLI failed (exit ${code})${stderr ? `: ${stderr}` : stdout ? `: ${stdout}` : ""}`))
+        return
+      }
+      try {
+        resolve(parse(stdout))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        reject(new Error(`${provider} CLI returned invalid JSON (${context}): ${msg}`))
       }
     })
   })
+}
+
+function runEnhancedCli(provider: CliProvider, prompt: string): Promise<EnhancedFillInstruction[]> {
+  return runCliCommon<EnhancedFillInstruction[]>(
+    provider,
+    prompt,
+    (stdout) => {
+      const parsed = parseCliArrayOutput(stdout)
+      if (!Array.isArray(parsed)) {
+        throw new Error("CLI did not return an array")
+      }
+      return parsed.map((item: Record<string, unknown>) => ({
+        selector: String(item.selector || ""),
+        value: item.value != null ? String(item.value) : null,
+        status: item.status === "skipped" ? "skipped" : "filled",
+        reason: item.reason ? String(item.reason) : undefined,
+        label: item.label ? String(item.label) : undefined,
+      }))
+    },
+    "form-fill"
+  )
 }
 
 function runCliForExtraction(provider: CliProvider, prompt: string): Promise<JobExtraction> {
-  const [cmd, args] = CLI_COMMANDS[provider]
+  return runCliCommon<JobExtraction>(
+    provider,
+    prompt,
+    (stdout) => {
+      const rawObj = parseCliObjectOutput(stdout)
+      const jobData = unwrapResultObject(rawObj)
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args)
-    let stdout = ""
-    let stderr = ""
-
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
-    }, CLI_TIMEOUT_MS)
-
-    child.stdin.write(prompt)
-    child.stdin.end()
-
-    child.stdout.on("data", (d) => (stdout += d))
-    child.stderr.on("data", (d) => (stderr += d))
-
-    child.on("error", (err) => {
-      clearTimeout(timeout)
-      // Provide helpful error if CLI tool is not installed
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
-      } else {
-        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+      logger.info(`[CLI] Parsed job data:`, jobData)
+      return {
+        title: (jobData.title as string) ?? null,
+        description: (jobData.description as string) ?? null,
+        location: (jobData.location as string) ?? null,
+        techStack: (jobData.techStack as string) ?? null,
+        companyName: (jobData.companyName as string) ?? null,
       }
-    })
-
-    child.on("close", (code) => {
-      clearTimeout(timeout)
-      logger.info(`[CLI] Exit code: ${code}, stdout length: ${stdout.length}`)
-      if (code === 0) {
-        try {
-          // Claude CLI returns: {"type":"result","result":"...JSON or markdown with JSON..."}
-          // We need to extract the actual job data from the result field
-          const outerJson = JSON.parse(stdout)
-          let jobData: Record<string, unknown>
-
-          if (outerJson.result && typeof outerJson.result === "string") {
-            // Result is a string - extract JSON from it (may be in markdown code block)
-            const resultStr = outerJson.result
-            // Try to find JSON in markdown code block first
-            const codeBlockMatch = resultStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
-            if (codeBlockMatch) {
-              jobData = JSON.parse(codeBlockMatch[1])
-            } else {
-              // Try to find raw JSON object
-              const jsonMatch = resultStr.match(/\{[\s\S]*\}/)
-              if (jsonMatch) {
-                jobData = JSON.parse(jsonMatch[0])
-              } else {
-                throw new Error("No JSON found in result")
-              }
-            }
-          } else if (outerJson.title !== undefined) {
-            // Direct job data (no wrapper)
-            jobData = outerJson
-          } else {
-            throw new Error("Unexpected response format")
-          }
-
-          logger.info(`[CLI] Parsed job data:`, jobData)
-          resolve({
-            title: (jobData.title as string) ?? null,
-            description: (jobData.description as string) ?? null,
-            location: (jobData.location as string) ?? null,
-            techStack: (jobData.techStack as string) ?? null,
-            companyName: (jobData.companyName as string) ?? null,
-          })
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          reject(new Error(`${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 300)}`))
-        }
-      } else {
-        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
-      }
-    })
-  })
+    },
+    "job-extraction"
+  )
 }
 
 function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[]> {
-  const [cmd, args] = CLI_COMMANDS[provider]
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args)
-    let stdout = ""
-    let stderr = ""
-
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s`))
-    }, CLI_TIMEOUT_MS)
-
-    // Pass prompt via stdin to avoid shell injection
-    child.stdin.write(prompt)
-    child.stdin.end()
-
-    child.stdout.on("data", (d) => (stdout += d))
-    child.stderr.on("data", (d) => (stderr += d))
-
-    child.on("error", (err) => {
-      clearTimeout(timeout)
-      // Provide helpful error if CLI tool is not installed
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
-      } else {
-        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
+  return runCliCommon<FillInstruction[]>(
+    provider,
+    prompt,
+    (stdout) => {
+      const parsed = parseCliArrayOutput(stdout)
+      if (!Array.isArray(parsed)) {
+        throw new Error("CLI did not return an array")
       }
-    })
-
-    child.on("close", (code) => {
-      clearTimeout(timeout)
-      if (code === 0) {
-        try {
-          let jsonStr: string
-
-          // Claude CLI returns a wrapper object: {"type":"result","result":"[...]"}
-          // where "result" contains the JSON array as an escaped string
-          if (stdout.trim().startsWith("{") && stdout.includes('"result"')) {
-            const wrapper = JSON.parse(stdout)
-            if (wrapper.result && typeof wrapper.result === "string") {
-              jsonStr = wrapper.result
-            } else {
-              reject(new Error(`${provider} CLI wrapper missing result field`))
-              return
-            }
-          } else {
-            // Fallback: find first [ and last ] for raw JSON array
-            const startIdx = stdout.indexOf("[")
-            const endIdx = stdout.lastIndexOf("]")
-            if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-              jsonStr = stdout.substring(startIdx, endIdx + 1)
-            } else {
-              reject(
-                new Error(
-                  `${provider} CLI returned no JSON array: ${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
-                )
-              )
-              return
-            }
-          }
-
-          const parsed = JSON.parse(jsonStr)
-          // Validate the response structure
-          if (!Array.isArray(parsed)) {
-            reject(new Error(`${provider} CLI did not return an array`))
-            return
-          }
-          for (const item of parsed) {
-            if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
-              reject(new Error(`${provider} CLI returned invalid FillInstruction format`))
-              return
-            }
-          }
-          resolve(parsed)
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          reject(
-            new Error(
-              `${provider} CLI returned invalid JSON: ${msg}\n${stdout.slice(0, 200)}${stdout.length > 200 ? "..." : ""}`
-            )
-          )
+      for (const item of parsed) {
+        if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
+          throw new Error("CLI returned invalid FillInstruction format")
         }
-      } else {
-        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
       }
-    })
-  })
+      return parsed as FillInstruction[]
+    },
+    "form-fill-basic"
+  )
 }
 
 // App lifecycle

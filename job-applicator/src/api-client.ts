@@ -85,32 +85,28 @@ export async function fetchApplicatorProfile(): Promise<string> {
 // ============================================================================
 
 /**
- * Fetch content items (work history) from API
- * Returns empty array on failure (non-critical data)
+ * Fetch content items (work history) from API.
+ * Surfaced errors so callers can notify the user instead of silently degrading.
  */
 export async function fetchContentItems(options?: {
   limit?: number
   parentId?: string | null
 }): Promise<ContentItemNode[]> {
-  try {
-    const params = new URLSearchParams()
-    if (options?.limit) params.set("limit", String(options.limit))
-    if (options?.parentId) params.set("parentId", options.parentId)
+  const params = new URLSearchParams()
+  if (options?.limit) params.set("limit", String(options.limit))
+  if (options?.parentId) params.set("parentId", options.parentId)
 
-    const url = `${API_URL}/content-items${params.toString() ? `?${params}` : ""}`
-    const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+  const url = `${API_URL}/content-items${params.toString() ? `?${params}` : ""}`
+  const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
 
-    if (!res.ok) {
-      logger.warn(`Content items fetch failed: ${res.status}`)
-      return []
-    }
-
-    const data: ApiSuccessResponse<ListContentItemsResponse> = await res.json()
-    return data.data?.items || []
-  } catch (err) {
-    logger.warn("Content items unavailable:", err)
-    return []
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    logger.error(`Content items fetch failed: ${res.status} - ${errorMsg}`)
+    throw new Error(errorMsg)
   }
+
+  const data: ApiSuccessResponse<ListContentItemsResponse> = await res.json()
+  return data.data?.items || []
 }
 
 // ============================================================================
@@ -175,7 +171,8 @@ export async function fetchJobMatch(id: string): Promise<JobMatchWithListing> {
  * Find a job match by URL (searches recent matches)
  */
 export async function findJobMatchByUrl(url: string): Promise<JobMatchWithListing | null> {
-  const matches = await fetchJobMatches({ limit: 100 })
+  // Include all statuses so previously applied/ignored jobs are detectable
+  const matches = await fetchJobMatches({ limit: 100, status: "all" })
 
   /**
    * Normalize URL for comparison - strips protocol and trailing slashes.

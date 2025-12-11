@@ -1,69 +1,12 @@
-// Type declarations for the exposed API
-interface JobMatchListItem {
-  id: string
-  matchScore: number
-  status: "active" | "ignored" | "applied"
-  listing: {
-    id: string
-    url: string
-    title: string
-    companyName: string
-    location?: string
-  }
-}
-
-interface DocumentInfo {
-  id: string
-  generateType: "resume" | "coverLetter" | "both"
-  status: "pending" | "processing" | "completed" | "failed"
-  resumeUrl?: string
-  coverLetterUrl?: string
-  createdAt: string
-  jobMatchId?: string
-}
-
-interface FormFillSummary {
-  totalFields: number
-  filledCount: number
-  skippedCount: number
-  skippedFields: Array<{ label: string; reason: string }>
-  duration: number
-}
-
-interface GenerationStep {
-  id: string
-  name: string
-  description: string
-  status: "pending" | "in_progress" | "completed" | "failed" | "skipped"
-  duration?: number
-  result?: {
-    resumeUrl?: string
-    coverLetterUrl?: string
-  }
-  error?: {
-    message: string
-    code?: string
-  }
-}
-
-interface GenerationProgress {
-  requestId: string
-  status: string
-  steps: GenerationStep[]
-  currentStep?: string
-  resumeUrl?: string
-  coverLetterUrl?: string
-  error?: string
-}
-
-// Workflow steps tracking
-type WorkflowStep = "job" | "docs" | "fill" | "submit"
-interface WorkflowState {
-  job: "pending" | "active" | "completed"
-  docs: "pending" | "active" | "completed"
-  fill: "pending" | "active" | "completed"
-  submit: "pending" | "active" | "completed"
-}
+import type {
+  JobMatchWithListing as JobMatchListItem,
+  DocumentInfo,
+  FormFillSummary,
+  GenerationProgress,
+  GenerationStep,
+  WorkflowState,
+  WorkflowStep,
+} from "../types.js"
 
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
