@@ -90,13 +90,14 @@ class ConfigLoader:
         config = self._get_config("match-policy")
 
         # Validate all required top-level sections exist
+        # Note: "experience" removed - experience scoring is disabled
         required_sections = [
             "minScore",
             "seniority",
             "location",
             "skillMatch",
+            "skills",
             "salary",
-            "experience",
             "freshness",
             "roleFit",
             "company",
@@ -128,12 +129,23 @@ class ConfigLoader:
                 "Add skillMatch fields to match-policy."
             )
 
+        # Enforce required skills (keyword matching) fields (no defaults)
+        skills = config.get("skills", {})
+        skills_required = ["bonusPerSkill", "maxSkillBonus"]
+        skills_missing = [k for k in skills_required if k not in skills]
+        if skills_missing:
+            raise InitializationError(
+                f"match-policy.skills missing required keys: {skills_missing}. "
+                "Add skills fields to match-policy."
+            )
+
         # Enforce required salary fields (no hidden defaults)
         salary = config.get("salary", {})
         salary_required = [
             "minimum",
             "target",
             "belowTargetScore",
+            "belowTargetMaxPenalty",
             "missingSalaryScore",
             "meetsTargetScore",
             "equityScore",
@@ -144,6 +156,102 @@ class ConfigLoader:
             raise InitializationError(
                 f"match-policy.salary missing required keys: {salary_missing}. "
                 "Add salary fields to match-policy."
+            )
+
+        # Enforce required seniority fields (no defaults)
+        seniority = config.get("seniority", {})
+        seniority_required = [
+            "preferred",
+            "acceptable",
+            "rejected",
+            "preferredScore",
+            "acceptableScore",
+            "rejectedScore",
+        ]
+        seniority_missing = [k for k in seniority_required if k not in seniority]
+        if seniority_missing:
+            raise InitializationError(
+                f"match-policy.seniority missing required keys: {seniority_missing}. "
+                "Add seniority fields to match-policy."
+            )
+
+        # Enforce required location fields (no defaults)
+        location = config.get("location", {})
+        location_required = [
+            "allowRemote",
+            "allowHybrid",
+            "allowOnsite",
+            "userTimezone",
+            "maxTimezoneDiffHours",
+            "perHourScore",
+            "hybridSameCityScore",
+            "remoteScore",
+            "relocationScore",
+            "unknownTimezoneScore",
+            "relocationAllowed",
+        ]
+        location_missing = [k for k in location_required if k not in location]
+        if location_missing:
+            raise InitializationError(
+                f"match-policy.location missing required keys: {location_missing}. "
+                "Add location fields to match-policy."
+            )
+
+        # Experience scoring is DISABLED - no validation needed
+        # Year-based qualification comparisons have been removed entirely
+
+        # Enforce required freshness fields (no defaults)
+        freshness = config.get("freshness", {})
+        freshness_required = [
+            "freshDays",
+            "freshScore",
+            "staleDays",
+            "staleScore",
+            "veryStaleDays",
+            "veryStaleScore",
+            "repostScore",
+        ]
+        freshness_missing = [k for k in freshness_required if k not in freshness]
+        if freshness_missing:
+            raise InitializationError(
+                f"match-policy.freshness missing required keys: {freshness_missing}. "
+                "Add freshness fields to match-policy."
+            )
+
+        # Enforce required roleFit fields (no defaults)
+        role_fit = config.get("roleFit", {})
+        role_fit_required = [
+            "preferred",
+            "acceptable",
+            "penalized",
+            "rejected",
+            "preferredScore",
+            "penalizedScore",
+        ]
+        role_fit_missing = [k for k in role_fit_required if k not in role_fit]
+        if role_fit_missing:
+            raise InitializationError(
+                f"match-policy.roleFit missing required keys: {role_fit_missing}. "
+                "Add roleFit fields to match-policy."
+            )
+
+        # Enforce required company fields (no defaults)
+        company = config.get("company", {})
+        company_required = [
+            "preferredCityScore",
+            "remoteFirstScore",
+            "aiMlFocusScore",
+            "largeCompanyScore",
+            "smallCompanyScore",
+            "largeCompanyThreshold",
+            "smallCompanyThreshold",
+            "startupScore",
+        ]
+        company_missing = [k for k in company_required if k not in company]
+        if company_missing:
+            raise InitializationError(
+                f"match-policy.company missing required keys: {company_missing}. "
+                "Add company fields to match-policy."
             )
 
         return config

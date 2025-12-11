@@ -2,6 +2,33 @@
 
 Calculates job match scores based on extracted job data and user-configured
 preferences. All scoring logic is deterministic and transparent.
+
+================================================================================
+SCORING ENGINE POLICY - READ BEFORE MODIFYING
+================================================================================
+
+1. NO HARDCODED VALUES: Every numerical value used in scoring MUST come from
+   the match-policy config. Never use literal numbers like -15, -20, 5, etc.
+
+2. NO DEFAULTS: Never use .get() with default values. If a config field is
+   required, access it directly (config["field"]) so missing fields fail loudly.
+
+3. FAIL LOUDLY: An invalid or incomplete config should cause an immediate
+   InitializationError, not silent fallback behavior.
+
+4. CONFIG IS TRUTH: The TypeScript types, Zod schema, and Python validation
+   must all agree. Any new scoring knob must be added to:
+   - shared/src/config.types.ts (TypeScript interface)
+   - shared/src/schemas/config.schema.ts (Zod validation)
+   - job-finder-worker/src/job_finder/job_queue/config_loader.py (Python validation)
+   - job-finder-FE/src/pages/job-finder-config/components/tabs/ScoringConfigTab.tsx (UI)
+
+5. NO YEAR-BASED QUALIFICATION COMPARISONS: Do not compare user experience years
+   to job requirements with hardcoded thresholds (e.g., "if diff > 3"). Such
+   comparisons are fragile and misleading. Use only config-driven adjustments.
+
+If you need a new scoring adjustment, ADD IT TO THE CONFIG. Do not hardcode.
+================================================================================
 """
 
 import logging
@@ -95,11 +122,12 @@ class ScoringEngine:
         """
         self.config = config
 
-        # Required top-level config - fail loudly if missing
+        # Required top-level config - fail loudly if missing (no defaults allowed)
         self.min_score = config["minScore"]
         self.seniority_config = config["seniority"]
         self.location_config = config["location"]
         self.skill_match_config = config["skillMatch"]
+        self.skills_config = config["skills"]
         self.salary_config = config["salary"]
         self.experience_config = config["experience"]
         self.freshness_config = config["freshness"]
@@ -126,6 +154,20 @@ class ScoringEngine:
 
         self.user_skills: Set[str] = {s.lower().strip() for s in self.skill_years.keys()}
         self.canonical_user_skills: Set[str] = set(self.canonical_skill_years.keys())
+
+        # Build "implied skills" for each user skill
+        # If user has "express" which implies "rest", add "rest" to their implied skills
+        # This enables one-way matching: express qualifies for REST jobs
+        self.user_implied_skills: Dict[str, str] = (
+            {}
+        )  # implied_skill -> source_skill (for tracking)
+        for user_skill in self.canonical_user_skills:
+            taxon = self.taxonomy_lookup.get(user_skill)
+            if taxon and taxon.implies:
+                for implied in taxon.implies:
+                    # Only add if user doesn't already have it directly
+                    if implied not in self.canonical_user_skills:
+                        self.user_implied_skills[implied] = user_skill
 
         # Pre-process seniority lists (required fields)
         self._preferred_seniority = {s.lower() for s in self.seniority_config["preferred"]}
@@ -273,15 +315,15 @@ class ScoringEngine:
         )
 
     def _score_seniority(self, seniority: Optional[str]) -> Dict[str, Any]:
-        """Score based on seniority match."""
+        """Score based on seniority match. All scores from config (no defaults)."""
         if not seniority or seniority == "unknown":
             return {"points": 0, "adjustments": []}
 
         seniority_lower = seniority.lower()
 
-        # Check rejected seniority (hard reject)
+        # Check rejected seniority (hard reject) - score from config, no default
         if seniority_lower in self._rejected_seniority:
-            score = self.seniority_config.get("rejectedScore", -100)
+            score = self.seniority_config["rejectedScore"]
             return {
                 "points": score,
                 "adjustments": [
@@ -294,9 +336,9 @@ class ScoringEngine:
                 "hard_reject": True,
             }
 
-        # Check preferred seniority (bonus)
+        # Check preferred seniority (bonus) - score from config, no default
         if seniority_lower in self._preferred_seniority:
-            score = self.seniority_config.get("preferredScore", 15)
+            score = self.seniority_config["preferredScore"]
             return {
                 "points": score,
                 "adjustments": [
@@ -308,9 +350,9 @@ class ScoringEngine:
                 ],
             }
 
-        # Check acceptable seniority (neutral or adjustment)
+        # Check acceptable seniority - score from config, no default
         if seniority_lower in self._acceptable_seniority or "" in self._acceptable_seniority:
-            score = self.seniority_config.get("acceptableScore", 0)
+            score = self.seniority_config["acceptableScore"]
             if score != 0:
                 return {
                     "points": score,
@@ -328,12 +370,13 @@ class ScoringEngine:
         return {"points": 0, "adjustments": []}
 
     def _score_location(self, extraction: JobExtractionResult) -> Dict[str, Any]:
-        """Score based on location/remote/timezone/relocation."""
+        """Score based on location/remote/timezone/relocation. All scores from config (no defaults)."""
         work_arrangement = extraction.work_arrangement
-        allow_remote = self.location_config.get("allowRemote", True)
-        allow_hybrid = self.location_config.get("allowHybrid", True)
-        allow_onsite = self.location_config.get("allowOnsite", False)
-        relocation_score = self.location_config.get("relocationScore", -50)
+        # All values from config directly - no defaults allowed
+        allow_remote = self.location_config["allowRemote"]
+        allow_hybrid = self.location_config["allowHybrid"]
+        allow_onsite = self.location_config["allowOnsite"]
+        relocation_score = self.location_config["relocationScore"]
 
         # Check relocation requirement first
         if extraction.relocation_required:
@@ -368,8 +411,8 @@ class ScoringEngine:
                     "hard_reject": True,
                     "rejection_reason": "Remote work not allowed per config",
                 }
-            # Remote is allowed - bonus for remote-friendly
-            remote_score = self.location_config.get("remoteScore", 5)
+            # Remote is allowed - bonus from config
+            remote_score = self.location_config["remoteScore"]
             return {
                 "points": remote_score,
                 "adjustments": [
@@ -405,16 +448,17 @@ class ScoringEngine:
         return {"points": 0, "adjustments": []}
 
     def _score_timezone(self, extraction: JobExtractionResult, is_hybrid: bool) -> Dict[str, Any]:
-        """Score based on timezone difference for hybrid/onsite roles."""
+        """Score based on timezone difference for hybrid/onsite roles. All scores from config (no defaults)."""
         job_tz = extraction.timezone
-        user_tz = self.location_config.get("userTimezone", -8)
-        max_diff = self.location_config.get("maxTimezoneDiffHours", 4)
-        per_hour_score = self.location_config.get("perHourScore", -3)
-        unknown_tz_score = self.location_config.get("unknownTimezoneScore", -5)
+        # All values from config directly - no defaults allowed
+        user_tz = self.location_config["userTimezone"]
+        max_diff = self.location_config["maxTimezoneDiffHours"]
+        per_hour_score = self.location_config["perHourScore"]
+        unknown_tz_score = self.location_config["unknownTimezoneScore"]
 
         # Handle None or invalid timezone types
         if job_tz is None or not isinstance(job_tz, (int, float)):
-            # Unknown/invalid timezone - configurable adjustment for uncertainty
+            # Unknown/invalid timezone - score from config
             return {
                 "points": unknown_tz_score,
                 "adjustments": [
@@ -442,13 +486,13 @@ class ScoringEngine:
 
         # For hybrid/onsite roles, check if in user's city
         if extraction.city:
-            user_city = self.location_config.get("userCity", "").lower()
+            user_city = (self.location_config.get("userCity") or "").lower()
             job_city = extraction.city.lower()
             role_type = "Hybrid" if is_hybrid else "Onsite"
             if user_city and job_city == user_city:
                 # Bonus for hybrid in same city (onsite same city is neutral)
                 if is_hybrid:
-                    same_city_score = self.location_config.get("hybridSameCityScore", 10)
+                    same_city_score = self.location_config["hybridSameCityScore"]
                     adjustments.append(
                         ScoreAdjustment(
                             category="location",
@@ -476,8 +520,8 @@ class ScoringEngine:
                     )
                 return {"points": tz_adjustment, "adjustments": adjustments}
             elif user_city:
-                # Different city - check if user allows relocation
-                relocation_allowed = self.location_config.get("relocationAllowed", False)
+                # Different city - check if user allows relocation (from config, no default)
+                relocation_allowed = self.location_config["relocationAllowed"]
                 if not relocation_allowed:
                     # User won't relocate - hard reject
                     return {
@@ -492,8 +536,8 @@ class ScoringEngine:
                             )
                         ],
                     }
-                # User willing to relocate - apply penalty but don't reject
-                relocation_score = self.location_config.get("relocationScore", -15)
+                # User willing to relocate - apply penalty from config
+                relocation_score = self.location_config["relocationScore"]
                 adjustments.append(
                     ScoreAdjustment(
                         category="location",
@@ -546,34 +590,51 @@ class ScoringEngine:
         max_penalty = self.skill_match_config["maxPenalty"]
         missing_ignore = set(s.lower() for s in self.skill_match_config.get("missingIgnore", []))
 
-        matched: List[tuple[str, float, float]] = []
-        analogs: List[tuple[str, str]] = []
+        matched: List[tuple[str, float, float]] = []  # (skill, years, points)
+        implied: List[tuple[str, str, float, float]] = []  # (job_skill, user_skill, years, points)
+        analogs: List[tuple[str, str]] = []  # (job_skill, user_analog) - prevents penalty only
         missing: List[str] = []
         total_bonus = 0.0
+        total_implied_bonus = 0.0
 
         for original, mapped in zip(job_technologies, mapped_terms):
             skill_lower = mapped.lower()
             original_lower = original.lower()
+
+            # 1. Direct match: user has the exact skill (canonical form)
             if skill_lower in self.canonical_user_skills:
                 years = self.canonical_skill_years.get(skill_lower, 0.0)
                 capped_years = min(years, max_years)
                 points = base_score + (capped_years * years_mult)
                 matched.append((mapped, years, points))
                 total_bonus += points
-                # If the original term differed and the user has an analog, record it for transparency/bonus
-                if original_lower != skill_lower and self._has_analog(original_lower):
-                    analog = self._get_analog(original_lower)
-                    analogs.append((mapped, analog))
+
+            # 2. Implied match: user has a skill that implies this one
+            #    e.g., user has "express" which implies "rest", job wants "rest"
+            #    User gets experience-weighted bonus from their source skill
+            elif skill_lower in self.user_implied_skills:
+                source_skill = self.user_implied_skills[skill_lower]
+                years = self.canonical_skill_years.get(source_skill, 0.0)
+                capped_years = min(years, max_years)
+                points = base_score + (capped_years * years_mult)
+                implied.append((mapped, source_skill, years, points))
+                total_implied_bonus += points
+
+            # 3. Analog match: user has a parallel skill (e.g., AWS for GCP job)
+            #    Only prevents missing penalty, no bonus
             elif self._has_analog(skill_lower):
                 analog = self._get_analog(skill_lower)
                 analogs.append((mapped, analog))
             elif original_lower != skill_lower and self._has_analog(original_lower):
                 analog = self._get_analog(original_lower)
                 analogs.append((mapped, analog))
+
+            # 4. Missing: skill is in taxonomy but user doesn't have it or equivalent
             elif skill_lower not in missing_ignore and skill_lower in self.taxonomy_lookup:
                 missing.append(mapped)
 
-        bonus = min(total_bonus, max_bonus)
+        # Cap bonuses at max_bonus (direct + implied combined)
+        combined_bonus = min(total_bonus + total_implied_bonus, max_bonus)
         analog_points = len(analogs) * analog_score
         penalty = 0 if missing_score == 0 else max(len(missing) * missing_score, max_penalty)
 
@@ -584,9 +645,22 @@ class ScoringEngine:
                 ScoreAdjustment(
                     category="skills",
                     reason=f"Matched: {', '.join(details)}",
-                    points=bonus,
+                    points=min(total_bonus, max_bonus),
                 )
             )
+        if implied:
+            # Show implied matches with source skill: "rest via express (4.0y → +3.0)"
+            details = [f"{job} via {src} ({y:.1f}y → +{p:.1f})" for job, src, y, p in implied]
+            # Implied bonus is whatever's left after direct matches (capped at max_bonus total)
+            implied_points = combined_bonus - min(total_bonus, max_bonus)
+            if implied_points > 0:
+                adjustments.append(
+                    ScoreAdjustment(
+                        category="skills",
+                        reason=f"Implied: {', '.join(details)}",
+                        points=implied_points,
+                    )
+                )
         if analogs:
             details = [f"{s}→{a}" for s, a in analogs]
             adjustments.append(
@@ -605,7 +679,7 @@ class ScoringEngine:
                 )
             )
 
-        return {"points": bonus + analog_points + penalty, "adjustments": adjustments}
+        return {"points": combined_bonus + analog_points + penalty, "adjustments": adjustments}
 
     def _has_analog(self, skill: str) -> bool:
         analogs = self.skill_analogs.get(skill, set())
@@ -623,14 +697,16 @@ class ScoringEngine:
         includes_equity: bool = False,
         is_contract: bool = False,
     ) -> Dict[str, Any]:
-        """Score based on salary range, equity, and contract status."""
-        config_min = self.salary_config.get("minimum")
-        config_target = self.salary_config.get("target")
-        below_target_score = self.salary_config.get("belowTargetScore", -2)
-        equity_score = self.salary_config.get("equityScore", 5)
-        contract_score = self.salary_config.get("contractScore", -15)
-        missing_salary_score = self.salary_config.get("missingSalaryScore", 0)
-        meets_target_score = self.salary_config.get("meetsTargetScore", 5)
+        """Score based on salary range, equity, and contract status. All scores from config (no defaults)."""
+        # All values from config directly - no defaults allowed
+        config_min = self.salary_config["minimum"]
+        config_target = self.salary_config["target"]
+        below_target_score = self.salary_config["belowTargetScore"]
+        below_target_max_penalty = self.salary_config["belowTargetMaxPenalty"]
+        equity_score = self.salary_config["equityScore"]
+        contract_score = self.salary_config["contractScore"]
+        missing_salary_score = self.salary_config["missingSalaryScore"]
+        meets_target_score = self.salary_config["meetsTargetScore"]
 
         points = 0
         adjustments: List[ScoreAdjustment] = []
@@ -639,7 +715,7 @@ class ScoringEngine:
         job_salary = max_salary or min_salary
 
         if job_salary is None:
-            # No salary info - configurable adjustment for uncertainty
+            # No salary info - score from config
             points += missing_salary_score
             adjustments.append(
                 ScoreAdjustment(
@@ -669,7 +745,8 @@ class ScoringEngine:
                 units = diff // 10000  # Per $10k below target
                 # below_target_score should already be negative
                 adjustment = int(units * below_target_score)
-                adjustment = max(adjustment, -20)  # Cap at -20
+                # Cap at max penalty from config (no hardcoded value)
+                adjustment = max(adjustment, below_target_max_penalty)
                 points += adjustment
                 adjustments.append(
                     ScoreAdjustment(
@@ -679,7 +756,7 @@ class ScoringEngine:
                     )
                 )
             elif config_target:
-                # At or above target - configurable adjustment
+                # At or above target - score from config
                 points += meets_target_score
                 adjustments.append(
                     ScoreAdjustment(
@@ -689,7 +766,7 @@ class ScoringEngine:
                     )
                 )
 
-        # Equity score adjustment
+        # Equity score adjustment (from config)
         if includes_equity and equity_score:
             points += equity_score
             adjustments.append(
@@ -700,7 +777,7 @@ class ScoringEngine:
                 )
             )
 
-        # Contract score adjustment
+        # Contract score adjustment (from config)
         if is_contract and contract_score:
             points += contract_score
             adjustments.append(
@@ -714,84 +791,19 @@ class ScoringEngine:
         return {"points": points, "adjustments": adjustments}
 
     def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int]) -> Dict[str, Any]:
-        """Score based on experience requirements."""
-        user_years = self.user_experience_years
-        max_required = self.experience_config.get("maxRequired", 15)
-        overqualified_score = self.experience_config.get("overqualifiedScore", -5)
+        """
+        Experience scoring is DISABLED - always returns neutral (0 points).
 
-        if min_exp is None and max_exp is None:
-            return {"points": 0, "adjustments": []}
+        Year-based qualification comparisons (underqualified, overqualified, match bonuses)
+        have been removed entirely. They are fragile and misleading:
+        - A "5 years required" posting will often hire someone with 3 years of strong experience
+        - Someone with 15 years isn't necessarily "overqualified" for a senior role
+        - Experience requirements in job postings are notoriously inaccurate
 
-        job_min = min_exp if min_exp is not None else 0
-        job_max = max_exp if max_exp is not None else job_min
-
-        # Check if user is underqualified
-        if job_min > user_years:
-            diff = job_min - user_years
-            if diff > 3:
-                # Significantly underqualified - hard reject
-                return {
-                    "points": -30,
-                    "adjustments": [
-                        ScoreAdjustment(
-                            category="experience",
-                            reason=f"Requires {job_min}+ years, user has {user_years}",
-                            points=-30,
-                        )
-                    ],
-                }
-            penalty = -diff * 5
-            return {
-                "points": penalty,
-                "adjustments": [
-                    ScoreAdjustment(
-                        category="experience",
-                        reason=f"Requires {job_min}+ years, user has {user_years}",
-                        points=penalty,
-                    )
-                ],
-            }
-
-        # Check if job requires too much experience (unrealistic)
-        if job_min > max_required:
-            return {
-                "points": -10,
-                "adjustments": [
-                    ScoreAdjustment(
-                        category="experience",
-                        reason=f"Requires {job_min}+ years (exceeds {max_required} threshold)",
-                        points=-10,
-                    )
-                ],
-            }
-
-        # Check if user is overqualified
-        if job_max and user_years > job_max + 3:
-            over_years = user_years - job_max
-            # overqualified_score should already be negative
-            adjustment = max(over_years * overqualified_score, -15)
-            return {
-                "points": adjustment,
-                "adjustments": [
-                    ScoreAdjustment(
-                        category="experience",
-                        reason=f"User overqualified ({user_years}y vs {job_max}y max)",
-                        points=adjustment,
-                    )
-                ],
-            }
-
-        # Good experience match
-        return {
-            "points": 5,
-            "adjustments": [
-                ScoreAdjustment(
-                    category="experience",
-                    reason=f"Experience match ({job_min}-{job_max}y required)",
-                    points=5,
-                )
-            ],
-        }
+        If you need experience-based filtering, use the prefilter stage instead.
+        """
+        # Experience scoring disabled - return neutral for all inputs
+        return {"points": 0, "adjustments": []}
 
     def _score_skills(
         self, description: str, scored_technologies: Optional[Set[str]] = None
@@ -799,6 +811,7 @@ class ScoringEngine:
         """Score based on skill keywords in description using word-boundary matching.
 
         Technologies already counted in skill matching are excluded to avoid double-counting.
+        All scores from config (no defaults).
         """
         if not self.user_skills or not description:
             return {"points": 0, "adjustments": []}
@@ -818,9 +831,9 @@ class ScoringEngine:
         if not matched_skills:
             return {"points": 0, "adjustments": []}
 
-        # Bonus based on number of matched skills (configurable)
-        bonus_per_skill = self.config.get("skills", {}).get("bonusPerSkill", 2)
-        max_skill_bonus = self.config.get("skills", {}).get("maxSkillBonus", 15)
+        # All values from config directly - no defaults allowed
+        bonus_per_skill = self.skills_config["bonusPerSkill"]
+        max_skill_bonus = self.skills_config["maxSkillBonus"]
         match_count = len(matched_skills)
         bonus = min(match_count * bonus_per_skill, max_skill_bonus)
 

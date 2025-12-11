@@ -8,7 +8,7 @@ from job_finder.ai.extraction import JobExtractionResult
 
 @pytest.fixture
 def default_config():
-    """Return a complete match-policy configuration (all sections required)."""
+    """Return a complete match-policy configuration (all sections required, no defaults)."""
     return {
         "minScore": 60,
         "seniority": {
@@ -27,26 +27,38 @@ def default_config():
             "maxTimezoneDiffHours": 4,
             "perHourScore": -3,
             "hybridSameCityScore": 10,
+            "remoteScore": 5,
+            "relocationScore": -50,
+            "unknownTimezoneScore": -5,
+            "relocationAllowed": False,
         },
         "skillMatch": {
             "baseMatchScore": 1,
             "yearsMultiplier": 0.5,
             "maxYearsBonus": 5,
             "missingScore": -1,
+            "missingIgnore": [],
             "analogScore": 0,
             "maxBonus": 25,
             "maxPenalty": -15,
             "analogGroups": [["aws", "gcp"], ["node", "node.js"]],
         },
+        "skills": {
+            "bonusPerSkill": 2,
+            "maxSkillBonus": 15,
+        },
         "salary": {
             "minimum": 150000,
             "target": 200000,
             "belowTargetScore": -2,
+            "belowTargetMaxPenalty": -20,
+            "missingSalaryScore": 0,
+            "meetsTargetScore": 5,
+            "equityScore": 5,
+            "contractScore": -15,
         },
-        "experience": {
-            "maxRequired": 15,
-            "overqualifiedScore": -5,
-        },
+        # Experience scoring is DISABLED - section kept for backwards compatibility
+        "experience": {},
         "freshness": {
             "freshDays": 2,
             "freshScore": 10,
@@ -229,8 +241,12 @@ class TestScoringEngine:
         skill_adjustments = [a for a in result.adjustments if a.category == "skills"]
         assert len(skill_adjustments) == 1
 
-    def test_analog_skill_applies_score(self, default_config, engine_factory):
-        """Analog skills are treated as matches when configured."""
+    def test_analog_skill_applies_score(self, default_config, profile):
+        """Analog skills are treated as matches when configured.
+
+        Analogs are parallel skills that prevent penalty but don't give full bonus.
+        E.g., user has AWS, job wants GCP - they're parallel clouds, not synonyms.
+        """
         cfg = {
             **default_config,
             "skillMatch": {
@@ -238,10 +254,16 @@ class TestScoringEngine:
                 "analogScore": 1,
             },
         }
-        engine = engine_factory(cfg)
-        extraction = JobExtractionResult(technologies=["node.js"])
+        # User has AWS but not GCP
+        engine = ScoringEngine(
+            cfg,
+            skill_years={"aws": 3},
+            user_experience_years=profile["total_years"],
+            skill_analogs={"gcp": {"aws"}, "aws": {"gcp"}},  # AWS <-> GCP are analogs
+        )
+        extraction = JobExtractionResult(technologies=["gcp"])  # Job wants GCP
 
-        result = engine.score(extraction, "Backend Engineer", "Node.js role")
+        result = engine.score(extraction, "Cloud Engineer", "GCP role")
 
         analog_adjustments = [a for a in result.adjustments if "Analog" in a.reason]
         assert analog_adjustments, "Expected analog adjustment when equivalent skill exists"
@@ -489,3 +511,56 @@ class TestScoringEngine:
         )
         # No relocation adjustment
         assert not any("relocation" in adj.reason.lower() for adj in result.adjustments)
+
+    def test_implied_skill_gives_bonus(self, default_config):
+        """Skills that imply other skills should qualify for those requirements.
+
+        One-way implication: express implies REST, so user with express qualifies for REST jobs.
+        But REST doesn't imply express - REST knowledge doesn't mean you know express.
+        """
+        engine = ScoringEngine(
+            default_config,
+            skill_years={"express": 4},  # User has express
+        )
+        extraction = JobExtractionResult(
+            technologies=["rest"],  # Job wants REST
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Backend Engineer", "REST API role")
+
+        # Express implies REST, so user should get bonus for the REST requirement
+        implied_adjustments = [
+            a for a in result.adjustments if "Implied" in a.reason or "via" in a.reason.lower()
+        ]
+        assert implied_adjustments, "Expected implied adjustment when skill implies job requirement"
+        # Should show "rest via express" in the adjustment reason
+        assert any(
+            "rest" in adj.reason.lower() and "express" in adj.reason.lower()
+            for adj in implied_adjustments
+        )
+
+    def test_implies_is_one_way(self, default_config):
+        """Implies relationship is one-way - REST does not imply express.
+
+        User has REST knowledge, job wants express. Since REST doesn't imply express,
+        user should NOT qualify through implies (might still match via analog groups).
+        """
+        engine = ScoringEngine(
+            default_config,
+            skill_years={"rest": 5},  # User has REST
+            skill_analogs={},  # No analogs configured
+        )
+        extraction = JobExtractionResult(
+            technologies=["express"],  # Job wants express
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Backend Engineer", "Express.js role")
+
+        # REST does NOT imply express, so there should be no implied match
+        implied_adjustments = [a for a in result.adjustments if "Implied" in a.reason]
+        assert not implied_adjustments, "REST should not imply express (one-way relationship)"
+        # Should have a missing skill penalty for express
+        missing_adjustments = [a for a in result.adjustments if "Missing" in a.reason]
+        assert missing_adjustments, "Expected missing skill adjustment for express"
