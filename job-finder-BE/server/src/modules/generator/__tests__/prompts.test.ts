@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import type { ContentItem, PersonalInfo } from '@shared/types'
 
 // Mock prompts config to avoid DB dependency in unit tests. The mock must be
@@ -22,9 +22,15 @@ let buildResumePrompt: any
 let buildCoverLetterPrompt: any
 
 beforeAll(async () => {
+  vi.resetModules()
   const mod = await import('../workflow/prompts')
   buildResumePrompt = mod.buildResumePrompt
   buildCoverLetterPrompt = mod.buildCoverLetterPrompt
+})
+
+afterAll(() => {
+  vi.unmock('../../prompts/prompts.repository')
+  vi.resetModules()
 })
 
 // Minimal fixtures
