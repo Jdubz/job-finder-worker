@@ -312,12 +312,16 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     typeof location.userTimezone !== "number" ||
     typeof location.maxTimezoneDiffHours !== "number" ||
     typeof location.perHourScore !== "number" ||
-    typeof location.hybridSameCityScore !== "number"
+    typeof location.hybridSameCityScore !== "number" ||
+    typeof location.remoteScore !== "number" ||
+    typeof location.relocationScore !== "number" ||
+    typeof location.unknownTimezoneScore !== "number" ||
+    typeof location.relocationAllowed !== "boolean"
   ) {
     return false
   }
 
-  // Check skillMatch
+  // Check skillMatch (analogGroups removed - now in taxonomy)
   if (!isObject(v.skillMatch)) return false
   const skillMatch = v.skillMatch as any
   if (
@@ -329,12 +333,18 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     !skillMatch.missingIgnore.every(isString) ||
     typeof skillMatch.analogScore !== "number" ||
     typeof skillMatch.maxBonus !== "number" ||
-    typeof skillMatch.maxPenalty !== "number" ||
-    !Array.isArray(skillMatch.analogGroups)
+    typeof skillMatch.maxPenalty !== "number"
   ) {
     return false
   }
-  if (!skillMatch.analogGroups.every((g: unknown) => Array.isArray(g) && g.every(isString))) {
+
+  // Check skills (keyword bonus config)
+  if (!isObject(v.skills)) return false
+  const skills = v.skills as any
+  if (
+    typeof skills.bonusPerSkill !== "number" ||
+    typeof skills.maxSkillBonus !== "number"
+  ) {
     return false
   }
 
@@ -345,6 +355,7 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     (salary.minimum !== null && typeof salary.minimum !== "number") ||
     (salary.target !== null && typeof salary.target !== "number") ||
     typeof salary.belowTargetScore !== "number" ||
+    typeof salary.belowTargetMaxPenalty !== "number" ||
     typeof salary.missingSalaryScore !== "number" ||
     typeof salary.meetsTargetScore !== "number" ||
     typeof salary.equityScore !== "number" ||
@@ -353,15 +364,9 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     return false
   }
 
-  // Check experience
-  if (!isObject(v.experience)) return false
-  const experience = v.experience as any
-  if (
-    typeof experience.maxRequired !== "number" ||
-    typeof experience.overqualifiedScore !== "number"
-  ) {
-    return false
-  }
+  // Check experience (optional section - scoring disabled)
+  // Empty object or object with optional relevantExperienceStart
+  if (v.experience !== undefined && !isObject(v.experience)) return false
 
   return true
 }

@@ -4,12 +4,33 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from job_finder.exceptions import InitializationError
 from job_finder.storage.sqlite_client import sqlite_connection
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_section(config: Dict[str, Any], section_name: str, required_keys: List[str]) -> None:
+    """
+    Validate that a config section contains all required keys.
+
+    Args:
+        config: The parent config dict
+        section_name: Name of the section to validate
+        required_keys: List of keys that must be present
+
+    Raises:
+        InitializationError: If any required keys are missing
+    """
+    section = config.get(section_name, {})
+    missing_keys = [key for key in required_keys if key not in section]
+    if missing_keys:
+        raise InitializationError(
+            f"match-policy.{section_name} missing required keys: {missing_keys}. "
+            f"Add {section_name} fields to match-policy."
+        )
 
 
 class ConfigLoader:
@@ -90,13 +111,14 @@ class ConfigLoader:
         config = self._get_config("match-policy")
 
         # Validate all required top-level sections exist
+        # Note: "experience" removed - experience scoring is disabled
         required_sections = [
             "minScore",
             "seniority",
             "location",
             "skillMatch",
+            "skills",
             "salary",
-            "experience",
             "freshness",
             "roleFit",
             "company",
@@ -108,43 +130,115 @@ class ConfigLoader:
                 "Update the match-policy config record to include all required fields."
             )
 
-        # Enforce required skillMatch fields (no defaults)
-        skill_match = config.get("skillMatch", {})
-        skill_required = [
-            "baseMatchScore",
-            "yearsMultiplier",
-            "maxYearsBonus",
-            "missingScore",
-            "analogScore",
-            "maxBonus",
-            "maxPenalty",
-            "analogGroups",
-            "missingIgnore",
-        ]
-        skill_missing = [k for k in skill_required if k not in skill_match]
-        if skill_missing:
-            raise InitializationError(
-                f"match-policy.skillMatch missing required keys: {skill_missing}. "
-                "Add skillMatch fields to match-policy."
-            )
+        # Validate all config sections using helper (no defaults allowed)
+        # Note: analogGroups removed - skill parallels now managed by taxonomy system
+        _validate_section(
+            config,
+            "skillMatch",
+            [
+                "baseMatchScore",
+                "yearsMultiplier",
+                "maxYearsBonus",
+                "missingScore",
+                "analogScore",
+                "maxBonus",
+                "maxPenalty",
+                "missingIgnore",
+            ],
+        )
 
-        # Enforce required salary fields (no hidden defaults)
-        salary = config.get("salary", {})
-        salary_required = [
-            "minimum",
-            "target",
-            "belowTargetScore",
-            "missingSalaryScore",
-            "meetsTargetScore",
-            "equityScore",
-            "contractScore",
-        ]
-        salary_missing = [k for k in salary_required if k not in salary]
-        if salary_missing:
-            raise InitializationError(
-                f"match-policy.salary missing required keys: {salary_missing}. "
-                "Add salary fields to match-policy."
-            )
+        _validate_section(config, "skills", ["bonusPerSkill", "maxSkillBonus"])
+
+        _validate_section(
+            config,
+            "salary",
+            [
+                "minimum",
+                "target",
+                "belowTargetScore",
+                "belowTargetMaxPenalty",
+                "missingSalaryScore",
+                "meetsTargetScore",
+                "equityScore",
+                "contractScore",
+            ],
+        )
+
+        _validate_section(
+            config,
+            "seniority",
+            [
+                "preferred",
+                "acceptable",
+                "rejected",
+                "preferredScore",
+                "acceptableScore",
+                "rejectedScore",
+            ],
+        )
+
+        _validate_section(
+            config,
+            "location",
+            [
+                "allowRemote",
+                "allowHybrid",
+                "allowOnsite",
+                "userTimezone",
+                "maxTimezoneDiffHours",
+                "perHourScore",
+                "hybridSameCityScore",
+                "remoteScore",
+                "relocationScore",
+                "unknownTimezoneScore",
+                "relocationAllowed",
+            ],
+        )
+
+        # Experience scoring is DISABLED - no validation needed
+        # Year-based qualification comparisons have been removed entirely
+
+        _validate_section(
+            config,
+            "freshness",
+            [
+                "freshDays",
+                "freshScore",
+                "staleDays",
+                "staleScore",
+                "veryStaleDays",
+                "veryStaleScore",
+                "repostScore",
+            ],
+        )
+
+        _validate_section(
+            config,
+            "roleFit",
+            [
+                "preferred",
+                "acceptable",
+                "penalized",
+                "rejected",
+                "preferredScore",
+                "penalizedScore",
+            ],
+        )
+
+        _validate_section(
+            config,
+            "company",
+            [
+                "preferredCityScore",
+                "remoteFirstScore",
+                "aiMlFocusScore",
+                "largeCompanyScore",
+                "smallCompanyScore",
+                "largeCompanyThreshold",
+                "smallCompanyThreshold",
+                "startupScore",
+            ],
+        )
 
         return config
 
