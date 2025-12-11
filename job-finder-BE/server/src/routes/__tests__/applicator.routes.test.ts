@@ -244,7 +244,8 @@ describe('applicator routes', () => {
   it('sorts work history by start date descending (most recent first)', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Engineer',
-      email: 'eng@example.com'
+      email: 'eng@example.com',
+      applicationInfo: 'Gender: Decline to self-identify'
     }
     configRepo.upsert('personal-info', personalInfo)
 
@@ -301,7 +302,8 @@ describe('applicator routes', () => {
   it('includes section separators for readability', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Test User',
-      email: 'test@example.com'
+      email: 'test@example.com',
+      applicationInfo: 'Gender: Decline to self-identify'
     }
     configRepo.upsert('personal-info', personalInfo)
 
