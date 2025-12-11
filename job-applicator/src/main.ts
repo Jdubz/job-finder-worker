@@ -1,6 +1,7 @@
 import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
 import type { WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
+import * as readline from "readline"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
@@ -35,11 +36,12 @@ import type {
   FormField,
   EnhancedFillInstruction,
   FormFillSummary,
+  FormFillProgress,
   JobExtraction,
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import { getCliCommand } from "./cli-config.js"
+import { getCliCommand, getStreamingCliCommand } from "./cli-config.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
@@ -74,7 +76,7 @@ const SIDEBAR_WIDTH = 300
 // CLI timeout and warning thresholds
 // 2 minutes for complex form fills - increased from 60s to handle large forms
 // Warning intervals help identify if operations are taking unusually long
-const CLI_TIMEOUT_MS = 120000
+const CLI_TIMEOUT_MS = 300000 // 5 minutes
 const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
 
 // Maximum steps for generation workflow (prevent infinite loops)
@@ -881,7 +883,7 @@ ipcMain.handle(
 )
 
 // Fill form with AI using optimized profile endpoint
-// Includes EEO data, job match context, and results tracking
+// Includes EEO data, job match context, streaming progress, and results tracking
 ipcMain.handle(
   "fill-form",
   async (
@@ -893,20 +895,53 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // 1. Get pre-formatted profile text from optimized applicator endpoint
-      // This includes personal info, EEO, work history, education, and skills - all pre-serialized
-      logger.info("Fetching applicator profile from backend...")
-      const profileText = await fetchApplicatorProfile()
-      logger.info(`Received profile text (${profileText.length} chars)`)
+      // Send initial progress
+      sendFormFillProgress({
+        phase: "starting",
+        message: "Preparing to fill form...",
+      })
 
-      // Validate profile has content - empty profile would result in poor form filling
+      // 1. Get pre-formatted profile text from optimized applicator endpoint
+      logger.info("Fetching applicator profile from backend...")
+      sendFormFillProgress({
+        phase: "starting",
+        message: "Loading your profile...",
+      })
+
+      let profileText: string
+      try {
+        profileText = await fetchApplicatorProfile()
+        logger.info(`Received profile text (${profileText.length} chars)`)
+      } catch (err) {
+        const rawMessage = err instanceof Error ? err.message : String(err)
+        logger.error(`Profile fetch failed with raw error: ${rawMessage}`)
+        const errorMsg = `Failed to fetch profile: ${getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(rawMessage), logger)}`
+        sendFormFillProgress({
+          phase: "failed",
+          message: errorMsg,
+          error: errorMsg,
+        })
+        throw new Error(errorMsg)
+      }
+
+      // Validate profile has content
       if (!profileText || profileText.trim().length < 50) {
-        throw new Error("Profile data is empty or incomplete. Please configure your profile before filling forms.")
+        const errorMsg = "Profile data is empty or incomplete. Please configure your profile before filling forms."
+        sendFormFillProgress({
+          phase: "failed",
+          message: errorMsg,
+          error: errorMsg,
+        })
+        throw new Error(errorMsg)
       }
 
       // 2. Get job match context if provided
       let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
       if (options.jobMatchId) {
+        sendFormFillProgress({
+          phase: "starting",
+          message: "Loading job details...",
+        })
         try {
           const match = await fetchJobMatch(options.jobMatchId)
           jobContext = {
@@ -915,33 +950,69 @@ ipcMain.handle(
             matchedSkills: match.matchedSkills as string[] | undefined,
           }
         } catch (err) {
-          // Non-critical - continue without job match data, but log for debugging
           logger.warn("Failed to fetch job match data, continuing without it:", err)
         }
       }
 
       // 3. Extract form fields from page
       logger.info("Extracting form fields...")
+      sendFormFillProgress({
+        phase: "starting",
+        message: "Analyzing form fields...",
+      })
+
       const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
       logger.info(`Found ${fields.length} form fields`)
 
       if (fields.length === 0) {
+        sendFormFillProgress({
+          phase: "failed",
+          message: "No form fields found on page",
+          error: "No form fields found on page",
+        })
         return { success: false, message: "No form fields found on page" }
       }
 
-      // 4. Build prompt using pre-formatted profile text (much more efficient)
+      // 4. Build prompt
       const prompt = buildPromptFromProfileText(fields, profileText, jobContext)
-      logger.info(`Calling ${options.provider} CLI for enhanced field mapping...`)
+      logger.info(`Calling ${options.provider} CLI for field mapping...`)
 
-      // 6. Call CLI for fill instructions with skip tracking
-      const instructions = await runEnhancedCli(options.provider, prompt)
+      // 5. Call CLI with streaming progress
+      sendFormFillProgress({
+        phase: "ai-processing",
+        message: "AI is analyzing the form...",
+        isStreaming: true,
+        totalFields: fields.length,
+      })
+
+      // Use streaming CLI for real-time progress updates
+      const instructions = await runStreamingCli(
+        options.provider,
+        prompt,
+        (text, isComplete) => {
+          sendFormFillProgress({
+            phase: "ai-processing",
+            message: isComplete ? "AI analysis complete" : "AI is generating fill instructions...",
+            streamingText: text,
+            isStreaming: !isComplete,
+            totalFields: fields.length,
+          })
+        }
+      )
       logger.info(`Got ${instructions.length} fill instructions`)
 
-      // 7. Fill fields using robust React-compatible method and track results
+      // 6. Fill fields with progress updates
+      sendFormFillProgress({
+        phase: "filling",
+        message: "Filling form fields...",
+        totalFields: instructions.length,
+        processedFields: 0,
+      })
+
       let filledCount = 0
       const skippedFields: Array<{ label: string; reason: string }> = []
 
-      // Create a map of selectors to field types for proper handling
+      // Create a map of selectors to field types
       const fieldTypeMap = new Map<string, string>()
       for (const field of fields) {
         if (field.selector) {
@@ -949,16 +1020,43 @@ ipcMain.handle(
         }
       }
 
-      for (const instruction of instructions) {
+      for (let i = 0; i < instructions.length; i++) {
+        const instruction = instructions[i]
+
         if (instruction.status === "skipped") {
           skippedFields.push({
             label: instruction.label || instruction.selector || "Unknown field",
             reason: instruction.reason || "No data available",
           })
+
+          sendFormFillProgress({
+            phase: "filling",
+            message: `Skipped: ${instruction.label || instruction.selector}`,
+            totalFields: instructions.length,
+            processedFields: i + 1,
+            currentField: {
+              label: instruction.label || instruction.selector || "Unknown",
+              selector: instruction.selector,
+              status: "skipped",
+            },
+          })
           continue
         }
 
         if (!instruction.value) continue
+
+        // Send progress before filling
+        sendFormFillProgress({
+          phase: "filling",
+          message: `Filling: ${instruction.label || instruction.selector}`,
+          totalFields: instructions.length,
+          processedFields: i,
+          currentField: {
+            label: instruction.label || instruction.selector || "Unknown",
+            selector: instruction.selector,
+            status: "processing",
+          },
+        })
 
         try {
           const fieldType = fieldTypeMap.get(instruction.selector)
@@ -969,6 +1067,19 @@ ipcMain.handle(
             fieldType
           )
           if (filled) filledCount++
+
+          // Send progress after filling
+          sendFormFillProgress({
+            phase: "filling",
+            message: `Filled: ${instruction.label || instruction.selector}`,
+            totalFields: instructions.length,
+            processedFields: i + 1,
+            currentField: {
+              label: instruction.label || instruction.selector || "Unknown",
+              selector: instruction.selector,
+              status: "filled",
+            },
+          })
         } catch (err) {
           logger.warn(`Failed to fill ${instruction.selector}:`, err)
         }
@@ -983,10 +1094,26 @@ ipcMain.handle(
         duration,
       }
 
+      // Send completion
+      sendFormFillProgress({
+        phase: "completed",
+        message: `Filled ${filledCount} of ${fields.length} fields`,
+        totalFields: fields.length,
+        processedFields: instructions.length,
+        summary,
+      })
+
       return { success: true, data: summary }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logger.error("Enhanced fill form error:", message)
+      logger.error("Fill form error:", message)
+
+      sendFormFillProgress({
+        phase: "failed",
+        message,
+        error: message,
+      })
+
       return { success: false, message }
     }
   }
@@ -1110,6 +1237,183 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
     },
     "job-extraction"
   )
+}
+
+/**
+ * Streaming CLI runner for form filling with real-time progress updates.
+ *
+ * Uses Claude CLI's stream-json output format which emits NDJSON:
+ * - {"type":"system",...} - Session init
+ * - {"type":"stream_event","event":{"type":"content_block_delta","delta":{"text":"..."}}} - Token streaming
+ * - {"type":"assistant","message":{...}} - Complete message
+ * - {"type":"result","result":"..."} - Final result
+ *
+ * Falls back to non-streaming for providers that don't support it.
+ */
+function runStreamingCli(
+  provider: CliProvider,
+  prompt: string,
+  onProgress: (text: string, isComplete: boolean) => void
+): Promise<EnhancedFillInstruction[]> {
+  const streamingCommand = getStreamingCliCommand(provider)
+
+  // Fall back to non-streaming if provider doesn't support it
+  if (!streamingCommand) {
+    logger.info(`[CLI] Provider ${provider} doesn't support streaming, using standard mode`)
+    return runEnhancedCli(provider, prompt)
+  }
+
+  const [cmd, args] = streamingCommand
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args)
+    let accumulatedText = ""
+    let finalResult: string | null = null
+    let stderr = ""
+
+    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
+      setTimeout(() => {
+        logger.warn(`[CLI] ${provider} streaming still running after ${ms / 1000}s...`)
+      }, ms)
+    )
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM")
+      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (streaming form-fill)`))
+    }, CLI_TIMEOUT_MS)
+
+    const clearAllTimers = () => {
+      warningTimers.forEach(clearTimeout)
+      clearTimeout(timeout)
+    }
+
+    // Write prompt to stdin
+    child.stdin.write(prompt)
+    child.stdin.end()
+
+    // Process stdout line-by-line (NDJSON format)
+    const rl = readline.createInterface({
+      input: child.stdout,
+      crlfDelay: Infinity,
+    })
+
+    rl.on("line", (line) => {
+      if (!line.trim()) return
+
+      try {
+        const event = JSON.parse(line)
+        logger.debug(`[CLI Streaming] Event type: ${event.type}`)
+
+        // Handle streaming token deltas
+        if (event.type === "stream_event" && event.event?.type === "content_block_delta") {
+          const text = event.event.delta?.text
+          if (text) {
+            accumulatedText += text
+            logger.debug(`[CLI Streaming] Delta text (${text.length} chars), total: ${accumulatedText.length}`)
+            onProgress(accumulatedText, false)
+          }
+        }
+
+        // Handle complete assistant message (backup if streaming events missed)
+        if (event.type === "assistant" && event.message?.content) {
+          const content = event.message.content
+          if (Array.isArray(content) && content[0]?.type === "text") {
+            accumulatedText = content[0].text
+            logger.debug(`[CLI Streaming] Assistant message: ${accumulatedText.length} chars`)
+            onProgress(accumulatedText, false)
+          }
+        }
+
+        // Handle final result
+        if (event.type === "result") {
+          finalResult = event.result
+          logger.info(`[CLI Streaming] Result received: ${finalResult?.length || 0} chars`)
+          onProgress(finalResult || accumulatedText, true)
+        }
+      } catch {
+        // Log parse errors but don't fail - might be debug output
+        logger.warn(`[CLI] Failed to parse streaming line: ${line.slice(0, 100)}`)
+      }
+    })
+
+    child.stderr.on("data", (d) => (stderr += d))
+
+    child.on("error", (err) => {
+      clearAllTimers()
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+      } else {
+        reject(new Error(`Failed to spawn ${provider} CLI (streaming form-fill): ${err.message}`))
+      }
+    })
+
+    child.on("close", (code) => {
+      clearAllTimers()
+
+      if (code !== 0) {
+        let errorMsg = `${provider} CLI failed (exit ${code}).`
+        if (stderr?.trim()) {
+          errorMsg += ` Error: ${stderr.trim()}`
+        }
+        reject(new Error(errorMsg))
+        return
+      }
+
+      // Parse the final result
+      const resultText = finalResult || accumulatedText
+      logger.info(`[CLI Streaming] Close - finalResult: ${finalResult?.length || 0}, accumulatedText: ${accumulatedText.length}`)
+      logger.debug(`[CLI Streaming] Result text preview: ${resultText?.slice(0, 500)}`)
+
+      if (!resultText) {
+        reject(new Error(`${provider} CLI returned no output (streaming form-fill)`))
+        return
+      }
+
+      try {
+        // The result should be a JSON array of instructions
+        // Try parsing directly first (streaming might give us clean JSON)
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(resultText)
+          logger.debug(`[CLI Streaming] Parsed as direct JSON`)
+        } catch {
+          // Fall back to array extraction if not clean JSON
+          logger.debug(`[CLI Streaming] Direct JSON failed, trying array extraction`)
+          parsed = parseCliArrayOutput(resultText)
+        }
+
+        if (!Array.isArray(parsed)) {
+          logger.error(`[CLI Streaming] Parsed result is not an array: ${typeof parsed}`)
+          throw new Error("CLI did not return an array")
+        }
+
+        logger.info(`[CLI Streaming] Parsed ${parsed.length} instructions`)
+
+        const instructions = (parsed as Array<Record<string, unknown>>).map((item) => ({
+          selector: String(item.selector || ""),
+          value: item.value != null ? String(item.value) : null,
+          status: (item.status === "skipped" ? "skipped" : "filled") as "filled" | "skipped",
+          reason: item.reason ? String(item.reason) : undefined,
+          label: item.label ? String(item.label) : undefined,
+        }))
+
+        resolve(instructions)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`[CLI Streaming] Parse error: ${msg}`)
+        reject(new Error(`${provider} CLI returned invalid JSON (streaming form-fill): ${msg}`))
+      }
+    })
+  })
+}
+
+/**
+ * Helper to send form fill progress to renderer
+ */
+function sendFormFillProgress(progress: FormFillProgress): void {
+  if (mainWindow) {
+    mainWindow.webContents.send("form-fill-progress", progress)
+  }
 }
 
 // App lifecycle

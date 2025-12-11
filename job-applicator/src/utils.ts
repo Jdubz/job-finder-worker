@@ -218,7 +218,7 @@ export type {
 } from "./types.js"
 
 // Import types for use in this file
-import type { ContentItem, PersonalInfo, FormField, FillInstruction, EnhancedFillInstruction } from "./types.js"
+import type { ContentItem, FormField, FillInstruction, EnhancedFillInstruction } from "./types.js"
 
 /**
  * Format work history for form fill prompts.
@@ -319,15 +319,25 @@ ${JSON.stringify(fields, null, 2)}
 Return a JSON array. For EACH form field:
 [
   {"selector": "#email", "label": "Email", "value": "user@example.com", "status": "filled"},
+  {"selector": "#authorized", "label": "Authorized to work", "value": "true", "status": "filled"},
   {"selector": "#coverLetter", "label": "Cover Letter", "value": null, "status": "skipped", "reason": "Requires custom text"}
 ]
 
-Rules:
-1. For select dropdowns, use the "value" property from options (not "text")
-2. Skip file upload fields (type="file") - status: "skipped", reason: "File upload"
-3. Skip submit buttons - status: "skipped", reason: "Submit button"
-4. If no data available, mark status: "skipped" with reason
-5. Return ONLY valid JSON array, no markdown, no explanation`
+## Field Type Rules
+1. **Select dropdowns**: Use the "value" property from options (not "text")
+2. **Checkboxes (type="checkbox")**: Use "true" or "false" as the value string:
+   - Work authorization questions: Check profile for citizenship/visa status
+   - Agreement/consent checkboxes: Use "true"
+   - Skills/technologies: Check if profile lists that skill
+   - Accommodation requests: "false" unless profile indicates otherwise
+3. **Radio buttons (type="radio")**: Use the option value that matches profile data
+4. **File uploads (type="file")**: Skip with reason "File upload"
+5. **Submit buttons**: Skip with reason "Submit button"
+6. **Unknown data**: Mark status: "skipped" with specific reason
+
+IMPORTANT: Fill checkboxes and radio buttons when profile data supports an answer. Do not skip them just because they are boolean fields.
+
+Return ONLY valid JSON array, no markdown, no explanation.`
 }
 
 // Build job extraction prompt

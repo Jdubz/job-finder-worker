@@ -2,6 +2,7 @@ import type {
   JobMatchWithListing as JobMatchListItem,
   DocumentInfo,
   FormFillSummary,
+  FormFillProgress,
   GenerationProgress,
   GenerationStep,
   WorkflowState,
@@ -49,6 +50,7 @@ interface ElectronAPI {
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
+  onFormFillProgress: (callback: (progress: FormFillProgress) => void) => () => void
 }
 
 // Debug: log immediately when script loads
@@ -107,7 +109,7 @@ const jobList = getElement<HTMLDivElement>("jobList")
 const documentsList = getElement<HTMLDivElement>("documentsList")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
 const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
-const resultsContent = getElement<HTMLDivElement>("resultsContent")
+const fillOutput = getElement<HTMLDivElement>("fillOutput")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
 const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
@@ -651,6 +653,107 @@ async function navigate() {
   setButtonsEnabled(true)
 }
 
+// Track form fill progress subscription
+let unsubscribeFormFillProgress: (() => void) | null = null
+
+// Handle form fill progress updates
+function handleFormFillProgress(progress: FormFillProgress) {
+  // Update status message based on phase
+  if (progress.phase === "failed") {
+    setStatus(progress.message, "error")
+    hideFormFillProgress()
+    return
+  }
+
+  if (progress.phase === "completed") {
+    if (progress.summary) {
+      renderFillResults(progress.summary)
+    }
+    setStatus(progress.message, "success")
+    hideFormFillProgress()
+    setWorkflowStep("fill", "completed")
+    setWorkflowStep("submit", "active")
+    return
+  }
+
+  // Show progress UI
+  showFormFillProgress(progress)
+}
+
+// Show form fill progress UI
+function showFormFillProgress(progress: FormFillProgress) {
+  let progressHtml = ""
+
+  if (progress.phase === "starting") {
+    progressHtml = `
+      <div class="fill-progress">
+        <div class="fill-phase">${progress.message}</div>
+        <div class="fill-spinner"></div>
+      </div>
+    `
+  } else if (progress.phase === "ai-processing") {
+    // Parse streaming text to show field count and last few fields being processed
+    let streamingInfo = ""
+    if (progress.streamingText) {
+      // Count how many complete field objects we can see
+      const fieldMatches = progress.streamingText.match(/"selector":/g)
+      const fieldCount = fieldMatches ? fieldMatches.length : 0
+
+      // Extract the last few field labels for display
+      const labelMatches = progress.streamingText.match(/"label":\s*"([^"]+)"/g)
+      const lastLabels = labelMatches
+        ? labelMatches.slice(-3).map((m) => m.match(/"label":\s*"([^"]+)"/)?.[1] || "").filter(Boolean)
+        : []
+
+      const charCount = progress.streamingText.length
+      streamingInfo = `
+        <div class="streaming-info">
+          <div class="streaming-stat"><span class="stat-value">${fieldCount}</span> fields analyzed</div>
+          <div class="streaming-stat"><span class="stat-value">${Math.round(charCount / 1024)}KB</span> received</div>
+          ${lastLabels.length > 0 ? `<div class="streaming-recent">Recent: ${lastLabels.join(", ")}</div>` : ""}
+        </div>
+      `
+    }
+
+    progressHtml = `
+      <div class="fill-progress">
+        <div class="fill-phase">${progress.message}</div>
+        ${progress.isStreaming ? '<div class="fill-spinner"></div>' : ""}
+        ${streamingInfo}
+      </div>
+    `
+  } else if (progress.phase === "filling") {
+    const percent = progress.totalFields
+      ? Math.round(((progress.processedFields || 0) / progress.totalFields) * 100)
+      : 0
+
+    progressHtml = `
+      <div class="fill-progress">
+        <div class="fill-phase">${progress.message}</div>
+        <div class="fill-progress-bar">
+          <div class="fill-progress-fill" style="width: ${percent}%"></div>
+        </div>
+        <div class="fill-progress-text">${progress.processedFields || 0} / ${progress.totalFields || 0} fields</div>
+      </div>
+    `
+  }
+
+  fillOutput.innerHTML = progressHtml
+  setStatus(progress.message, "loading")
+}
+
+// Hide form fill progress UI
+function hideFormFillProgress() {
+  // Progress UI is replaced by results or cleared on error
+}
+
+// Escape HTML to prevent XSS in streaming preview
+function escapeHtml(text: string): string {
+  const div = document.createElement("div")
+  div.textContent = text
+  return div.innerHTML
+}
+
 // Fill form with AI
 async function fillForm() {
   const provider = providerSelect.value as "claude" | "codex" | "gemini"
@@ -660,24 +763,39 @@ async function fillForm() {
     setStatus(`Filling form with ${provider}...`, "loading")
     setWorkflowStep("fill", "active")
 
+    // Subscribe to progress events
+    unsubscribeFormFillProgress = api.onFormFillProgress(handleFormFillProgress)
+
     const result = await api.fillForm({
       provider,
       jobMatchId: selectedJobMatchId || undefined,
       documentId: selectedDocumentId || undefined,
     })
 
+    // Unsubscribe from progress events
+    if (unsubscribeFormFillProgress) {
+      unsubscribeFormFillProgress()
+      unsubscribeFormFillProgress = null
+    }
+
+    // Handle result (progress events should have already updated UI)
     if (result.success && result.data) {
       renderFillResults(result.data)
       setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
       setWorkflowStep("fill", "completed")
       setWorkflowStep("submit", "active")
-    } else {
+    } else if (!result.success) {
       setStatus(result.message || "Fill failed", "error")
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     setStatus(`Fill failed: ${message}`, "error")
   } finally {
+    // Clean up subscription
+    if (unsubscribeFormFillProgress) {
+      unsubscribeFormFillProgress()
+      unsubscribeFormFillProgress = null
+    }
     setButtonsEnabled(true)
   }
 }
@@ -686,7 +804,7 @@ async function fillForm() {
 function renderFillResults(summary: FormFillSummary) {
   const hasSkipped = summary.skippedFields.length > 0
 
-  resultsContent.innerHTML = `
+  fillOutput.innerHTML = `
     <div class="results-summary">
       <div class="results-header">
         <span class="results-count">${summary.filledCount}</span>
@@ -716,7 +834,7 @@ function renderFillResults(summary: FormFillSummary) {
   `
 
   // Scroll to results
-  resultsContent.scrollIntoView({ behavior: "smooth" })
+  fillOutput.scrollIntoView({ behavior: "smooth" })
 }
 
 // Upload document (resume or cover letter)
@@ -779,13 +897,6 @@ async function submitJob() {
   } finally {
     setButtonsEnabled(true)
   }
-}
-
-// Utility: escape HTML for content
-function escapeHtml(str: string): string {
-  const div = document.createElement("div")
-  div.textContent = str
-  return div.innerHTML
 }
 
 // Utility: escape for HTML attributes (escapes quotes)
