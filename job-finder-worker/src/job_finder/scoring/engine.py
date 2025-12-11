@@ -156,14 +156,18 @@ class ScoringEngine:
         # Build "implied skills" for each user skill
         # If user has "express" which implies "rest", add "rest" to their implied skills
         # This enables one-way matching: express qualifies for REST jobs
-        self.user_implied_skills: Dict[str, str] = {}  # implied_skill -> source_skill
+        # Multiple user skills can imply the same skill (e.g., express and fastapi both imply rest)
+        # We store all sources and pick the one with most experience when scoring
+        self.user_implied_skills: Dict[str, Set[str]] = {}  # implied_skill -> set of source_skills
         for user_skill in self.canonical_user_skills:
             taxon = self.taxonomy_lookup.get(user_skill)
             if taxon and taxon.implies:
                 for implied in taxon.implies:
                     # Only add if user doesn't already have it directly
                     if implied not in self.canonical_user_skills:
-                        self.user_implied_skills[implied] = user_skill
+                        if implied not in self.user_implied_skills:
+                            self.user_implied_skills[implied] = set()
+                        self.user_implied_skills[implied].add(user_skill)
 
         # Build "parallel skills" lookup from taxonomy
         # If user has "aws" which parallels "gcp", track that for analog matching
@@ -622,8 +626,13 @@ class ScoringEngine:
             # 2. Implied match: user has a skill that implies this one
             #    e.g., user has "express" which implies "rest", job wants "rest"
             #    User gets experience-weighted bonus from their source skill
+            #    If multiple user skills imply the same skill, use the one with most experience
             elif skill_lower in self.user_implied_skills:
-                source_skill = self.user_implied_skills[skill_lower]
+                source_skills = self.user_implied_skills[skill_lower]
+                # Pick source skill with most experience years
+                source_skill = max(
+                    source_skills, key=lambda s: self.canonical_skill_years.get(s, 0.0)
+                )
                 years = self.canonical_skill_years.get(source_skill, 0.0)
                 capped_years = min(years, max_years)
                 points = base_score + (capped_years * years_mult)
