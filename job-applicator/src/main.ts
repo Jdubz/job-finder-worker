@@ -1,4 +1,5 @@
 import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu } from "electron"
+import type { WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
@@ -13,7 +14,7 @@ app.commandLine.appendSwitch("disable-software-rasterizer")
 logger.info("Main process starting...")
 
 // Listen for renderer console logs and forward to main process logger
-ipcMain.on("renderer-log", (_event, level: string, args: unknown[]) => {
+ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => {
   const message = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
   const prefix = "[RENDERER]"
   switch (level) {
@@ -83,8 +84,8 @@ const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s,
 const MAX_GENERATION_STEPS = 20
 
 // Global state
-let mainWindow: BrowserWindow | null = null
-let browserView: BrowserView | null = null
+let mainWindow: any | null = null
+let browserView: any | null = null
 
 // Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
 function updateBrowserViewBounds(): void {
@@ -164,20 +165,20 @@ async function createWindow(): Promise<void> {
   browserView.setAutoResize({ width: true, height: true })
 
   // Capture renderer console messages and errors BEFORE loading HTML
-  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+mainWindow.webContents.on("console-message", (_event: unknown, level: number, message: string, line: number, sourceId: string) => {
     const levelName = ["verbose", "info", "warning", "error"][level] || "unknown"
     logger.info(`[RENDERER:${levelName}] ${message} (${sourceId}:${line})`)
   })
 
-  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+mainWindow.webContents.on("did-fail-load", (_event: unknown, errorCode: number, errorDescription: string) => {
     logger.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription}`)
   })
 
-  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+mainWindow.webContents.on("preload-error", (_event: unknown, preloadPath: string, error: Error) => {
     logger.error(`[PRELOAD ERROR] ${preloadPath}: ${error}`)
   })
 
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+mainWindow.webContents.on("render-process-gone", (_event: unknown, details: RenderProcessGoneDetails) => {
     logger.error(`[RENDERER] Process gone:`, details)
   })
 
@@ -362,7 +363,7 @@ ipcMain.handle(
 )
 
 // Helper function to set files on a file input using Electron's debugger API
-async function setFileInputFiles(webContents: Electron.WebContents, selector: string, filePaths: string[]): Promise<void> {
+async function setFileInputFiles(webContents: WebContents, selector: string, filePaths: string[]): Promise<void> {
   const debugger_ = webContents.debugger
 
   try {
@@ -1047,7 +1048,7 @@ function runEnhancedCli(provider: CliProvider, prompt: string): Promise<Enhanced
       if (!Array.isArray(parsed)) {
         throw new Error("CLI did not return an array")
       }
-      return parsed.map((item: Record<string, unknown>) => ({
+      return (parsed as Array<Record<string, unknown>>).map((item) => ({
         selector: String(item.selector || ""),
         value: item.value != null ? String(item.value) : null,
         status: item.status === "skipped" ? "skipped" : "filled",
@@ -1089,8 +1090,8 @@ function runCli(provider: CliProvider, prompt: string): Promise<FillInstruction[
       if (!Array.isArray(parsed)) {
         throw new Error("CLI did not return an array")
       }
-      for (const item of parsed) {
-        if (typeof item?.selector !== "string" || typeof item?.value !== "string") {
+      for (const item of parsed as Array<Record<string, unknown>>) {
+        if (typeof item.selector !== "string" || typeof item.value !== "string") {
           throw new Error("CLI returned invalid FillInstruction format")
         }
       }

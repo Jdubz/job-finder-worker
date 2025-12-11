@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron")
 
 import type { GenerationProgress } from "./types.js"
+import type { IpcRendererEvent } from "electron"
 
 contextBridge.exposeInMainWorld("electronAPI", {
   // Navigation
@@ -41,7 +42,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Event listeners for generation progress
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: GenerationProgress) => callback(progress)
+    const handler = (_event: IpcRendererEvent, progress: GenerationProgress) => callback(progress)
     ipcRenderer.on("generation-progress", handler)
     // Return unsubscribe function
     return () => ipcRenderer.removeListener("generation-progress", handler)

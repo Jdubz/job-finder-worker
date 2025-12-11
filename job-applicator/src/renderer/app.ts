@@ -196,7 +196,7 @@ function renderJobList() {
         ? `<span class="job-status-badge ${match.status}">${match.status}</span>`
         : ""
       return `
-      <div class="job-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(match.id)}">
+      <div class="job-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(match.id ?? "")}">
         <div class="job-title">${escapeHtml(match.listing.title)}${statusBadge}</div>
         <div class="job-company">${escapeHtml(match.listing.companyName)}</div>
         <div class="job-score ${scoreClass}">${match.matchScore}% match</div>
@@ -580,7 +580,7 @@ async function checkUrlForJobMatch(url: string) {
         renderJobList()
       }
       // Auto-select the match (but don't navigate again)
-      selectedJobMatchId = match.id
+      selectedJobMatchId = match.id ?? null
       selectedDocumentId = null
       renderJobList()
 
@@ -594,7 +594,7 @@ async function checkUrlForJobMatch(url: string) {
       markIgnoredBtn.disabled = match.status === "ignored"
 
       // Load documents
-      await loadDocuments(match.id)
+      await loadDocuments(match.id ?? "")
       generateBtn.disabled = false
 
       setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
