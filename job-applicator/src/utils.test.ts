@@ -184,6 +184,7 @@ describe("buildPrompt", () => {
     website: "https://johndoe.dev",
     github: "johndoe",
     linkedin: "linkedin.com/in/johndoe",
+    applicationInfo: "Gender: Decline to self-identify",
   }
 
   const mockFields: FormField[] = [
