@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, User, Shield } from "lucide-react"
 import type { PersonalInfo } from "@shared/types"
@@ -20,10 +21,10 @@ type PersonalInfoTabProps = {
 export function PersonalInfoTab({
   isSaving,
   currentPersonalInfo,
-  hasPersonalInfoChanges: _hasPersonalInfoChanges,
+  hasPersonalInfoChanges,
   updatePersonalInfoState,
-  handleSavePersonalInfo: _handleSavePersonalInfo,
-  handleResetPersonalInfo: _handleResetPersonalInfo,
+  handleSavePersonalInfo,
+  handleResetPersonalInfo,
 }: PersonalInfoTabProps) {
   const [uploading, setUploading] = useState<{ avatar: boolean; logo: boolean }>({ avatar: false, logo: false })
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -331,18 +332,29 @@ export function PersonalInfoTab({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="applicationInfo">Application Info</Label>
+            <Label htmlFor="applicationInfo">Application Info (required)</Label>
             <Textarea
               id="applicationInfo"
               rows={6}
-              value={currentPersonalInfo.applicationInfo || currentPersonalInfo.eeoDemographics || ""}
+              value={currentPersonalInfo.applicationInfo || ""}
               onChange={(e) => updatePersonalInfoState({ applicationInfo: e.target.value })}
               placeholder={
                 "Gender: Non-binary\nRace: Latinx\nVeteran Status: Not a protected veteran\nWork Authorization: US Citizen"
               }
             />
-            <p className="text-xs text-muted-foreground">Rendered verbatim into applicator prompts; keep it concise.</p>
+            <p className="text-xs text-muted-foreground">
+              Required free-text used for application/EEO disclosures; renderer inserts it verbatim.
+            </p>
           </div>
+
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="outline" onClick={handleResetPersonalInfo} disabled={isSaving || !hasPersonalInfoChanges}>
+            Reset
+          </Button>
+          <Button onClick={handleSavePersonalInfo} disabled={isSaving || !hasPersonalInfoChanges}>
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
         </div>
       </CardContent>
     </Card>

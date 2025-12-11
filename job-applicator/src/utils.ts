@@ -164,10 +164,8 @@ export function getListingFromMatch(match: unknown): ListingInfo | undefined {
   return undefined
 }
 
-// NOTE: EEO data is now provided as free-form text via personalInfo.eeoDemographics.
-// Legacy structured fields remain supported as a fallback for older configs, but we no
-// longer maintain static option maps here. The prompt builder will pass through the
-// text directly when present.
+// NOTE: EEO/application data is provided as free-form text via personalInfo.applicationInfo.
+// No structured option maps are maintained; the prompt builder passes the text through directly.
 
 // Re-export types from types.ts for backwards compatibility
 export type {

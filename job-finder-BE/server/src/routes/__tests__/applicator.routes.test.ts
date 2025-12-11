@@ -41,7 +41,8 @@ describe('applicator routes', () => {
     // Setup minimal personal info
     const personalInfo: PersonalInfo = {
       name: 'Contract Test User',
-      email: 'contract@test.com'
+      email: 'contract@test.com',
+      applicationInfo: 'Gender: Decline to self-identify'
     }
     configRepo.upsert('personal-info', personalInfo)
 
@@ -73,7 +74,8 @@ describe('applicator routes', () => {
       website: 'https://johndoe.com',
       github: 'https://github.com/johndoe',
       linkedin: 'https://linkedin.com/in/johndoe',
-      summary: 'Senior Backend Engineer with 8+ years of experience'
+      summary: 'Senior Backend Engineer with 8+ years of experience',
+      applicationInfo: 'Gender: Male'
     }
 
     configRepo.upsert('personal-info', personalInfo)
@@ -98,11 +100,11 @@ describe('applicator routes', () => {
     expect(profileText).toContain('Summary:\nSenior Backend Engineer')
   })
 
-  it('includes EEO demographics free-text when provided', async () => {
+  it('includes Application Information when provided', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Jane Smith',
       email: 'jane@example.com',
-      eeoDemographics: 'Gender: Female\nRace: Asian\nVeteran Status: Not a Protected Veteran'
+      applicationInfo: 'Gender: Female\nRace: Asian\nVeteran Status: Not a Protected Veteran'
     }
 
     configRepo.upsert('personal-info', personalInfo)
@@ -110,32 +112,17 @@ describe('applicator routes', () => {
     const response = await request(app).get('/applicator/profile').expect(200)
     const profileText = response.body.data.profileText as string
 
-    expect(profileText).toContain('# EEO Information')
+    expect(profileText).toContain('# Application Information')
     expect(profileText).toContain('Gender: Female')
     expect(profileText).toContain('Race: Asian')
     expect(profileText).toContain('Veteran Status: Not a Protected Veteran')
   })
 
-  it('excludes EEO fields marked as decline_to_identify', async () => {
-    const personalInfo: PersonalInfo = {
-      name: 'Test User',
-      email: 'test@example.com',
-      eeoDemographics: ''
-    }
-
-    configRepo.upsert('personal-info', personalInfo)
-
-    const response = await request(app).get('/applicator/profile').expect(200)
-    const profileText = response.body.data.profileText as string
-
-    // Empty eeoDemographics should omit the section
-    expect(profileText).not.toContain('# EEO Information')
-  })
-
   it('formats work history with company, role, and highlights', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Engineer',
-      email: 'eng@example.com'
+      email: 'eng@example.com',
+      applicationInfo: 'Gender: Decline to self-identify'
     }
     configRepo.upsert('personal-info', personalInfo)
 
@@ -186,7 +173,8 @@ describe('applicator routes', () => {
   it('formats education history', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Student',
-      email: 'student@example.com'
+      email: 'student@example.com',
+      applicationInfo: 'Gender: Decline to self-identify'
     }
     configRepo.upsert('personal-info', personalInfo)
 
@@ -212,7 +200,8 @@ describe('applicator routes', () => {
   it('aggregates skills from all content items', async () => {
     const personalInfo: PersonalInfo = {
       name: 'Engineer',
-      email: 'eng@example.com'
+      email: 'eng@example.com',
+      applicationInfo: 'Gender: Decline to self-identify'
     }
     configRepo.upsert('personal-info', personalInfo)
 

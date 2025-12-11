@@ -274,10 +274,10 @@ describe("buildEnhancedPrompt", () => {
   })
 
   it("should handle profile without EEO", () => {
-    const profileNoEEO: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "" }
+    const profileNoEEO: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "Decline to provide" }
     const result = buildEnhancedPrompt(mockFields, profileNoEEO, [], null)
     expect(result).toContain("Application Information")
-    expect(result).toContain("Not provided - skip these fields")
+    expect(result).toContain("Decline to provide")
   })
 
   it("should include status field instructions", () => {
