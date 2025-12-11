@@ -816,7 +816,7 @@ class JobProcessor(BaseProcessor):
 
         # Taxonomy enrichment: map unknown tech terms via analysis agent before scoring
         extraction = ctx.extraction
-        taxonomy_repo = SkillTaxonomyRepository(self.db_path)
+        taxonomy_repo = SkillTaxonomyRepository(getattr(self.job_listing_storage, "db_path", None))
         lookup = taxonomy_repo.load_lookup()
         unknown_terms: List[str] = []
         for term in extraction.technologies:
