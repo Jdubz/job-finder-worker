@@ -551,6 +551,22 @@ export class GeneratorWorkflowService {
     try {
       const parsed = JSON.parse(agentResult.output) as CoverLetterContent
 
+      // Normalize bodyParagraphs: ensure it's always an array
+      // AI may return a single string, undefined, or malformed data
+      if (!Array.isArray(parsed.bodyParagraphs)) {
+        if (typeof parsed.bodyParagraphs === 'string' && parsed.bodyParagraphs) {
+          parsed.bodyParagraphs = [parsed.bodyParagraphs]
+        } else {
+          // If bodyParagraphs is missing entirely, try to construct from other fields
+          // or default to empty array
+          parsed.bodyParagraphs = []
+        }
+      }
+
+      // Filter out any non-string or empty entries
+      parsed.bodyParagraphs = parsed.bodyParagraphs
+        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+
       // Validate cover letter content against source data to catch potential hallucinations
       this.warnOnPotentialHallucinations(parsed, contentItems, payload)
 
@@ -582,11 +598,12 @@ export class GeneratorWorkflowService {
       contentItems.flatMap((item) => (item.skills || []).map((s) => s.toLowerCase().trim()))
     )
 
-    // Combine all text content for analysis
+    // Combine all text content for analysis (defensive: handle missing/malformed fields)
+    const bodyParagraphs = Array.isArray(content.bodyParagraphs) ? content.bodyParagraphs : []
     const allText = [
-      content.openingParagraph,
-      ...content.bodyParagraphs,
-      content.closingParagraph
+      content.openingParagraph || '',
+      ...bodyParagraphs,
+      content.closingParagraph || ''
     ].join(' ').toLowerCase()
 
     // Check for company name mentions that aren't in allowed list
@@ -595,7 +612,7 @@ export class GeneratorWorkflowService {
     let match: RegExpExecArray | null
     const mentionedCompanies: string[] = []
 
-    while ((match = companyMentionPatterns.exec([content.openingParagraph, ...content.bodyParagraphs, content.closingParagraph].join(' '))) !== null) {
+    while ((match = companyMentionPatterns.exec([content.openingParagraph || '', ...bodyParagraphs, content.closingParagraph || ''].join(' '))) !== null) {
       const company = match[1].trim().toLowerCase()
       if (company && !allowedCompanies.has(company) && company.length > 2) {
         mentionedCompanies.push(match[1].trim())

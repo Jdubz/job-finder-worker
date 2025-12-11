@@ -83,10 +83,10 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     equityScore: values.salary.equityScore,
     contractScore: values.salary.contractScore,
   },
-  // Experience scoring is disabled - only keep relevantExperienceStart for profile calculation
-  experience: values.experience ? {
-    relevantExperienceStart: values.experience.relevantExperienceStart?.trim() || null,
-  } : undefined,
+  // Experience scoring is disabled - always send empty object for consistency
+  experience: values.experience?.relevantExperienceStart?.trim() ? {
+    relevantExperienceStart: values.experience.relevantExperienceStart.trim(),
+  } : {},
   freshness: {
     freshDays: values.freshness.freshDays,
     freshScore: values.freshness.freshScore,
