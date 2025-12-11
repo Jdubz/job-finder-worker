@@ -219,7 +219,7 @@ describe("buildPrompt", () => {
   })
 
   it("should handle missing optional profile fields", () => {
-    const minimalProfile: PersonalInfo = { name: "Jane", email: "jane@test.com" }
+    const minimalProfile: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "Decline" }
     const result = buildPrompt(mockFields, minimalProfile, [])
     expect(result).toContain("Jane")
     expect(result).toContain("jane@test.com")

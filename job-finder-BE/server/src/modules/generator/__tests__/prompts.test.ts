@@ -21,7 +21,8 @@ vi.mock('../../prompts/prompts.repository', () => {
 const personalInfo: PersonalInfo = {
   name: 'Test User',
   email: 'test@example.com',
-  location: 'Portland, OR'
+  location: 'Portland, OR',
+  applicationInfo: 'Gender: Decline to self-identify'
 }
 
 const contentItems: ContentItem[] = [
