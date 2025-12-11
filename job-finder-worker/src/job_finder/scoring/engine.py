@@ -163,7 +163,9 @@ class ScoringEngine:
             taxon = self.taxonomy_lookup.get(user_skill)
             if taxon and taxon.implies:
                 for implied in taxon.implies:
-                    # Only add if user doesn't already have it directly
+                    # Only add if user doesn't already have it directly.
+                    # Multiple sources for the same implied skill are allowed and tracked;
+                    # during scoring, we pick the source with the most experience years.
                     if implied not in self.canonical_user_skills:
                         if implied not in self.user_implied_skills:
                             self.user_implied_skills[implied] = set()
@@ -640,7 +642,8 @@ class ScoringEngine:
                 total_implied_bonus += points
 
             # 3. Parallel match: user has a parallel skill (e.g., AWS for GCP job)
-            #    Only prevents missing penalty, no bonus (from taxonomy parallels)
+            #    This only prevents the missing penalty and does NOT give any bonus points.
+            #    Parallel skills are tracked in taxonomy (e.g., AWS/GCP/Azure are parallels).
             elif skill_lower in self.user_parallel_skills:
                 source_skill = self.user_parallel_skills[skill_lower]
                 analogs.append((mapped, source_skill))
@@ -649,7 +652,11 @@ class ScoringEngine:
             elif skill_lower not in missing_ignore and skill_lower in self.taxonomy_lookup:
                 missing.append(mapped)
 
-        # Cap bonuses at max_bonus (direct + implied combined)
+        # Cap bonuses at max_bonus (direct + implied combined).
+        # Note: If direct matches already hit the cap, implied matches contribute 0 additional
+        # points. This is intentional - implied skills are valuable but shouldn't exceed the
+        # cap even when combined with direct matches. The total skill bonus is capped regardless
+        # of whether points come from direct matches, implied matches, or both.
         combined_bonus = min(total_bonus + total_implied_bonus, max_bonus)
         analog_points = len(analogs) * analog_score
         penalty = 0 if missing_score == 0 else max(len(missing) * missing_score, max_penalty)

@@ -168,7 +168,7 @@ def mock_config_loader():
             "equityScore": 0,
             "contractScore": 0,
         },
-        "experience": {"maxRequired": 15, "overqualifiedScore": -5},
+        "experience": {},
         "freshness": {
             "freshDays": 2,
             "freshScore": 10,

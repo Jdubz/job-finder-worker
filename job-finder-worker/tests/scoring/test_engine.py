@@ -519,6 +519,7 @@ class TestScoringEngine:
         engine = ScoringEngine(
             default_config,
             skill_years={"express": 4},  # User has express
+            user_experience_years=4,
         )
         extraction = JobExtractionResult(
             technologies=["rest"],  # Job wants REST
