@@ -94,6 +94,44 @@ const TASK_LABELS: Record<AgentTaskType, string> = {
   document: "Document Generation",
 }
 
+// Constants for error summary extraction
+const ERROR_PREFIX = "error:"
+const SUMMARY_TRUNCATE_LENGTH = 120
+const RELEVANT_ERROR_SUBSTRINGS = [
+  "Your access token",
+  "failed to start",
+  "timed out",
+  "not found",
+]
+
+/** Truncates text to a maximum length with ellipsis */
+function truncate(str: string, maxLength: number = SUMMARY_TRUNCATE_LENGTH): string {
+  return str.length > maxLength ? str.slice(0, maxLength) + "..." : str
+}
+
+/** Extracts a summary from a potentially multi-line error reason */
+function getErrorSummary(text: string): string {
+  if (!text.startsWith(ERROR_PREFIX)) {
+    return truncate(text)
+  }
+
+  const errorText = text.slice(ERROR_PREFIX.length).trim()
+  const lines = errorText.split("\n")
+
+  // Find the most relevant error line based on known patterns
+  const errorLine =
+    lines.find(line => RELEVANT_ERROR_SUBSTRINGS.some(substring => line.includes(substring))) ||
+    lines[0]
+
+  // Clean up JSON formatting if present
+  try {
+    const parsed = JSON.parse(errorLine)
+    return truncate(parsed.message || errorLine)
+  } catch {
+    return truncate(errorLine)
+  }
+}
+
 function formatAgentId(agentId: AgentId): string {
   const [provider, iface] = agentId.split(".") as [AIProviderType, AIInterfaceType]
   return `${PROVIDER_LABELS[provider] || provider} (${INTERFACE_LABELS[iface] || iface})`
@@ -134,31 +172,6 @@ function DisabledReasonPanel({ reason, scope }: { reason: string; scope: string 
   const [expanded, setExpanded] = useState(false)
   const badge = getReasonBadge(reason)
 
-  // Extract a summary from the reason (first line or first 100 chars)
-  const getSummary = (text: string): string => {
-    // For error: prefix, extract the main error message
-    if (text.startsWith("error:")) {
-      const errorText = text.slice(7).trim()
-      // Try to find the most relevant error line
-      const lines = errorText.split("\n")
-      const errorLine = lines.find(l =>
-        l.includes("Your access token") ||
-        l.includes("failed to start") ||
-        l.includes("timed out") ||
-        l.includes("not found")
-      ) || lines[0]
-
-      // Clean up JSON formatting if present
-      try {
-        const parsed = JSON.parse(errorLine)
-        return parsed.message || errorLine
-      } catch {
-        return errorLine.length > 120 ? errorLine.slice(0, 120) + "..." : errorLine
-      }
-    }
-    return text.length > 120 ? text.slice(0, 120) + "..." : text
-  }
-
   return (
     <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
       <div className="flex items-start gap-2">
@@ -170,7 +183,7 @@ function DisabledReasonPanel({ reason, scope }: { reason: string; scope: string 
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {getSummary(reason)}
+            {getErrorSummary(reason)}
           </p>
           {reason.includes("\n") && (
             <Button
@@ -178,6 +191,7 @@ function DisabledReasonPanel({ reason, scope }: { reason: string; scope: string 
               size="sm"
               onClick={() => setExpanded(!expanded)}
               className="h-auto p-0 text-xs mt-1"
+              aria-label={expanded ? "Hide error details" : "Show full error message"}
             >
               {expanded ? "Hide details" : "Show full error"}
             </Button>
@@ -433,11 +447,13 @@ export function AISettingsTab({
                       </div>
                     </div>
                     {/* Show detailed error panels when agents are disabled with reasons */}
-                    {workerState.reason && workerState.reason.startsWith("error:") && (
-                      <DisabledReasonPanel reason={workerState.reason} scope="Worker" />
-                    )}
-                    {backendState.reason && backendState.reason.startsWith("error:") && (
-                      <DisabledReasonPanel reason={backendState.reason} scope="Backend" />
+                    {[
+                      { state: workerState, scope: "Worker" },
+                      { state: backendState, scope: "Backend" },
+                    ].map(({ state, scope }) =>
+                      state.reason?.startsWith(ERROR_PREFIX) ? (
+                        <DisabledReasonPanel key={scope} reason={state.reason} scope={scope} />
+                      ) : null
                     )}
                   </div>
                 )
