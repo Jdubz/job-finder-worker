@@ -306,37 +306,26 @@ export function buildResumePrompt(
   const prompt = replaceVariables(prompts.resumeGeneration, variables)
   const dataBlock = buildDataBlock(variables, content)
 
-  return (
-    prompt +
-    dataBlock +
-    '\n\nIMPORTANT: You MUST respond with ONLY valid JSON. Do NOT ask questions or include any text outside the JSON object.' +
-    '\nUse the provided experience/education/projects/skills as your only source of truth, but select only the most relevant items for this job.' +
-    "\nDo NOT invent new companies, roles, dates, or technologies; every fact must come from the input data." +
-    '\nRewrite bullet points in fresh language that sounds like the same person without copying sentences verbatim.' +
-    '\nPrioritize accomplishments that match the job description and company tech stack.' +
-    '\nIf a field is missing, leave it empty/null but still return the full JSON object.' +
-    `\nReturn the result as a JSON object with this exact structure:
+  // JSON schema and output format instructions (content guidance is in database prompt)
+  const jsonSchema = `
+OUTPUT FORMAT:
+You MUST respond with ONLY valid JSON. Do NOT ask questions or include any text outside the JSON object.
+If a field is missing, leave it empty/null but still return the full JSON object.
+
+Return the result as a JSON object with this exact structure:
 {
   "personalInfo": { "title": "Job Title matching target role" },
   "professionalSummary": "2-3 sentence summary",
   "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
   "skills": [
-    { "category": "Languages & Frameworks", "items": ["TypeScript", "Node.js", "React"] },
-    { "category": "Databases", "items": ["MySQL", "Redis", "MongoDB"] },
-    { "category": "Cloud & DevOps", "items": ["GCP", "Docker", "Kubernetes"] },
-    { "category": "Developer Tools", "items": ["Jest", "Webpack", "GitHub Actions"] }
+    { "category": "CategoryName", "items": ["Skill1", "Skill2", "Skill3"] }
   ],
   "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
 }
-IMPORTANT for skills:
-- Group into 4-6 categories that match how THIS job posting thinks about skills
-- Category names should align with job requirements (e.g., for a dev tools role: "Developer Experience", "Observability", "API Design")
-- Use skill names EXACTLY as provided in the Skills section above - do not add suffixes, years, or modify the names
-- Prioritize skills mentioned in the job description
-- DO NOT use a generic "Skills" category - be specific to the role
 
 ${getBalancedContentGuidance(4)}`
-  )
+
+  return prompt + dataBlock + jsonSchema
 }
 
 export function buildCoverLetterPrompt(
