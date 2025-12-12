@@ -80,7 +80,7 @@ import {
 } from "./utils.js"
 
 // Tool executor and server
-import { startToolServer, stopToolServer } from "./tool-server.js"
+import { startToolServer, stopToolServer, setToolStatusCallback } from "./tool-server.js"
 import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext } from "./tool-executor.js"
 // Typed API client
 import {
@@ -1045,6 +1045,7 @@ ipcMain.handle(
         killActiveClaudeProcess("agent completed")
         clearJobContext()
         setCompletionCallback(null)
+        setToolStatusCallback(null)
         mainWindow?.webContents.send("agent-status", { state: "idle" })
         mainWindow?.webContents.send("agent-output", {
           text: `\n✓ ${summary}\n`,
@@ -1106,6 +1107,11 @@ Start by calling get_user_profile, then get_form_fields.`
       // Notify renderer that fill is starting
       mainWindow?.webContents.send("agent-status", { state: "working" })
 
+      // Set up tool status callback to forward to renderer
+      setToolStatusCallback((message: string) => {
+        mainWindow?.webContents.send("agent-output", { text: message + "\n", isError: false })
+      })
+
       // Spawn Claude CLI with MCP server configured
       // Use stdin for prompt to avoid command line length limits
       const spawnArgs = [
@@ -1155,6 +1161,7 @@ Start by calling get_user_profile, then get_form_fields.`
         activeClaudeProcess = null
         clearJobContext()
         setCompletionCallback(null)
+        setToolStatusCallback(null)
         mainWindow?.webContents.send("agent-status", {
           state: code === 0 ? "idle" : "stopped",
         })
@@ -1165,6 +1172,7 @@ Start by calling get_user_profile, then get_form_fields.`
         activeClaudeProcess = null
         clearJobContext()
         setCompletionCallback(null)
+        setToolStatusCallback(null)
         mainWindow?.webContents.send("agent-status", { state: "stopped" })
         mainWindow?.webContents.send("agent-output", {
           text: `Error: ${err.message}\n`,
@@ -1189,6 +1197,7 @@ ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
   killActiveClaudeProcess("user stopped")
   clearJobContext()
   setCompletionCallback(null)
+  setToolStatusCallback(null)
   mainWindow?.webContents.send("agent-status", { state: "stopped" })
   return { success: true }
 })

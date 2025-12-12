@@ -13,6 +13,69 @@ const PORT = 19524
 const HOST = "127.0.0.1"
 
 let server: http.Server | null = null
+let statusCallback: ((message: string) => void) | null = null
+
+/**
+ * Set a callback to receive tool execution status updates
+ */
+export function setToolStatusCallback(callback: ((message: string) => void) | null): void {
+  statusCallback = callback
+}
+
+/**
+ * Send a status update to the callback if set
+ */
+function sendStatus(message: string): void {
+  if (statusCallback) {
+    statusCallback(message)
+  }
+}
+
+/**
+ * Format tool result for display
+ */
+function formatToolResult(tool: string, params: Record<string, unknown> | undefined, data: unknown): string {
+  try {
+    switch (tool) {
+      case "get_user_profile":
+        return "loaded profile"
+      case "get_form_fields": {
+        const fields = data as { fields?: unknown[] } | undefined
+        return `found ${fields?.fields?.length || 0} fields`
+      }
+      case "fill_field":
+        return `"${params?.selector || "?"}" = "${String(params?.value || "").slice(0, 30)}"`
+      case "select_option":
+        return `"${params?.selector || "?"}" = "${params?.value || "?"}"`
+      case "set_checkbox":
+        return `"${params?.selector || "?"}" = ${params?.checked}`
+      case "click_element":
+        return `clicked "${params?.selector || "?"}"`
+      case "click":
+        return `at (${params?.x ?? "?"}, ${params?.y ?? "?"})`
+      case "type":
+        return `"${String(params?.text || "").slice(0, 30)}"`
+      case "scroll":
+        return `${params?.dy ?? 0}px`
+      case "screenshot":
+        return "captured"
+      case "get_buttons": {
+        const buttons = data as { buttons?: unknown[] } | undefined
+        return `found ${buttons?.buttons?.length || 0} buttons`
+      }
+      case "get_page_info":
+        return "loaded"
+      case "get_job_context":
+        return "loaded"
+      case "done":
+        return String(params?.summary || "complete")
+      default:
+        return "done"
+    }
+  } catch {
+    return "done"
+  }
+}
 
 /**
  * Start the tool server
@@ -82,12 +145,21 @@ export function startToolServer(): http.Server {
         }
 
         logger.info(`[ToolServer] Executing: ${tool}`)
+        sendStatus(`🔧 ${tool}...`)
         const startTime = Date.now()
 
         const result = await executeTool(tool, (params || {}) as Record<string, unknown>)
 
         const duration = Date.now() - startTime
         logger.info(`[ToolServer] ${tool} completed in ${duration}ms (success=${result.success})`)
+
+        // Send completion status with result summary
+        if (result.success) {
+          const summary = formatToolResult(tool, params as Record<string, unknown>, result.data)
+          sendStatus(`✓ ${tool}: ${summary}`)
+        } else {
+          sendStatus(`✗ ${tool}: ${result.error || "failed"}`)
+        }
 
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify(result))
