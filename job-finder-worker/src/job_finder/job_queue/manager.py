@@ -123,7 +123,9 @@ class QueueManager:
         try:
             parsed = urlparse(url.strip())
             # Drop fragments, normalize scheme/host, keep path/query
-            cleaned = parsed._replace(fragment="", scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower())
+            cleaned = parsed._replace(
+                fragment="", scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower()
+            )
             # Remove trailing slash unless root
             path = cleaned.path or "/"
             if path != "/" and path.endswith("/"):
@@ -143,7 +145,9 @@ class QueueManager:
         return slug
 
     def _hash_dict(self, data: Dict[str, Any]) -> str:
-        return hashlib.sha1(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()  # noqa: S324
+        return hashlib.sha1(
+            json.dumps(data, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()  # noqa: S324
 
     def _compute_dedupe_key(self, item: JobQueueItem) -> str:
         """
@@ -164,16 +168,18 @@ class QueueManager:
             ident = source_id or norm_url or item.company_id or self._slugify(item.company_name)
             return f"scrape_source|{ident}"
         if t == QueueItemType.SCRAPE:
-            cfg = item.scrape_config.model_dump() if item.scrape_config else item.input.get("scrape_config", {}) if item.input else {}
+            cfg = (
+                item.scrape_config.model_dump()
+                if item.scrape_config
+                else item.input.get("scrape_config", {}) if item.input else {}
+            )
             return f"scrape|{self._hash_dict(cfg)}"
         if t == QueueItemType.AGENT_REVIEW:
             ident = item.parent_item_id or norm_url or item.tracking_id
             return f"agent_review|{ident}"
         return f"generic|{t.value}|{norm_url or item.tracking_id}"
 
-    def _dedupe_exists(
-        self, dedupe_key: str, statuses: Optional[List[QueueStatus]] = None
-    ) -> bool:
+    def _dedupe_exists(self, dedupe_key: str, statuses: Optional[List[QueueStatus]] = None) -> bool:
         if not dedupe_key:
             return False
         statuses = statuses or [QueueStatus.PENDING, QueueStatus.PROCESSING]
@@ -239,7 +245,9 @@ class QueueManager:
                 )
         except sqlite3.IntegrityError as exc:
             if "UNIQUE constraint failed" in str(exc):
-                raise DuplicateQueueItemError(f"Duplicate task fingerprint (db): {item.dedupe_key}") from exc
+                raise DuplicateQueueItemError(
+                    f"Duplicate task fingerprint (db): {item.dedupe_key}"
+                ) from exc
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
         except Exception as exc:
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
