@@ -21,7 +21,10 @@ vi.mock("./tool-executor.js", () => ({
   executeTool: mockExecuteTool,
 }))
 
-import { startToolServer, stopToolServer, setToolStatusCallback } from "./tool-server.js"
+import { startToolServer, stopToolServer, setToolStatusCallback, setToolServerPort } from "./tool-server.js"
+
+// Use a different port for tests to avoid conflicts with running app
+const TEST_PORT = 19525
 
 // Helper to make HTTP requests to the tool server
 async function makeRequest(
@@ -32,7 +35,7 @@ async function makeRequest(
   return new Promise((resolve, reject) => {
     const options: http.RequestOptions = {
       hostname: "127.0.0.1",
-      port: 19524,
+      port: TEST_PORT,
       path,
       method,
       headers: {
@@ -72,6 +75,8 @@ describe("Tool Server", () => {
     mockExecuteTool.mockReset()
     // Reset status callback to ensure test isolation
     setToolStatusCallback(null)
+    // Use test port to avoid conflicts with running app
+    setToolServerPort(TEST_PORT)
   })
 
   afterEach(async () => {
@@ -82,7 +87,7 @@ describe("Tool Server", () => {
   })
 
   describe("server lifecycle", () => {
-    it("should start and listen on port 19524", async () => {
+    it("should start and listen on configured port", async () => {
       mockExecuteTool.mockResolvedValue({ success: true })
       server = startToolServer()
 

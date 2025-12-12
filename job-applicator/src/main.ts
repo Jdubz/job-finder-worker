@@ -1048,9 +1048,12 @@ WORKFLOW:
    - fill_field(selector, value) for type="text", "email", "tel", "textarea", etc.
    - select_option(selector, value) for type="select-one" (fields with 'options' array)
    - set_checkbox(selector, true/false) for type="checkbox" or "radio"
-4. scroll(300) and get_form_fields again - repeat until no new fields
-5. screenshot ONLY to verify fills worked (not to find fields)
-6. done(summary)
+4. IMPORTANT: After filling visible fields, scroll(300) and get_form_fields again
+   - Many forms have fields below the fold or reveal fields after filling others
+   - Keep scrolling and filling until you've checked the ENTIRE page (scroll 3-5 times minimum)
+   - Look for Education, Employment, Skills sections that may need multiple entries
+5. screenshot to verify all fields are filled
+6. Only call done(summary) when ALL fields are complete - list what you filled
 
 DROPDOWN FIELDS (type="select-one" or "select-multiple"):
 - Identified by: type contains "select" AND has 'options' array

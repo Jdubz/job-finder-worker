@@ -9,10 +9,21 @@ import * as http from "http"
 import { executeTool } from "./tool-executor.js"
 import { logger } from "./logger.js"
 
-const PORT = 19524
+// Port can be overridden for testing to avoid conflicts with running app
+let PORT = parseInt(process.env.TOOL_SERVER_PORT || "19524", 10)
 const HOST = "127.0.0.1"
 
 let server: http.Server | null = null
+
+/**
+ * Set the port (used by tests to avoid conflicts)
+ */
+export function setToolServerPort(port: number): void {
+  if (server) {
+    throw new Error("Cannot change port while server is running")
+  }
+  PORT = port
+}
 let statusCallback: ((message: string) => void) | null = null
 
 /**
