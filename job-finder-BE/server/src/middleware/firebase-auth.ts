@@ -32,13 +32,15 @@ function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
     /^localhost(?::\d+)?$/i.test(host) ||
     /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
     /^\[::1\](?::\d+)?$/i.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host)
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host)
 
   const originIsLocal =
     /^https?:\/\/localhost(?::\d+)?$/i.test(origin) ||
     /^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin) ||
     /^https?:\/\/\[::1\](?::\d+)?$/i.test(origin) ||
-    /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin)
+    /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin) ||
+    /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin)
 
   const headersConsistent = (!hostProvided || hostIsLocal) && (!originProvided || originIsLocal)
   if (!headersConsistent) return null
@@ -89,19 +91,17 @@ function extractBearerToken(req: Request): string | null {
 }
 
 /**
- * Check if request is from localhost or Docker host.
- * Used to allow desktop app access without auth when running on same machine.
+ * Check if request is from localhost, Docker host, or private LAN.
+ * Used to allow desktop app access without auth when running on trusted networks.
  *
  * Accepts:
  * - 127.0.0.1, ::1, ::ffff:127.x.x.x (localhost)
  * - 172.16-31.x.x, ::ffff:172.16-31.x.x (Docker bridge networks)
+ * - 192.168.x.x, ::ffff:192.168.x.x (private LAN for job-applicator on other machines)
  *
  * SECURITY: This check assumes Express's `trust proxy` is NOT enabled.
  * If `trust proxy` is enabled, an attacker could spoof the client IP via headers.
- * Always ensure `app.set('trust proxy', false)` when using localhost bypass.
- *
- * SECURITY: 172.16.0.0/12 is safe because the API port is bound to 127.0.0.1 only,
- * so only the Docker host machine can reach it via the bridge network.
+ * Always ensure `app.set('trust proxy', false)` when using this bypass.
  *
  * NOTE: Docker Compose creates custom networks in the 172.16-31.x.x range (not just
  * 172.17.x.x), so we allow the full 172.16.0.0/12 private range. Our production
@@ -121,6 +121,10 @@ export function isLocalhostRequest(req: Request): boolean {
   if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
   // IPv4-mapped IPv6 Docker bridge (::ffff:172.16-31.x.x)
   if (/^::ffff:172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
+  // Private LAN (192.168.0.0/16) - for job-applicator on other LAN machines
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
+  // IPv4-mapped IPv6 LAN (::ffff:192.168.x.x)
+  if (/^::ffff:192\.168\.\d{1,3}\.\d{1,3}$/.test(ip)) return true
 
   return false
 }

@@ -46,6 +46,9 @@ services:
     container_name: job-finder-api
     restart: unless-stopped
     stop_grace_period: 30s
+    ports:
+      # Expose API on LAN for job-applicator desktop app (auth bypassed for private IPs)
+      - "0.0.0.0:3000:8080"
     env_file:
       - /srv/job-finder/secrets/api.env
     environment:

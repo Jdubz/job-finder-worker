@@ -114,7 +114,8 @@ export function CompaniesPage() {
   const { submitCompany, queueItems: pendingQueueItems } = useQueueItems({
     status: "pending",
     type: "company",
-    limit: 500,
+    // Backend caps queue list at 100; keep in sync to avoid 500s from validation.
+    limit: 100,
   })
   const { openModal } = useEntityModal()
   const [deleteRequest, setDeleteRequest] = useState<

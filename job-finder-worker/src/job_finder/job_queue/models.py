@@ -251,6 +251,7 @@ class JobQueueItem(BaseModel):
     # Legacy convenience fields (kept in-memory, persisted inside input/output)
     company_name: Optional[str] = None
     company_id: Optional[str] = None
+    dedupe_key: Optional[str] = None
     source: Optional[QueueSource] = None
     submitted_by: Optional[str] = None
     scrape_config: Optional[ScrapeConfig] = None
@@ -326,6 +327,7 @@ class JobQueueItem(BaseModel):
             "url": self.url,
             "tracking_id": self.tracking_id,
             "parent_item_id": self.parent_item_id,
+            "dedupe_key": self.dedupe_key,
             "input": json.dumps(input_payload) if input_payload else None,
             "output": json.dumps(output_payload) if output_payload else None,
             "result_message": self.result_message,
@@ -363,6 +365,7 @@ class JobQueueItem(BaseModel):
             output=output_data,
             company_name=input_data.get("company_name"),
             company_id=input_data.get("company_id"),
+            dedupe_key=record.get("dedupe_key"),
             source=input_data.get("source"),
             submitted_by=input_data.get("submitted_by"),
             created_at=parse_dt(record.get("created_at")),

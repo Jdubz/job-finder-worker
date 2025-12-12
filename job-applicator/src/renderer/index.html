@@ -51,7 +51,12 @@
 
         <!-- Job Matches Section -->
         <section class="sidebar-section">
-          <h3 class="section-title">Job Matches</h3>
+          <div class="section-header">
+            <h3 class="section-title">Job Matches</h3>
+            <button class="btn-refresh" id="refreshJobsBtn" title="Refresh job matches (Ctrl+R)" aria-label="Refresh job matches (Ctrl+R)">
+              <span class="refresh-icon">↻</span>
+            </button>
+          </div>
           <div class="job-list" id="jobList">
             <div class="loading-placeholder">Loading...</div>
           </div>

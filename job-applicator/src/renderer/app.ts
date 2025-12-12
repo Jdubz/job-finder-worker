@@ -51,6 +51,7 @@ interface ElectronAPI {
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
   onFormFillProgress: (callback: (progress: FormFillProgress) => void) => () => void
+  onRefreshJobMatches: (callback: () => void) => () => void
 }
 
 // Debug: log immediately when script loads
@@ -123,6 +124,7 @@ const uploadCoverBtn = getElement<HTMLButtonElement>("uploadCoverBtn")
 const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
 const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
+const refreshJobsBtn = getElement<HTMLButtonElement>("refreshJobsBtn")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -162,7 +164,8 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 
 
 // Load job matches from backend
-async function loadJobMatches() {
+// Returns true on success, false on failure
+async function loadJobMatches(): Promise<boolean> {
   jobList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
   try {
@@ -171,16 +174,37 @@ async function loadJobMatches() {
     if (result.success && Array.isArray(result.data)) {
       jobMatches = result.data
       renderJobList()
+      return true
     } else {
       jobMatches = []
       jobList.innerHTML = `<div class="empty-placeholder">${result.message || "Failed to load job matches"}</div>`
+      return false
     }
   } catch (err) {
     jobMatches = []
     const message = err instanceof Error ? err.message : String(err)
     jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
     console.error("Failed to load job matches:", err)
+    return false
   }
+}
+
+// Refresh job matches with visual feedback
+async function refreshJobMatches() {
+  // Add spinning animation to refresh button
+  refreshJobsBtn.classList.add("refreshing")
+  refreshJobsBtn.disabled = true
+  setStatus("Refreshing job matches...", "loading")
+
+  const success = await loadJobMatches()
+  if (success) {
+    setStatus(`Loaded ${jobMatches.length} job matches`, "success")
+  } else {
+    setStatus("Failed to refresh job matches", "error")
+  }
+
+  refreshJobsBtn.classList.remove("refreshing")
+  refreshJobsBtn.disabled = false
 }
 
 // Render job matches list
@@ -932,6 +956,13 @@ function initializeApp() {
   uploadResumeBtn.addEventListener("click", uploadResumeFile)
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
   rescanBtn.addEventListener("click", checkForFileInput)
+  refreshJobsBtn.addEventListener("click", refreshJobMatches)
+
+  // Listen for Ctrl+R global shortcut from main process
+  // This ensures refresh works even when BrowserView has focus
+  api.onRefreshJobMatches(() => {
+    refreshJobMatches()
+  })
 
   // Run async initialization
   init()
