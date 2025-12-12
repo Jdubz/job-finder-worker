@@ -321,17 +321,17 @@ export function buildResumePrompt(
   "professionalSummary": "2-3 sentence summary",
   "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
   "skills": [
-    { "category": "Languages & Frameworks", "items": ["TypeScript (6y)", "Node.js (5y)", "React (4y)"] },
-    { "category": "Databases", "items": ["MySQL (5y)", "Redis (3y)", "MongoDB (2y)"] },
-    { "category": "Cloud & DevOps", "items": ["GCP (4y)", "Docker (3y)", "Kubernetes (2y)"] },
-    { "category": "Developer Tools", "items": ["Jest (4y)", "Webpack (3y)", "CI/CD (5y)"] }
+    { "category": "Languages & Frameworks", "items": ["TypeScript", "Node.js", "React"] },
+    { "category": "Databases", "items": ["MySQL", "Redis", "MongoDB"] },
+    { "category": "Cloud & DevOps", "items": ["GCP", "Docker", "Kubernetes"] },
+    { "category": "Developer Tools", "items": ["Jest", "Webpack", "GitHub Actions"] }
   ],
   "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
 }
 IMPORTANT for skills:
 - Group into 4-6 categories that match how THIS job posting thinks about skills
 - Category names should align with job requirements (e.g., for a dev tools role: "Developer Experience", "Observability", "API Design")
-- Include years of experience in parentheses after each skill, calculated from work history dates (e.g., "TypeScript (5y)")
+- Use skill names EXACTLY as provided in the Skills section above - do not add suffixes, years, or modify the names
 - Prioritize skills mentioned in the job description
 - DO NOT use a generic "Skills" category - be specific to the role
 

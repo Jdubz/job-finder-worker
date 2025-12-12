@@ -483,36 +483,58 @@ export class GeneratorWorkflowService {
       // If AI dropped everything or returned none, fall back to full mapped list
       parsed.experience = validatedExperience.length ? validatedExperience : mappedExperience
 
-      // Normalize skills: accept [{category, items}] or string[]; remove hallucinated skills
+      // Validate skills: must be [{category, items}] format with valid skills from content items
       const allowedSkills = new Set<string>(contentItems.flatMap((item) => item.skills || []))
 
-      const normalizeSkillsCategory = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
-        if (!skills || skills.length === 0) return []
-        if (skills.length && typeof skills[0] === 'string') {
-          const filteredSkills = (skills as unknown as string[]).filter(
-            (s) => allowedSkills.size === 0 || allowedSkills.has(s)
-          )
-          return filteredSkills.length > 0 ? [{ category: 'Skills', items: filteredSkills }] : []
+      const validateSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
+        if (!skills || skills.length === 0) {
+          throw new Error('AI returned no skills - skills array is required')
         }
 
-        return (skills as Array<{ category?: string; items?: unknown[] }>)
-          .map((s) => ({
-            category: s.category || 'Skills',
-            items: Array.isArray(s.items)
-              ? s.items.filter(
-                  (item): item is string => typeof item === 'string' && (allowedSkills.size === 0 || allowedSkills.has(item))
-                )
-              : []
-          }))
-          .filter((s) => s.items.length > 0)
+        // Must be array of {category, items} objects
+        if (typeof skills[0] === 'string') {
+          throw new Error('AI returned skills as string array instead of [{category, items}] format')
+        }
+
+        const validated = (skills as Array<{ category?: string; items?: unknown[] }>).map((s) => {
+          // Category is required and must not be generic "Skills"
+          if (!s.category || s.category.trim() === '') {
+            throw new Error('AI returned skill category without a name')
+          }
+          if (s.category.toLowerCase() === 'skills') {
+            throw new Error(`AI returned generic "Skills" category - must use specific category names (e.g., "Languages & Frameworks", "Cloud & DevOps")`)
+          }
+
+          if (!Array.isArray(s.items) || s.items.length === 0) {
+            throw new Error(`AI returned empty items for skill category "${s.category}"`)
+          }
+
+          // Validate each skill item against allowed skills
+          const invalidSkills: string[] = []
+          const validItems = s.items.filter((item): item is string => {
+            if (typeof item !== 'string') return false
+            if (allowedSkills.size > 0 && !allowedSkills.has(item)) {
+              invalidSkills.push(item)
+              return false
+            }
+            return true
+          })
+
+          if (invalidSkills.length > 0) {
+            throw new Error(`AI returned invalid/hallucinated skills in category "${s.category}": ${invalidSkills.join(', ')}. Skills must match exactly from content items.`)
+          }
+
+          return { category: s.category, items: validItems }
+        })
+
+        if (validated.length === 0) {
+          throw new Error('AI returned no valid skill categories')
+        }
+
+        return validated
       }
 
-      parsed.skills = normalizeSkillsCategory(parsed.skills || [])
-
-      if (!parsed.skills || parsed.skills.length === 0) {
-        const techFromExperience = Array.from(new Set(parsed.experience.flatMap((e) => e.technologies || [])))
-        parsed.skills = techFromExperience.length ? [{ category: 'Skills', items: techFromExperience }] : []
-      }
+      parsed.skills = validateSkills(parsed.skills || [])
 
       // Enhance education data: use AI output but fill in missing fields from content items
       if (Array.isArray(parsed.education) && parsed.education.length > 0) {
