@@ -154,8 +154,11 @@ class CompanyInfoFetcher:
             # STEP 0: Try Wikipedia first (fast, high-quality for established companies)
             # Uses search_name (post-Workday resolution) for better accuracy
             wiki_info = self._try_wikipedia(search_name)
+            wiki_website = wiki_info.get("website") if wiki_info else None
             if wiki_info:
-                result = self._merge_company_info(result, wiki_info)
+                result = self._merge_company_info(
+                    result, wiki_info, company_name=company_name, preferred_website=wiki_website
+                )
                 logger.info(
                     "Wikipedia found data for %s: about=%d chars",
                     company_display,
@@ -164,9 +167,13 @@ class CompanyInfoFetcher:
 
             # STEP 1: Search for company info (fills gaps Wikipedia doesn't cover)
             # Wikipedia doesn't provide: culture, mission, techStack, products, etc.
-            search_info = self._search_and_extract(search_name, source_context)
+            search_info = self._search_and_extract(
+                search_name, source_context, wiki_website=wiki_website
+            )
             if search_info:
-                result = self._merge_company_info(result, search_info)
+                result = self._merge_company_info(
+                    result, search_info, company_name=company_name, preferred_website=wiki_website
+                )
                 logger.info(
                     "Search extraction for %s: about=%d chars",
                     company_display,
@@ -193,8 +200,20 @@ class CompanyInfoFetcher:
             ):
                 scraped_info = self._scrape_website(website, search_name)
                 if scraped_info:
-                    result = self._merge_company_info(result, scraped_info)
+                    result = self._merge_company_info(
+                        result,
+                        scraped_info,
+                        company_name=company_name,
+                        preferred_website=wiki_website,
+                    )
                     logger.info("Supplemented with scrape data for %s", company_display)
+
+            # Final website selection: prefer Wikipedia site; lightly probe candidate to avoid obvious mismatches
+            result["website"] = self._choose_best_website(
+                candidate=result.get("website"),
+                wiki_website=wiki_website,
+                company_name=company_name,
+            )
 
             logger.info(
                 "Final company info for %s: about=%d chars, culture=%d chars",
@@ -236,7 +255,10 @@ class CompanyInfoFetcher:
     # ============================================================
 
     def _search_and_extract(
-        self, company_name: str, source_context: Optional[Dict[str, Any]] = None
+        self,
+        company_name: str,
+        source_context: Optional[Dict[str, Any]] = None,
+        wiki_website: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Search for company and extract structured info from results.
@@ -269,7 +291,10 @@ class CompanyInfoFetcher:
             # AI extracts structured data from search results
             if self.agent_manager:
                 return self._extract_from_search_results(
-                    company_name, search_context, source_context
+                    company_name,
+                    search_context,
+                    source_context,
+                    wiki_website=wiki_website,
                 )
 
             # No AI - use heuristics on search snippets
@@ -394,6 +419,7 @@ class CompanyInfoFetcher:
         company_name: str,
         search_context: str,
         source_context: Optional[Dict[str, Any]] = None,
+        wiki_website: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Use AI to extract structured company data from search results."""
         if not self.agent_manager:
@@ -402,6 +428,14 @@ class CompanyInfoFetcher:
         try:
             # Build disambiguation hints based on source context
             disambiguation_hint = self._build_disambiguation_hint(company_name, source_context)
+
+            wiki_hint = (
+                f"The Wikipedia official website is '{wiki_website}'. Prefer this unless search "
+                "clearly shows a different official domain owned by the company. "
+                "Brand domains can be shortened or acronyms (e.g., ibm.com for International Business Machines)."
+                if wiki_website
+                else "If Wikipedia lists an official website, prefer that. Brand domains may be shortened or acronyms (e.g., ibm.com)."
+            )
 
             prompt = f"""Extract company information for "{company_name}" from these search results.
 {disambiguation_hint}
@@ -414,6 +448,10 @@ IMPORTANT INSTRUCTIONS:
 - Do NOT guess or make up information. Only include facts clearly stated in the search results.
 - If you cannot find reliable information for a field, use empty string/null/false.
 - The website must be the company's official website, NOT a job board URL.
+- {wiki_hint}
+- Prefer the domain that represents the company itself (homepage/about pages). It's okay if the domain is a short brand or acronym.
+- Reject investor/portfolio/VC sites (e.g., lsvp.com), generic search pages, unrelated blogs, or recruiter pages.
+- If multiple candidates appear, pick the one whose homepage/about page text mentions the company name/brand; otherwise choose the Wikipedia site.
 
 Return a JSON object with these fields:
 - website: official company website URL (NOT greenhouse.io, lever.co, workday, etc.)
@@ -793,8 +831,104 @@ Be factual. Return ONLY valid JSON."""
         about_len = len(info.get("about", "") or "")
         return about_len < min_about
 
+    def _choose_best_website(
+        self,
+        candidate: Optional[str],
+        wiki_website: Optional[str],
+        company_name: str,
+    ) -> str:
+        """
+        Final website selection with a light touch:
+        - Prefer Wikipedia site if it exists.
+        - Otherwise take candidate if it's not a job board/search URL.
+        - Optionally probe homepage for brand mention; fall back to Wikipedia if probe fails.
+        """
+        wiki_normalized = self._normalize_url(wiki_website)
+        candidate_normalized = self._normalize_url(candidate)
+
+        wiki_valid = (
+            wiki_normalized
+            and not self._is_job_board_url(wiki_normalized)
+            and not self._is_search_engine_url(wiki_normalized)
+        )
+
+        candidate_valid = (
+            candidate_normalized
+            and not self._is_job_board_url(candidate_normalized)
+            and not self._is_search_engine_url(candidate_normalized)
+        )
+
+        # Prefer a valid Wikipedia URL if the candidate is missing/invalid
+        if wiki_valid and not candidate_valid:
+            return wiki_normalized
+
+        # If candidate looks valid, optionally probe; otherwise return it
+        if candidate_valid:
+            if self._homepage_mentions_brand(candidate_normalized, company_name):
+                return candidate_normalized
+            # If probe is inconclusive but Wikipedia is valid, fall back to it; else keep candidate.
+            return wiki_normalized or candidate_normalized
+
+        return wiki_normalized or ""
+
+        return ""
+
+    def _normalize_url(self, url: Optional[str]) -> str:
+        """Normalize URL by ensuring scheme and trimming whitespace."""
+        if not url:
+            return ""
+
+        url = url.strip()
+        if not url:
+            return ""
+
+        if not re.match(r"^https?://", url, re.IGNORECASE):
+            url = f"https://{url}"
+
+        return url
+
+    def _homepage_mentions_brand(self, url: str, company_name: str, timeout: int = 5) -> bool:
+        """
+        Light validation: fetch homepage and see if brand tokens appear in text.
+        If request fails, return False to let other options win; do not raise.
+        """
+        if not company_name or not url:
+            return False
+
+        tokens = [t for t in re.findall(r"[a-z0-9]+", company_name.lower()) if len(t) >= 3]
+        if not tokens:
+            return False
+
+        try:
+            response = self.session.get(url, timeout=timeout, allow_redirects=True, stream=True)
+            response.raise_for_status()
+
+            # Read only the first ~16KB to avoid large downloads
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=4096, decode_unicode=True):
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= 16384:
+                    break
+
+            text = "".join(chunks).lower()
+            return any(tok in text for tok in tokens)
+        except requests.RequestException as e:
+            logger.debug("Homepage probe for %s failed: %s", url, e)
+            return False
+        except Exception as e:
+            logger.debug("Homepage probe unexpected error for %s: %s", url, e)
+            return False
+
     def _merge_company_info(
-        self, primary: Dict[str, Any], secondary: Dict[str, Any]
+        self,
+        primary: Dict[str, Any],
+        secondary: Dict[str, Any],
+        company_name: Optional[str] = None,
+        preferred_website: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Merge two info dicts, preferring longer text for descriptive fields."""
         # Fields where longer text is better (prefer more comprehensive descriptions)
@@ -803,15 +937,39 @@ Be factual. Return ONLY valid JSON."""
         merged = dict(primary)
         for key, val in secondary.items():
             if key == "website":
-                # Replace with better website if current is empty, a job board, or search engine
-                if val and (
-                    not merged.get("website")
-                    or self._is_job_board_url(merged.get("website"))
-                    or self._is_search_engine_url(merged.get("website"))
-                ):
-                    # Only accept if the new value is also not a search engine
-                    if not self._is_search_engine_url(val):
-                        merged["website"] = val
+                candidate = self._normalize_url(val)
+                if not candidate:
+                    continue
+
+                # Reject obvious non-company URLs
+                if self._is_job_board_url(candidate) or self._is_search_engine_url(candidate):
+                    continue
+
+                current = self._normalize_url(merged.get("website"))
+
+                preferred_normalized = self._normalize_url(preferred_website)
+
+                current_valid = (
+                    current
+                    and not self._is_job_board_url(current)
+                    and not self._is_search_engine_url(current)
+                )
+                candidate_valid = not self._is_job_board_url(
+                    candidate
+                ) and not self._is_search_engine_url(candidate)
+                preferred_valid = (
+                    preferred_normalized
+                    and not self._is_job_board_url(preferred_normalized)
+                    and not self._is_search_engine_url(preferred_normalized)
+                )
+
+                # Selection priority: candidate (if valid) > preferred (if valid) > current
+                if candidate_valid:
+                    merged["website"] = candidate
+                elif preferred_valid:
+                    merged["website"] = preferred_normalized
+                elif not current_valid:
+                    merged["website"] = current or candidate
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
             elif key in text_fields:
