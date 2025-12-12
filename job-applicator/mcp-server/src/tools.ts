@@ -80,12 +80,54 @@ export const tools: Tool[] = [
   {
     name: "get_form_fields",
     description:
-      "Get a structured list of all form fields on the page, including their labels, types, " +
-      "current values, and coordinates. Useful for understanding form structure.",
+      "Analyze the page DOM and return all form fields with their selectors, labels, types, " +
+      "current values, and options (for dropdowns). Use this FIRST to understand the form structure, " +
+      "then use fill_field/select_option to fill fields by selector.",
     inputSchema: {
       type: "object",
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: "fill_field",
+    description:
+      "Fill a form field by CSS selector. More reliable than click+type. " +
+      "Use the selector from get_form_fields. Works for text inputs, textareas, and similar fields.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the field (from get_form_fields)" },
+        value: { type: "string", description: "Value to fill in" },
+      },
+      required: ["selector", "value"],
+    },
+  },
+  {
+    name: "select_option",
+    description:
+      "Select an option in a dropdown/select field by CSS selector. " +
+      "Use the selector from get_form_fields and match against the options array.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the select element" },
+        value: { type: "string", description: "Option value to select (use 'value' from options, or 'text' if value is empty)" },
+      },
+      required: ["selector", "value"],
+    },
+  },
+  {
+    name: "set_checkbox",
+    description:
+      "Check or uncheck a checkbox/radio by CSS selector.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the checkbox/radio" },
+        checked: { type: "boolean", description: "true to check, false to uncheck" },
+      },
+      required: ["selector", "checked"],
     },
   },
   {
@@ -100,10 +142,10 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: "generate_resume",
+    name: "get_user_profile",
     description:
-      "Generate a tailored resume PDF for the current job application. " +
-      "Call this before upload_file when the form requires a resume upload.",
+      "Get the user's profile data including name, contact info, work experience, education, and skills. " +
+      "Call this to get the information needed to fill form fields accurately.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -111,31 +153,14 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: "generate_cover_letter",
+    name: "get_job_context",
     description:
-      "Generate a tailored cover letter PDF for the current job application. " +
-      "Call this before upload_file when the form requires a cover letter upload.",
+      "Get details about the job being applied to, including title, company, location, and description. " +
+      "Use this to tailor responses and understand what the application is for.",
     inputSchema: {
       type: "object",
       properties: {},
       required: [],
-    },
-  },
-  {
-    name: "upload_file",
-    description:
-      "Upload a generated document to the file input on the page. " +
-      "You must call generate_resume or generate_cover_letter first.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        type: {
-          type: "string",
-          enum: ["resume", "coverLetter"],
-          description: "Which document to upload",
-        },
-      },
-      required: ["type"],
     },
   },
   {

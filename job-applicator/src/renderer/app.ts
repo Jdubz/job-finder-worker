@@ -253,6 +253,8 @@ interface ElectronAPI {
   // Form Fill API (MCP-based)
   fillForm: (options: { jobMatchId: string; jobContext: string }) => Promise<{ success: boolean; message?: string }>
   stopFillForm: () => Promise<{ success: boolean }>
+  sendAgentInput: (input: string) => Promise<{ success: boolean; message?: string }>
+  pauseAgent: () => Promise<{ success: boolean; message?: string }>
   onAgentOutput: (callback: (data: AgentOutputData) => void) => () => void
   onAgentStatus: (callback: (data: AgentStatusData) => void) => () => void
   onBrowserUrlChanged: (callback: (data: { url: string }) => void) => () => void
@@ -355,7 +357,8 @@ const api = window.electronAPI
 
 // State
 let selectedJobMatchId: string | null = null
-let selectedDocumentId: string | null = null
+let selectedResumeId: string | null = null
+let selectedCoverLetterId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
 const workflowState: WorkflowState = {
@@ -384,8 +387,9 @@ const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
 
 // DOM elements - Sidebar
-const jobList = getElement<HTMLDivElement>("jobList")
-const documentsList = getElement<HTMLDivElement>("documentsList")
+const jobSelect = getElement<HTMLSelectElement>("jobSelect")
+const resumeSelect = getElement<HTMLSelectElement>("resumeSelect")
+const coverLetterSelect = getElement<HTMLSelectElement>("coverLetterSelect")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
 const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
@@ -411,6 +415,8 @@ const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
 const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
 const refreshJobsBtn = getElement<HTMLButtonElement>("refreshJobsBtn")
+const previewResumeBtn = getElement<HTMLButtonElement>("previewResumeBtn")
+const previewCoverLetterBtn = getElement<HTMLButtonElement>("previewCoverLetterBtn")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -451,24 +457,25 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 // Load job matches from backend
 // Returns true on success, false on failure
 async function loadJobMatches(): Promise<boolean> {
-  jobList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
+  jobSelect.disabled = true
+  jobSelect.innerHTML = '<option value="">Loading...</option>'
 
   try {
     const result = await api.getJobMatches({ limit: 50, status: "active" })
 
     if (result.success && Array.isArray(result.data)) {
       jobMatches = result.data
-      renderJobList()
+      renderJobSelect()
       return true
     } else {
       jobMatches = []
-      jobList.innerHTML = `<div class="empty-placeholder">${result.message || "Failed to load job matches"}</div>`
+      jobSelect.innerHTML = `<option value="">${result.message || "Failed to load"}</option>`
       return false
     }
   } catch (err) {
     jobMatches = []
     const message = err instanceof Error ? err.message : String(err)
-    jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
+    jobSelect.innerHTML = `<option value="">Error: ${message}</option>`
     log.error("Failed to load job matches:", err)
     return false
   }
@@ -492,46 +499,37 @@ async function refreshJobMatches() {
   refreshJobsBtn.disabled = false
 }
 
-// Render job matches list
-function renderJobList() {
+// Render job matches dropdown
+function renderJobSelect() {
   if (jobMatches.length === 0) {
-    jobList.innerHTML = '<div class="empty-placeholder">No job matches found</div>'
+    jobSelect.innerHTML = '<option value="">No job matches found</option>'
+    jobSelect.disabled = true
     return
   }
 
-  jobList.innerHTML = jobMatches
-    .map((match) => {
-      const scoreClass = match.matchScore >= 85 ? "high" : match.matchScore >= 70 ? "medium" : "low"
-      const isSelected = match.id === selectedJobMatchId
-      const statusBadge = match.status !== "active"
-        ? `<span class="job-status-badge ${match.status}">${match.status}</span>`
-        : ""
-      return `
-      <div class="job-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(match.id ?? "")}">
-        <div class="job-title">${escapeHtml(match.listing.title)}${statusBadge}</div>
-        <div class="job-company">${escapeHtml(match.listing.companyName)}</div>
-        <div class="job-score ${scoreClass}">${match.matchScore}% match</div>
-      </div>
-    `
-    })
-    .join("")
+  jobSelect.innerHTML = '<option value="">-- Select Job --</option>' +
+    jobMatches.map((match) => {
+      const statusSuffix = match.status !== "active" ? ` [${match.status}]` : ""
+      const label = `${match.listing.title} @ ${match.listing.companyName} (${match.matchScore}%)${statusSuffix}`
+      return `<option value="${escapeAttr(match.id ?? "")}">${escapeHtml(label)}</option>`
+    }).join("")
 
-  // Add click handlers
-  jobList.querySelectorAll(".job-item").forEach((el) => {
-    el.addEventListener("click", () => {
-      const id = (el as HTMLElement).dataset.id
-      if (id) selectJobMatch(id)
-    })
-  })
+  // Preserve selection if still valid
+  if (selectedJobMatchId && jobMatches.find((m) => m.id === selectedJobMatchId)) {
+    jobSelect.value = selectedJobMatchId
+  }
+
+  jobSelect.disabled = false
 }
 
 // Select a job match
 async function selectJobMatch(id: string) {
   selectedJobMatchId = id
-  selectedDocumentId = null
+  selectedResumeId = null
+  selectedCoverLetterId = null
 
-  // Update UI
-  renderJobList()
+  // Update dropdown selection
+  jobSelect.value = id
 
   // Update fill button state (depends on selectedJobMatchId)
   updateAgentStatusUI(_agentSessionState)
@@ -571,10 +569,11 @@ async function selectJobMatch(id: string) {
 }
 
 // Load documents for a job match
-// If autoSelectId is provided, auto-select that document
-// Otherwise, auto-select the most recent completed document
+// If autoSelectId is provided, auto-select that document in the appropriate dropdown
 async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
-  documentsList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
+  // Disable dropdowns while loading
+  resumeSelect.disabled = true
+  coverLetterSelect.disabled = true
 
   try {
     const result = await api.getDocuments(jobMatchId)
@@ -582,141 +581,129 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
 
-      // Auto-select logic:
-      // 1. If autoSelectId provided (e.g., newly generated), select it
-      // 2. Otherwise, select the most recent completed document
-      // 3. Documents are already sorted by createdAt desc from API
+      // Filter documents with resume and cover letter URLs
+      const resumes = documents.filter((d) => d.resumeUrl && d.status === "completed")
+      const coverLetters = documents.filter((d) => d.coverLetterUrl && d.status === "completed")
+
+      // Populate resume dropdown with date + ID snippet
+      resumeSelect.innerHTML = '<option value="">-- Select Resume --</option>' +
+        resumes.map((doc) => {
+          const date = new Date(doc.createdAt).toLocaleDateString()
+          const idSnippet = doc.id.slice(0, 6)
+          return `<option value="${escapeAttr(doc.id)}">${escapeHtml(date)} (${escapeHtml(idSnippet)})</option>`
+        }).join("")
+
+      // Populate cover letter dropdown with date + ID snippet
+      coverLetterSelect.innerHTML = '<option value="">-- Select Cover Letter --</option>' +
+        coverLetters.map((doc) => {
+          const date = new Date(doc.createdAt).toLocaleDateString()
+          const idSnippet = doc.id.slice(0, 6)
+          return `<option value="${escapeAttr(doc.id)}">${escapeHtml(date)} (${escapeHtml(idSnippet)})</option>`
+        }).join("")
+
+      // Auto-select logic
       if (autoSelectId) {
-        selectedDocumentId = documents.find((d) => d.id === autoSelectId)?.id || null
-      } else if (!selectedDocumentId) {
-        // Find most recent completed document
-        const completed = documents.find((d) => d.status === "completed")
-        selectedDocumentId = completed?.id || null
+        const doc = documents.find((d) => d.id === autoSelectId)
+        if (doc?.resumeUrl) selectedResumeId = doc.id
+        if (doc?.coverLetterUrl) selectedCoverLetterId = doc.id
+      } else {
+        // Auto-select most recent if not already selected
+        if (!selectedResumeId && resumes.length > 0) {
+          selectedResumeId = resumes[0].id
+        }
+        if (!selectedCoverLetterId && coverLetters.length > 0) {
+          selectedCoverLetterId = coverLetters[0].id
+        }
       }
 
-      renderDocumentsList()
+      // Set dropdown values
+      resumeSelect.value = selectedResumeId || ""
+      coverLetterSelect.value = selectedCoverLetterId || ""
+
+      // Enable dropdowns if they have options
+      resumeSelect.disabled = resumes.length === 0
+      coverLetterSelect.disabled = coverLetters.length === 0
+
       updateUploadButtonsState()
     } else {
       documents = []
-      selectedDocumentId = null
-      documentsList.innerHTML = `<div class="empty-placeholder">${result.message || "No documents"}</div>`
+      selectedResumeId = null
+      selectedCoverLetterId = null
+      resumeSelect.innerHTML = '<option value="">-- No resumes --</option>'
+      coverLetterSelect.innerHTML = '<option value="">-- No cover letters --</option>'
       updateUploadButtonsState()
     }
   } catch (err) {
     documents = []
-    selectedDocumentId = null
+    selectedResumeId = null
+    selectedCoverLetterId = null
     const message = err instanceof Error ? err.message : String(err)
-    documentsList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
-    log.error("Failed to load documents:", err)
+    log.error("Failed to load documents:", message)
+    resumeSelect.innerHTML = '<option value="">-- Error loading --</option>'
+    coverLetterSelect.innerHTML = '<option value="">-- Error loading --</option>'
     updateUploadButtonsState()
   }
 }
 
-// Render documents list
-function renderDocumentsList() {
-  if (documents.length === 0) {
-    documentsList.innerHTML = '<div class="empty-placeholder">No documents yet</div>'
-    return
-  }
-
-  documentsList.innerHTML = documents
-    .map((doc) => {
-      const typeLabel = doc.generateType === "both" ? "Resume + Cover Letter" : doc.generateType === "resume" ? "Resume" : "Cover Letter"
-      const date = new Date(doc.createdAt).toLocaleDateString()
-      const isSelected = doc.id === selectedDocumentId
-      const statusBadge = doc.status !== "completed" ? ` (${doc.status})` : ""
-
-      return `
-      <div class="document-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(doc.id)}">
-        <span class="document-icon">${doc.generateType === "coverLetter" ? "CL" : "R"}</span>
-        <div class="document-info">
-          <div class="document-type">${escapeHtml(typeLabel)}${escapeHtml(statusBadge)}</div>
-          <div class="document-date">${escapeHtml(date)}</div>
-        </div>
-        <div class="document-actions">
-          ${doc.resumeUrl ? `<button class="btn-view" data-url="${escapeAttr(doc.resumeUrl)}" title="View Resume">R</button>` : ""}
-          ${doc.coverLetterUrl ? `<button class="btn-view" data-url="${escapeAttr(doc.coverLetterUrl)}" title="View Cover Letter">CL</button>` : ""}
-        </div>
-      </div>
-    `
-    })
-    .join("")
-
-  // Add click handlers for selection
-  documentsList.querySelectorAll(".document-item").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      // Don't select if clicking a button
-      if ((e.target as HTMLElement).tagName === "BUTTON") return
-      const id = (el as HTMLElement).dataset.id
-      if (id) selectDocument(id)
-    })
-  })
-
-  // Add click handlers for view buttons
-  documentsList.querySelectorAll(".btn-view").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation()
-      const url = (btn as HTMLElement).dataset.url
-      if (url) {
-        const result = await api.openDocument(url)
-        if (!result.success) {
-          log.error("Failed to open document:", result.message)
-        }
-      }
-    })
-  })
+// Get the selected resume document
+function getSelectedResume(): DocumentInfo | null {
+  if (!selectedResumeId) return null
+  return documents.find((d) => d.id === selectedResumeId) || null
 }
 
-// Select a document
-function selectDocument(id: string) {
-  selectedDocumentId = selectedDocumentId === id ? null : id // Toggle selection
-  renderDocumentsList()
-  updateUploadButtonsState()
+// Get the selected cover letter document
+function getSelectedCoverLetter(): DocumentInfo | null {
+  if (!selectedCoverLetterId) return null
+  return documents.find((d) => d.id === selectedCoverLetterId) || null
 }
 
-// Get the currently selected document
-function getSelectedDocument(): DocumentInfo | null {
-  if (!selectedDocumentId) return null
-  return documents.find((d) => d.id === selectedDocumentId) || null
+// Get selected document by type
+function getSelectedDocumentByType(type: "resume" | "coverLetter"): DocumentInfo | null {
+  const id = type === "resume" ? selectedResumeId : selectedCoverLetterId
+  if (!id) return null
+  return documents.find((d) => d.id === id) || null
 }
 
-// Update upload buttons enabled state based on requirements:
-// 1. File input must exist on page
-// 2. A document must be selected
-// 3. The document must have the appropriate file (resumeUrl or coverLetterUrl)
+// Update upload buttons and preview buttons enabled state based on requirements:
+// Upload: 1. File input must exist on page 2. A document must be selected for that type
+// Preview: Document must be selected
 function updateUploadButtonsState() {
-  const doc = getSelectedDocument()
-  const canUploadResume = hasFileInput && doc?.resumeUrl
-  const canUploadCover = hasFileInput && doc?.coverLetterUrl
+  const resumeDoc = getSelectedResume()
+  const coverLetterDoc = getSelectedCoverLetter()
+  const canUploadResume = hasFileInput && resumeDoc?.resumeUrl
+  const canUploadCover = hasFileInput && coverLetterDoc?.coverLetterUrl
 
   uploadResumeBtn.disabled = !canUploadResume
   uploadCoverBtn.disabled = !canUploadCover
+
+  // Preview buttons only need a document selected
+  previewResumeBtn.disabled = !resumeDoc?.resumeUrl
+  previewCoverLetterBtn.disabled = !coverLetterDoc?.coverLetterUrl
 
   // Update status message
   if (!hasFileInput) {
     uploadStatus.className = "upload-status warning"
     uploadStatusText.textContent = "No file input detected on page"
-  } else if (!doc) {
-    uploadStatus.className = "upload-status info"
-    uploadStatusText.textContent = "Select a document to upload"
   } else {
-    uploadStatus.className = "upload-status ready"
-    const available: string[] = []
-    if (doc.resumeUrl) available.push("Resume")
-    if (doc.coverLetterUrl) available.push("Cover Letter")
-    uploadStatusText.textContent = available.length > 0 ? `Ready: ${available.join(", ")}` : "No files generated yet"
+    const ready: string[] = []
+    if (resumeDoc?.resumeUrl) ready.push("Resume")
+    if (coverLetterDoc?.coverLetterUrl) ready.push("Cover Letter")
+    if (ready.length > 0) {
+      uploadStatus.className = "upload-status ready"
+      uploadStatusText.textContent = `Ready: ${ready.join(", ")}`
+    } else {
+      uploadStatus.className = "upload-status info"
+      uploadStatusText.textContent = "Select documents to upload"
+    }
   }
 
   // Update button titles for better UX
   if (!hasFileInput) {
     uploadResumeBtn.title = "Navigate to a page with file upload"
     uploadCoverBtn.title = "Navigate to a page with file upload"
-  } else if (!doc) {
-    uploadResumeBtn.title = "Select a document first"
-    uploadCoverBtn.title = "Select a document first"
   } else {
-    uploadResumeBtn.title = doc.resumeUrl ? "Upload resume to file input" : "No resume generated"
-    uploadCoverBtn.title = doc.coverLetterUrl ? "Upload cover letter to file input" : "No cover letter generated"
+    uploadResumeBtn.title = resumeDoc?.resumeUrl ? "Upload resume to file input" : "Select a resume first"
+    uploadCoverBtn.title = coverLetterDoc?.coverLetterUrl ? "Upload cover letter to file input" : "Select a cover letter first"
   }
 }
 
@@ -852,7 +839,7 @@ async function markAsApplied() {
     }
     // Update workflow
     setWorkflowStep("submit", "completed")
-    renderJobList()
+    renderJobSelect()
     markIgnoredBtn.disabled = false
   } else {
     setStatus(result.message || "Failed to update status", "error")
@@ -879,7 +866,7 @@ async function markAsIgnored() {
     if (match) {
       match.status = "ignored"
     }
-    renderJobList()
+    renderJobSelect()
     markAppliedBtn.disabled = false
   } else {
     setStatus(result.message || "Failed to update status", "error")
@@ -896,12 +883,13 @@ async function checkUrlForJobMatch(url: string) {
       // Add to job matches list if not present
       if (!jobMatches.find((m) => m.id === match.id)) {
         jobMatches.unshift(match)
-        renderJobList()
+        renderJobSelect()
       }
       // Auto-select the match (but don't navigate again)
       selectedJobMatchId = match.id ?? null
-      selectedDocumentId = null
-      renderJobList()
+      selectedResumeId = null
+      selectedCoverLetterId = null
+      jobSelect.value = match.id ?? ""
 
       // Update fill button state (depends on selectedJobMatchId)
       updateAgentStatusUI(_agentSessionState)
@@ -1199,8 +1187,9 @@ function cleanupAgentListeners() {
 
 // Upload document (resume or cover letter)
 async function uploadDocument(type: "resume" | "coverLetter") {
-  if (!selectedDocumentId) {
-    setStatus("Select a document first", "error")
+  const documentId = type === "resume" ? selectedResumeId : selectedCoverLetterId
+  if (!documentId) {
+    setStatus(`Select a ${type === "coverLetter" ? "cover letter" : "resume"} first`, "error")
     return
   }
 
@@ -1210,7 +1199,7 @@ async function uploadDocument(type: "resume" | "coverLetter") {
     setButtonsEnabled(false)
     setStatus(`Uploading ${typeLabel}...`, "loading")
 
-    const result = await api.uploadResume({ documentId: selectedDocumentId, type })
+    const result = await api.uploadResume({ documentId, type })
 
     if (result.success) {
       setStatus(result.message, "success")
@@ -1235,6 +1224,39 @@ function uploadResumeFile() {
 
 function uploadCoverLetterFile() {
   uploadDocument("coverLetter")
+}
+
+// Preview document (opens in default PDF viewer)
+async function previewDocument(type: "resume" | "coverLetter") {
+  const doc = type === "resume" ? getSelectedResume() : getSelectedCoverLetter()
+  const url = type === "resume" ? doc?.resumeUrl : doc?.coverLetterUrl
+  const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
+
+  if (!url) {
+    setStatus(`No ${typeLabel} selected`, "error")
+    return
+  }
+
+  try {
+    setStatus(`Opening ${typeLabel}...`, "loading")
+    const result = await api.openDocument(url)
+    if (result.success) {
+      setStatus(`Opened ${typeLabel}`, "success")
+    } else {
+      setStatus(result.message || `Failed to open ${typeLabel}`, "error")
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Failed to open ${typeLabel}: ${message}`, "error")
+  }
+}
+
+function previewResume() {
+  previewDocument("resume")
+}
+
+function previewCoverLetter() {
+  previewDocument("coverLetter")
 }
 
 // Submit job listing for analysis
@@ -1281,6 +1303,21 @@ function initializeApp() {
   fillFormBtn.addEventListener("click", fillFormWithAgent)
 
   // Event listeners - Sidebar
+  jobSelect.addEventListener("change", () => {
+    const id = jobSelect.value
+    if (id) {
+      selectJobMatch(id)
+    } else {
+      // Deselected - clear state
+      selectedJobMatchId = null
+      selectedResumeId = null
+      selectedCoverLetterId = null
+      jobActionsSection.classList.add("hidden")
+      generateBtn.disabled = true
+      updateUploadButtonsState()
+      updateAgentStatusUI(_agentSessionState)
+    }
+  })
   generateBtn.addEventListener("click", generateDocument)
   markAppliedBtn.addEventListener("click", markAsApplied)
   markIgnoredBtn.addEventListener("click", markAsIgnored)
@@ -1288,6 +1325,20 @@ function initializeApp() {
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
   rescanBtn.addEventListener("click", checkForFileInput)
   refreshJobsBtn.addEventListener("click", refreshJobMatches)
+
+  // Event listeners - Document dropdowns
+  resumeSelect.addEventListener("change", () => {
+    selectedResumeId = resumeSelect.value || null
+    updateUploadButtonsState()
+  })
+  coverLetterSelect.addEventListener("change", () => {
+    selectedCoverLetterId = coverLetterSelect.value || null
+    updateUploadButtonsState()
+  })
+
+  // Event listeners - Preview buttons
+  previewResumeBtn.addEventListener("click", previewResume)
+  previewCoverLetterBtn.addEventListener("click", previewCoverLetter)
 
   // Listen for Ctrl+R global shortcut from main process
   // This ensures refresh works even when BrowserView has focus

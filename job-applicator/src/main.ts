@@ -81,7 +81,7 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer } from "./tool-server.js"
-import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback } from "./tool-executor.js"
+import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext } from "./tool-executor.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -852,6 +852,58 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
 let activeClaudeProcess: ReturnType<typeof spawn> | null = null
 
 /**
+ * Kill the active Claude CLI process if running
+ * Uses SIGTERM first, then SIGKILL as fallback
+ */
+function killActiveClaudeProcess(reason: string): void {
+  if (!activeClaudeProcess) return
+
+  // Capture reference before nullifying - needed for timeout callback
+  const processToKill = activeClaudeProcess
+  const pid = processToKill.pid
+  logger.info(`[Process] Killing Claude CLI (PID: ${pid}) - ${reason}`)
+
+  // Nullify immediately to prevent new operations on this process
+  activeClaudeProcess = null
+
+  try {
+    // Try graceful termination first
+    processToKill.kill("SIGTERM")
+
+    // Force kill after 2 seconds if still running
+    const forceKillTimeout = setTimeout(() => {
+      if (!processToKill.killed) {
+        logger.warn(`[Process] SIGTERM didn't work, sending SIGKILL to PID ${pid}`)
+        try {
+          processToKill.kill("SIGKILL")
+        } catch {
+          // Process may have exited between check and kill
+        }
+      }
+    }, 2000)
+
+    // Clear timeout if process exits
+    processToKill.once("exit", () => {
+      clearTimeout(forceKillTimeout)
+      logger.info(`[Process] Claude CLI (PID: ${pid}) exited`)
+    })
+  } catch (err) {
+    logger.error(`[Process] Error killing Claude CLI: ${err}`)
+  }
+}
+
+// Clean up on unexpected process exit (safety net for crashes)
+process.on("exit", () => {
+  if (activeClaudeProcess) {
+    try {
+      activeClaudeProcess.kill("SIGKILL")
+    } catch {
+      // Ignore errors during exit
+    }
+  }
+})
+
+/**
  * Get the path to the MCP server executable
  */
 function getMcpServerPath(): string {
@@ -872,9 +924,11 @@ function getMcpServerPath(): string {
 /**
  * Create MCP config file for Claude CLI
  */
+// MCP config path - stored in project dir for easier debugging
+const MCP_CONFIG_PATH = path.join(import.meta.dirname, "..", "mcp-config.json")
+
 function createMcpConfigFile(): string {
   const mcpServerPath = getMcpServerPath()
-  const configPath = path.join(os.tmpdir(), `job-applicator-mcp-config-${process.pid}.json`)
 
   const config = {
     mcpServers: {
@@ -888,9 +942,9 @@ function createMcpConfigFile(): string {
     }
   }
 
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
-  logger.info(`[FillForm] Created MCP config at ${configPath}`)
-  return configPath
+  fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2))
+  logger.info(`[FillForm] Created MCP config at ${MCP_CONFIG_PATH}`)
+  return MCP_CONFIG_PATH
 }
 
 /**
@@ -905,9 +959,7 @@ ipcMain.handle(
     try {
       // Kill any existing process
       if (activeClaudeProcess) {
-        logger.info(`[FillForm] Killing existing process PID: ${activeClaudeProcess.pid}`)
-        activeClaudeProcess.kill()
-        activeClaudeProcess = null
+        killActiveClaudeProcess("starting new fill-form")
       } else {
         logger.info(`[FillForm] No existing process to kill`)
       }
@@ -932,18 +984,16 @@ ipcMain.handle(
         return { success: false, message }
       }
 
-      // Set job context for document generation tools
+      // Set job context for document generation tools and context retrieval
       setCurrentJobMatchId(options.jobMatchId)
+      setUserProfile(profileText)
+      setJobContext(options.jobContext)
 
       // Set completion callback to kill CLI when done is called
       logger.info(`[FillForm] Setting completion callback`)
       setCompletionCallback((summary: string) => {
         logger.info(`[FillForm] Completion callback fired with: ${summary}`)
-        if (activeClaudeProcess) {
-          logger.info(`[FillForm] Killing process PID ${activeClaudeProcess.pid} from completion callback`)
-          activeClaudeProcess.kill()
-          activeClaudeProcess = null
-        }
+        killActiveClaudeProcess("agent completed")
         clearJobContext()
         setCompletionCallback(null)
         mainWindow?.webContents.send("agent-status", { state: "idle" })
@@ -953,35 +1003,33 @@ ipcMain.handle(
         })
       })
 
-      // Build the prompt
-      const prompt = `You are filling a job application form. Use the MCP tools to interact with the browser.
+      // Build the prompt - data is retrieved via tools to reduce prompt size
+      const prompt = `You are filling a job application form using a hybrid DOM + visual approach.
 
-AVAILABLE TOOLS:
-- screenshot: Capture the current page (call first to see what's there)
-- click: Click at x,y coordinates
-- type: Type text into the focused field
-- press_key: Press Tab, Enter, Escape, Backspace, ArrowDown, ArrowUp, Space
-- scroll: Scroll the page (positive dy = down)
-- get_form_fields: Get all form fields with labels and values
-- generate_resume: Generate a tailored resume PDF
-- generate_cover_letter: Generate a tailored cover letter PDF
-- upload_file: Upload a generated document (type: "resume" or "coverLetter")
-- done: Signal completion (include a summary)
+CRITICAL RULES:
+1. MUST call get_user_profile FIRST - NEVER invent or guess user data
+2. Use selector-based tools (fill_field, select_option, set_checkbox) for reliability
+3. Use screenshot to verify your work and handle complex UI
+4. DO NOT click submit/apply buttons - user will submit manually
+5. SKIP file upload fields - user handles documents separately
 
-RULES:
-1. Start with screenshot to see the current page
-2. Fill fields using the profile data below - be accurate
-3. For file uploads: generate_resume/generate_cover_letter first, then upload_file
-4. Call done with a summary when finished
-5. DO NOT click submit/apply buttons - user will review and submit
+WORKFLOW:
+1. get_user_profile - Get user data (MANDATORY first)
+2. get_form_fields - Analyze DOM, get selectors and dropdown options
+3. For each field, match label to profile data and use:
+   - fill_field(selector, value) for text inputs
+   - select_option(selector, value) for dropdowns - match against options array
+   - set_checkbox(selector, checked) for checkboxes
+4. screenshot - Verify fields were filled correctly
+5. For any issues or custom UI (date pickers, autocomplete):
+   - Use click(x,y) and type(text) as fallback
+6. scroll down and repeat get_form_fields for more fields
+7. done with summary
 
-USER PROFILE:
-${profileText}
+IMPORTANT: The 'options' array in get_form_fields shows available dropdown values.
+Match your selection to one of those values, not arbitrary text.
 
-JOB DETAILS:
-${options.jobContext}
-
-Begin by taking a screenshot to see the form.`
+Start by calling get_user_profile.`
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
       logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)
@@ -1001,7 +1049,7 @@ Begin by taking a screenshot to see the form.`
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
       activeClaudeProcess = spawn("claude", spawnArgs)
 
-      // Write prompt to stdin and close it
+      // Write prompt to stdin and close it (--print mode needs EOF to start)
       if (activeClaudeProcess.stdin) {
         activeClaudeProcess.stdin.write(prompt)
         activeClaudeProcess.stdin.end()
@@ -1010,17 +1058,18 @@ Begin by taking a screenshot to see the form.`
         logger.error(`[FillForm] stdin not available`)
       }
 
-      // Forward stdout to renderer
+      // Forward stdout to renderer - log full output to see agent reasoning
       activeClaudeProcess.stdout?.on("data", (data: Buffer) => {
         const text = data.toString()
-        logger.info(`[FillForm] stdout (${text.length} chars): ${text.slice(0, 200)}`)
+        // Log full output (up to 2000 chars) to see Claude's reasoning
+        logger.info(`[FillForm] stdout:\n${text.slice(0, 2000)}${text.length > 2000 ? "...(truncated)" : ""}`)
         mainWindow?.webContents.send("agent-output", { text, isError: false })
       })
 
       // Forward stderr to renderer
       activeClaudeProcess.stderr?.on("data", (data: Buffer) => {
         const text = data.toString()
-        logger.warn(`[FillForm] stderr (${text.length} chars): ${text.slice(0, 200)}`)
+        logger.warn(`[FillForm] stderr:\n${text.slice(0, 2000)}${text.length > 2000 ? "...(truncated)" : ""}`)
         mainWindow?.webContents.send("agent-output", { text, isError: true })
       })
 
@@ -1064,15 +1113,62 @@ Begin by taking a screenshot to see the form.`
  */
 ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
   logger.info(`[FillForm] stop-fill-form called`)
-  if (activeClaudeProcess) {
-    logger.info(`[FillForm] Killing process PID ${activeClaudeProcess.pid} from stop-fill-form`)
-    activeClaudeProcess.kill()
-    activeClaudeProcess = null
-  }
+  killActiveClaudeProcess("user stopped")
   clearJobContext()
   setCompletionCallback(null)
   mainWindow?.webContents.send("agent-status", { state: "stopped" })
   return { success: true }
+})
+
+/**
+ * Send input to the running agent
+ * Note: This only works in interactive mode, not --print mode
+ */
+ipcMain.handle(
+  "send-agent-input",
+  async (_event: IpcMainInvokeEvent, input: string): Promise<{ success: boolean; message?: string }> => {
+    if (!activeClaudeProcess) {
+      return { success: false, message: "No active agent process" }
+    }
+
+    // In --print mode, stdin is closed after the initial prompt
+    // This handler is for future interactive mode support
+    if (!activeClaudeProcess.stdin || activeClaudeProcess.stdin.writableEnded) {
+      return { success: false, message: "Agent stdin is closed (--print mode does not support interactive input)" }
+    }
+
+    try {
+      activeClaudeProcess.stdin.write(input + "\n")
+      logger.info(`[FillForm] Sent input to agent: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`)
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`[FillForm] Failed to send input: ${message}`)
+      return { success: false, message }
+    }
+  }
+)
+
+/**
+ * Pause the running agent (send SIGTSTP signal)
+ * Note: In --print mode, this sends a signal rather than Escape via stdin
+ */
+ipcMain.handle("pause-agent", async (): Promise<{ success: boolean; message?: string }> => {
+  if (!activeClaudeProcess) {
+    return { success: false, message: "No active agent process" }
+  }
+
+  try {
+    // Send SIGTSTP to pause the process (like Ctrl+Z in terminal)
+    activeClaudeProcess.kill("SIGTSTP")
+    logger.info("[FillForm] Sent SIGTSTP to pause agent")
+    mainWindow?.webContents.send("agent-status", { state: "paused" })
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[FillForm] Failed to pause agent: ${message}`)
+    return { success: false, message }
+  }
 })
 
 // App lifecycle
@@ -1164,6 +1260,7 @@ app.whenReady().then(() => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll()
   stopToolServer()
+  killActiveClaudeProcess("app quitting")
 })
 
 app.on("window-all-closed", () => {

@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   fillForm: (options: { jobMatchId: string; jobContext: string }) =>
     ipcRenderer.invoke("fill-form", options),
   stopFillForm: () => ipcRenderer.invoke("stop-fill-form"),
+  sendAgentInput: (input: string) => ipcRenderer.invoke("send-agent-input", input),
+  pauseAgent: () => ipcRenderer.invoke("pause-agent"),
 
   // Agent event listeners (used by form fill)
   onAgentOutput: (callback: (data: AgentOutputData) => void) => {

@@ -243,7 +243,33 @@ select:focus {
   border-color: #533483;
 }
 
-/* Job List */
+/* Job Select Dropdown */
+.job-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #eee;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.job-select:hover:not(:disabled) {
+  border-color: #0f3460;
+}
+
+.job-select:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.job-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Job List (legacy) */
 .job-list {
   max-height: 300px;
   overflow-y: auto;
@@ -304,7 +330,86 @@ select:focus {
   color: #f87171;
 }
 
-/* Documents List */
+/* Document Selectors */
+.document-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.document-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.document-selector label {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.document-select {
+  width: 100%;
+  padding: 8px 10px;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.document-select:hover:not(:disabled) {
+  border-color: #0f3460;
+}
+
+.document-select:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.document-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.document-select-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.document-select-row .document-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-preview {
+  padding: 6px 8px;
+  font-size: 14px;
+  background: #0f3460;
+  border: 1px solid #333;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-preview:hover:not(:disabled) {
+  background: #1a4a7a;
+  border-color: #1a4a7a;
+}
+
+.btn-preview:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Documents List (legacy) */
 .documents-list {
   min-height: 60px;
 }

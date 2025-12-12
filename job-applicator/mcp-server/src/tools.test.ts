@@ -38,7 +38,7 @@ describe("MCP Tool Definitions", () => {
 
       expect(tool.description).toBeDefined()
       expect(typeof tool.description).toBe("string")
-      expect(tool.description.length).toBeGreaterThan(0)
+      expect(tool.description!.length).toBeGreaterThan(0)
 
       expect(tool.inputSchema).toBeDefined()
       expect(tool.inputSchema.type).toBe("object")
@@ -203,7 +203,7 @@ describe("MCP Tool Definitions", () => {
 
     it("should warn about not clicking submit", () => {
       expect(tool.description).toContain("DO NOT")
-      expect(tool.description.toLowerCase()).toContain("submit")
+      expect(tool.description!.toLowerCase()).toContain("submit")
     })
   })
 })

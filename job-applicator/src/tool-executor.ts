@@ -7,14 +7,7 @@
 
 import type { BrowserView } from "electron"
 import * as crypto from "crypto"
-import * as fs from "fs"
 import { logger } from "./logger.js"
-import {
-  startGeneration,
-  executeGenerationStep,
-  fetchGeneratorRequest,
-} from "./api-client.js"
-import { resolveDocumentPath, getConfig } from "./utils.js"
 
 // ============================================================================
 // Types
@@ -30,9 +23,8 @@ export interface ToolResult {
 // Configuration
 // ============================================================================
 
-const SCREENSHOT_WIDTH = 1280
+const SCREENSHOT_MAX_WIDTH = 1280 // Max width for screenshots sent to agent
 const TOOL_TIMEOUT_MS = 30000 // 30 second timeout for tool execution
-const GENERATION_TIMEOUT_MS = 120000 // 2 minute timeout for document generation
 
 // ============================================================================
 // BrowserView Reference
@@ -74,16 +66,13 @@ export function getBrowserView(): BrowserView | null {
 // ============================================================================
 
 let currentJobMatchId: string | null = null
-let lastGeneratedDocumentId: string | null = null
+let userProfile: unknown = null
+let jobContext: unknown = null
 
 /**
- * Set the current job match ID for document generation
+ * Set the current job match ID for form filling context
  */
 export function setCurrentJobMatchId(id: string | null): void {
-  // Clear last generated document when job changes
-  if (id !== currentJobMatchId) {
-    lastGeneratedDocumentId = null
-  }
   currentJobMatchId = id
   logger.info(`[ToolExecutor] Current job match ID: ${id || "(none)"}`)
 }
@@ -100,8 +89,25 @@ export function getCurrentJobMatchId(): string | null {
  */
 export function clearJobContext(): void {
   currentJobMatchId = null
-  lastGeneratedDocumentId = null
+  userProfile = null
+  jobContext = null
   logger.info("[ToolExecutor] Job context cleared")
+}
+
+/**
+ * Set the user profile data for the get_user_profile tool
+ */
+export function setUserProfile(profile: unknown): void {
+  userProfile = profile
+  logger.info("[ToolExecutor] User profile set")
+}
+
+/**
+ * Set the job context data for the get_job_context tool
+ */
+export function setJobContext(context: unknown): void {
+  jobContext = context
+  logger.info("[ToolExecutor] Job context set")
 }
 
 // ============================================================================
@@ -134,8 +140,7 @@ async function executeToolWithTimeout(
   tool: string,
   params: Record<string, unknown>
 ): Promise<ToolResult> {
-  const isLongRunning = tool === "generate_resume" || tool === "generate_cover_letter"
-  const timeoutMs = isLongRunning ? GENERATION_TIMEOUT_MS : TOOL_TIMEOUT_MS
+  const timeoutMs = TOOL_TIMEOUT_MS
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -168,6 +173,15 @@ async function executeToolInternal(
     case "get_form_fields":
       return await handleGetFormFields()
 
+    case "fill_field":
+      return await handleFillField(params as { selector: string; value: string })
+
+    case "select_option":
+      return await handleSelectOption(params as { selector: string; value: string })
+
+    case "set_checkbox":
+      return await handleSetCheckbox(params as { selector: string; checked: boolean })
+
     case "get_page_info":
       return await handleGetPageInfo()
 
@@ -184,17 +198,14 @@ async function executeToolInternal(
     case "press_key":
       return await handleKeypress(params as { key: string })
 
-    case "generate_resume":
-      return await handleGenerateDocument("resume", params as { jobMatchId?: string })
-
-    case "generate_cover_letter":
-      return await handleGenerateDocument("coverLetter", params as { jobMatchId?: string })
-
-    case "upload_file":
-      return await handleUploadFile(params as { type: "resume" | "coverLetter"; documentId?: string })
-
     case "done":
       return handleDone(params as { summary?: string })
+
+    case "get_user_profile":
+      return handleGetUserProfile()
+
+    case "get_job_context":
+      return handleGetJobContext()
 
     default:
       logger.warn(`[ToolExecutor] Unknown tool: ${tool}`)
@@ -205,6 +216,9 @@ async function executeToolInternal(
 // ============================================================================
 // Tool Handlers
 // ============================================================================
+
+// Track screenshot scale for coordinate mapping
+let screenshotScale = 1
 
 /**
  * Capture a screenshot of the current page
@@ -217,27 +231,32 @@ async function handleScreenshot(): Promise<ToolResult> {
   const nativeImage = await browserView.webContents.capturePage()
   const size = nativeImage.getSize()
 
-  // Resize to target width if needed
-  let resized = nativeImage
-  if (size.width > SCREENSHOT_WIDTH) {
-    const scale = SCREENSHOT_WIDTH / size.width
-    const newHeight = Math.round(size.height * scale)
-    resized = nativeImage.resize({ width: SCREENSHOT_WIDTH, height: newHeight, quality: "good" })
+  // Resize if wider than max, maintaining aspect ratio
+  let finalImage = nativeImage
+  let finalWidth = size.width
+  let finalHeight = size.height
+
+  if (size.width > SCREENSHOT_MAX_WIDTH) {
+    screenshotScale = size.width / SCREENSHOT_MAX_WIDTH
+    finalWidth = SCREENSHOT_MAX_WIDTH
+    finalHeight = Math.round(size.height / screenshotScale)
+    finalImage = nativeImage.resize({ width: finalWidth, height: finalHeight, quality: "good" })
+  } else {
+    screenshotScale = 1
   }
 
-  const jpeg = resized.toJPEG(60)
+  const jpeg = finalImage.toJPEG(60)
   const base64 = jpeg.toString("base64")
   const hash = crypto.createHash("sha1").update(jpeg).digest("hex").slice(0, 8)
 
-  const finalSize = resized.getSize()
-  logger.info(`[ToolExecutor] Screenshot: ${finalSize.width}x${finalSize.height}, hash=${hash}`)
+  logger.info(`[ToolExecutor] Screenshot: ${finalWidth}x${finalHeight} (scale=${screenshotScale.toFixed(2)}), hash=${hash}`)
 
   return {
     success: true,
     data: {
       image: `data:image/jpeg;base64,${base64}`,
-      width: finalSize.width,
-      height: finalSize.height,
+      width: finalWidth,
+      height: finalHeight,
       hash,
     },
   }
@@ -253,28 +272,108 @@ async function handleGetFormFields(): Promise<ToolResult> {
 
   const fields = await browserView.webContents.executeJavaScript(`
     (() => {
+      // Helper: Build a unique CSS selector path for an element
+      function buildSelectorPath(el) {
+        // First try ID
+        if (el.id) {
+          return '#' + CSS.escape(el.id);
+        }
+
+        // Try name attribute (common for form fields)
+        if (el.name) {
+          const tag = el.tagName.toLowerCase();
+          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          // Check if this selector is unique
+          if (document.querySelectorAll(nameSelector).length === 1) {
+            return nameSelector;
+          }
+        }
+
+        // Build path from nearest ancestor with ID
+        const path = [];
+        let current = el;
+        while (current && current !== document.body) {
+          let segment = current.tagName.toLowerCase();
+
+          if (current.id) {
+            // Found an ancestor with ID - start path from here
+            path.unshift('#' + CSS.escape(current.id));
+            break;
+          }
+
+          // Add index among siblings of same type
+          const parent = current.parentElement;
+          if (parent) {
+            const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+            if (siblings.length > 1) {
+              const index = siblings.indexOf(current) + 1;
+              segment += ':nth-of-type(' + index + ')';
+            }
+          }
+
+          path.unshift(segment);
+          current = current.parentElement;
+        }
+
+        // If no ancestor with ID found, start from body
+        if (path.length > 0 && !path[0].startsWith('#')) {
+          path.unshift('body');
+        }
+
+        return path.join(' > ');
+      }
+
       const inputs = document.querySelectorAll('input, select, textarea');
       return Array.from(inputs).map((el, idx) => {
         const rect = el.getBoundingClientRect();
-        const label = document.querySelector(\`label[for="\${el.id}"]\`)?.textContent?.trim() ||
-                      el.getAttribute('aria-label') ||
-                      el.getAttribute('placeholder') ||
-                      el.name ||
-                      'field_' + idx;
+        const fieldType = el.type || el.tagName.toLowerCase();
+
+        // Skip hidden, file inputs, and invisible/disabled fields early
+        if (fieldType === 'hidden' || fieldType === 'file') return null;
+        if (rect.width === 0 || rect.height === 0) return null;
+        if (el.disabled) return null;
+
+        // Build a reliable CSS selector
+        const selector = buildSelectorPath(el);
+
+        // Get label text from multiple sources (skip label[for] query if no id)
+        let labelEl = null;
+        if (el.id) {
+          labelEl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+        }
+        const ariaLabel = el.getAttribute('aria-label');
+        const placeholder = el.getAttribute('placeholder');
+        const closestLabel = el.closest('label')?.textContent?.trim();
+        // Also check for preceding label sibling or parent text
+        const prevSibling = el.previousElementSibling;
+        const prevLabel = prevSibling?.tagName === 'LABEL' ? prevSibling.textContent?.trim() : null;
+        const label = labelEl?.textContent?.trim() || ariaLabel || placeholder || closestLabel || prevLabel || el.name || 'field_' + idx;
+
+        // Get options for select elements
+        let options = null;
+        if (el.tagName === 'SELECT') {
+          options = Array.from(el.options).map(opt => ({
+            value: opt.value,
+            text: opt.textContent?.trim() || '',
+            selected: opt.selected
+          }));
+        }
+
         return {
           index: idx,
-          type: el.type || el.tagName.toLowerCase(),
+          selector: selector,
+          type: fieldType,
           name: el.name || null,
           id: el.id || null,
           label: label,
           value: el.value || '',
+          options: options,
           x: Math.round(rect.left + rect.width / 2),
           y: Math.round(rect.top + rect.height / 2),
           required: el.required || false,
-          disabled: el.disabled || false,
-          visible: rect.width > 0 && rect.height > 0,
+          checked: (fieldType === 'checkbox' || fieldType === 'radio') ? el.checked : null,
         };
-      }).filter(f => f.type !== 'hidden' && f.visible);
+      }).filter(f => f !== null);
     })()
   `)
 
@@ -300,6 +399,189 @@ async function handleGetPageInfo(): Promise<ToolResult> {
 }
 
 /**
+ * Fill a form field by CSS selector
+ */
+async function handleFillField(params: { selector: string; value: string }): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const { selector, value } = params
+
+  if (!selector || typeof value !== "string") {
+    return { success: false, error: "fill_field requires selector and value" }
+  }
+
+  try {
+    const selectorJson = JSON.stringify(selector)
+    const valueJson = JSON.stringify(value)
+    const result = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const selector = ${selectorJson};
+        const value = ${valueJson};
+        const el = document.querySelector(selector);
+        if (!el) return { success: false, error: 'Element not found: ' + selector };
+        if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
+
+        // Focus and clear existing value
+        el.focus();
+        el.value = '';
+
+        // Set new value
+        el.value = value;
+
+        // Trigger events that frameworks (including React) listen for
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+
+        return { success: true, selector: selector, value: el.value };
+      })()
+    `)
+
+    if (result.success) {
+      logger.info(`[ToolExecutor] Filled ${selector} with "${value.slice(0, 50)}${value.length > 50 ? "..." : ""}"`)
+    } else {
+      logger.warn(`[ToolExecutor] fill_field failed: ${result.error}`)
+    }
+
+    return result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Select an option in a dropdown by CSS selector
+ */
+async function handleSelectOption(params: { selector: string; value: string }): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const { selector, value } = params
+
+  if (!selector || typeof value !== "string") {
+    return { success: false, error: "select_option requires selector and value" }
+  }
+
+  try {
+    const selectorJson = JSON.stringify(selector)
+    const valueJson = JSON.stringify(value)
+    const result = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const selector = ${selectorJson};
+        const targetValue = ${valueJson};
+        const el = document.querySelector(selector);
+        if (!el) return { success: false, error: 'Element not found: ' + selector };
+        if (el.tagName !== 'SELECT') return { success: false, error: 'Element is not a select: ' + el.tagName };
+        if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
+
+        // Focus the element first
+        el.focus();
+
+        // Try to find option by value first, then by exact text, then partial match
+        let option = Array.from(el.options).find(opt => opt.value === targetValue);
+        if (!option) {
+          option = Array.from(el.options).find(opt =>
+            opt.textContent?.trim().toLowerCase() === targetValue.toLowerCase()
+          );
+        }
+        if (!option) {
+          // Try partial match
+          option = Array.from(el.options).find(opt =>
+            opt.textContent?.trim().toLowerCase().includes(targetValue.toLowerCase())
+          );
+        }
+
+        if (!option) {
+          const availableOptions = Array.from(el.options).map(o => o.value || o.textContent?.trim()).join(', ');
+          return { success: false, error: 'Option not found: ' + targetValue + '. Available: ' + availableOptions };
+        }
+
+        el.value = option.value;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+
+        return { success: true, selector: selector, selectedValue: option.value, selectedText: option.textContent?.trim() };
+      })()
+    `)
+
+    if (result.success) {
+      logger.info(`[ToolExecutor] Selected "${result.selectedText}" in ${selector}`)
+    } else {
+      logger.warn(`[ToolExecutor] select_option failed: ${result.error}`)
+    }
+
+    return result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Set checkbox or radio button state
+ */
+async function handleSetCheckbox(params: { selector: string; checked: boolean }): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const { selector, checked } = params
+
+  if (!selector || typeof checked !== "boolean") {
+    return { success: false, error: "set_checkbox requires selector and checked (boolean)" }
+  }
+
+  try {
+    const selectorJson = JSON.stringify(selector)
+    const result = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const selector = ${selectorJson};
+        const targetChecked = ${checked};
+        const el = document.querySelector(selector);
+        if (!el) return { success: false, error: 'Element not found: ' + selector };
+        if (el.type !== 'checkbox' && el.type !== 'radio') {
+          return { success: false, error: 'Element is not a checkbox/radio: ' + el.type };
+        }
+        if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
+
+        const wasChecked = el.checked;
+
+        // Only act if state needs to change
+        if (wasChecked !== targetChecked) {
+          // Focus first
+          el.focus();
+
+          // For proper event handling, simulate a click which naturally toggles the state
+          // Use MouseEvent for better framework compatibility
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+
+          // If click didn't toggle (some frameworks prevent default), force it
+          if (el.checked !== targetChecked) {
+            el.checked = targetChecked;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+
+        return { success: true, selector: selector, checked: el.checked };
+      })()
+    `)
+
+    if (result.success) {
+      logger.info(`[ToolExecutor] Set ${selector} checked=${result.checked}`)
+    } else {
+      logger.warn(`[ToolExecutor] set_checkbox failed: ${result.error}`)
+    }
+
+    return result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+}
+
+/**
  * Click at coordinates on the page
  */
 async function handleClick(params: { x: number; y: number }): Promise<ToolResult> {
@@ -314,14 +596,14 @@ async function handleClick(params: { x: number; y: number }): Promise<ToolResult
   }
 
   const bounds = browserView.getBounds()
-  const scale = bounds.width > SCREENSHOT_WIDTH ? bounds.width / SCREENSHOT_WIDTH : 1
 
-  const scaledX = Math.round(x * scale)
-  const scaledY = Math.round(y * scale)
+  // Scale coordinates from screenshot space to browser space
+  const clickX = Math.round(x * screenshotScale)
+  const clickY = Math.round(y * screenshotScale)
 
   // Validate coordinates
-  if (x < 0 || y < 0 || scaledX > bounds.width || scaledY > bounds.height) {
-    return { success: false, error: `Coordinates out of bounds: (${x}, ${y})` }
+  if (clickX < 0 || clickY < 0 || clickX > bounds.width || clickY > bounds.height) {
+    return { success: false, error: `Coordinates out of bounds: (${x}, ${y}) -> (${clickX}, ${clickY})` }
   }
 
   const debugger_ = browserView.webContents.debugger
@@ -337,20 +619,20 @@ async function handleClick(params: { x: number; y: number }): Promise<ToolResult
   try {
     await debugger_.sendCommand("Input.dispatchMouseEvent", {
       type: "mousePressed",
-      x: scaledX,
-      y: scaledY,
+      x: clickX,
+      y: clickY,
       button: "left",
       clickCount: 1,
     })
     await debugger_.sendCommand("Input.dispatchMouseEvent", {
       type: "mouseReleased",
-      x: scaledX,
-      y: scaledY,
+      x: clickX,
+      y: clickY,
       button: "left",
       clickCount: 1,
     })
 
-    logger.info(`[ToolExecutor] Clicked (${x}, ${y}) -> scaled (${scaledX}, ${scaledY})`)
+    logger.info(`[ToolExecutor] Clicked (${x}, ${y}) -> (${clickX}, ${clickY})`)
     return { success: true }
   } finally {
     try {
@@ -548,168 +830,6 @@ async function handleKeypress(params: { key: string }): Promise<ToolResult> {
 }
 
 /**
- * Generate a document (resume or cover letter)
- */
-async function handleGenerateDocument(
-  type: "resume" | "coverLetter",
-  params: { jobMatchId?: string }
-): Promise<ToolResult> {
-  // Use provided jobMatchId or fall back to current context
-  const jobMatchId = params.jobMatchId || currentJobMatchId
-
-  if (!jobMatchId) {
-    return { success: false, error: "No job context available. Please select a job first." }
-  }
-
-  logger.info(`[ToolExecutor] Starting ${type} generation for job ${jobMatchId}`)
-
-  try {
-    // Start generation
-    const startResult = await startGeneration({ jobMatchId, type })
-    const requestId = startResult.requestId
-    let nextStep = startResult.nextStep
-
-    // Execute steps until complete
-    let stepCount = 0
-    const maxSteps = 20
-
-    while (nextStep && stepCount < maxSteps) {
-      stepCount++
-      logger.info(`[ToolExecutor] Generation step ${stepCount}: ${nextStep}`)
-
-      const stepResult = await executeGenerationStep(requestId)
-
-      if (stepResult.status === "failed") {
-        return { success: false, error: stepResult.error || "Generation failed" }
-      }
-
-      nextStep = stepResult.nextStep
-
-      if (stepResult.status === "completed") {
-        const url = type === "coverLetter" ? stepResult.coverLetterUrl : stepResult.resumeUrl
-        logger.info(`[ToolExecutor] Generation completed: ${url}`)
-        // Store the documentId for subsequent upload_file calls
-        lastGeneratedDocumentId = requestId
-        return {
-          success: true,
-          data: {
-            url,
-            documentId: requestId,
-            type,
-            message: `${type === "coverLetter" ? "Cover letter" : "Resume"} generated. Use upload_file with type="${type}" to upload it.`,
-          },
-        }
-      }
-    }
-
-    if (stepCount >= maxSteps) {
-      return { success: false, error: "Generation exceeded maximum steps" }
-    }
-
-    return { success: false, error: "Generation did not complete" }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { success: false, error: message }
-  }
-}
-
-/**
- * Upload a file to a file input on the page
- */
-async function handleUploadFile(params: {
-  type: "resume" | "coverLetter"
-  documentId?: string
-}): Promise<ToolResult> {
-  if (!browserView) {
-    return { success: false, error: "BrowserView not initialized" }
-  }
-
-  const { type } = params
-  // Use provided documentId or fall back to last generated document
-  const documentId = params.documentId || lastGeneratedDocumentId
-
-  if (!documentId) {
-    return {
-      success: false,
-      error: "No document available. Generate a resume or cover letter first.",
-    }
-  }
-
-  // Find file input selector
-  const fileInputSelector = await browserView.webContents.executeJavaScript(`
-    (() => {
-      const fileInput = document.querySelector('input[type="file"]');
-      if (!fileInput) return null;
-      if (fileInput.id) return '#' + CSS.escape(fileInput.id);
-      if (fileInput.name) return 'input[type="file"][name="' + CSS.escape(fileInput.name) + '"]';
-      return 'input[type="file"]';
-    })()
-  `)
-
-  if (!fileInputSelector) {
-    return { success: false, error: "No file input found on page" }
-  }
-
-  try {
-    // Fetch document details
-    const doc = await fetchGeneratorRequest(documentId)
-
-    const docUrl = type === "coverLetter" ? doc.coverLetterUrl : doc.resumeUrl
-    if (!docUrl) {
-      return { success: false, error: `No ${type} file found for document ${documentId}` }
-    }
-
-    // Resolve file path
-    const config = getConfig()
-    const filePath = resolveDocumentPath(docUrl, config.ARTIFACTS_DIR)
-
-    if (!fs.existsSync(filePath)) {
-      return { success: false, error: `File not found: ${filePath}` }
-    }
-
-    // Use CDP to set files on input
-    const debugger_ = browserView.webContents.debugger
-
-    try {
-      debugger_.attach("1.3")
-    } catch (err) {
-      if (!(err instanceof Error && err.message.includes("Already attached"))) {
-        throw err
-      }
-    }
-
-    try {
-      const { root } = await debugger_.sendCommand("DOM.getDocument", {})
-      const { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
-        nodeId: root.nodeId,
-        selector: fileInputSelector,
-      })
-
-      if (!nodeId) {
-        return { success: false, error: "File input node not found in DOM" }
-      }
-
-      await debugger_.sendCommand("DOM.setFileInputFiles", {
-        nodeId,
-        files: [filePath],
-      })
-
-      logger.info(`[ToolExecutor] Uploaded ${type} from ${filePath}`)
-      return { success: true, data: { filePath, type } }
-    } finally {
-      try {
-        debugger_.detach()
-      } catch {
-        /* ignore */
-      }
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { success: false, error: message }
-  }
-}
-
-/**
  * Handle done signal - form filling complete
  */
 function handleDone(params: { summary?: string }): ToolResult {
@@ -726,3 +846,32 @@ function handleDone(params: { summary?: string }): ToolResult {
     data: { summary, completed: true },
   }
 }
+
+/**
+ * Get user profile data
+ */
+function handleGetUserProfile(): ToolResult {
+  if (!userProfile) {
+    return { success: false, error: "User profile not available" }
+  }
+
+  // Log a preview of the profile data
+  const preview = typeof userProfile === "string"
+    ? userProfile.slice(0, 200)
+    : JSON.stringify(userProfile).slice(0, 200)
+  logger.info(`[ToolExecutor] Returning user profile (${typeof userProfile}): ${preview}...`)
+  return { success: true, data: userProfile }
+}
+
+/**
+ * Get job context data
+ */
+function handleGetJobContext(): ToolResult {
+  if (!jobContext) {
+    return { success: false, error: "Job context not available" }
+  }
+
+  logger.info("[ToolExecutor] Returning job context")
+  return { success: true, data: jobContext }
+}
+
