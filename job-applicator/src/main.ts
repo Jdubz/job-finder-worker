@@ -4,7 +4,27 @@ import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
+
+// Load .env file if it exists (simple loader, no external dependency)
+const envPath = path.join(import.meta.dirname, "..", ".env")
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf-8")
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim()
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=")
+      const value = valueParts.join("=").trim()
+      if (key && value && !process.env[key]) {
+        process.env[key] = value
+      }
+    }
+  }
+}
+
 import { logger } from "./logger.js"
+
+// Log loaded environment for debugging
+logger.info(`[ENV] JOB_FINDER_API_URL = ${process.env.JOB_FINDER_API_URL || "(not set, using default)"}`)
 
 // Disable GPU acceleration to fix DevTools issues on Linux
 app.disableHardwareAcceleration()
@@ -61,7 +81,7 @@ import {
   startGeneration,
   executeGenerationStep,
   submitJobToQueue,
-  API_URL,
+  getApiUrl,
 } from "./api-client.js"
 
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
@@ -505,10 +525,10 @@ ipcMain.handle(
   "open-document",
   async (_event: IpcMainInvokeEvent, documentPath: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      // API_URL is like "http://localhost:3000/api"
+      // getApiUrl() returns like "http://localhost:3000/api"
       // documentPath is like "/api/generator/artifacts/2025-12-11/file.pdf"
       // We need to construct the full URL by using the origin from API_URL
-      const apiUrlObj = new URL(API_URL)
+      const apiUrlObj = new URL(getApiUrl())
       const fullUrl = `${apiUrlObj.origin}${documentPath}`
 
       logger.info(`Opening document: ${fullUrl}`)
