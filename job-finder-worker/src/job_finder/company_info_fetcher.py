@@ -123,7 +123,9 @@ class CompanyInfoFetcher:
             return focused
 
         # Fall back to whichever is more informative
-        return focused if self._score_completeness(focused) >= self._score_completeness(fast) else fast
+        return (
+            focused if self._score_completeness(focused) >= self._score_completeness(fast) else fast
+        )
 
     # ============================================================
     # Pass runner
@@ -211,7 +213,9 @@ class CompanyInfoFetcher:
             # Priority: extracted website > url_hint (if not job board/search engine)
             website = result.get("website") or ""
             if not website and url_hint:
-                if not self._is_job_board_url(url_hint) and not self._is_search_engine_url(url_hint):
+                if not self._is_job_board_url(url_hint) and not self._is_search_engine_url(
+                    url_hint
+                ):
                     website = url_hint
                     result["website"] = website
 
@@ -383,7 +387,7 @@ class CompanyInfoFetcher:
                     queries.append(f"{subdomain} company official website about")
 
         # Exact match query (quoted) with "official website" bias
-        queries.append(f'\"{company_name}\" company official website')
+        queries.append(f'"{company_name}" company official website')
 
         # Standard query with disambiguation
         queries.append(f"{company_name} company about headquarters employees")
@@ -435,9 +439,9 @@ class CompanyInfoFetcher:
 
             # Down-rank VC/entertainment domains but do not hard-fail
             discouraged = domain in DISCOURAGED_DOMAINS
-            if any(tok in title_lower for tok in NON_COMPANY_TOKENS) and not self._domain_matches_company(
-                domain, company_lower
-            ):
+            if any(
+                tok in title_lower for tok in NON_COMPANY_TOKENS
+            ) and not self._domain_matches_company(domain, company_lower):
                 continue
 
             # Check if company name appears in title or snippet
@@ -597,7 +601,9 @@ Return ONLY valid JSON, no explanations or markdown formatting."""
             return "\nCONTEXT:\n" + "\n".join(f"- {h}" for h in hints) + "\n"
         return ""
 
-    def _fallback_ai_search(self, company_name: str, mode: str = "fast") -> Optional[Dict[str, Any]]:
+    def _fallback_ai_search(
+        self, company_name: str, mode: str = "fast"
+    ) -> Optional[Dict[str, Any]]:
         """Fallback: Ask AI directly (relies on AI's web search capability if available)."""
         if not self.agent_manager:
             return None
@@ -912,7 +918,9 @@ Be factual. Return ONLY valid JSON."""
         about_ok = len(info.get("about", "") or "") >= 120
         culture_ok = len(info.get("culture", "") or "") >= 50
         hq_ok = bool((info.get("headquarters") or info.get("headquartersLocation") or "").strip())
-        website_ok = bool((info.get("website") or "").strip()) and not self._is_job_board_url(info.get("website"))
+        website_ok = bool((info.get("website") or "").strip()) and not self._is_job_board_url(
+            info.get("website")
+        )
         tech_ok = bool(info.get("techStack"))
         return about_ok and culture_ok and hq_ok and website_ok and tech_ok
 
