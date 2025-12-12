@@ -641,6 +641,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Wrap a promise with a timeout.
+ * Rejects with errorMsg if the promise doesn't resolve within ms milliseconds.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(errorMsg)), ms)
+    promise
+      .then((result) => {
+        clearTimeout(timer)
+        resolve(result)
+      })
+      .catch((err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+  })
+}
+
 // =============================================================================
 // IPC Handler Utilities
 // =============================================================================

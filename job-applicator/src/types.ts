@@ -73,50 +73,21 @@ export interface JobMatchListItem {
 }
 
 // ============================================================================
-// Vision Agent Types (app-specific)
+// Agent Session Types (app-specific)
 // ============================================================================
 
-/** Action kinds the vision agent can perform */
-export type AgentActionKind = "click" | "double_click" | "type" | "scroll" | "keypress" | "wait" | "done"
+/** Agent session state */
+export type AgentSessionState = "idle" | "working" | "stopped"
 
-/** Action schema returned by CLI */
-export interface AgentAction {
-  kind: AgentActionKind
-  x?: number // click/double_click
-  y?: number // click/double_click
-  text?: string // type
-  dx?: number // scroll (default 0)
-  dy?: number // scroll (default 0)
-  key?: "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll" // keypress
-  ms?: number // wait
-  reason?: string // done
+/** Agent output event data */
+export interface AgentOutputData {
+  text: string
+  isError?: boolean
 }
 
-/** Result of executing an action */
-export interface AgentActionResult {
-  step: number
-  action: AgentAction
-  result: "ok" | "blocked" | "error"
-  error?: string
-}
-
-/** Progress updates sent during agent execution */
-export interface AgentProgress {
-  phase: "starting" | "running" | "completed" | "failed"
-  step: number
-  totalSteps: number
-  currentAction?: AgentAction
-  lastResult?: "ok" | "blocked" | "error"
-  message: string
-  screenshotHash?: string
-}
-
-/** Final summary after agent completes */
-export interface AgentSummary {
-  stepsUsed: number
-  stopReason: "done" | "limit" | "stuck" | "error"
-  elapsedMs: number
-  finalReason?: string // from done action or error message
+/** Agent status event data */
+export interface AgentStatusData {
+  state: AgentSessionState
 }
 
 // ============================================================================

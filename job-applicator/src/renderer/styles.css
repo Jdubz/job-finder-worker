@@ -864,3 +864,155 @@ select:focus {
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* ============================================================================
+   Agent Session Styles
+   ============================================================================ */
+
+.agent-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.stopped {
+  background: #6b7280;
+}
+
+.status-dot.idle {
+  background: #10b981;
+}
+
+.status-dot.working {
+  background: #fbbf24;
+  animation: pulse 1s infinite;
+}
+
+.status-text {
+  color: #9ca3af;
+}
+
+.agent-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.agent-controls .provider-select {
+  flex: 1;
+}
+
+.btn-start-session {
+  background: #10b981;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-start-session:hover:not(:disabled) {
+  background: #059669;
+}
+
+.btn-stop-session {
+  background: #ef4444;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-stop-session:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.agent-actions {
+  margin-bottom: 12px;
+}
+
+.agent-actions .btn-fill {
+  width: 100%;
+}
+
+.agent-command {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.agent-command input {
+  flex: 1;
+  padding: 8px;
+  font-size: 12px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #eee;
+}
+
+.agent-command input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.agent-command input::placeholder {
+  color: #666;
+}
+
+.btn-send {
+  background: #0f3460;
+  color: #eee;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-send:hover:not(:disabled) {
+  background: #1a4a7a;
+}
+
+.agent-output {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #1a1a2e;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agent-output .agent-command-line {
+  color: #60a5fa;
+  display: block;
+  margin: 4px 0;
+}
+
+.agent-output .agent-error {
+  color: #f87171;
+  display: block;
+}
+
+.agent-output .tool-call {
+  background: rgba(233, 69, 96, 0.1);
+  border-left: 2px solid #e94560;
+  padding: 4px 8px;
+  margin: 4px 0;
+  display: block;
+}
+
+.agent-output .tool-result {
+  background: rgba(16, 185, 129, 0.1);
+  border-left: 2px solid #10b981;
+  padding: 4px 8px;
+  margin: 4px 0;
+  display: block;
+}

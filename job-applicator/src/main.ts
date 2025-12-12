@@ -55,13 +55,8 @@ import type {
   JobExtraction,
   GenerationStep,
   GenerationProgress,
-  AgentAction,
-  AgentActionResult,
-  AgentProgress,
-  AgentSummary,
 } from "./types.js"
 import { getCliCommand } from "./cli-config.js"
-import * as crypto from "crypto"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
@@ -69,6 +64,10 @@ import {
   getUserFriendlyErrorMessage,
   parseCliObjectOutput,
 } from "./utils.js"
+
+// Agent session imports
+import { getAgentSession } from "./agent-session.js"
+import { executeTool, setBrowserView, setCurrentJobMatchId, clearAgentContext } from "./agent-tools.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -99,14 +98,6 @@ const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s,
 
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
-
-// Vision agent configuration
-const AGENT_MAX_STEPS = parseInt(process.env.AGENT_MAX_STEPS || "40", 10)
-const AGENT_STUCK_HASH_THRESHOLD = parseInt(process.env.AGENT_STUCK_HASH_THRESHOLD || "3", 10)
-const AGENT_LOOP_TIMEOUT_MS = 45000 // 45s per CLI call
-const AGENT_ACTION_TIMEOUT_MS = 3000 // 3s per action
-const AGENT_RENDER_DELAY_MS = 500 // 500ms delay after action for page to render
-const AGENT_SCREENSHOT_WIDTH = 1280 // Target screenshot width
 
 // Global state
 let mainWindow: BrowserWindow | null = null
@@ -151,6 +142,9 @@ async function createWindow(): Promise<void> {
 
   mainWindow.setBrowserView(browserView)
 
+  // Set BrowserView reference for agent tools
+  setBrowserView(browserView)
+
   // Position BrowserView below toolbar, accounting for sidebar state
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
@@ -163,6 +157,25 @@ async function createWindow(): Promise<void> {
     // Navigate in the same BrowserView instead of opening a new window
     browserView?.webContents.loadURL(url)
     return { action: "deny" }
+  })
+
+  // Notify agent session and renderer when URL changes
+  // This helps the agent know when user navigates (e.g., multi-page forms)
+  browserView.webContents.on("did-navigate", (_event, url) => {
+    logger.info(`[BrowserView] Navigated to: ${url}`)
+    // Notify renderer of URL change
+    mainWindow?.webContents.send("browser-url-changed", { url })
+    // Notify agent session if running
+    const session = getAgentSession()
+    if (session.getState() !== "stopped") {
+      session.sendCommand(`[System] Page navigated to: ${url}`)
+    }
+  })
+
+  // Also handle in-page navigation (SPA apps)
+  browserView.webContents.on("did-navigate-in-page", (_event, url) => {
+    logger.info(`[BrowserView] In-page navigation to: ${url}`)
+    mainWindow?.webContents.send("browser-url-changed", { url })
   })
 
   // Capture renderer console messages and errors BEFORE loading HTML
@@ -213,6 +226,7 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
   mainWindow.on("closed", () => {
     mainWindow = null
     browserView = null
+    setBrowserView(null)
   })
 
   mainWindow.on("resize", () => {
@@ -828,566 +842,171 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
 }
 
 // ============================================================================
-// Vision Agent Functions
+// Agent Session IPC Handlers
 // ============================================================================
 
 /**
- * Capture screenshot of BrowserView and compute hash for change detection.
- * Resizes to ~1280px wide for consistent model input.
- */
-async function capturePage(): Promise<{ screenshot: Buffer; hash: string }> {
-  if (!browserView) throw new Error("BrowserView not initialized")
-
-  // Capture screenshot as NativeImage
-  const nativeImage = await browserView.webContents.capturePage()
-
-  // Resize to target width while maintaining aspect ratio
-  const size = nativeImage.getSize()
-  let resized = nativeImage
-  if (size.width > AGENT_SCREENSHOT_WIDTH) {
-    const scale = AGENT_SCREENSHOT_WIDTH / size.width
-    const newHeight = Math.round(size.height * scale)
-    resized = nativeImage.resize({ width: AGENT_SCREENSHOT_WIDTH, height: newHeight, quality: "good" })
-  }
-
-  // Convert to JPEG with quality 60
-  const jpeg = resized.toJPEG(60)
-
-  // Compute SHA1 hash for change detection
-  const hash = crypto.createHash("sha1").update(jpeg).digest("hex")
-
-  return { screenshot: jpeg, hash }
-}
-
-/**
- * Wrap a promise with a timeout.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(errorMsg)), ms)
-    promise
-      .then((result) => {
-        clearTimeout(timer)
-        resolve(result)
-      })
-      .catch((err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
-  })
-}
-
-/**
- * Execute a single action via CDP (Chrome DevTools Protocol).
- * Has a per-action timeout to prevent hanging.
- */
-async function executeAction(action: AgentAction): Promise<"ok" | "blocked" | "error"> {
-  if (!browserView) throw new Error("BrowserView not initialized")
-
-  // Wrap the entire action execution with timeout
-  return withTimeout(
-    executeActionInternal(action),
-    AGENT_ACTION_TIMEOUT_MS,
-    `Action ${action.kind} timed out after ${AGENT_ACTION_TIMEOUT_MS}ms`
-  ).catch((err) => {
-    logger.warn(`[Agent] Action timeout/error: ${err.message}`)
-    return "error" as const
-  })
-}
-
-/**
- * Internal action executor (no timeout).
- */
-async function executeActionInternal(action: AgentAction): Promise<"ok" | "blocked" | "error"> {
-  if (!browserView) throw new Error("BrowserView not initialized")
-  const debugger_ = browserView.webContents.debugger
-
-  try {
-    debugger_.attach("1.3")
-  } catch (err) {
-    if (!(err instanceof Error && err.message.includes("Already attached"))) throw err
-  }
-
-  try {
-    const bounds = browserView.getBounds()
-
-    // Calculate scale factor: model sees screenshot at AGENT_SCREENSHOT_WIDTH, but view may be larger
-    // We need to scale coordinates from screenshot space to view space
-    // If view is wider than screenshot target, scale up; otherwise 1:1
-    const scale = bounds.width > AGENT_SCREENSHOT_WIDTH ? bounds.width / AGENT_SCREENSHOT_WIDTH : 1
-
-    switch (action.kind) {
-      case "click":
-      case "double_click": {
-        // Validate coordinates in screenshot space
-        if (action.x === undefined || action.y === undefined) return "blocked"
-        if (action.x < 0 || action.x > AGENT_SCREENSHOT_WIDTH || action.y < 0) {
-          logger.warn(`[Agent] Click coordinates out of screenshot bounds: (${action.x}, ${action.y})`)
-          return "blocked"
-        }
-
-        // Scale coordinates from screenshot space to view space
-        const scaledX = Math.round(action.x * scale)
-        const scaledY = Math.round(action.y * scale)
-
-        // Validate scaled coordinates against actual view bounds
-        if (scaledX > bounds.width || scaledY > bounds.height) {
-          logger.warn(`[Agent] Scaled click out of view bounds: (${scaledX}, ${scaledY}) vs (${bounds.width}, ${bounds.height})`)
-          return "blocked"
-        }
-
-        logger.info(`[Agent] Click: screenshot (${action.x}, ${action.y}) → view (${scaledX}, ${scaledY}), scale=${scale.toFixed(2)}`)
-
-        const clickCount = action.kind === "double_click" ? 2 : 1
-        await debugger_.sendCommand("Input.dispatchMouseEvent", {
-          type: "mousePressed",
-          x: scaledX,
-          y: scaledY,
-          button: "left",
-          clickCount,
-        })
-        await debugger_.sendCommand("Input.dispatchMouseEvent", {
-          type: "mouseReleased",
-          x: scaledX,
-          y: scaledY,
-          button: "left",
-          clickCount,
-        })
-        return "ok"
-      }
-
-      case "type": {
-        if (!action.text) return "blocked"
-
-        // Check if focused element is form-capable
-        const canType = await browserView.webContents.executeJavaScript(`
-          (() => {
-            const el = document.activeElement
-            if (!el) return false
-            const tag = el.tagName.toLowerCase()
-            if (tag === "input" || tag === "textarea") return true
-            if (el.isContentEditable) return true
-            return false
-          })()
-        `)
-
-        if (!canType) {
-          logger.warn("[Agent] Type action blocked: focused element is not form-capable")
-          return "blocked"
-        }
-
-        await debugger_.sendCommand("Input.insertText", { text: action.text })
-        return "ok"
-      }
-
-      case "scroll": {
-        const dx = action.dx || 0
-        const dy = action.dy || 0
-        if (dx === 0 && dy === 0) return "blocked"
-
-        await browserView.webContents.executeJavaScript(`window.scrollBy(${dx}, ${dy})`)
-        return "ok"
-      }
-
-      case "keypress": {
-        if (!action.key) return "blocked"
-
-        // Special case: SelectAll (Ctrl+A) to select all text in a field
-        if (action.key === "SelectAll") {
-          await debugger_.sendCommand("Input.dispatchKeyEvent", {
-            type: "keyDown",
-            key: "Control",
-            code: "ControlLeft",
-            windowsVirtualKeyCode: 17,
-            nativeVirtualKeyCode: 17,
-            modifiers: 2, // Ctrl modifier
-          })
-          await debugger_.sendCommand("Input.dispatchKeyEvent", {
-            type: "keyDown",
-            key: "a",
-            code: "KeyA",
-            windowsVirtualKeyCode: 65,
-            nativeVirtualKeyCode: 65,
-            modifiers: 2, // Ctrl modifier
-          })
-          await debugger_.sendCommand("Input.dispatchKeyEvent", {
-            type: "keyUp",
-            key: "a",
-            code: "KeyA",
-            windowsVirtualKeyCode: 65,
-            nativeVirtualKeyCode: 65,
-            modifiers: 2,
-          })
-          await debugger_.sendCommand("Input.dispatchKeyEvent", {
-            type: "keyUp",
-            key: "Control",
-            code: "ControlLeft",
-            windowsVirtualKeyCode: 17,
-            nativeVirtualKeyCode: 17,
-            modifiers: 0,
-          })
-          return "ok"
-        }
-
-        const keyMap: Record<string, { key: string; code: string; keyCode: number }> = {
-          Tab: { key: "Tab", code: "Tab", keyCode: 9 },
-          Enter: { key: "Enter", code: "Enter", keyCode: 13 },
-          Escape: { key: "Escape", code: "Escape", keyCode: 27 },
-          Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
-        }
-        const keyInfo = keyMap[action.key]
-        if (!keyInfo) return "blocked"
-
-        await debugger_.sendCommand("Input.dispatchKeyEvent", {
-          type: "keyDown",
-          key: keyInfo.key,
-          code: keyInfo.code,
-          windowsVirtualKeyCode: keyInfo.keyCode,
-          nativeVirtualKeyCode: keyInfo.keyCode,
-        })
-        await debugger_.sendCommand("Input.dispatchKeyEvent", {
-          type: "keyUp",
-          key: keyInfo.key,
-          code: keyInfo.code,
-          windowsVirtualKeyCode: keyInfo.keyCode,
-          nativeVirtualKeyCode: keyInfo.keyCode,
-        })
-        return "ok"
-      }
-
-      case "wait": {
-        const ms = action.ms || 800
-        await new Promise((resolve) => setTimeout(resolve, ms))
-        return "ok"
-      }
-
-      case "done":
-        return "ok"
-
-      default:
-        return "blocked"
-    }
-  } finally {
-    try {
-      debugger_.detach()
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-/**
- * Build the prompt for the vision agent CLI call.
- */
-function buildAgentPrompt(
-  goal: string,
-  url: string,
-  profileText: string,
-  recentActions: AgentActionResult[],
-  previousHash: string,
-  screenshot: Buffer
-): string {
-  const recentStr =
-    recentActions.length > 0 ? recentActions.map((a) => `${a.action.kind} → ${a.result}`).join(", ") : "none"
-
-  const base64 = screenshot.toString("base64")
-
-  return `You automate a job application form.
-Goal: ${goal}
-URL: ${url}
-
-## User Profile (use this data to fill forms)
-${profileText}
-
-## Context
-Recent actions: ${recentStr}
-Previous screenshot hash: ${previousHash || "none"}
-Screenshot (base64 JPEG): data:image/jpeg;base64,${base64}
-
-## Instructions
-Return exactly one JSON object matching the schema. Prefer click → type → Tab/Enter to submit. Use done when the form is submitted or you are blocked.
-When you need to type text, use the profile data above for the appropriate fields (name, email, phone, work history, etc.).
-To clear a field before typing, use SelectAll then type the new value (SelectAll selects existing text which gets replaced on type).
-
-Schema:
-{
-  "action": {
-    "kind": "click" | "double_click" | "type" | "scroll" | "keypress" | "wait" | "done",
-    "x": number,        // for click/double_click
-    "y": number,        // for click/double_click
-    "text": "string",   // for type
-    "dx": number,       // for scroll
-    "dy": number,       // for scroll
-    "key": "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll",  // for keypress
-    "ms": number,       // for wait
-    "reason": "string"  // for done
-  }
-}`
-}
-
-/**
- * Run the agent CLI and parse the action response.
- */
-async function runAgentCli(provider: CliProvider, prompt: string): Promise<AgentAction> {
-  const [cmd, args] = getCliCommand(provider)
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args)
-    let stdout = ""
-    let stderr = ""
-
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out`))
-    }, AGENT_LOOP_TIMEOUT_MS)
-
-    child.stdin.write(prompt)
-    child.stdin.end()
-
-    child.stdout.on("data", (d) => (stdout += d))
-    child.stderr.on("data", (d) => (stderr += d))
-
-    child.on("error", (err) => {
-      clearTimeout(timeout)
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
-      } else {
-        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
-      }
-    })
-
-    child.on("close", (code) => {
-      clearTimeout(timeout)
-      if (code !== 0) {
-        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
-        return
-      }
-
-      try {
-        const parsed = parseCliObjectOutput(stdout)
-        const action = parsed.action as AgentAction
-        if (!action || !action.kind) {
-          throw new Error("Missing action.kind in response")
-        }
-        resolve(action)
-      } catch (err) {
-        reject(new Error(`${provider} CLI returned invalid JSON: ${err}`))
-      }
-    })
-  })
-}
-
-/**
- * Main vision agent loop - captures screenshots, calls CLI, executes actions.
- */
-async function runVisionAgent(
-  goal: string,
-  provider: CliProvider,
-  onProgress: (progress: AgentProgress) => void
-): Promise<AgentSummary> {
-  const startTime = Date.now()
-  const recentActions: AgentActionResult[] = []
-  let previousHash = ""
-  let consecutiveNoChange = 0
-
-  onProgress({
-    phase: "starting",
-    step: 0,
-    totalSteps: AGENT_MAX_STEPS,
-    message: "Initializing agent...",
-  })
-
-  // Fetch profile data once at the start - fail fast if unavailable
-  let profileText = ""
-  try {
-    onProgress({
-      phase: "starting",
-      step: 0,
-      totalSteps: AGENT_MAX_STEPS,
-      message: "Fetching profile data...",
-    })
-    profileText = await fetchApplicatorProfile()
-    logger.info(`[Agent] Fetched profile (${profileText.length} chars)`)
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    logger.error(`[Agent] Failed to fetch profile: ${errorMsg}`)
-    onProgress({
-      phase: "failed",
-      step: 0,
-      totalSteps: AGENT_MAX_STEPS,
-      message: "Failed to fetch profile data",
-    })
-    return {
-      stepsUsed: 0,
-      stopReason: "error",
-      elapsedMs: Date.now() - startTime,
-      finalReason: `Cannot fill forms without profile data: ${errorMsg}`,
-    }
-  }
-
-  for (let step = 1; step <= AGENT_MAX_STEPS; step++) {
-    // 1. Capture screenshot + hash
-    const { screenshot, hash } = await capturePage()
-
-    onProgress({
-      phase: "running",
-      step,
-      totalSteps: AGENT_MAX_STEPS,
-      message: `Step ${step}: Analyzing page...`,
-      screenshotHash: hash,
-    })
-
-    // 2. Get current URL
-    const url = browserView?.webContents.getURL() || ""
-
-    // 3. Build prompt and call CLI
-    const prompt = buildAgentPrompt(goal, url, profileText, recentActions.slice(-3), previousHash, screenshot)
-
-    let action: AgentAction
-    try {
-      action = await runAgentCli(provider, prompt)
-    } catch (err) {
-      // Retry once on parse failure
-      try {
-        logger.warn(`[Agent] CLI failed, retrying: ${err}`)
-        action = await runAgentCli(provider, prompt)
-      } catch (retryErr) {
-        return {
-          stepsUsed: step,
-          stopReason: "error",
-          elapsedMs: Date.now() - startTime,
-          finalReason: retryErr instanceof Error ? retryErr.message : "CLI parse failure",
-        }
-      }
-    }
-
-    // 4. Check for done action
-    if (action.kind === "done") {
-      onProgress({
-        phase: "completed",
-        step,
-        totalSteps: AGENT_MAX_STEPS,
-        message: action.reason || "Agent completed",
-      })
-      return {
-        stepsUsed: step,
-        stopReason: "done",
-        elapsedMs: Date.now() - startTime,
-        finalReason: action.reason,
-      }
-    }
-
-    // 5. Execute action
-    onProgress({
-      phase: "running",
-      step,
-      totalSteps: AGENT_MAX_STEPS,
-      currentAction: action,
-      message: `Step ${step}: ${action.kind}...`,
-    })
-
-    const result = await executeAction(action)
-    recentActions.push({ step, action, result })
-
-    onProgress({
-      phase: "running",
-      step,
-      totalSteps: AGENT_MAX_STEPS,
-      currentAction: action,
-      lastResult: result,
-      message: `Step ${step}: ${action.kind} → ${result}`,
-    })
-
-    // Wait for page to render after action (except for wait actions which already delay)
-    if (action.kind !== "wait") {
-      await new Promise((resolve) => setTimeout(resolve, AGENT_RENDER_DELAY_MS))
-    }
-
-    // 6. Check for stuck (consecutive no-change, excluding wait)
-    if (action.kind !== "wait") {
-      if (hash === previousHash) {
-        consecutiveNoChange++
-        if (consecutiveNoChange >= AGENT_STUCK_HASH_THRESHOLD) {
-          onProgress({
-            phase: "failed",
-            step,
-            totalSteps: AGENT_MAX_STEPS,
-            message: "Agent stuck - no visual progress",
-          })
-          return {
-            stepsUsed: step,
-            stopReason: "stuck",
-            elapsedMs: Date.now() - startTime,
-            finalReason: `No visual change after ${AGENT_STUCK_HASH_THRESHOLD} consecutive actions`,
-          }
-        }
-      } else {
-        consecutiveNoChange = 0
-      }
-    }
-
-    previousHash = hash
-
-    // Log telemetry
-    logger.info(
-      `[Agent] Step ${step}: ${action.kind} → ${result}, hash=${hash.slice(0, 8)}, bytes=${screenshot.length}`
-    )
-  }
-
-  // Hit step limit
-  onProgress({
-    phase: "failed",
-    step: AGENT_MAX_STEPS,
-    totalSteps: AGENT_MAX_STEPS,
-    message: "Step limit reached",
-  })
-  return {
-    stepsUsed: AGENT_MAX_STEPS,
-    stopReason: "limit",
-    elapsedMs: Date.now() - startTime,
-    finalReason: `Reached ${AGENT_MAX_STEPS} step limit`,
-  }
-}
-
-// ============================================================================
-// Agent Fill IPC Handler
-// ============================================================================
-
-/**
- * Agent-based form fill - replaces legacy selector-based fill-form.
- * Uses vision/action loop to interact with forms via screenshots and CDP.
+ * Start the agent session with profile context
  */
 ipcMain.handle(
-  "agent-fill",
+  "agent-start-session",
   async (
     _event: IpcMainInvokeEvent,
-    options: { provider: CliProvider; goal: string }
-  ): Promise<{ success: boolean; data?: AgentSummary; message?: string }> => {
+    options: { provider?: CliProvider }
+  ): Promise<{ success: boolean; message?: string }> => {
     try {
-      if (!browserView) throw new Error("BrowserView not initialized")
+      const session = getAgentSession()
 
-      logger.info(`[Agent] Starting vision agent with provider: ${options.provider}`)
-      logger.info(`[Agent] Goal: ${options.goal}`)
+      // Remove any existing listeners to prevent memory leak
+      session.removeAllListeners()
 
-      const summary = await runVisionAgent(options.goal, options.provider, (progress) => {
-        if (mainWindow) {
-          mainWindow.webContents.send("agent-progress", progress)
-        }
+      // Fetch profile
+      logger.info("[Agent] Fetching profile for session...")
+      const profileText = await fetchApplicatorProfile()
+      logger.info(`[Agent] Profile loaded (${profileText.length} chars)`)
+
+      // Start session
+      await session.start({
+        profileText,
+        provider: options.provider,
       })
 
-      const success = summary.stopReason === "done"
-      logger.info(`[Agent] Completed: ${summary.stopReason}, steps=${summary.stepsUsed}, elapsed=${summary.elapsedMs}ms`)
+      // Set up tool call handler
+      session.on("tool-call", async (tool) => {
+        logger.info(`[Agent] Tool call received: ${tool.name}`)
+        // Notify renderer of tool execution start
+        mainWindow?.webContents.send("agent-tool-call", {
+          name: tool.name,
+          params: tool.params,
+          status: "executing"
+        })
+        const result = await executeTool(tool)
+        session.sendToolResult(result)
+        // Notify renderer of tool execution complete
+        mainWindow?.webContents.send("agent-tool-call", {
+          name: tool.name,
+          params: tool.params,
+          status: "completed",
+          success: result.success
+        })
+      })
 
-      return {
-        success,
-        data: summary,
-        message: success ? "Form filled successfully" : summary.finalReason,
-      }
+      // Forward output to renderer
+      session.on("output", (data: { text: string; isError?: boolean }) => {
+        mainWindow?.webContents.send("agent-output", data)
+      })
+
+      // Forward state changes
+      session.on("state-change", (state: "idle" | "working" | "stopped") => {
+        mainWindow?.webContents.send("agent-status", { state })
+      })
+
+      // Forward errors
+      session.on("error", (err: Error) => {
+        logger.error(`[Agent] Session error: ${err.message}`)
+        mainWindow?.webContents.send("agent-output", { text: `Error: ${err.message}\n`, isError: true })
+      })
+
+      logger.info("[Agent] Session started successfully")
+      return { success: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logger.error("[Agent] Fill error:", message)
+      logger.error("[Agent] Failed to start session:", message)
       return { success: false, message }
     }
+  }
+)
+
+/**
+ * Stop the agent session
+ */
+ipcMain.handle(
+  "agent-stop-session",
+  async (): Promise<{ success: boolean }> => {
+    const session = getAgentSession()
+    // Remove all listeners before stopping to prevent memory leak
+    session.removeAllListeners()
+    await session.stop()
+    // Clear agent context (jobMatchId, documentId)
+    clearAgentContext()
+    logger.info("[Agent] Session stopped")
+    return { success: true }
+  }
+)
+
+/**
+ * Send a command to the agent
+ */
+ipcMain.handle(
+  "agent-send-command",
+  async (
+    _event: IpcMainInvokeEvent,
+    command: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const session = getAgentSession()
+      session.sendCommand(command)
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+/**
+ * Fill form command - sets job context and sends fill instruction
+ */
+ipcMain.handle(
+  "agent-fill-form",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { jobMatchId: string; jobContext: string }
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const session = getAgentSession()
+
+      if (session.getState() === "stopped") {
+        return { success: false, message: "Agent session not running. Start session first." }
+      }
+
+      // Store jobMatchId for use by generate_resume/generate_cover_letter tools
+      setCurrentJobMatchId(options.jobMatchId)
+
+      // Update job context
+      session.setJobContext(options.jobContext)
+
+      // Send fill command with jobMatchId included so agent can reference it
+      session.sendCommand(`Fill out this job application form.
+
+Job Match ID: ${options.jobMatchId}
+${options.jobContext}
+
+Instructions:
+1. Start by taking a screenshot to see the current form state
+2. Use get_form_fields to understand the form structure
+3. Fill each field using the user profile data
+4. If file upload is needed, call generate_resume or generate_cover_letter (no parameters needed - current job context is already set)
+5. After generating, call upload_file with type "resume" or "coverLetter" (documentId will be auto-filled)
+6. Call done() when the form is completely filled`)
+
+      logger.info(`[Agent] Fill form command sent for job ${options.jobMatchId}`)
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { success: false, message }
+    }
+  }
+)
+
+/**
+ * Get current agent session status
+ */
+ipcMain.handle(
+  "agent-get-status",
+  async (): Promise<{ state: string }> => {
+    const session = getAgentSession()
+    return { state: session.getState() }
   }
 )
 

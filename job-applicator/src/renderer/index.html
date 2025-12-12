@@ -107,19 +107,37 @@
           </div>
         </section>
 
-        <!-- Form Fill Section -->
-        <section class="sidebar-section" id="fillSection">
-          <h3 class="section-title">Form Fill</h3>
-          <div class="fill-controls">
-            <select id="providerSelect" class="provider-select">
+        <!-- Agent Session Section -->
+        <section class="sidebar-section" id="agentSection">
+          <div class="section-header">
+            <h3 class="section-title">Agent Session</h3>
+            <div class="agent-status" id="agentStatus">
+              <span class="status-dot stopped"></span>
+              <span class="status-text">Stopped</span>
+            </div>
+          </div>
+
+          <div class="agent-controls">
+            <select id="agentProviderSelect" class="provider-select">
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
               <option value="gemini">Gemini</option>
             </select>
-            <button class="btn-fill" id="fillBtn">Fill Form</button>
+            <button class="btn-start-session" id="startSessionBtn">Start Session</button>
+            <button class="btn-stop-session hidden" id="stopSessionBtn">Stop</button>
           </div>
-          <div class="fill-output" id="fillOutput">
-            <div class="empty-placeholder">Ready to fill form</div>
+
+          <div class="agent-actions hidden" id="agentActions">
+            <button class="btn-fill" id="fillFormBtn">Fill Form</button>
+          </div>
+
+          <div class="agent-command hidden" id="agentCommand">
+            <input type="text" id="agentCommandInput" placeholder="Send command to agent..." />
+            <button class="btn-send" id="sendCommandBtn">Send</button>
+          </div>
+
+          <div class="agent-output" id="agentOutput">
+            <div class="empty-placeholder">Start session to begin</div>
           </div>
         </section>
       </div>

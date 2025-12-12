@@ -1,8 +1,9 @@
 import type {
   JobMatchWithListing as JobMatchListItem,
   DocumentInfo,
-  AgentProgress,
-  AgentSummary,
+  AgentSessionState,
+  AgentOutputData,
+  AgentStatusData,
   GenerationProgress,
   GenerationStep,
   WorkflowState,
@@ -12,10 +13,19 @@ import type {
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
-  agentFill: (options: {
-    provider: "claude" | "codex" | "gemini"
-    goal: string
-  }) => Promise<{ success: boolean; data?: AgentSummary; message?: string }>
+
+  // Agent Session API
+  agentStartSession: (options?: { provider?: "claude" | "codex" | "gemini" }) => Promise<{ success: boolean; message?: string }>
+  agentStopSession: () => Promise<{ success: boolean }>
+  agentSendCommand: (command: string) => Promise<{ success: boolean; message?: string }>
+  agentFillForm: (options: { jobMatchId: string; jobContext: string }) => Promise<{ success: boolean; message?: string }>
+  agentGetStatus: () => Promise<{ state: string }>
+  onAgentOutput: (callback: (data: AgentOutputData) => void) => () => void
+  onAgentStatus: (callback: (data: AgentStatusData) => void) => () => void
+  onAgentToolCall: (callback: (data: { name: string; params?: Record<string, unknown>; status: string; success?: boolean }) => void) => () => void
+  onBrowserUrlChanged: (callback: (data: { url: string }) => void) => () => void
+
+  // File upload
   uploadResume: (options?: {
     documentId?: string
     type?: "resume" | "coverLetter"
@@ -23,6 +33,8 @@ interface ElectronAPI {
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   checkFileInput: () => Promise<{ hasFileInput: boolean; selector?: string }>
+
+  // Job matches
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
     data?: JobMatchListItem[]
@@ -34,6 +46,8 @@ interface ElectronAPI {
     id: string
     status: "active" | "ignored" | "applied"
   }) => Promise<{ success: boolean; message?: string }>
+
+  // Documents
   getDocuments: (jobMatchId: string) => Promise<{
     success: boolean
     data?: DocumentInfo[]
@@ -49,7 +63,6 @@ interface ElectronAPI {
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
-  onAgentProgress: (callback: (progress: AgentProgress) => void) => () => void
   onRefreshJobMatches: (callback: () => void) => () => void
 }
 
@@ -99,8 +112,6 @@ function getElement<T extends HTMLElement>(id: string): T {
 // DOM elements - Toolbar
 const urlInput = getElement<HTMLInputElement>("urlInput")
 const goBtn = getElement<HTMLButtonElement>("goBtn")
-const providerSelect = getElement<HTMLSelectElement>("providerSelect")
-const fillBtn = getElement<HTMLButtonElement>("fillBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
 
@@ -109,13 +120,24 @@ const jobList = getElement<HTMLDivElement>("jobList")
 const documentsList = getElement<HTMLDivElement>("documentsList")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
 const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
-const fillOutput = getElement<HTMLDivElement>("fillOutput")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
 const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
 const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
 const generationProgress = getElement<HTMLDivElement>("generationProgress")
 const generationSteps = getElement<HTMLDivElement>("generationSteps")
+
+// DOM elements - Agent Panel
+const agentStatus = getElement<HTMLDivElement>("agentStatus")
+const agentProviderSelect = getElement<HTMLSelectElement>("agentProviderSelect")
+const startSessionBtn = getElement<HTMLButtonElement>("startSessionBtn")
+const stopSessionBtn = getElement<HTMLButtonElement>("stopSessionBtn")
+const agentActions = getElement<HTMLDivElement>("agentActions")
+const fillFormBtn = getElement<HTMLButtonElement>("fillFormBtn")
+const agentCommand = getElement<HTMLDivElement>("agentCommand")
+const agentCommandInput = getElement<HTMLInputElement>("agentCommandInput")
+const sendCommandBtn = getElement<HTMLButtonElement>("sendCommandBtn")
+const agentOutput = getElement<HTMLDivElement>("agentOutput")
 
 // DOM elements - Upload section
 const uploadResumeBtn = getElement<HTMLButtonElement>("uploadResumeBtn")
@@ -132,7 +154,6 @@ function setStatus(message: string, type: "success" | "error" | "loading" | "" =
 
 function setButtonsEnabled(enabled: boolean) {
   goBtn.disabled = !enabled
-  fillBtn.disabled = !enabled
   submitJobBtn.disabled = !enabled
   // Upload buttons have their own enable logic based on file input and document selection
   updateUploadButtonsState()
@@ -676,130 +697,191 @@ async function navigate() {
   setButtonsEnabled(true)
 }
 
-// Track agent progress subscription
-let unsubscribeAgentProgress: (() => void) | null = null
+// ============================================================================
+// Agent Session Management
+// ============================================================================
 
-// Handle agent progress updates
-function handleAgentProgress(progress: AgentProgress) {
-  const percent = Math.round((progress.step / progress.totalSteps) * 100)
+// Agent session state
+let agentSessionState: AgentSessionState = "stopped"
+let unsubscribeAgentOutput: (() => void) | null = null
+let unsubscribeAgentStatus: (() => void) | null = null
+let unsubscribeAgentToolCall: (() => void) | null = null
+let unsubscribeBrowserUrlChanged: (() => void) | null = null
 
-  fillOutput.innerHTML = `
-    <div class="agent-progress">
-      <div class="agent-phase">${escapeHtml(progress.message)}</div>
-      <div class="agent-progress-bar">
-        <div class="agent-progress-fill" style="width: ${percent}%"></div>
-      </div>
-      <div class="agent-step">Step ${progress.step} / ${progress.totalSteps}</div>
-      ${progress.currentAction ? `<div class="agent-action">${escapeHtml(progress.currentAction.kind)}${progress.lastResult ? ` → ${progress.lastResult}` : ""}</div>` : ""}
-    </div>
-  `
-
-  if (progress.phase === "completed") {
-    setStatus("Agent completed successfully", "success")
-    setWorkflowStep("fill", "completed")
-    setWorkflowStep("submit", "active")
-  } else if (progress.phase === "failed") {
-    setStatus(progress.message, "error")
-  } else {
-    setStatus(progress.message, "loading")
-  }
-}
-
-// Escape HTML to prevent XSS in streaming preview
+// Escape HTML to prevent XSS in output
 function escapeHtml(text: string): string {
   const div = document.createElement("div")
   div.textContent = text
   return div.innerHTML
 }
 
-// Fill form with AI using vision agent
-async function agentFill() {
-  const provider = providerSelect.value as "claude" | "codex" | "gemini"
+// Update agent status display
+function updateAgentStatusUI(state: AgentSessionState) {
+  agentSessionState = state
+  const statusDot = agentStatus.querySelector(".status-dot")
+  const statusText = agentStatus.querySelector(".status-text")
 
-  // Build goal from job context with details to help answer job-specific questions
-  const match = jobMatches.find((m) => m.id === selectedJobMatchId)
-  let goal: string
-  if (match) {
-    const parts = [
-      `Fill out this job application form for ${match.listing.title} at ${match.listing.companyName}.`,
-    ]
-    if (match.listing.location) {
-      parts.push(`Location: ${match.listing.location}.`)
-    }
-    if (match.listing.description) {
-      // Truncate long descriptions to avoid token bloat
-      const desc = match.listing.description.length > 500
-        ? match.listing.description.slice(0, 500) + "..."
-        : match.listing.description
-      parts.push(`Job description: ${desc}`)
-    }
-    parts.push("Use my profile information to complete all fields.")
-    goal = parts.join(" ")
-  } else {
-    goal = "Fill out this job application form using my profile information."
+  if (statusDot && statusText) {
+    statusDot.className = `status-dot ${state}`
+    statusText.textContent = state.charAt(0).toUpperCase() + state.slice(1)
   }
 
-  try {
-    setButtonsEnabled(false)
-    setStatus(`Starting agent with ${provider}...`, "loading")
-    setWorkflowStep("fill", "active")
+  // Update UI based on state
+  if (state === "stopped") {
+    startSessionBtn.classList.remove("hidden")
+    stopSessionBtn.classList.add("hidden")
+    agentActions.classList.add("hidden")
+    agentCommand.classList.add("hidden")
+    startSessionBtn.disabled = false
+  } else {
+    startSessionBtn.classList.add("hidden")
+    stopSessionBtn.classList.remove("hidden")
+    agentActions.classList.remove("hidden")
+    agentCommand.classList.remove("hidden")
+  }
 
-    // Clean up existing subscription
-    if (unsubscribeAgentProgress) {
-      unsubscribeAgentProgress()
-      unsubscribeAgentProgress = null
-    }
+  // Fill button enabled only when idle and job selected
+  fillFormBtn.disabled = state !== "idle" || !selectedJobMatchId
+}
 
-    // Subscribe to progress events
-    unsubscribeAgentProgress = api.onAgentProgress(handleAgentProgress)
+// Start agent session
+async function startAgentSession() {
+  const provider = agentProviderSelect.value as "claude" | "codex" | "gemini"
 
-    const result = await api.agentFill({ provider, goal })
+  startSessionBtn.disabled = true
+  setStatus("Starting agent session...", "loading")
+  agentOutput.innerHTML = '<div class="loading-placeholder">Starting session...</div>'
 
-    // Unsubscribe
-    if (unsubscribeAgentProgress) {
-      unsubscribeAgentProgress()
-      unsubscribeAgentProgress = null
-    }
+  // Subscribe to events
+  unsubscribeAgentOutput = api.onAgentOutput((data) => {
+    appendAgentOutput(data.text, data.isError ? "error" : undefined)
+  })
+  unsubscribeAgentStatus = api.onAgentStatus((data) => {
+    updateAgentStatusUI(data.state as AgentSessionState)
+  })
+  unsubscribeAgentToolCall = api.onAgentToolCall((data) => {
+    const icon = data.status === "executing" ? "⏳" : (data.success ? "✓" : "✗")
+    appendAgentOutput(`${icon} ${data.name}${data.status === "executing" ? "..." : ""}\n`, "tool")
+  })
+  unsubscribeBrowserUrlChanged = api.onBrowserUrlChanged((data) => {
+    // Update URL input when browser navigates
+    urlInput.value = data.url
+  })
 
-    if (result.success && result.data) {
-      renderAgentResults(result.data)
-      setStatus("Agent completed", "success")
-      setWorkflowStep("fill", "completed")
-      setWorkflowStep("submit", "active")
-    } else {
-      setStatus(result.message || "Agent failed", "error")
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    setStatus(`Agent failed: ${message}`, "error")
-  } finally {
-    if (unsubscribeAgentProgress) {
-      unsubscribeAgentProgress()
-      unsubscribeAgentProgress = null
-    }
-    setButtonsEnabled(true)
+  const result = await api.agentStartSession({ provider })
+
+  if (result.success) {
+    setStatus("Agent session started", "success")
+    updateAgentStatusUI("idle")
+  } else {
+    setStatus(result.message || "Failed to start session", "error")
+    startSessionBtn.disabled = false
+    cleanupAgentListeners()
   }
 }
 
-// Render agent results in sidebar
-function renderAgentResults(summary: AgentSummary) {
-  const isSuccess = summary.stopReason === "done"
-  const resultClass = isSuccess ? "success" : "error"
-  const resultText = isSuccess ? "✓ Completed" : `✗ ${summary.stopReason}`
+// Stop agent session
+async function stopAgentSession() {
+  setStatus("Stopping agent session...", "loading")
 
-  fillOutput.innerHTML = `
-    <div class="agent-summary">
-      <div class="agent-result ${resultClass}">${resultText}</div>
-      <div class="agent-stats">
-        <div>Steps: ${summary.stepsUsed}</div>
-        <div>Time: ${(summary.elapsedMs / 1000).toFixed(1)}s</div>
-      </div>
-      ${summary.finalReason ? `<div class="agent-reason">${escapeHtml(summary.finalReason)}</div>` : ""}
-    </div>
-  `
+  await api.agentStopSession()
 
-  // Scroll to results
-  fillOutput.scrollIntoView({ behavior: "smooth" })
+  cleanupAgentListeners()
+  updateAgentStatusUI("stopped")
+  setStatus("Agent session stopped", "success")
+  agentOutput.innerHTML = '<div class="empty-placeholder">Session ended</div>'
+}
+
+// Send command to agent
+async function sendAgentCommand() {
+  const command = agentCommandInput.value.trim()
+  if (!command) return
+
+  agentCommandInput.value = ""
+  appendAgentOutput(`> ${command}\n`, "command")
+
+  const result = await api.agentSendCommand(command)
+
+  if (!result.success) {
+    appendAgentOutput(`Error: ${result.message}\n`, "error")
+  }
+}
+
+// Fill form with agent
+async function fillFormWithAgent() {
+  if (!selectedJobMatchId) {
+    setStatus("Select a job first", "error")
+    return
+  }
+
+  const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+  if (!match) return
+
+  // Build job context
+  const jobContext = [
+    `Job: ${match.listing.title} at ${match.listing.companyName}`,
+    match.listing.location ? `Location: ${match.listing.location}` : "",
+    match.listing.description
+      ? `Description: ${match.listing.description.length > 500 ? match.listing.description.slice(0, 500) + "..." : match.listing.description}`
+      : "",
+  ].filter(Boolean).join("\n")
+
+  setStatus("Filling form...", "loading")
+  setWorkflowStep("fill", "active")
+
+  const result = await api.agentFillForm({
+    jobMatchId: selectedJobMatchId,
+    jobContext,
+  })
+
+  if (result.success) {
+    setStatus("Form fill started", "success")
+  } else {
+    setStatus(result.message || "Fill failed", "error")
+  }
+}
+
+// Append text to agent output
+function appendAgentOutput(text: string, type?: "command" | "error" | "tool") {
+  // Remove placeholder if present
+  const placeholder = agentOutput.querySelector(".empty-placeholder, .loading-placeholder")
+  if (placeholder) {
+    agentOutput.innerHTML = ""
+  }
+
+  const span = document.createElement("span")
+  if (type === "command") {
+    span.className = "agent-command-line"
+  } else if (type === "error") {
+    span.className = "agent-error"
+  } else if (type === "tool") {
+    span.className = "tool-call"
+  }
+  span.textContent = text
+  agentOutput.appendChild(span)
+
+  // Auto-scroll to bottom
+  agentOutput.scrollTop = agentOutput.scrollHeight
+}
+
+// Cleanup agent event listeners
+function cleanupAgentListeners() {
+  if (unsubscribeAgentOutput) {
+    unsubscribeAgentOutput()
+    unsubscribeAgentOutput = null
+  }
+  if (unsubscribeAgentStatus) {
+    unsubscribeAgentStatus()
+    unsubscribeAgentStatus = null
+  }
+  if (unsubscribeAgentToolCall) {
+    unsubscribeAgentToolCall()
+    unsubscribeAgentToolCall = null
+  }
+  if (unsubscribeBrowserUrlChanged) {
+    unsubscribeBrowserUrlChanged()
+    unsubscribeBrowserUrlChanged = null
+  }
 }
 
 // Upload document (resume or cover letter)
@@ -844,7 +926,7 @@ function uploadCoverLetterFile() {
 
 // Submit job listing for analysis
 async function submitJob() {
-  const provider = providerSelect.value as "claude" | "codex" | "gemini"
+  const provider = agentProviderSelect.value as "claude" | "codex" | "gemini"
 
   try {
     setButtonsEnabled(false)
@@ -878,8 +960,18 @@ function initializeApp() {
       navigate()
     }
   })
-  fillBtn.addEventListener("click", agentFill)
   submitJobBtn.addEventListener("click", submitJob)
+
+  // Event listeners - Agent Session
+  startSessionBtn.addEventListener("click", startAgentSession)
+  stopSessionBtn.addEventListener("click", stopAgentSession)
+  fillFormBtn.addEventListener("click", fillFormWithAgent)
+  sendCommandBtn.addEventListener("click", sendAgentCommand)
+  agentCommandInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      sendAgentCommand()
+    }
+  })
 
   // Event listeners - Sidebar
   generateBtn.addEventListener("click", generateDocument)
@@ -917,6 +1009,7 @@ async function init() {
 // Cleanup on page unload to prevent memory leaks
 window.addEventListener("beforeunload", () => {
   cleanupGenerationProgressListener()
+  cleanupAgentListeners()
 })
 
 // Wait for DOM to be ready before initializing
