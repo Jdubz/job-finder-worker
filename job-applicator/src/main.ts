@@ -1053,47 +1053,51 @@ ipcMain.handle(
       })
 
       // Build the prompt - data is retrieved via tools to reduce prompt size
-      const prompt = `You are filling a job application form using a hybrid DOM + visual approach.
+      const prompt = `You are filling a job application form using DOM selectors (NOT visual clicking).
 
 CRITICAL RULES:
 1. MUST call get_user_profile FIRST - NEVER invent or guess user data
-2. Use selector-based tools (fill_field, select_option, set_checkbox, click_element) for reliability
-3. Use screenshot to verify your work and handle complex UI
-4. DO NOT click submit/apply buttons - user will submit manually
-5. SKIP file upload fields - user handles documents separately
+2. ALWAYS use get_form_fields to find fields - it returns CSS selectors
+3. ALWAYS use selector-based tools: fill_field, select_option, set_checkbox, click_element
+4. NEVER use click(x,y) or type() unless fill_field fails on a specific field
+5. DO NOT click submit/apply buttons - user will submit manually
+6. SKIP file upload fields - user handles documents separately
 
 WORKFLOW:
-1. get_user_profile - Get user data (MANDATORY first)
-2. get_form_fields - Analyze DOM, get selectors and dropdown options
-3. For each field, match label to profile data and use:
-   - fill_field(selector, value) for text inputs
-   - select_option(selector, value) for dropdowns - match against options array
-   - set_checkbox(selector, checked) for checkboxes/radios
-   - click_element(selector) for buttons like "Add Another"
-4. screenshot - Verify fields were filled correctly
-5. For any issues or custom UI (date pickers, autocomplete):
-   - Use click(x,y) and type(text) as fallback
-6. scroll down and repeat get_form_fields for more fields
-7. done with summary
+1. get_user_profile - Get user data (MANDATORY first step)
+2. get_form_fields - Get ALL fields with their CSS selectors
+3. For EACH field returned, match label to profile data and fill using:
+   - fill_field(selector, value) for text inputs/textareas
+   - select_option(selector, value) for dropdowns - use value from 'options' array
+   - set_checkbox(selector, true/false) for checkboxes/radios
+4. scroll(300) and get_form_fields again - repeat until no new fields
+5. screenshot ONLY to verify fills worked (not to find fields)
+6. done(summary)
 
-DYNAMIC FORMS (Education, Employment, etc.):
-- Call get_buttons to find "Add Another", "Add Education", "Add Employment" buttons
-- Use click_element(selector) to add entries for EACH item in the profile
-- After clicking, call get_form_fields again to see the new sub-form fields
-- Fill the sub-form, then click "Add Another" again for the next item
-- Repeat until all education/employment entries from the profile are added
+DROPDOWN FIELDS:
+- get_form_fields returns 'options' array with {value, text} for each choice
+- Use select_option(selector, value) where value matches options[].value
+- Do NOT type into dropdowns - use select_option
 
-YES/NO QUESTIONS - Use profile data to infer answers:
-- "Do you have X years of experience?" → YES if profile shows enough work history
-- "Are you authorized to work?" → YES (assume authorized)
-- "Will you require sponsorship?" → NO (assume no sponsorship needed)
-- "Email me about future openings?" → YES
-- "Agree to terms/privacy policy?" → YES
+DYNAMIC FORMS (Education, Employment sections):
+- Use get_buttons to find "Add Another", "Add Education" buttons
+- Use click_element(selector) to add new entry
+- Call get_form_fields to see new sub-form fields
+- Fill sub-form with fill_field/select_option
+- Repeat for each profile entry
 
-IMPORTANT: The 'options' array in get_form_fields shows available dropdown values.
-Match your selection to one of those values, not arbitrary text.
+YES/NO QUESTIONS - Infer from profile:
+- "X years experience?" → YES if profile work history >= X years
+- "Authorized to work?" → YES
+- "Require sponsorship?" → NO
+- "Future openings email?" → YES
+- "Agree to terms?" → YES
 
-Start by calling get_user_profile.`
+FALLBACK (only if selector tools fail):
+- click(x,y) + type(text) for custom UI like date pickers, autocomplete
+- Take screenshot first to get coordinates
+
+Start by calling get_user_profile, then get_form_fields.`
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
       logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)

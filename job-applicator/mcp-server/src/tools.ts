@@ -11,8 +11,8 @@ export const tools: Tool[] = [
   {
     name: "screenshot",
     description:
-      "Capture a screenshot of the current page. Returns a base64-encoded JPEG image. " +
-      "Call this first to see what's on the page, and after actions to verify they worked.",
+      "Capture a screenshot for VERIFICATION ONLY. Use get_form_fields to find fields, not screenshots. " +
+      "Only use screenshots to verify fills worked or debug issues.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -22,8 +22,8 @@ export const tools: Tool[] = [
   {
     name: "click",
     description:
-      "Click at specific x,y coordinates on the page. Use coordinates from the screenshot. " +
-      "Click on input fields to focus them before typing.",
+      "LAST RESORT: Click at x,y coordinates. Prefer click_element(selector) or fill_field(selector) instead. " +
+      "Only use for custom UI elements that have no selector (date pickers, autocomplete popups).",
     inputSchema: {
       type: "object",
       properties: {
@@ -36,8 +36,8 @@ export const tools: Tool[] = [
   {
     name: "type",
     description:
-      "Type text into the currently focused input field. " +
-      "Make sure to click on the field first to focus it.",
+      "LAST RESORT: Type into focused field. Prefer fill_field(selector, value) instead. " +
+      "Only use after click(x,y) for custom UI that fill_field doesn't work on.",
     inputSchema: {
       type: "object",
       properties: {
