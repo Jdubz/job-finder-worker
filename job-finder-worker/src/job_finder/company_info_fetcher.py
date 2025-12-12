@@ -846,31 +846,30 @@ Be factual. Return ONLY valid JSON."""
         wiki_normalized = self._normalize_url(wiki_website)
         candidate_normalized = self._normalize_url(candidate)
 
-        # Prefer Wikipedia if present and not obviously invalid
-        if (
+        wiki_valid = (
             wiki_normalized
             and not self._is_job_board_url(wiki_normalized)
             and not self._is_search_engine_url(wiki_normalized)
-        ):
-            return wiki_normalized
+        )
 
-        # Otherwise, keep candidate if it passes basic filters
-        if (
+        candidate_valid = (
             candidate_normalized
             and not self._is_job_board_url(candidate_normalized)
             and not self._is_search_engine_url(candidate_normalized)
-        ):
-            # Soft probe: check if homepage mentions company brand; ignore failures
-            try:
-                if self._homepage_mentions_brand(candidate_normalized, company_name):
-                    return candidate_normalized
-            except Exception:
-                pass
-            # If probe didn't confirm but Wikipedia site exists, fall back to Wikipedia.
-            if wiki_normalized:
-                return wiki_normalized
-            # Otherwise keep candidate to avoid over-rejecting.
-            return candidate_normalized
+        )
+
+        # Prefer a valid Wikipedia URL if the candidate is missing/invalid
+        if wiki_valid and not candidate_valid:
+            return wiki_normalized
+
+        # If candidate looks valid, optionally probe; otherwise return it
+        if candidate_valid:
+            if self._homepage_mentions_brand(candidate_normalized, company_name):
+                return candidate_normalized
+            # If probe is inconclusive but Wikipedia is valid, fall back to it; else keep candidate.
+            return wiki_normalized or candidate_normalized
+
+        return wiki_normalized or ""
 
         return ""
 
@@ -900,11 +899,29 @@ Be factual. Return ONLY valid JSON."""
         if not tokens:
             return False
 
-        response = self.session.get(url, timeout=timeout, allow_redirects=True)
-        response.raise_for_status()
+        try:
+            response = self.session.get(url, timeout=timeout, allow_redirects=True, stream=True)
+            response.raise_for_status()
 
-        text = response.text.lower()
-        return any(tok in text for tok in tokens)
+            # Read only the first ~16KB to avoid large downloads
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=4096, decode_unicode=True):
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= 16384:
+                    break
+
+            text = "".join(chunks).lower()
+            return any(tok in text for tok in tokens)
+        except requests.RequestException as e:
+            logger.debug("Homepage probe for %s failed: %s", url, e)
+            return False
+        except Exception as e:
+            logger.debug("Homepage probe unexpected error for %s: %s", url, e)
+            return False
 
     def _merge_company_info(
         self,
@@ -930,20 +947,29 @@ Be factual. Return ONLY valid JSON."""
 
                 current = self._normalize_url(merged.get("website"))
 
-                # Prefer preferred_website (Wikipedia) if present
-                if preferred_website:
-                    preferred_normalized = self._normalize_url(preferred_website)
-                    if preferred_normalized:
-                        merged["website"] = preferred_normalized
-                        continue
+                preferred_normalized = self._normalize_url(preferred_website)
 
-                # Otherwise, replace if we didn't have one or current was invalid
-                if (
-                    not current
-                    or self._is_job_board_url(current)
-                    or self._is_search_engine_url(current)
-                ):
+                current_valid = (
+                    current
+                    and not self._is_job_board_url(current)
+                    and not self._is_search_engine_url(current)
+                )
+                candidate_valid = not self._is_job_board_url(
+                    candidate
+                ) and not self._is_search_engine_url(candidate)
+                preferred_valid = (
+                    preferred_normalized
+                    and not self._is_job_board_url(preferred_normalized)
+                    and not self._is_search_engine_url(preferred_normalized)
+                )
+
+                # Selection priority: candidate (if valid) > preferred (if valid) > current
+                if candidate_valid:
                     merged["website"] = candidate
+                elif preferred_valid:
+                    merged["website"] = preferred_normalized
+                elif not current_valid:
+                    merged["website"] = current or candidate
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
             elif key in text_fields:

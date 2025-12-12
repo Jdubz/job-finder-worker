@@ -75,3 +75,42 @@ def test_merge_company_info_keeps_longer_primary():
     assert "very long and detailed" in result["about"]
     # Culture was empty, should be filled
     assert result["culture"] == "Team culture."
+
+
+def test_normalize_url_adds_scheme_and_trims():
+    fetcher = CompanyInfoFetcher()
+    assert fetcher._normalize_url("example.com") == "https://example.com"
+    assert fetcher._normalize_url("  https://example.com/path  ") == "https://example.com/path"
+    assert fetcher._normalize_url("") == ""
+
+
+def test_choose_best_website_prefers_wiki_when_candidate_missing(monkeypatch):
+    fetcher = CompanyInfoFetcher()
+    # No need to hit network in homepage probe
+    monkeypatch.setattr(fetcher, "_homepage_mentions_brand", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(fetcher, "_is_job_board_url", lambda url: False)
+    monkeypatch.setattr(fetcher, "_is_search_engine_url", lambda url: False)
+
+    result = fetcher._choose_best_website(
+        candidate=None, wiki_website="https://wiki-site.com", company_name="Acme"
+    )
+    assert result == "https://wiki-site.com"
+
+
+def test_choose_best_website_uses_candidate_when_wiki_invalid(monkeypatch):
+    fetcher = CompanyInfoFetcher()
+
+    # Mark wiki as job board, candidate as valid and brand-confirmed
+    def is_job_board(url):
+        return url and "wiki-bad" in url
+
+    monkeypatch.setattr(fetcher, "_is_job_board_url", is_job_board)
+    monkeypatch.setattr(fetcher, "_is_search_engine_url", lambda url: False)
+    monkeypatch.setattr(fetcher, "_homepage_mentions_brand", lambda *_args, **_kwargs: True)
+
+    result = fetcher._choose_best_website(
+        candidate="https://acme.com",
+        wiki_website="https://wiki-bad.com",
+        company_name="Acme",
+    )
+    assert result == "https://acme.com"
