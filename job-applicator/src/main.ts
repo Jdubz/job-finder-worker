@@ -991,16 +991,24 @@ Begin by taking a screenshot to see the form.`
       mainWindow?.webContents.send("agent-status", { state: "working" })
 
       // Spawn Claude CLI with MCP server configured
+      // Use stdin for prompt to avoid command line length limits
       const spawnArgs = [
         "--print",
         "--dangerously-skip-permissions",
         "--mcp-config",
         mcpConfigPath,
-        "-p",
-        prompt,
       ]
-      logger.info(`[FillForm] Spawning: claude ${spawnArgs.slice(0, 4).join(" ")} -p <prompt>`)
+      logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
       activeClaudeProcess = spawn("claude", spawnArgs)
+
+      // Write prompt to stdin and close it
+      if (activeClaudeProcess.stdin) {
+        activeClaudeProcess.stdin.write(prompt)
+        activeClaudeProcess.stdin.end()
+        logger.info(`[FillForm] Wrote ${prompt.length} chars to stdin`)
+      } else {
+        logger.error(`[FillForm] stdin not available`)
+      }
 
       // Forward stdout to renderer
       activeClaudeProcess.stdout?.on("data", (data: Buffer) => {
