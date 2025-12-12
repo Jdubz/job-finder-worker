@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo } from "react"
-import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useJobListings } from "@/hooks/useJobListings"
 import { useQueueItems } from "@/hooks/useQueueItems"
@@ -39,7 +38,6 @@ import { JobListingsTable } from "./components/JobListingsTable"
 
 export function JobListingsPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const { listings, loading, deleteListing, setFilters } = useJobListings({
     limit: 100,
     sortBy: "updated",
@@ -88,7 +86,7 @@ export function JobListingsPage() {
         throw err
       }
     },
-    [submitJob, closeModal, navigate]
+    [submitJob, closeModal]
   )
 
   const handleSearch = useCallback(() => {
