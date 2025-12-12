@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import logging
-import sqlite3
 import hashlib
 import json
+import logging
+import re
+import sqlite3
 from urllib.parse import urlparse, urlunparse
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -49,7 +50,12 @@ class QueueManager:
     # ------------------------------------------------------------------ #
 
     def _ensure_schema(self) -> None:
-        """Add new columns / indexes if a legacy DB is detected."""
+        """Zero-downtime, idempotent migration guard for legacy DBs.
+
+        Adds a nullable dedupe_key column and a partial UNIQUE index scoped to
+        active (pending/processing) items so existing historical rows remain
+        untouched. Safe to run on every process start.
+        """
         with sqlite_connection(self.db_path) as conn:
             cols = {row["name"] for row in conn.execute("PRAGMA table_info(job_queue);")}
             if "dedupe_key" not in cols:
@@ -132,14 +138,14 @@ class QueueManager:
                 path = path.rstrip("/")
             cleaned = cleaned._replace(path=path)
             return urlunparse(cleaned)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to normalize URL %r: %s", url, exc)
             return url.strip()
 
     @staticmethod
     def _slugify(value: Optional[str]) -> str:
         if not value:
             return ""
-        import re
 
         slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
         return slug
@@ -158,26 +164,47 @@ class QueueManager:
         if t == QueueItemType.JOB:
             return f"job|{norm_url}"
         if t == QueueItemType.COMPANY:
-            ident = item.company_id or self._slugify(item.company_name)
+            ident = (
+                item.company_id or self._slugify(item.company_name) or item.tracking_id or "missing"
+            )
             return f"company|{ident}"
         if t == QueueItemType.SOURCE_DISCOVERY:
-            ident = norm_url or item.company_id or self._slugify(item.company_name) or ""
+            ident = (
+                norm_url
+                or item.company_id
+                or self._slugify(item.company_name)
+                or item.tracking_id
+                or "missing"
+            )
             return f"source_discovery|{ident}"
         if t == QueueItemType.SCRAPE_SOURCE:
-            source_id = item.source_id or item.input.get("source_id") if item.input else None
-            ident = source_id or norm_url or item.company_id or self._slugify(item.company_name)
+            source_id = item.source_id or (
+                item.input.get("source_id") if item.input and isinstance(item.input, dict) else None
+            )
+            ident = (
+                source_id
+                or norm_url
+                or item.company_id
+                or self._slugify(item.company_name)
+                or item.tracking_id
+                or "missing"
+            )
             return f"scrape_source|{ident}"
         if t == QueueItemType.SCRAPE:
             cfg = (
                 item.scrape_config.model_dump()
                 if item.scrape_config
-                else item.input.get("scrape_config", {}) if item.input else {}
+                else (
+                    item.input.get("scrape_config", {})
+                    if item.input and isinstance(item.input, dict)
+                    else {}
+                )
             )
             return f"scrape|{self._hash_dict(cfg)}"
         if t == QueueItemType.AGENT_REVIEW:
-            ident = item.parent_item_id or norm_url or item.tracking_id
+            ident = item.parent_item_id or norm_url or item.tracking_id or "missing"
             return f"agent_review|{ident}"
-        return f"generic|{t.value}|{norm_url or item.tracking_id}"
+        return f"generic|{t.value}|{norm_url or item.tracking_id or 'missing'}"
 
     def _dedupe_exists(self, dedupe_key: str, statuses: Optional[List[QueueStatus]] = None) -> bool:
         if not dedupe_key:
@@ -547,11 +574,6 @@ class QueueManager:
 
         new_item = JobQueueItem(**new_item_data)
         new_item.dedupe_key = self._compute_dedupe_key(new_item)
-
-        # Apply lineage-aware loop prevention using dedupe key
-        if self._dedupe_exists(new_item.dedupe_key):
-            logger.warning("Blocked spawn: duplicate fingerprint %s", new_item.dedupe_key)
-            return None
 
         try:
             return self.add_item(new_item)
