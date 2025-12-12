@@ -856,7 +856,8 @@ let activeClaudeProcess: ReturnType<typeof spawn> | null = null
 
 /**
  * Kill the active Claude CLI process if running
- * Uses SIGTERM first, then SIGKILL as fallback
+ * Uses process group kill to ensure all child processes are terminated
+ * (e.g., codex spawns a child process that would otherwise be orphaned)
  */
 function killActiveClaudeProcess(reason: string): void {
   if (!activeClaudeProcess) return
@@ -864,23 +865,38 @@ function killActiveClaudeProcess(reason: string): void {
   // Capture reference before nullifying - needed for timeout callback
   const processToKill = activeClaudeProcess
   const pid = processToKill.pid
-  logger.info(`[Process] Killing Claude CLI (PID: ${pid}) - ${reason}`)
+  logger.info(`[Process] Killing Claude CLI process group (PID: ${pid}) - ${reason}`)
 
   // Nullify immediately to prevent new operations on this process
   activeClaudeProcess = null
 
+  if (!pid) {
+    logger.warn(`[Process] No PID available for process`)
+    return
+  }
+
   try {
-    // Try graceful termination first
-    processToKill.kill("SIGTERM")
+    // Kill the entire process group (spawned with detached: true)
+    // Negative PID kills the process group
+    try {
+      process.kill(-pid, "SIGTERM")
+    } catch {
+      // If process group kill fails, fall back to direct kill
+      processToKill.kill("SIGTERM")
+    }
 
     // Force kill after 2 seconds if still running
     const forceKillTimeout = setTimeout(() => {
       if (!processToKill.killed) {
-        logger.warn(`[Process] SIGTERM didn't work, sending SIGKILL to PID ${pid}`)
+        logger.warn(`[Process] SIGTERM didn't work, sending SIGKILL to process group ${pid}`)
         try {
-          processToKill.kill("SIGKILL")
+          process.kill(-pid, "SIGKILL")
         } catch {
-          // Process may have exited between check and kill
+          try {
+            processToKill.kill("SIGKILL")
+          } catch {
+            // Process may have exited between check and kill
+          }
         }
       }
     }, 2000)
@@ -905,6 +921,36 @@ process.on("exit", () => {
     }
   }
 })
+
+// Handle SIGTERM/SIGINT explicitly for electronmon restarts
+// These signals are sent when electronmon restarts the app on file changes
+const handleTerminationSignal = (signal: string) => {
+  logger.info(`[Process] Received ${signal}, cleaning up child processes...`)
+  if (activeClaudeProcess) {
+    try {
+      // Kill the entire process group to catch any grandchildren
+      const pid = activeClaudeProcess.pid
+      if (pid) {
+        try {
+          // Try to kill the process group (negative PID)
+          process.kill(-pid, "SIGKILL")
+        } catch {
+          // If process group kill fails, kill the process directly
+          activeClaudeProcess.kill("SIGKILL")
+        }
+      }
+      logger.info(`[Process] Killed child process on ${signal}`)
+    } catch (err) {
+      logger.error(`[Process] Error killing child on ${signal}:`, err)
+    }
+    activeClaudeProcess = null
+  }
+  // Exit after cleanup
+  process.exit(0)
+}
+
+process.on("SIGTERM", () => handleTerminationSignal("SIGTERM"))
+process.on("SIGINT", () => handleTerminationSignal("SIGINT"))
 
 /**
  * Get the path to the MCP server executable
@@ -1065,7 +1111,12 @@ Start by calling get_user_profile.`
         mcpConfigPath,
       ]
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
-      activeClaudeProcess = spawn("claude", spawnArgs)
+      // Use detached: true to create a new process group, allowing us to kill the entire tree
+      // on termination (electronmon restarts, etc.). stdio: "pipe" is default but explicit here.
+      activeClaudeProcess = spawn("claude", spawnArgs, {
+        detached: true,
+        stdio: ["pipe", "pipe", "pipe"],
+      })
 
       // Write prompt to stdin and close it (--print mode needs EOF to start)
       if (activeClaudeProcess.stdin) {
