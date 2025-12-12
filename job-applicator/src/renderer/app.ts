@@ -9,7 +9,235 @@ import type {
   AgentOutputData,
   AgentStatusData,
 } from "../types.js"
-import { StreamingParser, type ParsedActivity } from "./agent-output-parser.js"
+
+// ============================================================================
+// Agent Output Parser (inlined to avoid ES module issues in renderer)
+// ============================================================================
+
+interface ParsedActivity {
+  type: "tool_call" | "tool_result" | "thinking" | "text" | "error" | "completion"
+  tool?: string
+  params?: Record<string, unknown>
+  result?: unknown
+  text?: string
+  icon?: string
+  displayText: string
+}
+
+// Tool display configuration
+const TOOL_DISPLAY: Record<string, { icon: string; verb: string }> = {
+  screenshot: { icon: "📸", verb: "Taking screenshot" },
+  click: { icon: "🖱️", verb: "Clicking" },
+  type: { icon: "⌨️", verb: "Typing" },
+  press_key: { icon: "⌨️", verb: "Pressing key" },
+  scroll: { icon: "📜", verb: "Scrolling" },
+  get_form_fields: { icon: "📋", verb: "Analyzing form fields" },
+  generate_resume: { icon: "📄", verb: "Generating resume" },
+  generate_cover_letter: { icon: "📝", verb: "Generating cover letter" },
+  upload_file: { icon: "📤", verb: "Uploading file" },
+  done: { icon: "✅", verb: "Completed" },
+}
+
+// Patterns for parsing CLI output
+const PARSE_PATTERNS = {
+  toolCallLine: /\[tool:\s*(\w+)\]/i,
+  usingTool: /using\s+(?:tool|mcp\s+tool):\s*(\w+)/i,
+  mcpToolCall: /calling\s+(?:mcp\s+)?tool\s+['"]?(\w+)['"]?/i,
+  completion: /(?:form\s+fill(?:ing)?\s+)?(?:completed?|finished|done)/i,
+  screenshotTaken: /screenshot\s+(?:taken|captured)/i,
+  clickingAt: /click(?:ing|ed)?\s+(?:at\s+)?\(?(\d+)\s*,\s*(\d+)\)?/i,
+  typingText: /typ(?:ing|ed?)\s+(?:text\s+)?['""]?([^'""]+)['""]?/i,
+  analyzing: /(?:analyzing|examining|looking\s+at|checking|reviewing)/i,
+  toolError: /tool\s+(?:result|output).*(?:error|failed)/i,
+}
+
+function formatToolCall(toolName: string, params?: Record<string, unknown>): string {
+  const display = TOOL_DISPLAY[toolName] || { icon: "🔧", verb: "Using" }
+
+  switch (toolName) {
+    case "screenshot":
+      return `${display.icon} Taking screenshot...`
+    case "click":
+      if (params?.x !== undefined && params?.y !== undefined) {
+        return `${display.icon} Clicking at (${params.x}, ${params.y})`
+      }
+      return `${display.icon} Clicking...`
+    case "type":
+      if (params?.text) {
+        const text = String(params.text)
+        const preview = text.length > 30 ? text.slice(0, 30) + "..." : text
+        return `${display.icon} Typing "${preview}"`
+      }
+      return `${display.icon} Typing...`
+    case "press_key":
+      if (params?.key) {
+        return `${display.icon} Pressing ${params.key}`
+      }
+      return `${display.icon} Pressing key...`
+    case "scroll":
+      if (params?.dy !== undefined) {
+        const direction = Number(params.dy) > 0 ? "down" : "up"
+        return `${display.icon} Scrolling ${direction}`
+      }
+      return `${display.icon} Scrolling...`
+    case "get_form_fields":
+      return `${display.icon} Analyzing form fields...`
+    case "generate_resume":
+      return `${display.icon} Generating tailored resume...`
+    case "generate_cover_letter":
+      return `${display.icon} Generating cover letter...`
+    case "upload_file":
+      if (params?.type) {
+        const fileType = params.type === "coverLetter" ? "cover letter" : "resume"
+        return `${display.icon} Uploading ${fileType}...`
+      }
+      return `${display.icon} Uploading file...`
+    case "done":
+      if (params?.summary) {
+        return `${display.icon} ${params.summary}`
+      }
+      return `${display.icon} Form filling completed`
+    default:
+      return `${display.icon} ${display.verb} ${toolName}...`
+  }
+}
+
+function parseLine(line: string): ParsedActivity | null {
+  // Try to parse as JSON tool call
+  try {
+    if (line.includes('"type"') && line.includes('"tool_use"')) {
+      const match = line.match(/\{[^{}]*"type"\s*:\s*"tool_use"[^{}]*\}/)
+      if (match) {
+        const json = JSON.parse(match[0])
+        const toolName = json.name || "unknown"
+        const display = TOOL_DISPLAY[toolName] || { icon: "🔧", verb: "Using" }
+        return {
+          type: "tool_call",
+          tool: toolName,
+          params: json.input,
+          icon: display.icon,
+          displayText: formatToolCall(toolName, json.input),
+        }
+      }
+    }
+  } catch {
+    // Not valid JSON, continue with other patterns
+  }
+
+  // Check for tool call patterns
+  const toolMatch = line.match(PARSE_PATTERNS.toolCallLine)
+    || line.match(PARSE_PATTERNS.usingTool)
+    || line.match(PARSE_PATTERNS.mcpToolCall)
+
+  if (toolMatch) {
+    const toolName = toolMatch[1].toLowerCase()
+    const display = TOOL_DISPLAY[toolName] || { icon: "🔧", verb: "Using" }
+    return {
+      type: "tool_call",
+      tool: toolName,
+      icon: display.icon,
+      displayText: `${display.icon} ${display.verb}...`,
+    }
+  }
+
+  // Check for completion
+  if (PARSE_PATTERNS.completion.test(line)) {
+    return { type: "completion", icon: "✅", displayText: `✅ ${line}` }
+  }
+
+  // Check for screenshot taken
+  if (PARSE_PATTERNS.screenshotTaken.test(line)) {
+    return { type: "tool_result", tool: "screenshot", icon: "📸", displayText: "📸 Screenshot captured" }
+  }
+
+  // Check for click action
+  const clickMatch = line.match(PARSE_PATTERNS.clickingAt)
+  if (clickMatch) {
+    return { type: "tool_call", tool: "click", icon: "🖱️", displayText: `🖱️ Clicking at (${clickMatch[1]}, ${clickMatch[2]})` }
+  }
+
+  // Check for typing
+  const typeMatch = line.match(PARSE_PATTERNS.typingText)
+  if (typeMatch) {
+    const text = typeMatch[1].length > 30 ? typeMatch[1].slice(0, 30) + "..." : typeMatch[1]
+    return { type: "tool_call", tool: "type", icon: "⌨️", displayText: `⌨️ Typing "${text}"` }
+  }
+
+  // Check for analyzing/thinking
+  if (PARSE_PATTERNS.analyzing.test(line)) {
+    return { type: "thinking", icon: "🤔", displayText: `🤔 ${line}` }
+  }
+
+  // Check for errors
+  if (PARSE_PATTERNS.toolError.test(line) || line.toLowerCase().includes("error")) {
+    return { type: "error", icon: "❌", displayText: `❌ ${line}` }
+  }
+
+  // Default: return as text if it looks meaningful
+  if (line.length > 5) {
+    return { type: "text", displayText: line }
+  }
+
+  return null
+}
+
+function parseAgentOutput(text: string): ParsedActivity[] {
+  const activities: ParsedActivity[] = []
+  const lines = text.split("\n")
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const activity = parseLine(trimmed)
+    if (activity) activities.push(activity)
+  }
+
+  if (activities.length === 0 && text.trim()) {
+    activities.push({ type: "text", displayText: text.trim() })
+  }
+
+  return activities
+}
+
+class StreamingParser {
+  private buffer: string = ""
+  private lastToolCall: string | null = null
+
+  addChunk(chunk: string): ParsedActivity[] {
+    this.buffer += chunk
+    const activities: ParsedActivity[] = []
+    const lines = this.buffer.split("\n")
+    this.buffer = lines.pop() || ""
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      const activity = parseLine(trimmed)
+      if (activity) {
+        if (activity.type === "tool_call" && activity.tool === this.lastToolCall) continue
+        if (activity.type === "tool_call") this.lastToolCall = activity.tool || null
+        activities.push(activity)
+      }
+    }
+    return activities
+  }
+
+  flush(): ParsedActivity[] {
+    if (!this.buffer.trim()) return []
+    const activities = parseAgentOutput(this.buffer)
+    this.buffer = ""
+    return activities
+  }
+
+  reset(): void {
+    this.buffer = ""
+    this.lastToolCall = null
+  }
+}
+
+// ============================================================================
+// End Agent Output Parser
+// ============================================================================
 
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
