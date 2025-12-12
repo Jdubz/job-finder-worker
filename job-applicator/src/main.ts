@@ -860,16 +860,8 @@ ipcMain.handle(
       // Remove any existing listeners to prevent memory leak
       session.removeAllListeners()
 
-      // Fetch profile
-      logger.info("[Agent] Fetching profile for session...")
-      const profileText = await fetchApplicatorProfile()
-      logger.info(`[Agent] Profile loaded (${profileText.length} chars)`)
-
-      // Start session
-      await session.start({
-        profileText,
-        provider: options.provider,
-      })
+      // Set up event listeners BEFORE starting session
+      // (start() emits state-change which we need to catch)
 
       // Set up tool call handler
       session.on("tool-call", async (tool) => {
@@ -898,6 +890,7 @@ ipcMain.handle(
 
       // Forward state changes
       session.on("state-change", (state: "idle" | "working" | "stopped") => {
+        logger.info(`[Agent] State changed to: ${state}`)
         mainWindow?.webContents.send("agent-status", { state })
       })
 
@@ -905,6 +898,17 @@ ipcMain.handle(
       session.on("error", (err: Error) => {
         logger.error(`[Agent] Session error: ${err.message}`)
         mainWindow?.webContents.send("agent-output", { text: `Error: ${err.message}\n`, isError: true })
+      })
+
+      // Fetch profile
+      logger.info("[Agent] Fetching profile for session...")
+      const profileText = await fetchApplicatorProfile()
+      logger.info(`[Agent] Profile loaded (${profileText.length} chars)`)
+
+      // Start session (this will emit state-change to "idle")
+      await session.start({
+        profileText,
+        provider: options.provider,
       })
 
       logger.info("[Agent] Session started successfully")

@@ -8,7 +8,7 @@
 import { spawn, ChildProcess } from "child_process"
 import { EventEmitter } from "events"
 import { logger } from "./logger.js"
-import { getCliCommand } from "./cli-config.js"
+import { getCliSessionCommand } from "./cli-config.js"
 
 // ============================================================================
 // Types
@@ -68,12 +68,16 @@ export class AgentSession extends EventEmitter {
 
     logger.info(`[AgentSession] Starting session with provider: ${provider}`)
 
-    const [cmd, args] = getCliCommand(provider)
+    const [cmd, args] = getCliSessionCommand(provider)
+
+    logger.info(`[AgentSession] Spawning: ${cmd} ${args.join(" ")}`)
 
     this.process = spawn(cmd, args, {
       stdio: ["pipe", "pipe", "pipe"],
-      shell: false,
+      shell: true, // Use shell to help with PATH resolution
     })
+
+    logger.info(`[AgentSession] Process spawned with PID: ${this.process.pid}`)
 
     if (!this.process.stdout || !this.process.stdin) {
       throw new Error("Failed to create stdio pipes")
