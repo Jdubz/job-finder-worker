@@ -1068,17 +1068,19 @@ WORKFLOW:
 1. get_user_profile - Get user data (MANDATORY first step)
 2. get_form_fields - Get ALL fields with their CSS selectors
 3. For EACH field returned, match label to profile data and fill using:
-   - fill_field(selector, value) for text inputs/textareas
-   - select_option(selector, value) for dropdowns - use value from 'options' array
-   - set_checkbox(selector, true/false) for checkboxes/radios
+   - fill_field(selector, value) for type="text", "email", "tel", "textarea", etc.
+   - select_option(selector, value) for type="select-one" (fields with 'options' array)
+   - set_checkbox(selector, true/false) for type="checkbox" or "radio"
 4. scroll(300) and get_form_fields again - repeat until no new fields
 5. screenshot ONLY to verify fills worked (not to find fields)
 6. done(summary)
 
-DROPDOWN FIELDS:
-- get_form_fields returns 'options' array with {value, text} for each choice
-- Use select_option(selector, value) where value matches options[].value
-- Do NOT type into dropdowns - use select_option
+DROPDOWN FIELDS (type="select-one" or "select-multiple"):
+- Identified by: type contains "select" AND has 'options' array
+- options array has {value, text, selected} for each choice
+- MUST use select_option(selector, value) - pass the 'value' field from options
+- If value is empty string, pass the 'text' field instead
+- Do NOT use fill_field or type() on dropdowns - only select_option works
 
 DYNAMIC FORMS (Education, Employment sections):
 - Use get_buttons to find "Add Another", "Add Education" buttons
