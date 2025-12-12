@@ -306,12 +306,12 @@ async function runVisionAgent(
       // Retry once on parse failure
       try {
         action = await runAgentCli(provider, prompt)
-      } catch {
+      } catch (retryErr) {
         return {
           stepsUsed: step,
           stopReason: "error",
           elapsedMs: Date.now() - startTime,
-          finalReason: err instanceof Error ? err.message : "CLI parse failure",
+          finalReason: retryErr instanceof Error ? retryErr.message : "CLI parse failure",
         }
       }
     }
@@ -585,12 +585,7 @@ async function agentFill() {
     unsubscribeAgentProgress = api.onAgentProgress(handleAgentProgress)
 
     const result = await api.agentFill({ provider, goal })
-
-    // Unsubscribe
-    if (unsubscribeAgentProgress) {
-      unsubscribeAgentProgress()
-      unsubscribeAgentProgress = null
-    }
+    // Note: unsubscribe happens in finally block to handle both success and error paths
 
     if (result.success && result.data) {
       fillOutput.innerHTML = `
@@ -717,12 +712,12 @@ describe("stuck detection", () => {
       if (hash === prevHash) {
         consecutiveNoChange++
       } else {
-        consecutiveNoChange = 1
+        consecutiveNoChange = 0
       }
       prevHash = hash
     }
 
-    expect(consecutiveNoChange).toBe(2)  // Only 2 consecutive "def456"
+    expect(consecutiveNoChange).toBe(1)  // Only 1 match between the two "def456" hashes
   })
 })
 ```

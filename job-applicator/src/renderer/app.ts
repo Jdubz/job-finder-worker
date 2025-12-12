@@ -46,7 +46,7 @@ const PARSE_PATTERNS = {
   completion: /(?:form\s+fill(?:ing)?\s+)?(?:completed?|finished|done)/i,
   screenshotTaken: /screenshot\s+(?:taken|captured)/i,
   clickingAt: /click(?:ing|ed)?\s+(?:at\s+)?\(?(\d+)\s*,\s*(\d+)\)?/i,
-  typingText: /typ(?:ing|ed?)\s+(?:text\s+)?['""]?([^'""]+)['""]?/i,
+  typingText: /typ(?:ing|ed?)\s+(?:text\s+)?['\"]?([^'\"]+)['\"]?/i,
   analyzing: /(?:analyzing|examining|looking\s+at|checking|reviewing)/i,
   toolError: /tool\s+(?:result|output).*(?:error|failed)/i,
 }

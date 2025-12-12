@@ -320,9 +320,15 @@ export function getSkyvernClient(): SkyvernClient {
 ```yaml
 version: "3.8"
 
+# SECURITY NOTE: Pin to a specific version/digest before production use.
+# Using :latest is a supply-chain risk - a compromised image could exfiltrate secrets.
+# Check https://github.com/Skyvern-AI/skyvern/releases for stable versions
+# or use a specific SHA digest: image: public.ecr.aws/skyvern/skyvern@sha256:...
+
 services:
   skyvern:
-    image: skyvernai/skyvern:latest
+    # TODO: Pin to a specific version before production deployment
+    image: public.ecr.aws/skyvern/skyvern:latest
     ports:
       - "8000:8000"
     environment:
