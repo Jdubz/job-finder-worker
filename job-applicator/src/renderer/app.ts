@@ -51,6 +51,7 @@ interface ElectronAPI {
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
   onFormFillProgress: (callback: (progress: FormFillProgress) => void) => () => void
+  onRefreshJobMatches: (callback: () => void) => () => void
 }
 
 // Debug: log immediately when script loads
@@ -957,12 +958,10 @@ function initializeApp() {
   rescanBtn.addEventListener("click", checkForFileInput)
   refreshJobsBtn.addEventListener("click", refreshJobMatches)
 
-  // Keyboard shortcut: Ctrl+R to refresh job matches
-  document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey && e.key === "r") {
-      e.preventDefault() // Prevent browser refresh
-      refreshJobMatches()
-    }
+  // Listen for Ctrl+R global shortcut from main process
+  // This ensures refresh works even when BrowserView has focus
+  api.onRefreshJobMatches(() => {
+    refreshJobMatches()
   })
 
   // Run async initialization

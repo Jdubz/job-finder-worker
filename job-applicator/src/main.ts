@@ -1475,6 +1475,12 @@ app.whenReady().then(() => {
     }
   })
 
+  // Register Ctrl+R to refresh job matches (works even when BrowserView has focus)
+  globalShortcut.register("CommandOrControl+R", () => {
+    logger.info("Refreshing job matches via global shortcut...")
+    mainWindow?.webContents.send("refresh-job-matches")
+  })
+
   // Create application menu with DevTools options
   const menu = Menu.buildFromTemplate([
     {

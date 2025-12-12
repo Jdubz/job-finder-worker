@@ -55,4 +55,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // Return unsubscribe function
     return () => ipcRenderer.removeListener("form-fill-progress", handler)
   },
+
+  // Event listener for refresh job matches (triggered by global Ctrl+R shortcut)
+  onRefreshJobMatches: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on("refresh-job-matches", handler)
+    // Return unsubscribe function
+    return () => ipcRenderer.removeListener("refresh-job-matches", handler)
+  },
 })
