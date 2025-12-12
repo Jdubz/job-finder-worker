@@ -35,7 +35,20 @@ logger.info("Main process starting...")
 
 // Listen for renderer console logs and forward to main process logger
 ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => {
-  const message = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+  // Format each arg - objects get JSON stringified for readability
+  const formatArg = (a: unknown): string => {
+    if (a === null) return "null"
+    if (a === undefined) return "undefined"
+    if (typeof a === "object") {
+      try {
+        return JSON.stringify(a, null, 2)
+      } catch {
+        return "[Circular object]"
+      }
+    }
+    return String(a)
+  }
+  const message = args.map(formatArg).join(" ")
   const prefix = "[RENDERER]"
   switch (level) {
     case "warn":
