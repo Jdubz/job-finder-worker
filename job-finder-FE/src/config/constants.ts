@@ -15,6 +15,12 @@ export const DEFAULT_PAGE_LIMIT = 50
 /** Maximum items for larger data sets (job listings, etc.) */
 export const LARGE_PAGE_LIMIT = 100
 
+/**
+ * Backend-enforced max for /queue pagination.
+ * The API rejects anything above 100, so clamp client requests to stay in-range.
+ */
+export const QUEUE_MAX_PAGE_LIMIT = 100
+
 /** Maximum event log entries to keep in memory */
 export const EVENT_LOG_MAX_SIZE = 200
 
