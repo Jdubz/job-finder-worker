@@ -289,7 +289,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       cancelled = true
       streamAbortRef.current?.abort()
     }
-  }, [appendEventLog, fetchQueueItems, normalizeQueueItem])
+  }, [appendEventLog, fetchQueueItems, normalizeQueueItem, limit, status, type])
 
   const submitJob = useCallback(
     async (request: SubmitJobRequest): Promise<string> => {
