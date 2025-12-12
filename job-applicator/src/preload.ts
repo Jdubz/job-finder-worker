@@ -6,6 +6,14 @@ import type { GenerationProgress, AgentOutputData, AgentStatusData } from "./typ
 import type { IpcRendererEvent } from "electron"
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Logging - forwards to main process logger (logs to both console and file)
+  log: {
+    info: (...args: unknown[]) => ipcRenderer.send("renderer-log", "info", args),
+    warn: (...args: unknown[]) => ipcRenderer.send("renderer-log", "warn", args),
+    error: (...args: unknown[]) => ipcRenderer.send("renderer-log", "error", args),
+    debug: (...args: unknown[]) => ipcRenderer.send("renderer-log", "debug", args),
+  },
+
   // Navigation
   navigate: (url: string): Promise<{ success: boolean; message?: string }> =>
     ipcRenderer.invoke("navigate", url),

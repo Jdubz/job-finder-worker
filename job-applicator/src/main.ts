@@ -33,7 +33,7 @@ app.commandLine.appendSwitch("disable-software-rasterizer")
 
 logger.info("Main process starting...")
 
-// Listen for renderer console logs and forward to main process logger
+// Listen for renderer logs forwarded via IPC (logs to both console and file)
 ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => {
   // Format each arg - objects get JSON stringified for readability
   const formatArg = (a: unknown): string => {
@@ -41,7 +41,7 @@ ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => 
     if (a === undefined) return "undefined"
     if (typeof a === "object") {
       try {
-        return JSON.stringify(a, null, 2)
+        return JSON.stringify(a)
       } catch {
         return "[Circular object]"
       }
@@ -49,16 +49,18 @@ ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => 
     return String(a)
   }
   const message = args.map(formatArg).join(" ")
-  const prefix = "[RENDERER]"
   switch (level) {
     case "warn":
-      logger.warn(prefix, message)
+      logger.warn(message)
       break
     case "error":
-      logger.error(prefix, message)
+      logger.error(message)
+      break
+    case "debug":
+      logger.debug(message)
       break
     default:
-      logger.info(prefix, message)
+      logger.info(message)
   }
 })
 

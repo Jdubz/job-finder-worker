@@ -240,6 +240,13 @@ class StreamingParser {
 // ============================================================================
 
 interface ElectronAPI {
+  // Logging - forwards to main process (logs to both console and file)
+  log: {
+    info: (...args: unknown[]) => void
+    warn: (...args: unknown[]) => void
+    error: (...args: unknown[]) => void
+    debug: (...args: unknown[]) => void
+  }
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
 
@@ -291,23 +298,59 @@ interface ElectronAPI {
   onRefreshJobMatches: (callback: () => void) => () => void
 }
 
-// Debug: log immediately when script loads
-console.log("[app.ts] Script loaded")
-
 // Extend Window interface - with safety check for missing preload
-// Use window.electronAPI directly to avoid any naming conflicts
 declare global {
   interface Window {
     electronAPI?: ElectronAPI
   }
 }
 
-console.log("[app.ts] Checking for api...", window.electronAPI)
+// Logger utility - uses IPC to forward logs to main process (logs to file + console)
+// Falls back to console if API not yet available (during early init)
+const log = {
+  info: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.info("[RENDERER]", formatted)
+    } else {
+      console.log("[RENDERER:info]", formatted)
+    }
+  },
+  warn: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.warn("[RENDERER]", formatted)
+    } else {
+      console.warn("[RENDERER:warn]", formatted)
+    }
+  },
+  error: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.error("[RENDERER]", formatted)
+    } else {
+      console.error("[RENDERER:error]", formatted)
+    }
+  },
+  debug: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.debug("[RENDERER]", formatted)
+    } else {
+      console.log("[RENDERER:debug]", formatted)
+    }
+  },
+}
+
+// Debug: log immediately when script loads
+log.info("Script loaded")
+
+log.debug("Checking for electronAPI...")
 if (!window.electronAPI) {
-  console.error("[app.ts] electronAPI not found!")
+  log.error("electronAPI not found!")
   throw new Error("Electron API not available. Preload script may have failed to load.")
 }
-console.log("[app.ts] electronAPI found!")
+log.info("electronAPI found")
 const api = window.electronAPI
 
 // State
@@ -426,7 +469,7 @@ async function loadJobMatches(): Promise<boolean> {
     jobMatches = []
     const message = err instanceof Error ? err.message : String(err)
     jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
-    console.error("Failed to load job matches:", err)
+    log.error("Failed to load job matches:", err)
     return false
   }
 }
@@ -564,7 +607,7 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
     selectedDocumentId = null
     const message = err instanceof Error ? err.message : String(err)
     documentsList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
-    console.error("Failed to load documents:", err)
+    log.error("Failed to load documents:", err)
     updateUploadButtonsState()
   }
 }
@@ -617,7 +660,7 @@ function renderDocumentsList() {
       if (url) {
         const result = await api.openDocument(url)
         if (!result.success) {
-          console.error("[app.ts] Failed to open document:", result.message)
+          log.error("Failed to open document:", result.message)
         }
       }
     })
@@ -878,13 +921,13 @@ async function checkUrlForJobMatch(url: string) {
         generateBtn.disabled = false
         setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
       } else {
-        console.warn("No match.id found; skipping document load.")
+        log.warn("No match.id found; skipping document load")
         generateBtn.disabled = true
         setStatus("Matched job has no id; cannot load documents", "error")
       }
     }
   } catch (err) {
-    console.warn("Failed to check URL for job match:", err)
+    log.warn("Failed to check URL for job match:", err)
   }
 }
 
@@ -1003,16 +1046,16 @@ async function stopAgentSession() {
 // Ensure agent event listeners are set up
 function ensureAgentListeners() {
   if (!unsubscribeAgentOutput) {
-    console.log("[app.ts] Setting up agent output listener")
+    log.debug("Setting up agent output listener")
     unsubscribeAgentOutput = api.onAgentOutput((data) => {
-      console.log("[app.ts] Received agent output (" + data.text.length + " chars):", data.text.slice(0, 100).replace(/\n/g, "\\n"))
+      log.debug("Received agent output (" + data.text.length + " chars):", data.text.slice(0, 100).replace(/\n/g, "\\n"))
       appendAgentOutput(data.text, data.isError ? "error" : undefined)
     })
   }
   if (!unsubscribeAgentStatus) {
-    console.log("[app.ts] Setting up agent status listener")
+    log.debug("Setting up agent status listener")
     unsubscribeAgentStatus = api.onAgentStatus((data) => {
-      console.log("[app.ts] Received agent status:", JSON.stringify(data))
+      log.debug("Received agent status:", data)
       updateAgentStatusUI(data.state as AgentSessionState)
       if (data.state === "idle" || data.state === "stopped") {
         isFormFillActive = false
@@ -1058,12 +1101,12 @@ async function fillFormWithAgent() {
   agentOutputParser.reset()
   agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
 
-  console.log("[app.ts] Calling api.fillForm...")
+  log.info("Calling api.fillForm for job:", selectedJobMatchId)
   const result = await api.fillForm({
     jobMatchId: selectedJobMatchId,
     jobContext,
   })
-  console.log("[app.ts] api.fillForm returned:", JSON.stringify(result))
+  log.info("api.fillForm returned:", result)
 
   if (result.success) {
     setStatus("Form fill running", "success")
@@ -1174,7 +1217,7 @@ async function uploadDocument(type: "resume" | "coverLetter") {
     } else {
       setStatus(result.message, "error")
       if (result.filePath) {
-        console.log("Manual upload path:", result.filePath)
+        log.debug("Manual upload path:", result.filePath)
       }
     }
   } catch (err: unknown) {
@@ -1277,15 +1320,15 @@ window.addEventListener("beforeunload", () => {
 })
 
 // Wait for DOM to be ready before initializing
-console.log("[app.ts] document.readyState:", document.readyState)
+log.debug("document.readyState:", document.readyState)
 if (document.readyState === "loading") {
-  console.log("[app.ts] Waiting for DOMContentLoaded...")
+  log.debug("Waiting for DOMContentLoaded...")
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("[app.ts] DOMContentLoaded fired, calling initializeApp")
+    log.debug("DOMContentLoaded fired, calling initializeApp")
     initializeApp()
   })
 } else {
   // DOM is already ready
-  console.log("[app.ts] DOM already ready, calling initializeApp")
+  log.debug("DOM already ready, calling initializeApp")
   initializeApp()
 }
