@@ -52,14 +52,14 @@
         <!-- Job Matches Section -->
         <section class="sidebar-section">
           <div class="section-header">
-            <h3 class="section-title">Job Matches</h3>
+            <h3 class="section-title">Job Match</h3>
             <button class="btn-refresh" id="refreshJobsBtn" title="Refresh job matches (Ctrl+R)" aria-label="Refresh job matches (Ctrl+R)">
               <span class="refresh-icon">↻</span>
             </button>
           </div>
-          <div class="job-list" id="jobList">
-            <div class="loading-placeholder">Loading...</div>
-          </div>
+          <select id="jobSelect" class="job-select" disabled>
+            <option value="">-- Select Job --</option>
+          </select>
         </section>
 
         <!-- Job Actions Section (shown when job selected) -->
@@ -74,8 +74,25 @@
         <!-- Documents Section -->
         <section class="sidebar-section" id="documentsSection">
           <h3 class="section-title">Documents</h3>
-          <div class="documents-list" id="documentsList">
-            <div class="empty-placeholder">Select a job match</div>
+          <div class="document-selectors">
+            <div class="document-selector">
+              <label for="resumeSelect">Resume</label>
+              <div class="document-select-row">
+                <select id="resumeSelect" class="document-select" disabled>
+                  <option value="">-- Select Resume --</option>
+                </select>
+                <button class="btn-preview" id="previewResumeBtn" disabled title="Preview selected resume">👁</button>
+              </div>
+            </div>
+            <div class="document-selector">
+              <label for="coverLetterSelect">Cover Letter</label>
+              <div class="document-select-row">
+                <select id="coverLetterSelect" class="document-select" disabled>
+                  <option value="">-- Select Cover Letter --</option>
+                </select>
+                <button class="btn-preview" id="previewCoverLetterBtn" disabled title="Preview selected cover letter">👁</button>
+              </div>
+            </div>
           </div>
           <div class="section-actions generate-actions">
             <select id="generateType" class="generate-type-select">
@@ -107,19 +124,32 @@
           </div>
         </section>
 
-        <!-- Form Fill Section -->
-        <section class="sidebar-section" id="fillSection">
-          <h3 class="section-title">Form Fill</h3>
-          <div class="fill-controls">
-            <select id="providerSelect" class="provider-select">
+        <!-- Agent Session Section -->
+        <section class="sidebar-section" id="agentSection">
+          <div class="section-header">
+            <h3 class="section-title">Agent Session</h3>
+            <div class="agent-status" id="agentStatus">
+              <span class="status-dot stopped"></span>
+              <span class="status-text">Stopped</span>
+            </div>
+          </div>
+
+          <div class="agent-controls">
+            <select id="agentProviderSelect" class="provider-select">
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
               <option value="gemini">Gemini</option>
             </select>
-            <button class="btn-fill" id="fillBtn">Fill Form</button>
+            <button class="btn-start-session" id="startSessionBtn">Start Session</button>
+            <button class="btn-stop-session hidden" id="stopSessionBtn">Stop</button>
           </div>
-          <div class="fill-output" id="fillOutput">
-            <div class="empty-placeholder">Ready to fill form</div>
+
+          <div class="agent-actions hidden" id="agentActions">
+            <button class="btn-fill" id="fillFormBtn">Fill Form</button>
+          </div>
+
+          <div class="agent-output" id="agentOutput">
+            <div class="empty-placeholder">Start session to begin</div>
           </div>
         </section>
       </div>

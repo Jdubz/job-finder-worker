@@ -1,0 +1,35 @@
+version: "3.8"
+
+# SECURITY NOTE: Pin to a specific version/digest before production use.
+# Using :latest is a supply-chain risk - a compromised image could exfiltrate secrets.
+# Check https://github.com/Skyvern-AI/skyvern/releases for stable versions
+# or use a specific SHA digest: image: public.ecr.aws/skyvern/skyvern@sha256:...
+
+services:
+  skyvern:
+    # TODO: Pin to a specific version before production deployment
+    image: public.ecr.aws/skyvern/skyvern:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@postgres:5432/skyvern
+      - BROWSER_TYPE=chromium-headful
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LLM_KEY=ANTHROPIC
+    depends_on:
+      - postgres
+    volumes:
+      - skyvern-data:/data
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=skyvern
+      - POSTGRES_PASSWORD=skyvern
+      - POSTGRES_DB=skyvern
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  skyvern-data:
+  postgres-data:

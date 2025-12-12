@@ -73,71 +73,21 @@ export interface JobMatchListItem {
 }
 
 // ============================================================================
-// Form Types (app-specific)
+// Agent Types (for MCP-based form filling)
 // ============================================================================
 
-export interface SelectOption {
-  value: string
+/** Agent session state for UI display */
+export type AgentSessionState = "idle" | "working" | "stopped"
+
+/** Agent output event data */
+export interface AgentOutputData {
   text: string
+  isError?: boolean
 }
 
-export interface FormField {
-  selector: string | null
-  type: string
-  label: string | null
-  placeholder: string | null
-  required: boolean
-  options: SelectOption[] | null
-}
-
-export interface FillInstruction {
-  selector: string
-  value: string
-}
-
-export interface EnhancedFillInstruction {
-  selector: string
-  value: string | null
-  status: "filled" | "skipped"
-  reason?: string
-  label?: string
-}
-
-export interface FormFillSummary {
-  totalFields: number
-  filledCount: number
-  skippedCount: number
-  skippedFields: Array<{ label: string; reason: string }>
-  duration: number
-}
-
-/**
- * Progress updates for form filling - sent via IPC during the fill process.
- * Supports streaming CLI output and field-by-field fill progress.
- */
-export interface FormFillProgress {
-  /** Current phase of the fill process */
-  phase: "starting" | "ai-processing" | "filling" | "completed" | "failed"
-  /** Status message to display */
-  message: string
-  /** Streaming text from AI (token-by-token as it arrives) */
-  streamingText?: string
-  /** Whether AI is still generating */
-  isStreaming?: boolean
-  /** Total form fields detected */
-  totalFields?: number
-  /** Number of fields processed so far */
-  processedFields?: number
-  /** Current field being filled */
-  currentField?: {
-    label: string
-    selector: string
-    status: "processing" | "filled" | "skipped"
-  }
-  /** Final summary (only on completion) */
-  summary?: FormFillSummary
-  /** Error message (only on failure) */
-  error?: string
+/** Agent status event data */
+export interface AgentStatusData {
+  state: AgentSessionState
 }
 
 // ============================================================================

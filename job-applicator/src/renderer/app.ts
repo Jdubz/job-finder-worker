@@ -1,22 +1,265 @@
 import type {
   JobMatchWithListing as JobMatchListItem,
   DocumentInfo,
-  FormFillSummary,
-  FormFillProgress,
   GenerationProgress,
   GenerationStep,
   WorkflowState,
   WorkflowStep,
+  AgentSessionState,
+  AgentOutputData,
+  AgentStatusData,
 } from "../types.js"
 
+// ============================================================================
+// Agent Output Parser (inlined to avoid ES module issues in renderer)
+// ============================================================================
+
+interface ParsedActivity {
+  type: "tool_call" | "tool_result" | "thinking" | "text" | "error" | "completion"
+  tool?: string
+  params?: Record<string, unknown>
+  result?: unknown
+  text?: string
+  icon?: string
+  displayText: string
+}
+
+// Tool display configuration
+const TOOL_DISPLAY: Record<string, { icon: string; verb: string }> = {
+  screenshot: { icon: "📸", verb: "Taking screenshot" },
+  click: { icon: "🖱️", verb: "Clicking" },
+  type: { icon: "⌨️", verb: "Typing" },
+  press_key: { icon: "⌨️", verb: "Pressing key" },
+  scroll: { icon: "📜", verb: "Scrolling" },
+  get_form_fields: { icon: "📋", verb: "Analyzing form fields" },
+  generate_resume: { icon: "📄", verb: "Generating resume" },
+  generate_cover_letter: { icon: "📝", verb: "Generating cover letter" },
+  upload_file: { icon: "📤", verb: "Uploading file" },
+  done: { icon: "✅", verb: "Completed" },
+}
+
+// Patterns for parsing CLI output
+const PARSE_PATTERNS = {
+  toolCallLine: /\[tool:\s*(\w+)\]/i,
+  usingTool: /using\s+(?:tool|mcp\s+tool):\s*(\w+)/i,
+  mcpToolCall: /calling\s+(?:mcp\s+)?tool\s+['"]?(\w+)['"]?/i,
+  completion: /(?:form\s+fill(?:ing)?\s+)?(?:completed?|finished|done)/i,
+  screenshotTaken: /screenshot\s+(?:taken|captured)/i,
+  clickingAt: /click(?:ing|ed)?\s+(?:at\s+)?\(?(\d+)\s*,\s*(\d+)\)?/i,
+  typingText: /typ(?:ing|ed?)\s+(?:text\s+)?['"]?([^'"]+)['"]?/i,
+  analyzing: /(?:analyzing|examining|looking\s+at|checking|reviewing)/i,
+  toolError: /tool\s+(?:result|output).*(?:error|failed)/i,
+}
+
+function formatToolCall(toolName: string, params?: Record<string, unknown>): string {
+  const display = TOOL_DISPLAY[toolName] || { icon: "🔧", verb: "Using" }
+
+  switch (toolName) {
+    case "screenshot":
+      return `${display.icon} Taking screenshot...`
+    case "click":
+      if (params?.x !== undefined && params?.y !== undefined) {
+        return `${display.icon} Clicking at (${params.x}, ${params.y})`
+      }
+      return `${display.icon} Clicking...`
+    case "type":
+      if (params?.text) {
+        const text = String(params.text)
+        const preview = text.length > 30 ? text.slice(0, 30) + "..." : text
+        return `${display.icon} Typing "${preview}"`
+      }
+      return `${display.icon} Typing...`
+    case "press_key":
+      if (params?.key) {
+        return `${display.icon} Pressing ${params.key}`
+      }
+      return `${display.icon} Pressing key...`
+    case "scroll":
+      if (params?.dy !== undefined) {
+        const direction = Number(params.dy) > 0 ? "down" : "up"
+        return `${display.icon} Scrolling ${direction}`
+      }
+      return `${display.icon} Scrolling...`
+    case "get_form_fields":
+      return `${display.icon} Analyzing form fields...`
+    case "generate_resume":
+      return `${display.icon} Generating tailored resume...`
+    case "generate_cover_letter":
+      return `${display.icon} Generating cover letter...`
+    case "upload_file":
+      if (params?.type) {
+        const fileType = params.type === "coverLetter" ? "cover letter" : "resume"
+        return `${display.icon} Uploading ${fileType}...`
+      }
+      return `${display.icon} Uploading file...`
+    case "done":
+      if (params?.summary) {
+        return `${display.icon} ${params.summary}`
+      }
+      return `${display.icon} Form filling completed`
+    default:
+      return `${display.icon} ${display.verb} ${toolName}...`
+  }
+}
+
+function parseLine(line: string): ParsedActivity | null {
+  // Try to parse as JSON tool call
+  try {
+    if (line.includes('"type"') && line.includes('"tool_use"')) {
+      const match = line.match(/\{[^{}]*"type"\s*:\s*"tool_use"[^{}]*\}/)
+      if (match) {
+        const json = JSON.parse(match[0])
+        const toolName = json.name || "unknown"
+        const display = TOOL_DISPLAY[toolName] || { icon: "🔧", verb: "Using" }
+        return {
+          type: "tool_call",
+          tool: toolName,
+          params: json.input,
+          icon: display.icon,
+          displayText: formatToolCall(toolName, json.input),
+        }
+      }
+    }
+  } catch {
+    // Not valid JSON, continue with other patterns
+  }
+
+  // Check for tool call patterns
+  const toolMatch = line.match(PARSE_PATTERNS.toolCallLine)
+    || line.match(PARSE_PATTERNS.usingTool)
+    || line.match(PARSE_PATTERNS.mcpToolCall)
+
+  if (toolMatch) {
+    const toolName = toolMatch[1].toLowerCase()
+    const display = TOOL_DISPLAY[toolName] || { icon: "🔧", verb: "Using" }
+    return {
+      type: "tool_call",
+      tool: toolName,
+      icon: display.icon,
+      displayText: `${display.icon} ${display.verb}...`,
+    }
+  }
+
+  // Check for completion
+  if (PARSE_PATTERNS.completion.test(line)) {
+    return { type: "completion", icon: "✅", displayText: `✅ ${line}` }
+  }
+
+  // Check for screenshot taken
+  if (PARSE_PATTERNS.screenshotTaken.test(line)) {
+    return { type: "tool_result", tool: "screenshot", icon: "📸", displayText: "📸 Screenshot captured" }
+  }
+
+  // Check for click action
+  const clickMatch = line.match(PARSE_PATTERNS.clickingAt)
+  if (clickMatch) {
+    return { type: "tool_call", tool: "click", icon: "🖱️", displayText: `🖱️ Clicking at (${clickMatch[1]}, ${clickMatch[2]})` }
+  }
+
+  // Check for typing
+  const typeMatch = line.match(PARSE_PATTERNS.typingText)
+  if (typeMatch) {
+    const text = typeMatch[1].length > 30 ? typeMatch[1].slice(0, 30) + "..." : typeMatch[1]
+    return { type: "tool_call", tool: "type", icon: "⌨️", displayText: `⌨️ Typing "${text}"` }
+  }
+
+  // Check for analyzing/thinking
+  if (PARSE_PATTERNS.analyzing.test(line)) {
+    return { type: "thinking", icon: "🤔", displayText: `🤔 ${line}` }
+  }
+
+  // Check for errors
+  if (PARSE_PATTERNS.toolError.test(line) || line.toLowerCase().includes("error")) {
+    return { type: "error", icon: "❌", displayText: `❌ ${line}` }
+  }
+
+  // Default: return as text if it looks meaningful
+  if (line.length > 5) {
+    return { type: "text", displayText: line }
+  }
+
+  return null
+}
+
+function parseAgentOutput(text: string): ParsedActivity[] {
+  const activities: ParsedActivity[] = []
+  const lines = text.split("\n")
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const activity = parseLine(trimmed)
+    if (activity) activities.push(activity)
+  }
+
+  if (activities.length === 0 && text.trim()) {
+    activities.push({ type: "text", displayText: text.trim() })
+  }
+
+  return activities
+}
+
+class StreamingParser {
+  private buffer: string = ""
+  private lastToolCall: string | null = null
+
+  addChunk(chunk: string): ParsedActivity[] {
+    this.buffer += chunk
+    const activities: ParsedActivity[] = []
+    const lines = this.buffer.split("\n")
+    this.buffer = lines.pop() || ""
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      const activity = parseLine(trimmed)
+      if (activity) {
+        if (activity.type === "tool_call" && activity.tool === this.lastToolCall) continue
+        if (activity.type === "tool_call") this.lastToolCall = activity.tool || null
+        activities.push(activity)
+      }
+    }
+    return activities
+  }
+
+  flush(): ParsedActivity[] {
+    if (!this.buffer.trim()) return []
+    const activities = parseAgentOutput(this.buffer)
+    this.buffer = ""
+    return activities
+  }
+
+  reset(): void {
+    this.buffer = ""
+    this.lastToolCall = null
+  }
+}
+
+// ============================================================================
+// End Agent Output Parser
+// ============================================================================
+
 interface ElectronAPI {
+  // Logging - forwards to main process (logs to both console and file)
+  log: {
+    info: (...args: unknown[]) => void
+    warn: (...args: unknown[]) => void
+    error: (...args: unknown[]) => void
+    debug: (...args: unknown[]) => void
+  }
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
-  fillForm: (options: {
-    provider: "claude" | "codex" | "gemini"
-    jobMatchId?: string
-    documentId?: string
-  }) => Promise<{ success: boolean; data?: FormFillSummary; message?: string }>
+
+  // Form Fill API (MCP-based)
+  fillForm: (options: { jobMatchId: string; jobContext: string }) => Promise<{ success: boolean; message?: string }>
+  stopFillForm: () => Promise<{ success: boolean }>
+  sendAgentInput: (input: string) => Promise<{ success: boolean; message?: string }>
+  pauseAgent: () => Promise<{ success: boolean; message?: string }>
+  onAgentOutput: (callback: (data: AgentOutputData) => void) => () => void
+  onAgentStatus: (callback: (data: AgentStatusData) => void) => () => void
+  onBrowserUrlChanged: (callback: (data: { url: string }) => void) => () => void
+
+  // File upload
   uploadResume: (options?: {
     documentId?: string
     type?: "resume" | "coverLetter"
@@ -24,6 +267,8 @@ interface ElectronAPI {
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   checkFileInput: () => Promise<{ hasFileInput: boolean; selector?: string }>
+
+  // Job matches
   getJobMatches: (options?: { limit?: number; status?: string }) => Promise<{
     success: boolean
     data?: JobMatchListItem[]
@@ -35,6 +280,8 @@ interface ElectronAPI {
     id: string
     status: "active" | "ignored" | "applied"
   }) => Promise<{ success: boolean; message?: string }>
+
+  // Documents
   getDocuments: (jobMatchId: string) => Promise<{
     success: boolean
     data?: DocumentInfo[]
@@ -50,32 +297,68 @@ interface ElectronAPI {
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
-  onFormFillProgress: (callback: (progress: FormFillProgress) => void) => () => void
   onRefreshJobMatches: (callback: () => void) => () => void
 }
 
-// Debug: log immediately when script loads
-console.log("[app.ts] Script loaded")
-
 // Extend Window interface - with safety check for missing preload
-// Use window.electronAPI directly to avoid any naming conflicts
 declare global {
   interface Window {
     electronAPI?: ElectronAPI
   }
 }
 
-console.log("[app.ts] Checking for api...", window.electronAPI)
+// Logger utility - uses IPC to forward logs to main process (logs to file + console)
+// Falls back to console if API not yet available (during early init)
+const log = {
+  info: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.info("[RENDERER]", formatted)
+    } else {
+      console.log("[RENDERER:info]", formatted)
+    }
+  },
+  warn: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.warn("[RENDERER]", formatted)
+    } else {
+      console.warn("[RENDERER:warn]", formatted)
+    }
+  },
+  error: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.error("[RENDERER]", formatted)
+    } else {
+      console.error("[RENDERER:error]", formatted)
+    }
+  },
+  debug: (...args: unknown[]) => {
+    const formatted = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
+    if (window.electronAPI?.log) {
+      window.electronAPI.log.debug("[RENDERER]", formatted)
+    } else {
+      console.log("[RENDERER:debug]", formatted)
+    }
+  },
+}
+
+// Debug: log immediately when script loads
+log.info("Script loaded")
+
+log.debug("Checking for electronAPI...")
 if (!window.electronAPI) {
-  console.error("[app.ts] electronAPI not found!")
+  log.error("electronAPI not found!")
   throw new Error("Electron API not available. Preload script may have failed to load.")
 }
-console.log("[app.ts] electronAPI found!")
+log.info("electronAPI found")
 const api = window.electronAPI
 
 // State
 let selectedJobMatchId: string | null = null
-let selectedDocumentId: string | null = null
+let selectedResumeId: string | null = null
+let selectedCoverLetterId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
 const workflowState: WorkflowState = {
@@ -100,23 +383,30 @@ function getElement<T extends HTMLElement>(id: string): T {
 // DOM elements - Toolbar
 const urlInput = getElement<HTMLInputElement>("urlInput")
 const goBtn = getElement<HTMLButtonElement>("goBtn")
-const providerSelect = getElement<HTMLSelectElement>("providerSelect")
-const fillBtn = getElement<HTMLButtonElement>("fillBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
 
 // DOM elements - Sidebar
-const jobList = getElement<HTMLDivElement>("jobList")
-const documentsList = getElement<HTMLDivElement>("documentsList")
+const jobSelect = getElement<HTMLSelectElement>("jobSelect")
+const resumeSelect = getElement<HTMLSelectElement>("resumeSelect")
+const coverLetterSelect = getElement<HTMLSelectElement>("coverLetterSelect")
 const generateBtn = getElement<HTMLButtonElement>("generateBtn")
 const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
-const fillOutput = getElement<HTMLDivElement>("fillOutput")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
 const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
 const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
 const generationProgress = getElement<HTMLDivElement>("generationProgress")
 const generationSteps = getElement<HTMLDivElement>("generationSteps")
+
+// DOM elements - Agent Panel
+const agentStatus = getElement<HTMLDivElement>("agentStatus")
+const agentProviderSelect = getElement<HTMLSelectElement>("agentProviderSelect")
+const startSessionBtn = getElement<HTMLButtonElement>("startSessionBtn")
+const stopSessionBtn = getElement<HTMLButtonElement>("stopSessionBtn")
+const agentActions = getElement<HTMLDivElement>("agentActions")
+const fillFormBtn = getElement<HTMLButtonElement>("fillFormBtn")
+const agentOutput = getElement<HTMLDivElement>("agentOutput")
 
 // DOM elements - Upload section
 const uploadResumeBtn = getElement<HTMLButtonElement>("uploadResumeBtn")
@@ -125,6 +415,8 @@ const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
 const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
 const refreshJobsBtn = getElement<HTMLButtonElement>("refreshJobsBtn")
+const previewResumeBtn = getElement<HTMLButtonElement>("previewResumeBtn")
+const previewCoverLetterBtn = getElement<HTMLButtonElement>("previewCoverLetterBtn")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -133,7 +425,6 @@ function setStatus(message: string, type: "success" | "error" | "loading" | "" =
 
 function setButtonsEnabled(enabled: boolean) {
   goBtn.disabled = !enabled
-  fillBtn.disabled = !enabled
   submitJobBtn.disabled = !enabled
   // Upload buttons have their own enable logic based on file input and document selection
   updateUploadButtonsState()
@@ -166,25 +457,26 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 // Load job matches from backend
 // Returns true on success, false on failure
 async function loadJobMatches(): Promise<boolean> {
-  jobList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
+  jobSelect.disabled = true
+  jobSelect.innerHTML = '<option value="">Loading...</option>'
 
   try {
     const result = await api.getJobMatches({ limit: 50, status: "active" })
 
     if (result.success && Array.isArray(result.data)) {
       jobMatches = result.data
-      renderJobList()
+      renderJobSelect()
       return true
     } else {
       jobMatches = []
-      jobList.innerHTML = `<div class="empty-placeholder">${result.message || "Failed to load job matches"}</div>`
+      jobSelect.innerHTML = `<option value="">${result.message || "Failed to load"}</option>`
       return false
     }
   } catch (err) {
     jobMatches = []
     const message = err instanceof Error ? err.message : String(err)
-    jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
-    console.error("Failed to load job matches:", err)
+    jobSelect.innerHTML = `<option value="">Error: ${message}</option>`
+    log.error("Failed to load job matches:", err)
     return false
   }
 }
@@ -207,46 +499,40 @@ async function refreshJobMatches() {
   refreshJobsBtn.disabled = false
 }
 
-// Render job matches list
-function renderJobList() {
+// Render job matches dropdown
+function renderJobSelect() {
   if (jobMatches.length === 0) {
-    jobList.innerHTML = '<div class="empty-placeholder">No job matches found</div>'
+    jobSelect.innerHTML = '<option value="">No job matches found</option>'
+    jobSelect.disabled = true
     return
   }
 
-  jobList.innerHTML = jobMatches
-    .map((match) => {
-      const scoreClass = match.matchScore >= 85 ? "high" : match.matchScore >= 70 ? "medium" : "low"
-      const isSelected = match.id === selectedJobMatchId
-      const statusBadge = match.status !== "active"
-        ? `<span class="job-status-badge ${match.status}">${match.status}</span>`
-        : ""
-      return `
-      <div class="job-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(match.id ?? "")}">
-        <div class="job-title">${escapeHtml(match.listing.title)}${statusBadge}</div>
-        <div class="job-company">${escapeHtml(match.listing.companyName)}</div>
-        <div class="job-score ${scoreClass}">${match.matchScore}% match</div>
-      </div>
-    `
-    })
-    .join("")
+  jobSelect.innerHTML = '<option value="">-- Select Job --</option>' +
+    jobMatches.map((match) => {
+      const statusSuffix = match.status !== "active" ? ` [${match.status}]` : ""
+      const label = `${match.listing.title} @ ${match.listing.companyName} (${match.matchScore}%)${statusSuffix}`
+      return `<option value="${escapeAttr(match.id ?? "")}">${escapeHtml(label)}</option>`
+    }).join("")
 
-  // Add click handlers
-  jobList.querySelectorAll(".job-item").forEach((el) => {
-    el.addEventListener("click", () => {
-      const id = (el as HTMLElement).dataset.id
-      if (id) selectJobMatch(id)
-    })
-  })
+  // Preserve selection if still valid
+  if (selectedJobMatchId && jobMatches.find((m) => m.id === selectedJobMatchId)) {
+    jobSelect.value = selectedJobMatchId
+  }
+
+  jobSelect.disabled = false
 }
 
 // Select a job match
 async function selectJobMatch(id: string) {
   selectedJobMatchId = id
-  selectedDocumentId = null
+  selectedResumeId = null
+  selectedCoverLetterId = null
 
-  // Update UI
-  renderJobList()
+  // Update dropdown selection
+  jobSelect.value = id
+
+  // Update fill button state (depends on selectedJobMatchId)
+  updateAgentStatusUI(_agentSessionState)
 
   // Find the match
   const match = jobMatches.find((m) => m.id === id)
@@ -283,10 +569,11 @@ async function selectJobMatch(id: string) {
 }
 
 // Load documents for a job match
-// If autoSelectId is provided, auto-select that document
-// Otherwise, auto-select the most recent completed document
+// If autoSelectId is provided, auto-select that document in the appropriate dropdown
 async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
-  documentsList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
+  // Disable dropdowns while loading
+  resumeSelect.disabled = true
+  coverLetterSelect.disabled = true
 
   try {
     const result = await api.getDocuments(jobMatchId)
@@ -294,141 +581,129 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
 
-      // Auto-select logic:
-      // 1. If autoSelectId provided (e.g., newly generated), select it
-      // 2. Otherwise, select the most recent completed document
-      // 3. Documents are already sorted by createdAt desc from API
+      // Filter documents with resume and cover letter URLs
+      const resumes = documents.filter((d) => d.resumeUrl && d.status === "completed")
+      const coverLetters = documents.filter((d) => d.coverLetterUrl && d.status === "completed")
+
+      // Populate resume dropdown with date + ID snippet
+      resumeSelect.innerHTML = '<option value="">-- Select Resume --</option>' +
+        resumes.map((doc) => {
+          const date = new Date(doc.createdAt).toLocaleDateString()
+          const idSnippet = doc.id.slice(0, 6)
+          return `<option value="${escapeAttr(doc.id)}">${escapeHtml(date)} (${escapeHtml(idSnippet)})</option>`
+        }).join("")
+
+      // Populate cover letter dropdown with date + ID snippet
+      coverLetterSelect.innerHTML = '<option value="">-- Select Cover Letter --</option>' +
+        coverLetters.map((doc) => {
+          const date = new Date(doc.createdAt).toLocaleDateString()
+          const idSnippet = doc.id.slice(0, 6)
+          return `<option value="${escapeAttr(doc.id)}">${escapeHtml(date)} (${escapeHtml(idSnippet)})</option>`
+        }).join("")
+
+      // Auto-select logic
       if (autoSelectId) {
-        selectedDocumentId = documents.find((d) => d.id === autoSelectId)?.id || null
-      } else if (!selectedDocumentId) {
-        // Find most recent completed document
-        const completed = documents.find((d) => d.status === "completed")
-        selectedDocumentId = completed?.id || null
+        const doc = documents.find((d) => d.id === autoSelectId)
+        if (doc?.resumeUrl) selectedResumeId = doc.id
+        if (doc?.coverLetterUrl) selectedCoverLetterId = doc.id
+      } else {
+        // Auto-select most recent if not already selected
+        if (!selectedResumeId && resumes.length > 0) {
+          selectedResumeId = resumes[0].id
+        }
+        if (!selectedCoverLetterId && coverLetters.length > 0) {
+          selectedCoverLetterId = coverLetters[0].id
+        }
       }
 
-      renderDocumentsList()
+      // Set dropdown values
+      resumeSelect.value = selectedResumeId || ""
+      coverLetterSelect.value = selectedCoverLetterId || ""
+
+      // Enable dropdowns if they have options
+      resumeSelect.disabled = resumes.length === 0
+      coverLetterSelect.disabled = coverLetters.length === 0
+
       updateUploadButtonsState()
     } else {
       documents = []
-      selectedDocumentId = null
-      documentsList.innerHTML = `<div class="empty-placeholder">${result.message || "No documents"}</div>`
+      selectedResumeId = null
+      selectedCoverLetterId = null
+      resumeSelect.innerHTML = '<option value="">-- No resumes --</option>'
+      coverLetterSelect.innerHTML = '<option value="">-- No cover letters --</option>'
       updateUploadButtonsState()
     }
   } catch (err) {
     documents = []
-    selectedDocumentId = null
+    selectedResumeId = null
+    selectedCoverLetterId = null
     const message = err instanceof Error ? err.message : String(err)
-    documentsList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
-    console.error("Failed to load documents:", err)
+    log.error("Failed to load documents:", message)
+    resumeSelect.innerHTML = '<option value="">-- Error loading --</option>'
+    coverLetterSelect.innerHTML = '<option value="">-- Error loading --</option>'
     updateUploadButtonsState()
   }
 }
 
-// Render documents list
-function renderDocumentsList() {
-  if (documents.length === 0) {
-    documentsList.innerHTML = '<div class="empty-placeholder">No documents yet</div>'
-    return
-  }
-
-  documentsList.innerHTML = documents
-    .map((doc) => {
-      const typeLabel = doc.generateType === "both" ? "Resume + Cover Letter" : doc.generateType === "resume" ? "Resume" : "Cover Letter"
-      const date = new Date(doc.createdAt).toLocaleDateString()
-      const isSelected = doc.id === selectedDocumentId
-      const statusBadge = doc.status !== "completed" ? ` (${doc.status})` : ""
-
-      return `
-      <div class="document-item${isSelected ? " selected" : ""}" data-id="${escapeAttr(doc.id)}">
-        <span class="document-icon">${doc.generateType === "coverLetter" ? "CL" : "R"}</span>
-        <div class="document-info">
-          <div class="document-type">${escapeHtml(typeLabel)}${escapeHtml(statusBadge)}</div>
-          <div class="document-date">${escapeHtml(date)}</div>
-        </div>
-        <div class="document-actions">
-          ${doc.resumeUrl ? `<button class="btn-view" data-url="${escapeAttr(doc.resumeUrl)}" title="View Resume">R</button>` : ""}
-          ${doc.coverLetterUrl ? `<button class="btn-view" data-url="${escapeAttr(doc.coverLetterUrl)}" title="View Cover Letter">CL</button>` : ""}
-        </div>
-      </div>
-    `
-    })
-    .join("")
-
-  // Add click handlers for selection
-  documentsList.querySelectorAll(".document-item").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      // Don't select if clicking a button
-      if ((e.target as HTMLElement).tagName === "BUTTON") return
-      const id = (el as HTMLElement).dataset.id
-      if (id) selectDocument(id)
-    })
-  })
-
-  // Add click handlers for view buttons
-  documentsList.querySelectorAll(".btn-view").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation()
-      const url = (btn as HTMLElement).dataset.url
-      if (url) {
-        const result = await api.openDocument(url)
-        if (!result.success) {
-          console.error("[app.ts] Failed to open document:", result.message)
-        }
-      }
-    })
-  })
+// Get the selected resume document
+function getSelectedResume(): DocumentInfo | null {
+  if (!selectedResumeId) return null
+  return documents.find((d) => d.id === selectedResumeId) || null
 }
 
-// Select a document
-function selectDocument(id: string) {
-  selectedDocumentId = selectedDocumentId === id ? null : id // Toggle selection
-  renderDocumentsList()
-  updateUploadButtonsState()
+// Get the selected cover letter document
+function getSelectedCoverLetter(): DocumentInfo | null {
+  if (!selectedCoverLetterId) return null
+  return documents.find((d) => d.id === selectedCoverLetterId) || null
 }
 
-// Get the currently selected document
-function getSelectedDocument(): DocumentInfo | null {
-  if (!selectedDocumentId) return null
-  return documents.find((d) => d.id === selectedDocumentId) || null
+// Get selected document by type (prefixed with _ as currently unused but may be needed)
+function _getSelectedDocumentByType(type: "resume" | "coverLetter"): DocumentInfo | null {
+  const id = type === "resume" ? selectedResumeId : selectedCoverLetterId
+  if (!id) return null
+  return documents.find((d) => d.id === id) || null
 }
 
-// Update upload buttons enabled state based on requirements:
-// 1. File input must exist on page
-// 2. A document must be selected
-// 3. The document must have the appropriate file (resumeUrl or coverLetterUrl)
+// Update upload buttons and preview buttons enabled state based on requirements:
+// Upload: 1. File input must exist on page 2. A document must be selected for that type
+// Preview: Document must be selected
 function updateUploadButtonsState() {
-  const doc = getSelectedDocument()
-  const canUploadResume = hasFileInput && doc?.resumeUrl
-  const canUploadCover = hasFileInput && doc?.coverLetterUrl
+  const resumeDoc = getSelectedResume()
+  const coverLetterDoc = getSelectedCoverLetter()
+  const canUploadResume = hasFileInput && resumeDoc?.resumeUrl
+  const canUploadCover = hasFileInput && coverLetterDoc?.coverLetterUrl
 
   uploadResumeBtn.disabled = !canUploadResume
   uploadCoverBtn.disabled = !canUploadCover
+
+  // Preview buttons only need a document selected
+  previewResumeBtn.disabled = !resumeDoc?.resumeUrl
+  previewCoverLetterBtn.disabled = !coverLetterDoc?.coverLetterUrl
 
   // Update status message
   if (!hasFileInput) {
     uploadStatus.className = "upload-status warning"
     uploadStatusText.textContent = "No file input detected on page"
-  } else if (!doc) {
-    uploadStatus.className = "upload-status info"
-    uploadStatusText.textContent = "Select a document to upload"
   } else {
-    uploadStatus.className = "upload-status ready"
-    const available: string[] = []
-    if (doc.resumeUrl) available.push("Resume")
-    if (doc.coverLetterUrl) available.push("Cover Letter")
-    uploadStatusText.textContent = available.length > 0 ? `Ready: ${available.join(", ")}` : "No files generated yet"
+    const ready: string[] = []
+    if (resumeDoc?.resumeUrl) ready.push("Resume")
+    if (coverLetterDoc?.coverLetterUrl) ready.push("Cover Letter")
+    if (ready.length > 0) {
+      uploadStatus.className = "upload-status ready"
+      uploadStatusText.textContent = `Ready: ${ready.join(", ")}`
+    } else {
+      uploadStatus.className = "upload-status info"
+      uploadStatusText.textContent = "Select documents to upload"
+    }
   }
 
   // Update button titles for better UX
   if (!hasFileInput) {
     uploadResumeBtn.title = "Navigate to a page with file upload"
     uploadCoverBtn.title = "Navigate to a page with file upload"
-  } else if (!doc) {
-    uploadResumeBtn.title = "Select a document first"
-    uploadCoverBtn.title = "Select a document first"
   } else {
-    uploadResumeBtn.title = doc.resumeUrl ? "Upload resume to file input" : "No resume generated"
-    uploadCoverBtn.title = doc.coverLetterUrl ? "Upload cover letter to file input" : "No cover letter generated"
+    uploadResumeBtn.title = resumeDoc?.resumeUrl ? "Upload resume to file input" : "Select a resume first"
+    uploadCoverBtn.title = coverLetterDoc?.coverLetterUrl ? "Upload cover letter to file input" : "Select a cover letter first"
   }
 }
 
@@ -564,7 +839,7 @@ async function markAsApplied() {
     }
     // Update workflow
     setWorkflowStep("submit", "completed")
-    renderJobList()
+    renderJobSelect()
     markIgnoredBtn.disabled = false
   } else {
     setStatus(result.message || "Failed to update status", "error")
@@ -591,7 +866,7 @@ async function markAsIgnored() {
     if (match) {
       match.status = "ignored"
     }
-    renderJobList()
+    renderJobSelect()
     markAppliedBtn.disabled = false
   } else {
     setStatus(result.message || "Failed to update status", "error")
@@ -608,12 +883,16 @@ async function checkUrlForJobMatch(url: string) {
       // Add to job matches list if not present
       if (!jobMatches.find((m) => m.id === match.id)) {
         jobMatches.unshift(match)
-        renderJobList()
+        renderJobSelect()
       }
       // Auto-select the match (but don't navigate again)
       selectedJobMatchId = match.id ?? null
-      selectedDocumentId = null
-      renderJobList()
+      selectedResumeId = null
+      selectedCoverLetterId = null
+      jobSelect.value = match.id ?? ""
+
+      // Update fill button state (depends on selectedJobMatchId)
+      updateAgentStatusUI(_agentSessionState)
 
       // Update workflow state
       setWorkflowStep("job", "completed")
@@ -630,13 +909,13 @@ async function checkUrlForJobMatch(url: string) {
         generateBtn.disabled = false
         setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
       } else {
-        console.warn("No match.id found; skipping document load.")
+        log.warn("No match.id found; skipping document load")
         generateBtn.disabled = true
         setStatus("Matched job has no id; cannot load documents", "error")
       }
     }
   } catch (err) {
-    console.warn("Failed to check URL for job match:", err)
+    log.warn("Failed to check URL for job match:", err)
   }
 }
 
@@ -677,203 +956,240 @@ async function navigate() {
   setButtonsEnabled(true)
 }
 
-// Track form fill progress subscription
-let unsubscribeFormFillProgress: (() => void) | null = null
+// ============================================================================
+// Agent Session Management
+// ============================================================================
 
-// Handle form fill progress updates
-function handleFormFillProgress(progress: FormFillProgress) {
-  // Update status message based on phase
-  if (progress.phase === "failed") {
-    setStatus(progress.message, "error")
-    hideFormFillProgress()
-    return
-  }
+// Agent session state
+let _agentSessionState: AgentSessionState = "stopped"
+let unsubscribeAgentOutput: (() => void) | null = null
+let unsubscribeAgentStatus: (() => void) | null = null
+let unsubscribeBrowserUrlChanged: (() => void) | null = null
+let isFormFillActive = false
+const agentOutputParser = new StreamingParser()
 
-  if (progress.phase === "completed") {
-    if (progress.summary) {
-      renderFillResults(progress.summary)
-    }
-    setStatus(progress.message, "success")
-    hideFormFillProgress()
-    setWorkflowStep("fill", "completed")
-    setWorkflowStep("submit", "active")
-    return
-  }
-
-  // Show progress UI
-  showFormFillProgress(progress)
-}
-
-// Show form fill progress UI
-function showFormFillProgress(progress: FormFillProgress) {
-  let progressHtml = ""
-  const safeMessage = escapeHtml(progress.message)
-
-  if (progress.phase === "starting") {
-    progressHtml = `
-      <div class="fill-progress">
-        <div class="fill-phase">${safeMessage}</div>
-        <div class="fill-spinner"></div>
-      </div>
-    `
-  } else if (progress.phase === "ai-processing") {
-    // Parse streaming text to show field count and last few fields being processed
-    let streamingInfo = ""
-    if (progress.streamingText) {
-      // Count how many complete field objects we can see
-      const fieldMatches = progress.streamingText.match(/"selector":/g)
-      const fieldCount = fieldMatches ? fieldMatches.length : 0
-
-      // Extract the last few field labels for display
-      const labelMatches = progress.streamingText.match(/"label":\s*"([^"]+)"/g)
-      const lastLabels = labelMatches
-        ? labelMatches.slice(-3).map((m) => m.match(/"label":\s*"([^"]+)"/)?.[1] || "").filter(Boolean)
-        : []
-
-      const charCount = progress.streamingText.length
-      // Escape labels to prevent XSS from malicious form field names
-      const safeLabels = lastLabels.map((l) => escapeHtml(l)).join(", ")
-      streamingInfo = `
-        <div class="streaming-info">
-          <div class="streaming-stat"><span class="stat-value">${fieldCount}</span> fields analyzed</div>
-          <div class="streaming-stat"><span class="stat-value">${Math.round(charCount / 1024)}KB</span> received</div>
-          ${lastLabels.length > 0 ? `<div class="streaming-recent">Recent: ${safeLabels}</div>` : ""}
-        </div>
-      `
-    }
-
-    progressHtml = `
-      <div class="fill-progress">
-        <div class="fill-phase">${safeMessage}</div>
-        ${progress.isStreaming ? '<div class="fill-spinner"></div>' : ""}
-        ${streamingInfo}
-      </div>
-    `
-  } else if (progress.phase === "filling") {
-    const percent = progress.totalFields
-      ? Math.round(((progress.processedFields || 0) / progress.totalFields) * 100)
-      : 0
-
-    progressHtml = `
-      <div class="fill-progress">
-        <div class="fill-phase">${safeMessage}</div>
-        <div class="fill-progress-bar">
-          <div class="fill-progress-fill" style="width: ${percent}%"></div>
-        </div>
-        <div class="fill-progress-text">${progress.processedFields || 0} / ${progress.totalFields || 0} fields</div>
-      </div>
-    `
-  }
-
-  fillOutput.innerHTML = progressHtml
-  setStatus(progress.message, "loading")
-}
-
-// Hide form fill progress UI
-function hideFormFillProgress() {
-  // Progress UI is replaced by results or cleared on error
-}
-
-// Escape HTML to prevent XSS in streaming preview
+// Escape HTML to prevent XSS in output
 function escapeHtml(text: string): string {
   const div = document.createElement("div")
   div.textContent = text
   return div.innerHTML
 }
 
-// Fill form with AI
-async function fillForm() {
-  const provider = providerSelect.value as "claude" | "codex" | "gemini"
+// Update agent status display
+function updateAgentStatusUI(state: AgentSessionState) {
+  _agentSessionState = state
+  const statusDot = agentStatus.querySelector(".status-dot")
+  const statusText = agentStatus.querySelector(".status-text")
 
-  try {
-    setButtonsEnabled(false)
-    setStatus(`Filling form with ${provider}...`, "loading")
-    setWorkflowStep("fill", "active")
+  if (statusDot && statusText) {
+    statusDot.className = `status-dot ${state}`
+    statusText.textContent = state.charAt(0).toUpperCase() + state.slice(1)
+  }
 
-    // Clean up any existing subscription before creating a new one
-    if (unsubscribeFormFillProgress) {
-      unsubscribeFormFillProgress()
-      unsubscribeFormFillProgress = null
-    }
+  // Update UI based on state
+  if (state === "stopped") {
+    startSessionBtn.classList.remove("hidden")
+    stopSessionBtn.classList.add("hidden")
+    agentActions.classList.add("hidden")
+    startSessionBtn.disabled = false
+  } else {
+    startSessionBtn.classList.add("hidden")
+    stopSessionBtn.classList.remove("hidden")
+    agentActions.classList.remove("hidden")
+  }
 
-    // Subscribe to progress events
-    unsubscribeFormFillProgress = api.onFormFillProgress(handleFormFillProgress)
+  // Fill button enabled only when idle and job selected
+  fillFormBtn.disabled = state !== "idle" || !selectedJobMatchId
+}
 
-    const result = await api.fillForm({
-      provider,
-      jobMatchId: selectedJobMatchId || undefined,
-      documentId: selectedDocumentId || undefined,
+// Start agent session - sets up listeners and transitions to idle state
+function startAgentSession() {
+  startSessionBtn.disabled = true
+  setStatus("Starting agent session...", "loading")
+  agentOutput.innerHTML = '<div class="empty-placeholder">Ready for form fill</div>'
+
+  // Subscribe to events
+  ensureAgentListeners()
+
+  setStatus("Agent session ready", "success")
+  updateAgentStatusUI("idle")
+}
+
+// Stop agent session and any active form fill
+async function stopAgentSession() {
+  setStatus("Stopping agent session...", "loading")
+
+  // Stop any active form fill
+  if (isFormFillActive) {
+    await api.stopFillForm()
+    isFormFillActive = false
+  }
+
+  cleanupAgentListeners()
+  updateAgentStatusUI("stopped")
+  setStatus("Agent session stopped", "success")
+  agentOutput.innerHTML = '<div class="empty-placeholder">Session ended</div>'
+}
+
+// Ensure agent event listeners are set up
+function ensureAgentListeners() {
+  if (!unsubscribeAgentOutput) {
+    log.debug("Setting up agent output listener")
+    unsubscribeAgentOutput = api.onAgentOutput((data) => {
+      log.debug("Received agent output (" + data.text.length + " chars):", data.text.slice(0, 100).replace(/\n/g, "\\n"))
+      appendAgentOutput(data.text, data.isError ? "error" : undefined)
     })
-
-    // Unsubscribe from progress events
-    if (unsubscribeFormFillProgress) {
-      unsubscribeFormFillProgress()
-      unsubscribeFormFillProgress = null
-    }
-
-    // Handle result (progress events should have already updated UI)
-    if (result.success && result.data) {
-      renderFillResults(result.data)
-      setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
-      setWorkflowStep("fill", "completed")
-      setWorkflowStep("submit", "active")
-    } else if (!result.success) {
-      setStatus(result.message || "Fill failed", "error")
-    }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    setStatus(`Fill failed: ${message}`, "error")
-  } finally {
-    // Clean up subscription
-    if (unsubscribeFormFillProgress) {
-      unsubscribeFormFillProgress()
-      unsubscribeFormFillProgress = null
-    }
-    setButtonsEnabled(true)
+  }
+  if (!unsubscribeAgentStatus) {
+    log.debug("Setting up agent status listener")
+    unsubscribeAgentStatus = api.onAgentStatus((data) => {
+      log.debug("Received agent status:", data)
+      updateAgentStatusUI(data.state as AgentSessionState)
+      if (data.state === "idle" || data.state === "stopped") {
+        isFormFillActive = false
+        fillFormBtn.disabled = data.state !== "idle" || !selectedJobMatchId
+      }
+    })
+  }
+  if (!unsubscribeBrowserUrlChanged) {
+    unsubscribeBrowserUrlChanged = api.onBrowserUrlChanged((data) => {
+      urlInput.value = data.url
+    })
   }
 }
 
-// Render fill results in sidebar
-function renderFillResults(summary: FormFillSummary) {
-  const hasSkipped = summary.skippedFields.length > 0
+// Fill form with agent
+async function fillFormWithAgent() {
+  if (!selectedJobMatchId) {
+    setStatus("Select a job first", "error")
+    return
+  }
 
-  fillOutput.innerHTML = `
-    <div class="results-summary">
-      <div class="results-header">
-        <span class="results-count">${summary.filledCount}</span>
-        <span class="results-label">of ${summary.totalFields} fields filled</span>
-      </div>
-      <div class="results-duration">${(summary.duration / 1000).toFixed(1)}s</div>
-      ${
-        hasSkipped
-          ? `
-        <div class="skipped-header">Skipped Fields (${summary.skippedCount})</div>
-        <div class="skipped-list">
-          ${summary.skippedFields
-            .map(
-              (f) => `
-            <div class="skipped-item">
-              <div class="skipped-label">${escapeHtml(f.label)}</div>
-              <div class="skipped-reason">${escapeHtml(f.reason)}</div>
-            </div>
-          `
-            )
-            .join("")}
-        </div>
-      `
-          : ""
+  const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+  if (!match) return
+
+  // Ensure listeners are set up before starting fill
+  ensureAgentListeners()
+
+  // Build job context
+  const jobContext = [
+    `Job: ${match.listing.title} at ${match.listing.companyName}`,
+    match.listing.location ? `Location: ${match.listing.location}` : "",
+    match.listing.description
+      ? `Description: ${match.listing.description.length > 500 ? match.listing.description.slice(0, 500) + "..." : match.listing.description}`
+      : "",
+  ].filter(Boolean).join("\n")
+
+  setStatus("Filling form...", "loading")
+  setWorkflowStep("fill", "active")
+  isFormFillActive = true
+  fillFormBtn.disabled = true
+
+  // Reset parser and clear output
+  agentOutputParser.reset()
+  agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
+
+  log.info("Calling api.fillForm for job:", selectedJobMatchId)
+  const result = await api.fillForm({
+    jobMatchId: selectedJobMatchId,
+    jobContext,
+  })
+  log.info("api.fillForm returned:", result)
+
+  if (result.success) {
+    setStatus("Form fill running", "success")
+  } else {
+    setStatus(result.message || "Fill failed", "error")
+    isFormFillActive = false
+    fillFormBtn.disabled = false
+    agentOutput.innerHTML = `<div class="empty-placeholder">${result.message || "Fill failed"}</div>`
+  }
+}
+
+// Render a single parsed activity as a DOM element
+function renderActivity(activity: ParsedActivity): HTMLElement {
+  const div = document.createElement("div")
+  div.className = `agent-activity ${activity.type}`
+
+  switch (activity.type) {
+    case "tool_call":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "🔧"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "tool_result":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "✓"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "thinking":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "🤔"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "completion":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "✅"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "error":
+      div.classList.add("agent-error")
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "❌"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    default:
+      // Plain text - only show if meaningful (not just whitespace or short noise)
+      if (activity.displayText.length > 10) {
+        div.innerHTML = `<span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      } else {
+        return div // Return empty div for short noise
       }
-    </div>
-  `
+  }
 
-  // Scroll to results
-  fillOutput.scrollIntoView({ behavior: "smooth" })
+  return div
+}
+
+// Append text to agent output with parsing
+function appendAgentOutput(text: string, type?: "error") {
+  // Remove placeholder if present
+  const placeholder = agentOutput.querySelector(".empty-placeholder, .loading-placeholder")
+  if (placeholder) {
+    agentOutput.innerHTML = ""
+  }
+
+  if (type === "error") {
+    // Errors are displayed directly without parsing
+    const div = document.createElement("div")
+    div.className = "agent-activity error agent-error"
+    div.innerHTML = `<span class="activity-icon">❌</span><span class="activity-text">${escapeHtml(text)}</span>`
+    agentOutput.appendChild(div)
+  } else {
+    // Parse the output and render activities
+    const activities = agentOutputParser.addChunk(text)
+    for (const activity of activities) {
+      const element = renderActivity(activity)
+      if (element.innerHTML) { // Only append if there's content
+        agentOutput.appendChild(element)
+      }
+    }
+  }
+
+  // Auto-scroll to bottom
+  agentOutput.scrollTop = agentOutput.scrollHeight
+}
+
+// Cleanup agent event listeners
+function cleanupAgentListeners() {
+  if (unsubscribeAgentOutput) {
+    unsubscribeAgentOutput()
+    unsubscribeAgentOutput = null
+  }
+  if (unsubscribeAgentStatus) {
+    unsubscribeAgentStatus()
+    unsubscribeAgentStatus = null
+  }
+  if (unsubscribeBrowserUrlChanged) {
+    unsubscribeBrowserUrlChanged()
+    unsubscribeBrowserUrlChanged = null
+  }
 }
 
 // Upload document (resume or cover letter)
 async function uploadDocument(type: "resume" | "coverLetter") {
-  if (!selectedDocumentId) {
-    setStatus("Select a document first", "error")
+  const documentId = type === "resume" ? selectedResumeId : selectedCoverLetterId
+  if (!documentId) {
+    setStatus(`Select a ${type === "coverLetter" ? "cover letter" : "resume"} first`, "error")
     return
   }
 
@@ -883,14 +1199,14 @@ async function uploadDocument(type: "resume" | "coverLetter") {
     setButtonsEnabled(false)
     setStatus(`Uploading ${typeLabel}...`, "loading")
 
-    const result = await api.uploadResume({ documentId: selectedDocumentId, type })
+    const result = await api.uploadResume({ documentId, type })
 
     if (result.success) {
       setStatus(result.message, "success")
     } else {
       setStatus(result.message, "error")
       if (result.filePath) {
-        console.log("Manual upload path:", result.filePath)
+        log.debug("Manual upload path:", result.filePath)
       }
     }
   } catch (err: unknown) {
@@ -910,9 +1226,42 @@ function uploadCoverLetterFile() {
   uploadDocument("coverLetter")
 }
 
+// Preview document (opens in default PDF viewer)
+async function previewDocument(type: "resume" | "coverLetter") {
+  const doc = type === "resume" ? getSelectedResume() : getSelectedCoverLetter()
+  const url = type === "resume" ? doc?.resumeUrl : doc?.coverLetterUrl
+  const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
+
+  if (!url) {
+    setStatus(`No ${typeLabel} selected`, "error")
+    return
+  }
+
+  try {
+    setStatus(`Opening ${typeLabel}...`, "loading")
+    const result = await api.openDocument(url)
+    if (result.success) {
+      setStatus(`Opened ${typeLabel}`, "success")
+    } else {
+      setStatus(result.message || `Failed to open ${typeLabel}`, "error")
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Failed to open ${typeLabel}: ${message}`, "error")
+  }
+}
+
+function previewResume() {
+  previewDocument("resume")
+}
+
+function previewCoverLetter() {
+  previewDocument("coverLetter")
+}
+
 // Submit job listing for analysis
 async function submitJob() {
-  const provider = providerSelect.value as "claude" | "codex" | "gemini"
+  const provider = agentProviderSelect.value as "claude" | "codex" | "gemini"
 
   try {
     setButtonsEnabled(false)
@@ -946,10 +1295,29 @@ function initializeApp() {
       navigate()
     }
   })
-  fillBtn.addEventListener("click", fillForm)
   submitJobBtn.addEventListener("click", submitJob)
 
+  // Event listeners - Agent Session
+  startSessionBtn.addEventListener("click", startAgentSession)
+  stopSessionBtn.addEventListener("click", stopAgentSession)
+  fillFormBtn.addEventListener("click", fillFormWithAgent)
+
   // Event listeners - Sidebar
+  jobSelect.addEventListener("change", () => {
+    const id = jobSelect.value
+    if (id) {
+      selectJobMatch(id)
+    } else {
+      // Deselected - clear state
+      selectedJobMatchId = null
+      selectedResumeId = null
+      selectedCoverLetterId = null
+      jobActionsSection.classList.add("hidden")
+      generateBtn.disabled = true
+      updateUploadButtonsState()
+      updateAgentStatusUI(_agentSessionState)
+    }
+  })
   generateBtn.addEventListener("click", generateDocument)
   markAppliedBtn.addEventListener("click", markAsApplied)
   markIgnoredBtn.addEventListener("click", markAsIgnored)
@@ -957,6 +1325,20 @@ function initializeApp() {
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
   rescanBtn.addEventListener("click", checkForFileInput)
   refreshJobsBtn.addEventListener("click", refreshJobMatches)
+
+  // Event listeners - Document dropdowns
+  resumeSelect.addEventListener("change", () => {
+    selectedResumeId = resumeSelect.value || null
+    updateUploadButtonsState()
+  })
+  coverLetterSelect.addEventListener("change", () => {
+    selectedCoverLetterId = coverLetterSelect.value || null
+    updateUploadButtonsState()
+  })
+
+  // Event listeners - Preview buttons
+  previewResumeBtn.addEventListener("click", previewResume)
+  previewCoverLetterBtn.addEventListener("click", previewCoverLetter)
 
   // Listen for Ctrl+R global shortcut from main process
   // This ensures refresh works even when BrowserView has focus
@@ -985,18 +1367,19 @@ async function init() {
 // Cleanup on page unload to prevent memory leaks
 window.addEventListener("beforeunload", () => {
   cleanupGenerationProgressListener()
+  cleanupAgentListeners()
 })
 
 // Wait for DOM to be ready before initializing
-console.log("[app.ts] document.readyState:", document.readyState)
+log.debug("document.readyState:", document.readyState)
 if (document.readyState === "loading") {
-  console.log("[app.ts] Waiting for DOMContentLoaded...")
+  log.debug("Waiting for DOMContentLoaded...")
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("[app.ts] DOMContentLoaded fired, calling initializeApp")
+    log.debug("DOMContentLoaded fired, calling initializeApp")
     initializeApp()
   })
 } else {
   // DOM is already ready
-  console.log("[app.ts] DOM already ready, calling initializeApp")
+  log.debug("DOM already ready, calling initializeApp")
   initializeApp()
 }

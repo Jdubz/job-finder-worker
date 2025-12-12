@@ -1,11 +1,30 @@
 import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
 import type { WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
-import * as readline from "readline"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
+
+// Load .env file if it exists (simple loader, no external dependency)
+const envPath = path.join(import.meta.dirname, "..", ".env")
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf-8")
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim()
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=")
+      const value = valueParts.join("=").trim()
+      if (key && value && !process.env[key]) {
+        process.env[key] = value
+      }
+    }
+  }
+}
+
 import { logger } from "./logger.js"
+
+// Log loaded environment for debugging
+logger.info(`[ENV] JOB_FINDER_API_URL = ${process.env.JOB_FINDER_API_URL || "(not set, using default)"}`)
 
 // Disable GPU acceleration to fix DevTools issues on Linux
 app.disableHardwareAcceleration()
@@ -14,43 +33,55 @@ app.commandLine.appendSwitch("disable-software-rasterizer")
 
 logger.info("Main process starting...")
 
-// Listen for renderer console logs and forward to main process logger
+// Listen for renderer logs forwarded via IPC (logs to both console and file)
 ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => {
-  const message = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")
-  const prefix = "[RENDERER]"
+  // Format each arg - objects get JSON stringified for readability
+  const formatArg = (a: unknown): string => {
+    if (a === null) return "null"
+    if (a === undefined) return "undefined"
+    if (typeof a === "object") {
+      try {
+        return JSON.stringify(a)
+      } catch {
+        return "[Circular object]"
+      }
+    }
+    return String(a)
+  }
+  const message = args.map(formatArg).join(" ")
   switch (level) {
     case "warn":
-      logger.warn(prefix, message)
+      logger.warn(message)
       break
     case "error":
-      logger.error(prefix, message)
+      logger.error(message)
+      break
+    case "debug":
+      logger.debug(message)
       break
     default:
-      logger.info(prefix, message)
+      logger.info(message)
   }
 })
 
 // Import shared types and utilities
 import type {
   CliProvider,
-  FormField,
-  EnhancedFillInstruction,
-  FormFillSummary,
-  FormFillProgress,
   JobExtraction,
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import { getCliCommand, getStreamingCliCommand } from "./cli-config.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
-  buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
-  parseCliArrayOutput,
   parseCliObjectOutput,
 } from "./utils.js"
+
+// Tool executor and server
+import { startToolServer, stopToolServer } from "./tool-server.js"
+import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext } from "./tool-executor.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -63,7 +94,7 @@ import {
   startGeneration,
   executeGenerationStep,
   submitJobToQueue,
-  API_URL,
+  getApiUrl,
 } from "./api-client.js"
 
 // Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
@@ -98,40 +129,6 @@ function updateBrowserViewBounds(): void {
   })
 }
 
-// Form extraction script - injected into page
-const EXTRACT_FORM_SCRIPT = `
-(() => {
-  const inputs = document.querySelectorAll('input, select, textarea')
-  return Array.from(inputs).map(el => {
-    // Build selector: prefer id, then name, then data-testid
-    const selector = el.id ? '#' + CSS.escape(el.id)
-      : el.name ? '[name="' + CSS.escape(el.name) + '"]'
-      : el.dataset.testid ? '[data-testid="' + CSS.escape(el.dataset.testid) + '"]'
-      : null
-
-    // Find label: check label[for], aria-label, aria-labelledby
-    const forLabel = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')
-    const ariaLabel = el.getAttribute('aria-label')
-    const ariaLabelledBy = el.getAttribute('aria-labelledby')
-    const labelledByEl = ariaLabelledBy && document.getElementById(ariaLabelledBy)
-
-    // Extract options for select elements
-    const options = el.tagName.toLowerCase() === 'select'
-      ? Array.from(el.options).map(opt => ({ value: opt.value, text: opt.textContent?.trim() }))
-      : null
-
-    return {
-      selector,
-      type: el.type || el.tagName.toLowerCase(),
-      label: forLabel?.textContent?.trim() || ariaLabel || labelledByEl?.textContent?.trim() || null,
-      placeholder: el.placeholder || null,
-      required: el.required || false,
-      options
-    }
-  }).filter(f => f.selector && f.type !== 'hidden' && f.type !== 'submit' && f.type !== 'button')
-})()
-`
-
 async function createWindow(): Promise<void> {
   logger.info("Creating main window...")
   const preloadPath = path.join(import.meta.dirname, "preload.cjs")
@@ -159,6 +156,9 @@ async function createWindow(): Promise<void> {
 
   mainWindow.setBrowserView(browserView)
 
+  // Set BrowserView reference for agent tools
+  setBrowserView(browserView)
+
   // Position BrowserView below toolbar, accounting for sidebar state
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
@@ -171,6 +171,18 @@ async function createWindow(): Promise<void> {
     // Navigate in the same BrowserView instead of opening a new window
     browserView?.webContents.loadURL(url)
     return { action: "deny" }
+  })
+
+  // Notify renderer when URL changes
+  browserView.webContents.on("did-navigate", (_event, url) => {
+    logger.info(`[BrowserView] Navigated to: ${url}`)
+    mainWindow?.webContents.send("browser-url-changed", { url })
+  })
+
+  // Also handle in-page navigation (SPA apps)
+  browserView.webContents.on("did-navigate-in-page", (_event, url) => {
+    logger.info(`[BrowserView] In-page navigation to: ${url}`)
+    mainWindow?.webContents.send("browser-url-changed", { url })
   })
 
   // Capture renderer console messages and errors BEFORE loading HTML
@@ -221,6 +233,7 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
   mainWindow.on("closed", () => {
     mainWindow = null
     browserView = null
+    setBrowserView(null)
   })
 
   mainWindow.on("resize", () => {
@@ -319,164 +332,6 @@ async function setFileInputFiles(webContents: WebContents, selector: string, fil
   }
 }
 
-/**
- * Robust form field filling that works with React/Vue/Angular controlled inputs.
- *
- * The problem: Modern frameworks like React intercept the native `value` setter.
- * Simply setting `el.value = "x"` only updates the DOM, not React's internal state.
- * When the user interacts with the form, React re-renders using its state (which is
- * still empty), wiping out all manually-set values.
- *
- * The solution: Use the native HTMLInputElement value setter to bypass React's
- * interception, then dispatch proper events to notify the framework of the change.
- *
- * References:
- * - https://coryrylan.com/blog/trigger-input-updates-with-react-controlled-inputs
- * - https://github.com/facebook/react/issues/1152
- */
-async function fillFormField(
-  webContents: WebContents,
-  selector: string,
-  value: string,
-  fieldType?: string
-): Promise<boolean> {
-  const safeSelector = JSON.stringify(selector)
-  const safeValue = JSON.stringify(value)
-
-  // Handle checkboxes and radio buttons differently
-  if (fieldType === "checkbox" || fieldType === "radio") {
-    return await webContents.executeJavaScript(`
-      (() => {
-        const el = document.querySelector(${safeSelector});
-        if (!el) return false;
-
-        const shouldBeChecked = ${safeValue}.toLowerCase() === 'true' ||
-                               ${safeValue}.toLowerCase() === 'yes' ||
-                               ${safeValue} === '1';
-
-        if (el.checked !== shouldBeChecked) {
-          // Use native setter for checked property
-          const nativeCheckedSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, 'checked'
-          )?.set;
-
-          if (nativeCheckedSetter) {
-            nativeCheckedSetter.call(el, shouldBeChecked);
-          } else {
-            el.checked = shouldBeChecked;
-          }
-
-          // Dispatch click and change events
-          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        return true;
-      })()
-    `)
-  }
-
-  // Handle select elements
-  if (fieldType === "select" || fieldType === "select-one" || fieldType === "select-multiple") {
-    return await webContents.executeJavaScript(`
-      (() => {
-        const el = document.querySelector(${safeSelector});
-        if (!el || el.tagName.toLowerCase() !== 'select') return false;
-
-        // Find matching option (case-insensitive, trimmed)
-        const targetValue = ${safeValue}.toLowerCase().trim();
-        let matchedValue = null;
-
-        for (const opt of el.options) {
-          if (opt.value.toLowerCase().trim() === targetValue ||
-              opt.textContent?.toLowerCase().trim() === targetValue) {
-            matchedValue = opt.value;
-            break;
-          }
-        }
-
-        if (matchedValue === null) {
-          // Try partial match if exact match not found
-          for (const opt of el.options) {
-            if (opt.value.toLowerCase().includes(targetValue) ||
-                opt.textContent?.toLowerCase().includes(targetValue)) {
-              matchedValue = opt.value;
-              break;
-            }
-          }
-        }
-
-        if (matchedValue !== null) {
-          el.value = matchedValue;
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          return true;
-        }
-
-        // If still no match, try setting directly
-        el.value = ${safeValue};
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
-      })()
-    `)
-  }
-
-  // Handle text inputs, textareas, and other input types
-  // This is the critical fix for React controlled inputs
-  return await webContents.executeJavaScript(`
-    (() => {
-      const el = document.querySelector(${safeSelector});
-      if (!el) return false;
-
-      const tagName = el.tagName.toLowerCase();
-      const isInput = tagName === 'input';
-      const isTextarea = tagName === 'textarea';
-
-      if (!isInput && !isTextarea) return false;
-
-      // Focus the element first (important for some frameworks)
-      el.focus();
-
-      // Get the native value setter to bypass React's interception
-      // React overloads the value setter to track state changes, but we need
-      // to bypass that to set the value directly on the DOM element
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set;
-      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set;
-
-      // Use the appropriate native setter
-      if (isInput && nativeInputValueSetter) {
-        nativeInputValueSetter.call(el, ${safeValue});
-      } else if (isTextarea && nativeTextAreaValueSetter) {
-        nativeTextAreaValueSetter.call(el, ${safeValue});
-      } else {
-        // Fallback to direct assignment
-        el.value = ${safeValue};
-      }
-
-      // Dispatch events to notify React/Vue/Angular of the change
-      // InputEvent is more reliable than Event for modern frameworks
-      el.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: ${safeValue}
-      }));
-
-      // Also dispatch change event for frameworks that listen to it
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-
-      // Blur to trigger validation and ensure the value is committed
-      el.blur();
-
-      return true;
-    })()
-  `)
-}
-
 // Upload resume/document to form using Electron's debugger API (CDP)
 ipcMain.handle(
   "upload-resume",
@@ -506,9 +361,12 @@ ipcMain.handle(
 
       // Resolve file path from document or fallback to env var
       if (options?.documentId) {
-        // Validate documentId format (UUID v4 pattern)
+        // Validate documentId format - accepts either:
+        // - Backend format: resume-generator-request-{timestamp}-{random}
+        // - UUID v4 format (legacy compatibility)
+        const backendIdPattern = /^resume-generator-request-\d+-[a-z0-9]+$/
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-        if (!uuidPattern.test(options.documentId)) {
+        if (!backendIdPattern.test(options.documentId) && !uuidPattern.test(options.documentId)) {
           return { success: false, message: "Invalid document ID format" }
         }
 
@@ -691,10 +549,10 @@ ipcMain.handle(
   "open-document",
   async (_event: IpcMainInvokeEvent, documentPath: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      // API_URL is like "http://localhost:3000/api"
+      // getApiUrl() returns like "http://localhost:3000/api"
       // documentPath is like "/api/generator/artifacts/2025-12-11/file.pdf"
       // We need to construct the full URL by using the origin from API_URL
-      const apiUrlObj = new URL(API_URL)
+      const apiUrlObj = new URL(getApiUrl())
       const fullUrl = `${apiUrlObj.origin}${documentPath}`
 
       logger.info(`Opening document: ${fullUrl}`)
@@ -894,284 +752,19 @@ ipcMain.handle(
   }
 )
 
-// Fill form with AI using optimized profile endpoint
-// Includes EEO data, job match context, streaming progress, and results tracking
-ipcMain.handle(
-  "fill-form",
-  async (
-    _event: IpcMainInvokeEvent,
-    options: { provider: CliProvider; jobMatchId?: string; documentId?: string }
-  ): Promise<{ success: boolean; data?: FormFillSummary; message?: string }> => {
-    const startTime = Date.now()
-
-    try {
-      if (!browserView) throw new Error("BrowserView not initialized")
-
-      // Send initial progress
-      sendFormFillProgress({
-        phase: "starting",
-        message: "Preparing to fill form...",
-      })
-
-      // 1. Get pre-formatted profile text from optimized applicator endpoint
-      logger.info("Fetching applicator profile from backend...")
-      sendFormFillProgress({
-        phase: "starting",
-        message: "Loading your profile...",
-      })
-
-      let profileText: string
-      try {
-        profileText = await fetchApplicatorProfile()
-        logger.info(`Received profile text (${profileText.length} chars)`)
-      } catch (err) {
-        const rawMessage = err instanceof Error ? err.message : String(err)
-        logger.error(`Profile fetch failed with raw error: ${rawMessage}`)
-        const errorMsg = `Failed to fetch profile: ${getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(rawMessage), logger)}`
-        sendFormFillProgress({
-          phase: "failed",
-          message: errorMsg,
-          error: errorMsg,
-        })
-        throw new Error(errorMsg)
-      }
-
-      // Validate profile has content
-      if (!profileText || profileText.trim().length < 50) {
-        const errorMsg = "Profile data is empty or incomplete. Please configure your profile before filling forms."
-        sendFormFillProgress({
-          phase: "failed",
-          message: errorMsg,
-          error: errorMsg,
-        })
-        throw new Error(errorMsg)
-      }
-
-      // 2. Get job match context if provided
-      let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
-      if (options.jobMatchId) {
-        sendFormFillProgress({
-          phase: "starting",
-          message: "Loading job details...",
-        })
-        try {
-          const match = await fetchJobMatch(options.jobMatchId)
-          jobContext = {
-            company: match.listing?.companyName,
-            role: match.listing?.title,
-            matchedSkills: match.matchedSkills as string[] | undefined,
-          }
-        } catch (err) {
-          logger.warn("Failed to fetch job match data, continuing without it:", err)
-        }
-      }
-
-      // 3. Extract form fields from page
-      logger.info("Extracting form fields...")
-      sendFormFillProgress({
-        phase: "starting",
-        message: "Analyzing form fields...",
-      })
-
-      const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
-      logger.info(`Found ${fields.length} form fields`)
-
-      if (fields.length === 0) {
-        sendFormFillProgress({
-          phase: "failed",
-          message: "No form fields found on page",
-          error: "No form fields found on page",
-        })
-        return { success: false, message: "No form fields found on page" }
-      }
-
-      // 4. Build prompt
-      const prompt = buildPromptFromProfileText(fields, profileText, jobContext)
-      logger.info(`Calling ${options.provider} CLI for field mapping...`)
-
-      // 5. Call CLI with streaming progress
-      sendFormFillProgress({
-        phase: "ai-processing",
-        message: "AI is analyzing the form...",
-        isStreaming: true,
-        totalFields: fields.length,
-      })
-
-      // Use streaming CLI for real-time progress updates
-      const instructions = await runStreamingCli(
-        options.provider,
-        prompt,
-        (text, isComplete) => {
-          sendFormFillProgress({
-            phase: "ai-processing",
-            message: isComplete ? "AI analysis complete" : "AI is generating fill instructions...",
-            streamingText: text,
-            isStreaming: !isComplete,
-            totalFields: fields.length,
-          })
-        }
-      )
-      logger.info(`Got ${instructions.length} fill instructions`)
-
-      // 6. Fill fields with progress updates
-      sendFormFillProgress({
-        phase: "filling",
-        message: "Filling form fields...",
-        totalFields: instructions.length,
-        processedFields: 0,
-      })
-
-      let filledCount = 0
-      const skippedFields: Array<{ label: string; reason: string }> = []
-
-      // Create a map of selectors to field types
-      const fieldTypeMap = new Map<string, string>()
-      for (const field of fields) {
-        if (field.selector) {
-          fieldTypeMap.set(field.selector, field.type)
-        }
-      }
-
-      for (let i = 0; i < instructions.length; i++) {
-        const instruction = instructions[i]
-
-        if (instruction.status === "skipped") {
-          skippedFields.push({
-            label: instruction.label || instruction.selector || "Unknown field",
-            reason: instruction.reason || "No data available",
-          })
-
-          sendFormFillProgress({
-            phase: "filling",
-            message: `Skipped: ${instruction.label || instruction.selector}`,
-            totalFields: instructions.length,
-            processedFields: i + 1,
-            currentField: {
-              label: instruction.label || instruction.selector || "Unknown",
-              selector: instruction.selector,
-              status: "skipped",
-            },
-          })
-          continue
-        }
-
-        if (!instruction.value) continue
-
-        // Send progress before filling
-        sendFormFillProgress({
-          phase: "filling",
-          message: `Filling: ${instruction.label || instruction.selector}`,
-          totalFields: instructions.length,
-          processedFields: i,
-          currentField: {
-            label: instruction.label || instruction.selector || "Unknown",
-            selector: instruction.selector,
-            status: "processing",
-          },
-        })
-
-        try {
-          const fieldType = fieldTypeMap.get(instruction.selector)
-          const filled = await fillFormField(
-            browserView.webContents,
-            instruction.selector,
-            instruction.value,
-            fieldType
-          )
-
-          if (filled) {
-            filledCount++
-            // Send progress after successful fill
-            sendFormFillProgress({
-              phase: "filling",
-              message: `Filled: ${instruction.label || instruction.selector}`,
-              totalFields: instructions.length,
-              processedFields: i + 1,
-              currentField: {
-                label: instruction.label || instruction.selector || "Unknown",
-                selector: instruction.selector,
-                status: "filled",
-              },
-            })
-          } else {
-            // fillFormField returned false (element not found, etc.)
-            logger.warn(`Failed to fill ${instruction.selector}: element not found or fill failed`)
-            skippedFields.push({
-              label: instruction.label || instruction.selector || "Unknown field",
-              reason: "Element not found or fill failed",
-            })
-            sendFormFillProgress({
-              phase: "filling",
-              message: `Failed: ${instruction.label || instruction.selector}`,
-              totalFields: instructions.length,
-              processedFields: i + 1,
-              currentField: {
-                label: instruction.label || instruction.selector || "Unknown",
-                selector: instruction.selector,
-                status: "skipped",
-              },
-            })
-          }
-        } catch (err) {
-          logger.warn(`Failed to fill ${instruction.selector}:`, err)
-          skippedFields.push({
-            label: instruction.label || instruction.selector || "Unknown field",
-            reason: err instanceof Error ? err.message : "Fill error",
-          })
-        }
-      }
-
-      const duration = Date.now() - startTime
-      const summary: FormFillSummary = {
-        totalFields: fields.length,
-        filledCount,
-        skippedCount: skippedFields.length,
-        skippedFields,
-        duration,
-      }
-
-      // Send completion
-      sendFormFillProgress({
-        phase: "completed",
-        message: `Filled ${filledCount} of ${fields.length} fields`,
-        totalFields: fields.length,
-        processedFields: instructions.length,
-        summary,
-      })
-
-      return { success: true, data: summary }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error("Fill form error:", message)
-
-      sendFormFillProgress({
-        phase: "failed",
-        message,
-        error: message,
-      })
-
-      return { success: false, message }
-    }
-  }
-)
-
 /**
- * CLI command configurations for different AI providers.
- *
- * Note: Each CLI has different output formats:
- * - Claude CLI: Returns a wrapper object {"type":"result","result":"[...]"} where "result"
- *   is a string containing the actual JSON (escaped). Must parse wrapper first, then parse result.
- * - Codex/Gemini: Return raw JSON arrays directly.
- *
- * The CLI wrapper functions handle these format differences automatically.
+ * Run CLI for one-shot commands (job extraction)
+ * Uses Claude CLI with JSON output format
  */
 function runCliCommon<T>(
-  provider: CliProvider,
+  _provider: CliProvider,
   prompt: string,
   parse: (stdout: string) => T,
   context: string
 ): Promise<T> {
-  const [cmd, args] = getCliCommand(provider)
+  // Use Claude CLI for job extraction
+  const cmd = "claude"
+  const args = ["--print", "--output-format", "json", "--dangerously-skip-permissions", "-p", "-"]
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
@@ -1180,13 +773,13 @@ function runCliCommon<T>(
 
     const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
       setTimeout(() => {
-        logger.warn(`[CLI] ${provider} ${context} still running after ${ms / 1000}s...`)
+        logger.warn(`[CLI] Claude ${context} still running after ${ms / 1000}s...`)
       }, ms)
     )
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (${context})`))
+      reject(new Error(`Claude CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (${context})`))
     }, CLI_TIMEOUT_MS)
 
     const clearAllTimers = () => {
@@ -1203,16 +796,16 @@ function runCliCommon<T>(
     child.on("error", (err) => {
       clearAllTimers()
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+        reject(new Error("Claude CLI not found. Please install it first and ensure it's in your PATH."))
       } else {
-        reject(new Error(`Failed to spawn ${provider} CLI (${context}): ${err.message}`))
+        reject(new Error(`Failed to spawn Claude CLI (${context}): ${err.message}`))
       }
     })
 
     child.on("close", (code) => {
       clearAllTimers()
       if (code !== 0) {
-        let errorMsg = `${provider} CLI failed (exit ${code}).`
+        let errorMsg = `Claude CLI failed (exit ${code}).`
         const cleanErr = stderr?.trim()
         const cleanOut = stdout?.trim()
         if (cleanErr && cleanOut) {
@@ -1229,31 +822,10 @@ function runCliCommon<T>(
         resolve(parse(stdout))
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        reject(new Error(`${provider} CLI returned invalid JSON (${context}): ${msg}`))
+        reject(new Error(`Claude CLI returned invalid JSON (${context}): ${msg}`))
       }
     })
   })
-}
-
-function runEnhancedCli(provider: CliProvider, prompt: string): Promise<EnhancedFillInstruction[]> {
-  return runCliCommon<EnhancedFillInstruction[]>(
-    provider,
-    prompt,
-    (stdout) => {
-      const parsed = parseCliArrayOutput(stdout)
-      if (!Array.isArray(parsed)) {
-        throw new Error("CLI did not return an array")
-      }
-      return (parsed as Array<Record<string, unknown>>).map((item) => ({
-        selector: String(item.selector || ""),
-        value: item.value != null ? String(item.value) : null,
-        status: item.status === "skipped" ? "skipped" : "filled",
-        reason: item.reason ? String(item.reason) : undefined,
-        label: item.label ? String(item.label) : undefined,
-      }))
-    },
-    "form-fill"
-  )
 }
 
 function runCliForExtraction(provider: CliProvider, prompt: string): Promise<JobExtraction> {
@@ -1275,185 +847,404 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
   )
 }
 
-/**
- * Streaming CLI runner for form filling with real-time progress updates.
- *
- * Uses Claude CLI's stream-json output format which emits NDJSON:
- * - {"type":"system",...} - Session init
- * - {"type":"stream_event","event":{"type":"content_block_delta","delta":{"text":"..."}}} - Token streaming
- * - {"type":"assistant","message":{...}} - Complete message
- * - {"type":"result","result":"..."} - Final result
- *
- * Falls back to non-streaming for providers that don't support it.
- */
-function runStreamingCli(
-  provider: CliProvider,
-  prompt: string,
-  onProgress: (text: string, isComplete: boolean) => void
-): Promise<EnhancedFillInstruction[]> {
-  const streamingCommand = getStreamingCliCommand(provider)
+// ============================================================================
+// Form Fill IPC Handler (MCP-based)
+// ============================================================================
 
-  // Fall back to non-streaming if provider doesn't support it
-  if (!streamingCommand) {
-    logger.info(`[CLI] Provider ${provider} doesn't support streaming, using standard mode`)
-    return runEnhancedCli(provider, prompt)
+// Track active Claude CLI process
+let activeClaudeProcess: ReturnType<typeof spawn> | null = null
+
+/**
+ * Kill the active Claude CLI process if running
+ * Uses process group kill to ensure all child processes are terminated
+ * (e.g., codex spawns a child process that would otherwise be orphaned)
+ */
+function killActiveClaudeProcess(reason: string): void {
+  if (!activeClaudeProcess) return
+
+  // Capture reference before nullifying - needed for timeout callback
+  const processToKill = activeClaudeProcess
+  const pid = processToKill.pid
+  logger.info(`[Process] Killing Claude CLI process group (PID: ${pid}) - ${reason}`)
+
+  // Nullify immediately to prevent new operations on this process
+  activeClaudeProcess = null
+
+  if (!pid) {
+    logger.warn(`[Process] No PID available for process`)
+    return
   }
 
-  const [cmd, args] = streamingCommand
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args)
-    let accumulatedText = ""
-    let finalResult: string | null = null
-    let stderr = ""
-
-    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
-      setTimeout(() => {
-        logger.warn(`[CLI] ${provider} streaming still running after ${ms / 1000}s...`)
-      }, ms)
-    )
-
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (streaming form-fill)`))
-    }, CLI_TIMEOUT_MS)
-
-    const clearAllTimers = () => {
-      warningTimers.forEach(clearTimeout)
-      clearTimeout(timeout)
+  try {
+    // Kill the entire process group (spawned with detached: true)
+    // Negative PID kills the process group
+    try {
+      process.kill(-pid, "SIGTERM")
+    } catch {
+      // If process group kill fails, fall back to direct kill
+      processToKill.kill("SIGTERM")
     }
 
-    // Write prompt to stdin
-    child.stdin.write(prompt)
-    child.stdin.end()
-
-    // Process stdout line-by-line (NDJSON format)
-    const rl = readline.createInterface({
-      input: child.stdout,
-      crlfDelay: Infinity,
-    })
-
-    rl.on("line", (line) => {
-      if (!line.trim()) return
-
-      try {
-        const event = JSON.parse(line)
-        logger.debug(`[CLI Streaming] Event type: ${event.type}`)
-
-        // Handle streaming token deltas
-        if (event.type === "stream_event" && event.event?.type === "content_block_delta") {
-          const text = event.event.delta?.text
-          if (text) {
-            accumulatedText += text
-            logger.debug(`[CLI Streaming] Delta text (${text.length} chars), total: ${accumulatedText.length}`)
-            onProgress(accumulatedText, false)
-          }
-        }
-
-        // Handle complete assistant message (backup if streaming events missed)
-        if (event.type === "assistant" && event.message?.content) {
-          const content = event.message.content
-          if (Array.isArray(content) && content[0]?.type === "text") {
-            accumulatedText = content[0].text
-            logger.debug(`[CLI Streaming] Assistant message: ${accumulatedText.length} chars`)
-            onProgress(accumulatedText, false)
-          }
-        }
-
-        // Handle final result
-        if (event.type === "result") {
-          finalResult = event.result
-          logger.info(`[CLI Streaming] Result received: ${finalResult?.length || 0} chars`)
-          onProgress(finalResult || accumulatedText, true)
-        }
-      } catch {
-        // Log parse errors but don't fail - might be debug output
-        logger.warn(`[CLI] Failed to parse streaming line: ${line.slice(0, 100)}`)
-      }
-    })
-
-    child.stderr.on("data", (d) => (stderr += d))
-
-    child.on("error", (err) => {
-      clearAllTimers()
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
-      } else {
-        reject(new Error(`Failed to spawn ${provider} CLI (streaming form-fill): ${err.message}`))
-      }
-    })
-
-    child.on("close", (code) => {
-      clearAllTimers()
-
-      if (code !== 0) {
-        let errorMsg = `${provider} CLI failed (exit ${code}).`
-        if (stderr?.trim()) {
-          errorMsg += ` Error: ${stderr.trim()}`
-        }
-        reject(new Error(errorMsg))
-        return
-      }
-
-      // Parse the final result
-      const resultText = finalResult || accumulatedText
-      logger.info(`[CLI Streaming] Close - finalResult: ${finalResult?.length || 0}, accumulatedText: ${accumulatedText.length}`)
-      logger.debug(`[CLI Streaming] Result text preview: ${resultText?.slice(0, 500)}`)
-
-      if (!resultText) {
-        reject(new Error(`${provider} CLI returned no output (streaming form-fill)`))
-        return
-      }
-
-      try {
-        // The result should be a JSON array of instructions
-        // Try parsing directly first (streaming might give us clean JSON)
-        let parsed: unknown
+    // Force kill after 2 seconds if still running
+    const forceKillTimeout = setTimeout(() => {
+      if (!processToKill.killed) {
+        logger.warn(`[Process] SIGTERM didn't work, sending SIGKILL to process group ${pid}`)
         try {
-          parsed = JSON.parse(resultText)
-          logger.debug(`[CLI Streaming] Parsed as direct JSON`)
+          process.kill(-pid, "SIGKILL")
         } catch {
-          // Fall back to array extraction if not clean JSON
-          logger.debug(`[CLI Streaming] Direct JSON failed, trying array extraction`)
-          parsed = parseCliArrayOutput(resultText)
+          try {
+            processToKill.kill("SIGKILL")
+          } catch {
+            // Process may have exited between check and kill
+          }
         }
-
-        if (!Array.isArray(parsed)) {
-          logger.error(`[CLI Streaming] Parsed result is not an array: ${typeof parsed}`)
-          throw new Error("CLI did not return an array")
-        }
-
-        logger.info(`[CLI Streaming] Parsed ${parsed.length} instructions`)
-
-        const instructions = (parsed as Array<Record<string, unknown>>).map((item) => ({
-          selector: String(item.selector || ""),
-          value: item.value != null ? String(item.value) : null,
-          status: (item.status === "skipped" ? "skipped" : "filled") as "filled" | "skipped",
-          reason: item.reason ? String(item.reason) : undefined,
-          label: item.label ? String(item.label) : undefined,
-        }))
-
-        resolve(instructions)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logger.error(`[CLI Streaming] Parse error: ${msg}`)
-        reject(new Error(`${provider} CLI returned invalid JSON (streaming form-fill): ${msg}`))
       }
+    }, 2000)
+
+    // Clear timeout if process exits
+    processToKill.once("exit", () => {
+      clearTimeout(forceKillTimeout)
+      logger.info(`[Process] Claude CLI (PID: ${pid}) exited`)
     })
-  })
+  } catch (err) {
+    logger.error(`[Process] Error killing Claude CLI: ${err}`)
+  }
+}
+
+// Clean up on unexpected process exit (safety net for crashes)
+process.on("exit", () => {
+  if (activeClaudeProcess) {
+    try {
+      activeClaudeProcess.kill("SIGKILL")
+    } catch {
+      // Ignore errors during exit
+    }
+  }
+})
+
+// Handle SIGTERM/SIGINT explicitly for electronmon restarts
+// These signals are sent when electronmon restarts the app on file changes
+const handleTerminationSignal = (signal: string) => {
+  logger.info(`[Process] Received ${signal}, cleaning up child processes...`)
+  if (activeClaudeProcess) {
+    try {
+      // Kill the entire process group to catch any grandchildren
+      const pid = activeClaudeProcess.pid
+      if (pid) {
+        try {
+          // Try to kill the process group (negative PID)
+          process.kill(-pid, "SIGKILL")
+        } catch {
+          // If process group kill fails, kill the process directly
+          activeClaudeProcess.kill("SIGKILL")
+        }
+      }
+      logger.info(`[Process] Killed child process on ${signal}`)
+    } catch (err) {
+      logger.error(`[Process] Error killing child on ${signal}:`, err)
+    }
+    activeClaudeProcess = null
+  }
+  // Exit after cleanup
+  process.exit(0)
+}
+
+process.on("SIGTERM", () => handleTerminationSignal("SIGTERM"))
+process.on("SIGINT", () => handleTerminationSignal("SIGINT"))
+
+/**
+ * Get the path to the MCP server executable
+ */
+function getMcpServerPath(): string {
+  // In development, use the local mcp-server/dist/index.js
+  // In production, it would be bundled with the app
+  const devPath = path.join(import.meta.dirname, "..", "mcp-server", "dist", "index.js")
+  if (fs.existsSync(devPath)) {
+    return devPath
+  }
+  // Fallback for production builds
+  const prodPath = path.join(import.meta.dirname, "mcp-server", "index.js")
+  if (fs.existsSync(prodPath)) {
+    return prodPath
+  }
+  throw new Error("MCP server not found. Run 'npm run build' in mcp-server directory.")
 }
 
 /**
- * Helper to send form fill progress to renderer
+ * Create MCP config file for Claude CLI
  */
-function sendFormFillProgress(progress: FormFillProgress): void {
-  if (mainWindow) {
-    mainWindow.webContents.send("form-fill-progress", progress)
+// MCP config path - stored in project dir for easier debugging
+const MCP_CONFIG_PATH = path.join(import.meta.dirname, "..", "mcp-config.json")
+
+function createMcpConfigFile(): string {
+  const mcpServerPath = getMcpServerPath()
+
+  const config = {
+    mcpServers: {
+      "job-applicator": {
+        command: "node",
+        args: [mcpServerPath],
+        env: {
+          JOB_APPLICATOR_URL: `http://127.0.0.1:19524`
+        }
+      }
+    }
   }
+
+  fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2))
+  logger.info(`[FillForm] Created MCP config at ${MCP_CONFIG_PATH}`)
+  return MCP_CONFIG_PATH
 }
+
+/**
+ * Fill form using Claude CLI with MCP tools
+ */
+ipcMain.handle(
+  "fill-form",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { jobMatchId: string; jobContext: string }
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      // Kill any existing process
+      if (activeClaudeProcess) {
+        killActiveClaudeProcess("starting new fill-form")
+      } else {
+        logger.info(`[FillForm] No existing process to kill`)
+      }
+
+      // Fetch the user's profile with explicit error handling
+      let profileText: string
+      try {
+        profileText = await fetchApplicatorProfile()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] Failed to fetch profile: ${message}`)
+        return { success: false, message: `Failed to fetch profile: ${message}` }
+      }
+
+      // Create MCP config file
+      let mcpConfigPath: string
+      try {
+        mcpConfigPath = createMcpConfigFile()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] Failed to create MCP config: ${message}`)
+        return { success: false, message }
+      }
+
+      // Set job context for document generation tools and context retrieval
+      setCurrentJobMatchId(options.jobMatchId)
+      setUserProfile(profileText)
+      setJobContext(options.jobContext)
+
+      // Set completion callback to kill CLI when done is called
+      logger.info(`[FillForm] Setting completion callback`)
+      setCompletionCallback((summary: string) => {
+        logger.info(`[FillForm] Completion callback fired with: ${summary}`)
+        killActiveClaudeProcess("agent completed")
+        clearJobContext()
+        setCompletionCallback(null)
+        mainWindow?.webContents.send("agent-status", { state: "idle" })
+        mainWindow?.webContents.send("agent-output", {
+          text: `\n✓ ${summary}\n`,
+          isError: false,
+        })
+      })
+
+      // Build the prompt - data is retrieved via tools to reduce prompt size
+      const prompt = `You are filling a job application form using a hybrid DOM + visual approach.
+
+CRITICAL RULES:
+1. MUST call get_user_profile FIRST - NEVER invent or guess user data
+2. Use selector-based tools (fill_field, select_option, set_checkbox, click_element) for reliability
+3. Use screenshot to verify your work and handle complex UI
+4. DO NOT click submit/apply buttons - user will submit manually
+5. SKIP file upload fields - user handles documents separately
+
+WORKFLOW:
+1. get_user_profile - Get user data (MANDATORY first)
+2. get_form_fields - Analyze DOM, get selectors and dropdown options
+3. For each field, match label to profile data and use:
+   - fill_field(selector, value) for text inputs
+   - select_option(selector, value) for dropdowns - match against options array
+   - set_checkbox(selector, checked) for checkboxes/radios
+   - click_element(selector) for buttons like "Add Another"
+4. screenshot - Verify fields were filled correctly
+5. For any issues or custom UI (date pickers, autocomplete):
+   - Use click(x,y) and type(text) as fallback
+6. scroll down and repeat get_form_fields for more fields
+7. done with summary
+
+DYNAMIC FORMS (Education, Employment, etc.):
+- Call get_buttons to find "Add Another", "Add Education", "Add Employment" buttons
+- Use click_element(selector) to add entries for EACH item in the profile
+- After clicking, call get_form_fields again to see the new sub-form fields
+- Fill the sub-form, then click "Add Another" again for the next item
+- Repeat until all education/employment entries from the profile are added
+
+YES/NO QUESTIONS - Use profile data to infer answers:
+- "Do you have X years of experience?" → YES if profile shows enough work history
+- "Are you authorized to work?" → YES (assume authorized)
+- "Will you require sponsorship?" → NO (assume no sponsorship needed)
+- "Email me about future openings?" → YES
+- "Agree to terms/privacy policy?" → YES
+
+IMPORTANT: The 'options' array in get_form_fields shows available dropdown values.
+Match your selection to one of those values, not arbitrary text.
+
+Start by calling get_user_profile.`
+
+      logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
+      logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)
+      logger.info(`[FillForm] Prompt length: ${prompt.length} chars`)
+
+      // Notify renderer that fill is starting
+      mainWindow?.webContents.send("agent-status", { state: "working" })
+
+      // Spawn Claude CLI with MCP server configured
+      // Use stdin for prompt to avoid command line length limits
+      const spawnArgs = [
+        "--print",
+        "--dangerously-skip-permissions",
+        "--mcp-config",
+        mcpConfigPath,
+      ]
+      logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
+      // Use detached: true to create a new process group, allowing us to kill the entire tree
+      // on termination (electronmon restarts, etc.). stdio: "pipe" is default but explicit here.
+      activeClaudeProcess = spawn("claude", spawnArgs, {
+        detached: true,
+        stdio: ["pipe", "pipe", "pipe"],
+      })
+
+      // Write prompt to stdin and close it (--print mode needs EOF to start)
+      if (activeClaudeProcess.stdin) {
+        activeClaudeProcess.stdin.write(prompt)
+        activeClaudeProcess.stdin.end()
+        logger.info(`[FillForm] Wrote ${prompt.length} chars to stdin`)
+      } else {
+        logger.error(`[FillForm] stdin not available`)
+      }
+
+      // Forward stdout to renderer - log full output to see agent reasoning
+      activeClaudeProcess.stdout?.on("data", (data: Buffer) => {
+        const text = data.toString()
+        // Log full output (up to 2000 chars) to see Claude's reasoning
+        logger.info(`[FillForm] stdout:\n${text.slice(0, 2000)}${text.length > 2000 ? "...(truncated)" : ""}`)
+        mainWindow?.webContents.send("agent-output", { text, isError: false })
+      })
+
+      // Forward stderr to renderer
+      activeClaudeProcess.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString()
+        logger.warn(`[FillForm] stderr:\n${text.slice(0, 2000)}${text.length > 2000 ? "...(truncated)" : ""}`)
+        mainWindow?.webContents.send("agent-output", { text, isError: true })
+      })
+
+      // Log when process actually starts
+      logger.info(`[FillForm] Claude CLI process spawned with PID: ${activeClaudeProcess.pid}`)
+
+      // Handle process completion
+      activeClaudeProcess.on("close", (code: number | null) => {
+        logger.info(`[FillForm] Claude CLI exited with code ${code}`)
+        activeClaudeProcess = null
+        clearJobContext()
+        setCompletionCallback(null)
+        mainWindow?.webContents.send("agent-status", {
+          state: code === 0 ? "idle" : "stopped",
+        })
+      })
+
+      activeClaudeProcess.on("error", (err: Error) => {
+        logger.error(`[FillForm] Claude CLI error: ${err.message}`)
+        activeClaudeProcess = null
+        clearJobContext()
+        setCompletionCallback(null)
+        mainWindow?.webContents.send("agent-status", { state: "stopped" })
+        mainWindow?.webContents.send("agent-output", {
+          text: `Error: ${err.message}\n`,
+          isError: true,
+        })
+      })
+
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`[FillForm] Error: ${message}`)
+      return { success: false, message }
+    }
+  }
+)
+
+/**
+ * Stop form filling
+ */
+ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
+  logger.info(`[FillForm] stop-fill-form called`)
+  killActiveClaudeProcess("user stopped")
+  clearJobContext()
+  setCompletionCallback(null)
+  mainWindow?.webContents.send("agent-status", { state: "stopped" })
+  return { success: true }
+})
+
+/**
+ * Send input to the running agent
+ * Note: This only works in interactive mode, not --print mode
+ */
+ipcMain.handle(
+  "send-agent-input",
+  async (_event: IpcMainInvokeEvent, input: string): Promise<{ success: boolean; message?: string }> => {
+    if (!activeClaudeProcess) {
+      return { success: false, message: "No active agent process" }
+    }
+
+    // In --print mode, stdin is closed after the initial prompt
+    // This handler is for future interactive mode support
+    if (!activeClaudeProcess.stdin || activeClaudeProcess.stdin.writableEnded) {
+      return { success: false, message: "Agent stdin is closed (--print mode does not support interactive input)" }
+    }
+
+    try {
+      activeClaudeProcess.stdin.write(input + "\n")
+      logger.info(`[FillForm] Sent input to agent: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`)
+      return { success: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`[FillForm] Failed to send input: ${message}`)
+      return { success: false, message }
+    }
+  }
+)
+
+/**
+ * Pause the running agent (send SIGTSTP signal)
+ * Note: In --print mode, this sends a signal rather than Escape via stdin
+ */
+ipcMain.handle("pause-agent", async (): Promise<{ success: boolean; message?: string }> => {
+  if (!activeClaudeProcess) {
+    return { success: false, message: "No active agent process" }
+  }
+
+  try {
+    // Send SIGTSTP to pause the process (like Ctrl+Z in terminal)
+    activeClaudeProcess.kill("SIGTSTP")
+    logger.info("[FillForm] Sent SIGTSTP to pause agent")
+    mainWindow?.webContents.send("agent-status", { state: "paused" })
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[FillForm] Failed to pause agent: ${message}`)
+    return { success: false, message }
+  }
+})
 
 // App lifecycle
 app.whenReady().then(() => {
+  // Start the tool server for MCP communication
+  startToolServer()
+
   createWindow()
 
   // Register global shortcuts for DevTools
@@ -1537,6 +1328,8 @@ app.whenReady().then(() => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll()
+  stopToolServer()
+  killActiveClaudeProcess("app quitting")
 })
 
 app.on("window-all-closed", () => {
