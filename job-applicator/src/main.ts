@@ -62,7 +62,6 @@ import {
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
   parseCliObjectOutput,
-  getConfig,
 } from "./utils.js"
 
 // Tool executor and server

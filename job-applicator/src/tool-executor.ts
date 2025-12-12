@@ -443,15 +443,22 @@ async function handleKeypress(params: { key: string }): Promise<ToolResult> {
   }
 
   try {
-    // Handle SelectAll (Ctrl+A)
+    // Handle SelectAll (Ctrl+A on Windows/Linux, Cmd+A on macOS)
     if (key === "SelectAll") {
+      const isMac = process.platform === "darwin"
+      // CDP modifiers: 1=Alt, 2=Ctrl, 4=Meta(Cmd), 8=Shift
+      const modifier = isMac ? 4 : 2
+      const modKey = isMac ? "Meta" : "Control"
+      const modCode = isMac ? "MetaLeft" : "ControlLeft"
+      const modKeyCode = isMac ? 91 : 17
+
       await debugger_.sendCommand("Input.dispatchKeyEvent", {
         type: "keyDown",
-        key: "Control",
-        code: "ControlLeft",
-        windowsVirtualKeyCode: 17,
-        nativeVirtualKeyCode: 17,
-        modifiers: 2,
+        key: modKey,
+        code: modCode,
+        windowsVirtualKeyCode: modKeyCode,
+        nativeVirtualKeyCode: modKeyCode,
+        modifiers: modifier,
       })
       await debugger_.sendCommand("Input.dispatchKeyEvent", {
         type: "keyDown",
@@ -459,7 +466,7 @@ async function handleKeypress(params: { key: string }): Promise<ToolResult> {
         code: "KeyA",
         windowsVirtualKeyCode: 65,
         nativeVirtualKeyCode: 65,
-        modifiers: 2,
+        modifiers: modifier,
       })
       await debugger_.sendCommand("Input.dispatchKeyEvent", {
         type: "keyUp",
@@ -467,17 +474,17 @@ async function handleKeypress(params: { key: string }): Promise<ToolResult> {
         code: "KeyA",
         windowsVirtualKeyCode: 65,
         nativeVirtualKeyCode: 65,
-        modifiers: 2,
+        modifiers: modifier,
       })
       await debugger_.sendCommand("Input.dispatchKeyEvent", {
         type: "keyUp",
-        key: "Control",
-        code: "ControlLeft",
-        windowsVirtualKeyCode: 17,
-        nativeVirtualKeyCode: 17,
+        key: modKey,
+        code: modCode,
+        windowsVirtualKeyCode: modKeyCode,
+        nativeVirtualKeyCode: modKeyCode,
         modifiers: 0,
       })
-      logger.info("[ToolExecutor] Pressed SelectAll (Ctrl+A)")
+      logger.info(`[ToolExecutor] Pressed SelectAll (${modKey}+A)`)
       return { success: true }
     }
 

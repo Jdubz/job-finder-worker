@@ -40,10 +40,10 @@ import { startGeneration, executeGenerationStep, fetchGeneratorRequest } from ".
 import * as fs from "fs"
 
 // Helper to create mock BrowserView
-function createMockBrowserView(overrides: Partial<{
-  webContents: Partial<BrowserView["webContents"]>
-  bounds: { x: number; y: number; width: number; height: number }
-}> = {}): BrowserView {
+function createMockBrowserView(overrides: {
+  webContents?: Record<string, unknown>
+  bounds?: { x: number; y: number; width: number; height: number }
+} = {}): BrowserView {
   const mockDebugger = {
     attach: vi.fn(),
     detach: vi.fn(),
@@ -456,7 +456,7 @@ describe("Tool Executor", () => {
       }))
     })
 
-    it("should handle SelectAll (Ctrl+A)", async () => {
+    it("should handle SelectAll (Ctrl+A on Windows/Linux, Cmd+A on macOS)", async () => {
       const mockDebugger = {
         attach: vi.fn(),
         detach: vi.fn(),
@@ -471,8 +471,16 @@ describe("Tool Executor", () => {
       const result = await executeTool("press_key", { key: "SelectAll" })
 
       expect(result.success).toBe(true)
-      // Should send Control keyDown, 'a' keyDown, 'a' keyUp, Control keyUp
+      // Should send modifier keyDown, 'a' keyDown, 'a' keyUp, modifier keyUp
       expect(mockDebugger.sendCommand).toHaveBeenCalledTimes(4)
+
+      // Verify correct modifier key based on platform
+      const isMac = process.platform === "darwin"
+      const expectedModKey = isMac ? "Meta" : "Control"
+      expect(mockDebugger.sendCommand).toHaveBeenCalledWith(
+        "Input.dispatchKeyEvent",
+        expect.objectContaining({ key: expectedModKey, type: "keyDown" })
+      )
     })
 
     it("should also work with keypress alias", async () => {
@@ -531,12 +539,14 @@ describe("Tool Executor", () => {
       vi.mocked(startGeneration).mockResolvedValue({
         requestId: "req-456",
         nextStep: "generate_content",
+        steps: [],
       })
 
       vi.mocked(executeGenerationStep).mockResolvedValue({
         status: "completed",
         resumeUrl: "/artifacts/resume.pdf",
         nextStep: null,
+        steps: [],
       })
 
       const result = await executeTool("generate_resume", {})
@@ -553,12 +563,14 @@ describe("Tool Executor", () => {
       vi.mocked(startGeneration).mockResolvedValue({
         requestId: "req-789",
         nextStep: "generate_content",
+        steps: [],
       })
 
       vi.mocked(executeGenerationStep).mockResolvedValue({
         status: "completed",
         resumeUrl: "/artifacts/resume.pdf",
         nextStep: null,
+        steps: [],
       })
 
       await executeTool("generate_resume", { jobMatchId: "job-override" })
@@ -575,12 +587,14 @@ describe("Tool Executor", () => {
       vi.mocked(startGeneration).mockResolvedValue({
         requestId: "req-456",
         nextStep: "generate_content",
+        steps: [],
       })
 
       vi.mocked(executeGenerationStep).mockResolvedValue({
         status: "failed",
         error: "PDF generation failed",
         nextStep: null,
+        steps: [],
       })
 
       const result = await executeTool("generate_resume", {})
@@ -595,12 +609,14 @@ describe("Tool Executor", () => {
       vi.mocked(startGeneration).mockResolvedValue({
         requestId: "req-456",
         nextStep: "step1",
+        steps: [],
       })
 
       // Always return a next step to trigger max steps
       vi.mocked(executeGenerationStep).mockResolvedValue({
         status: "processing",
         nextStep: "another_step",
+        steps: [],
       })
 
       const result = await executeTool("generate_resume", {})
@@ -621,12 +637,14 @@ describe("Tool Executor", () => {
       vi.mocked(startGeneration).mockResolvedValue({
         requestId: "req-456",
         nextStep: "generate_content",
+        steps: [],
       })
 
       vi.mocked(executeGenerationStep).mockResolvedValue({
         status: "completed",
         coverLetterUrl: "/artifacts/cover_letter.pdf",
         nextStep: null,
+        steps: [],
       })
 
       const result = await executeTool("generate_cover_letter", {})
@@ -674,6 +692,10 @@ describe("Tool Executor", () => {
       vi.mocked(fs.existsSync).mockReturnValue(false)
 
       vi.mocked(fetchGeneratorRequest).mockResolvedValue({
+        id: "doc-123",
+        generateType: "resume",
+        status: "completed",
+        createdAt: new Date(),
         resumeUrl: "/artifacts/resume.pdf",
       })
 
@@ -693,6 +715,10 @@ describe("Tool Executor", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true)
 
       vi.mocked(fetchGeneratorRequest).mockResolvedValue({
+        id: "doc-123",
+        generateType: "resume",
+        status: "completed",
+        createdAt: new Date(),
         resumeUrl: "/artifacts/resume.pdf",
       })
 
@@ -726,6 +752,10 @@ describe("Tool Executor", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true)
 
       vi.mocked(fetchGeneratorRequest).mockResolvedValue({
+        id: "doc-123",
+        generateType: "coverLetter",
+        status: "completed",
+        createdAt: new Date(),
         // No resumeUrl, only coverLetterUrl
         coverLetterUrl: "/artifacts/cover.pdf",
       })
@@ -758,7 +788,6 @@ describe("Tool Executor", () => {
       setBrowserView(mockView)
 
       // Override timeout for test
-      const originalSetTimeout = global.setTimeout
       vi.useFakeTimers()
 
       const resultPromise = executeTool("screenshot", {})
