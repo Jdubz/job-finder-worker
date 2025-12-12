@@ -503,7 +503,7 @@ describe("CompaniesPage", () => {
       expect(within(acmeRow).queryByRole("button", { name: /re-analyze/i })).not.toBeInTheDocument()
     })
 
-    it("triggers re-analyze and navigation from list-level button", async () => {
+    it("triggers re-analyze without leaving the page", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockResolvedValueOnce("queue-item-999")
 
@@ -524,7 +524,7 @@ describe("CompaniesPage", () => {
           companyId: "company-2",
           allowReanalysis: true,
         })
-        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+        expect(mockNavigate).not.toHaveBeenCalledWith("/queue-management")
       })
     })
 

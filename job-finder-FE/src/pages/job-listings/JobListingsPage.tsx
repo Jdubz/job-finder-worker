@@ -81,7 +81,6 @@ export function JobListingsPage() {
         }
         await submitJob(payload)
         closeModal()
-        navigate("/queue-management")
       } catch (err) {
         logger.error("JobListings", "resubmitListing", "Failed to resubmit listing", {
           error: { type: "ResubmitError", message: err instanceof Error ? err.message : String(err) },
