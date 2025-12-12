@@ -39,6 +39,7 @@ def _init_db(db_path: Path) -> None:
             url TEXT,
             tracking_id TEXT,
             parent_item_id TEXT,
+            dedupe_key TEXT,
             input TEXT,
             output TEXT,
             result_message TEXT,
@@ -61,8 +62,8 @@ def _insert_company_item(db_path: Path, *, company_id: str, status: str) -> None
     conn = sqlite3.connect(db_path)
     conn.execute(
         """
-        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, input)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, dedupe_key, input)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             f"item-{company_id}-{status}",
@@ -70,6 +71,7 @@ def _insert_company_item(db_path: Path, *, company_id: str, status: str) -> None
             status,
             "https://example.com",
             "t-1",
+            None,
             None,
             payload,
         ),
@@ -112,8 +114,8 @@ def test_has_company_task_blocks_by_name_when_no_id(queue_mgr):
     conn = sqlite3.connect(queue_mgr.db_path)
     conn.execute(
         """
-        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, input)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, dedupe_key, input)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "item-nameonly",
@@ -121,6 +123,7 @@ def test_has_company_task_blocks_by_name_when_no_id(queue_mgr):
             QueueStatus.PROCESSING.value,
             "https://example.com",
             "t-2",
+            None,
             None,
             payload,
         ),
@@ -141,8 +144,8 @@ def test_has_company_task_uses_or_logic_for_id_and_name(queue_mgr):
     conn = sqlite3.connect(queue_mgr.db_path)
     conn.execute(
         """
-        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, input)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO job_queue (id, type, status, url, tracking_id, parent_item_id, dedupe_key, input)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "item-or-test",
@@ -150,6 +153,7 @@ def test_has_company_task_uses_or_logic_for_id_and_name(queue_mgr):
             QueueStatus.PENDING.value,
             "https://example.com",
             "t-3",
+            None,
             None,
             payload,
         ),

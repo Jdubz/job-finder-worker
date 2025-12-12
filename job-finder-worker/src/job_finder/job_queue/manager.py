@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import hashlib
+import json
+from urllib.parse import urlparse, urlunparse
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -39,6 +42,25 @@ class QueueManager:
         self.db_path = db_path
         self.notifier = notifier
         self._max_string_length = 2000
+        self._ensure_schema()
+
+    # ------------------------------------------------------------------ #
+    # Schema helpers
+    # ------------------------------------------------------------------ #
+
+    def _ensure_schema(self) -> None:
+        """Add new columns / indexes if a legacy DB is detected."""
+        with sqlite_connection(self.db_path) as conn:
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(job_queue);")}
+            if "dedupe_key" not in cols:
+                conn.execute("ALTER TABLE job_queue ADD COLUMN dedupe_key TEXT;")
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_dedupe_active
+                ON job_queue(dedupe_key)
+                WHERE dedupe_key IS NOT NULL AND status IN ('pending','processing');
+                """
+            )
 
     def _sanitize_payload(self, obj: Any) -> Any:
         """Trim oversized strings and drop heavy description fields before emitting events."""
@@ -94,6 +116,80 @@ class QueueManager:
     # CRUD HELPERS
     # --------------------------------------------------------------------- #
 
+    @staticmethod
+    def _normalize_url(url: Optional[str]) -> str:
+        if not url:
+            return ""
+        try:
+            parsed = urlparse(url.strip())
+            # Drop fragments, normalize scheme/host, keep path/query
+            cleaned = parsed._replace(fragment="", scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower())
+            # Remove trailing slash unless root
+            path = cleaned.path or "/"
+            if path != "/" and path.endswith("/"):
+                path = path.rstrip("/")
+            cleaned = cleaned._replace(path=path)
+            return urlunparse(cleaned)
+        except Exception:
+            return url.strip()
+
+    @staticmethod
+    def _slugify(value: Optional[str]) -> str:
+        if not value:
+            return ""
+        import re
+
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return slug
+
+    def _hash_dict(self, data: Dict[str, Any]) -> str:
+        return hashlib.sha1(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()  # noqa: S324
+
+    def _compute_dedupe_key(self, item: JobQueueItem) -> str:
+        """
+        Build a deterministic fingerprint for deduplication that does NOT depend solely on URL.
+        """
+        t = item.type
+        norm_url = self._normalize_url(item.url)
+        if t == QueueItemType.JOB:
+            return f"job|{norm_url}"
+        if t == QueueItemType.COMPANY:
+            ident = item.company_id or self._slugify(item.company_name)
+            return f"company|{ident}"
+        if t == QueueItemType.SOURCE_DISCOVERY:
+            ident = norm_url or item.company_id or self._slugify(item.company_name) or ""
+            return f"source_discovery|{ident}"
+        if t == QueueItemType.SCRAPE_SOURCE:
+            source_id = item.source_id or item.input.get("source_id") if item.input else None
+            ident = source_id or norm_url or item.company_id or self._slugify(item.company_name)
+            return f"scrape_source|{ident}"
+        if t == QueueItemType.SCRAPE:
+            cfg = item.scrape_config.model_dump() if item.scrape_config else item.input.get("scrape_config", {}) if item.input else {}
+            return f"scrape|{self._hash_dict(cfg)}"
+        if t == QueueItemType.AGENT_REVIEW:
+            ident = item.parent_item_id or norm_url or item.tracking_id
+            return f"agent_review|{ident}"
+        return f"generic|{t.value}|{norm_url or item.tracking_id}"
+
+    def _dedupe_exists(
+        self, dedupe_key: str, statuses: Optional[List[QueueStatus]] = None
+    ) -> bool:
+        if not dedupe_key:
+            return False
+        statuses = statuses or [QueueStatus.PENDING, QueueStatus.PROCESSING]
+        placeholders = ",".join("?" for _ in statuses)
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                f"""
+                SELECT 1 FROM job_queue
+                WHERE dedupe_key = ?
+                  AND status IN ({placeholders})
+                LIMIT 1
+                """,
+                (dedupe_key, *[s.value for s in statuses]),
+            ).fetchone()
+        return row is not None
+
     def add_item(self, item: JobQueueItem) -> str:
         """Insert a queue item."""
         if not item.id:
@@ -126,6 +222,11 @@ class QueueManager:
         if item.type == QueueItemType.SCRAPE:
             item.url = None  # SCRAPE does not target a single URL
 
+        item.dedupe_key = self._compute_dedupe_key(item)
+
+        if self._dedupe_exists(item.dedupe_key):
+            raise DuplicateQueueItemError(f"Duplicate task fingerprint: {item.dedupe_key}")
+
         record = item.to_record()
         columns = ", ".join(record.keys())
         placeholders = ", ".join(["?"] * len(record))
@@ -138,7 +239,7 @@ class QueueManager:
                 )
         except sqlite3.IntegrityError as exc:
             if "UNIQUE constraint failed" in str(exc):
-                raise DuplicateQueueItemError(f"Duplicate URL in queue: {item.url}") from exc
+                raise DuplicateQueueItemError(f"Duplicate task fingerprint (db): {item.dedupe_key}") from exc
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
         except Exception as exc:
             raise StorageError(f"Failed to insert queue item: {exc}") from exc
@@ -378,25 +479,14 @@ class QueueManager:
     def has_pending_work_for_url(
         self, url: str, item_type: QueueItemType, tracking_id: str
     ) -> bool:
-        with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                """
-                SELECT 1 FROM job_queue
-                WHERE tracking_id = ?
-                  AND url = ?
-                  AND type = ?
-                  AND status IN (?, ?)
-                LIMIT 1
-                """,
-                (
-                    tracking_id,
-                    url,
-                    item_type.value,
-                    QueueStatus.PENDING.value,
-                    QueueStatus.PROCESSING.value,
-                ),
-            ).fetchone()
-        return row is not None
+        # Legacy helper kept for compatibility; now routed through dedupe_key.
+        temp = JobQueueItem(
+            type=item_type,
+            url=url,
+            tracking_id=tracking_id,
+        )
+        temp.dedupe_key = self._compute_dedupe_key(temp)
+        return self._dedupe_exists(temp.dedupe_key)
 
     def can_spawn_item(
         self, current_item: JobQueueItem, target_url: str, target_type: QueueItemType
@@ -443,17 +533,23 @@ class QueueManager:
             logger.error("Cannot spawn JOB without job URL")
             return None
 
-        can_spawn, reason = self.can_spawn_item(current_item, target_url, target_type)
-        if not can_spawn:
-            logger.warning("Blocked spawn: %s", reason)
-            return None
-
         # Inherit tracking_id for lineage, set parent_item_id for direct relationship
         new_item_data.setdefault("tracking_id", current_item.tracking_id)
         new_item_data.setdefault("parent_item_id", current_item.id)
 
         new_item = JobQueueItem(**new_item_data)
-        return self.add_item(new_item)
+        new_item.dedupe_key = self._compute_dedupe_key(new_item)
+
+        # Apply lineage-aware loop prevention using dedupe key
+        if self._dedupe_exists(new_item.dedupe_key):
+            logger.warning("Blocked spawn: duplicate fingerprint %s", new_item.dedupe_key)
+            return None
+
+        try:
+            return self.add_item(new_item)
+        except DuplicateQueueItemError as exc:
+            logger.warning("Blocked spawn (duplicate): %s", exc)
+            return None
 
     def requeue_with_state(
         self,

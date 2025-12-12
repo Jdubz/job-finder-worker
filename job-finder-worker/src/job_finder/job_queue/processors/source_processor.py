@@ -418,11 +418,16 @@ class SourceProcessor(BaseProcessor):
         """
         if initial_status == SourceStatus.ACTIVE:
             # Spawn SCRAPE_SOURCE to immediately scrape
+            scrape_url = (
+                source_config.get("url")
+                if source_config
+                else url
+            )
             scrape_item_id = self.queue_manager.spawn_item_safely(
                 current_item=item,
                 new_item_data={
                     "type": QueueItemType.SCRAPE_SOURCE,
-                    "url": "",
+                    "url": scrape_url or self._extract_base_url(url),
                     "company_name": company_name or "",
                     "company_id": company_id,
                     "source": "automated_scan",
