@@ -8,5 +8,10 @@ set -e
 if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -Fxq "infra/docker-compose.prod.yml"; then
   echo "[post-merge] docker-compose.prod.yml changed, syncing to production..."
   REPO_ROOT="$(git rev-parse --show-toplevel)"
-  "$REPO_ROOT/scripts/deploy.sh" --recreate
+  # Only run deployment if on production server
+  if [ -d "/srv/job-finder" ]; then
+    "$REPO_ROOT/scripts/deploy.sh" --recreate
+  else
+    echo "[post-merge] Not on production server, skipping deployment."
+  fi
 fi
