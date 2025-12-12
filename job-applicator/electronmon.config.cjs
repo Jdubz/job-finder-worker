@@ -9,6 +9,8 @@ module.exports = {
     // Ignore logs - these change during runtime
     "logs/**",
     "*.log",
+    // Ignore MCP config - written during form fill
+    "mcp-config.json",
     // Ignore node_modules
     "node_modules/**",
     // Ignore source (watch:build handles recompilation)
