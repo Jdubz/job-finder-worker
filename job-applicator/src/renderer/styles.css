@@ -243,7 +243,33 @@ select:focus {
   border-color: #533483;
 }
 
-/* Job List */
+/* Job Select Dropdown */
+.job-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #eee;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.job-select:hover:not(:disabled) {
+  border-color: #0f3460;
+}
+
+.job-select:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.job-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Job List (legacy) */
 .job-list {
   max-height: 300px;
   overflow-y: auto;
@@ -304,7 +330,86 @@ select:focus {
   color: #f87171;
 }
 
-/* Documents List */
+/* Document Selectors */
+.document-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.document-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.document-selector label {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.document-select {
+  width: 100%;
+  padding: 8px 10px;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.document-select:hover:not(:disabled) {
+  border-color: #0f3460;
+}
+
+.document-select:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.document-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.document-select-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.document-select-row .document-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-preview {
+  padding: 6px 8px;
+  font-size: 14px;
+  background: #0f3460;
+  border: 1px solid #333;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-preview:hover:not(:disabled) {
+  background: #1a4a7a;
+  border-color: #1a4a7a;
+}
+
+.btn-preview:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Documents List (legacy) */
 .documents-list {
   min-height: 60px;
 }
@@ -863,4 +968,245 @@ select:focus {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================================
+   Agent Session Styles
+   ============================================================================ */
+
+.agent-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.stopped {
+  background: #6b7280;
+}
+
+.status-dot.idle {
+  background: #10b981;
+}
+
+.status-dot.working {
+  background: #fbbf24;
+  animation: pulse 1s infinite;
+}
+
+.status-text {
+  color: #9ca3af;
+}
+
+.agent-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.agent-controls .provider-select {
+  flex: 1;
+}
+
+.btn-start-session {
+  background: #10b981;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-start-session:hover:not(:disabled) {
+  background: #059669;
+}
+
+.btn-stop-session {
+  background: #ef4444;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-stop-session:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.agent-actions {
+  margin-bottom: 12px;
+}
+
+.agent-actions .btn-fill {
+  width: 100%;
+}
+
+.agent-command {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.agent-command input {
+  flex: 1;
+  padding: 8px;
+  font-size: 12px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  color: #eee;
+}
+
+.agent-command input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.agent-command input::placeholder {
+  color: #666;
+}
+
+.btn-send {
+  background: #0f3460;
+  color: #eee;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-send:hover:not(:disabled) {
+  background: #1a4a7a;
+}
+
+.agent-output {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #1a1a2e;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agent-output .agent-command-line {
+  color: #60a5fa;
+  display: block;
+  margin: 4px 0;
+}
+
+.agent-output .agent-error {
+  color: #f87171;
+  display: block;
+}
+
+.agent-output .tool-call {
+  background: rgba(233, 69, 96, 0.1);
+  border-left: 2px solid #e94560;
+  padding: 4px 8px;
+  margin: 4px 0;
+  display: block;
+}
+
+.agent-output .tool-result {
+  background: rgba(16, 185, 129, 0.1);
+  border-left: 2px solid #10b981;
+  padding: 4px 8px;
+  margin: 4px 0;
+  display: block;
+}
+
+/* Agent Activity Styles */
+.agent-activity {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 4px 0;
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.agent-activity .activity-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.agent-activity .activity-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+/* Tool call - pink/red accent */
+.agent-activity.tool_call {
+  background: rgba(233, 69, 96, 0.15);
+  border-left: 3px solid #e94560;
+  color: #f8a5b5;
+}
+
+/* Tool result - green accent */
+.agent-activity.tool_result {
+  background: rgba(16, 185, 129, 0.15);
+  border-left: 3px solid #10b981;
+  color: #86efac;
+}
+
+/* Thinking - blue accent */
+.agent-activity.thinking {
+  background: rgba(59, 130, 246, 0.15);
+  border-left: 3px solid #3b82f6;
+  color: #93c5fd;
+  font-style: italic;
+}
+
+/* Completion - green highlight */
+.agent-activity.completion {
+  background: rgba(16, 185, 129, 0.2);
+  border-left: 3px solid #10b981;
+  color: #4ade80;
+  font-weight: 500;
+}
+
+/* Error - red accent */
+.agent-activity.error {
+  background: rgba(239, 68, 68, 0.15);
+  border-left: 3px solid #ef4444;
+  color: #fca5a5;
+}
+
+/* Plain text - subtle */
+.agent-activity.text {
+  background: transparent;
+  border-left: none;
+  color: #9ca3af;
+  padding-left: 0;
+}
+
+/* Loading spinner for tool calls */
+.agent-activity.tool_call::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(233, 69, 96, 0.3);
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+  margin-left: auto;
 }

@@ -60,12 +60,32 @@ function checkRotation(): void {
   }
 }
 
-function writeToFile(level: string, ...args: unknown[]): void {
+/**
+ * Format an argument for logging - objects are JSON stringified
+ */
+function formatArg(arg: unknown): string {
+  if (arg === null) return "null"
+  if (arg === undefined) return "undefined"
+  if (typeof arg === "object") {
+    try {
+      return JSON.stringify(arg, null, 2)
+    } catch {
+      return "[Circular or unserializable object]"
+    }
+  }
+  return String(arg)
+}
+
+/**
+ * Format all arguments into a single log message
+ */
+function formatMessage(...args: unknown[]): string {
+  return args.map(formatArg).join(" ")
+}
+
+function writeToFile(level: string, message: string): void {
   if (!fileLoggingEnabled) return
 
-  const message = args
-    .map((arg) => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg)))
-    .join(" ")
   const line = `[${timestamp()}] [${level}] ${message}\n`
 
   // Check rotation before writing (sync check, async write)
@@ -82,20 +102,24 @@ function writeToFile(level: string, ...args: unknown[]): void {
 
 export const logger = {
   info(...args: unknown[]): void {
-    console.log("[INFO]", ...args)
-    writeToFile("INFO", ...args)
+    const message = formatMessage(...args)
+    console.log("[INFO]", message)
+    writeToFile("INFO", message)
   },
   warn(...args: unknown[]): void {
-    console.warn("[WARN]", ...args)
-    writeToFile("WARN", ...args)
+    const message = formatMessage(...args)
+    console.warn("[WARN]", message)
+    writeToFile("WARN", message)
   },
   error(...args: unknown[]): void {
-    console.error("[ERROR]", ...args)
-    writeToFile("ERROR", ...args)
+    const message = formatMessage(...args)
+    console.error("[ERROR]", message)
+    writeToFile("ERROR", message)
   },
   debug(...args: unknown[]): void {
-    console.log("[DEBUG]", ...args)
-    writeToFile("DEBUG", ...args)
+    const message = formatMessage(...args)
+    console.log("[DEBUG]", message)
+    writeToFile("DEBUG", message)
   },
 }
 

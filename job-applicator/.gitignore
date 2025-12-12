@@ -1,6 +1,9 @@
 # Build output
 dist/
 
+# Generated MCP config (contains absolute paths)
+mcp-config.json
+
 # Dependencies
 node_modules/
 
