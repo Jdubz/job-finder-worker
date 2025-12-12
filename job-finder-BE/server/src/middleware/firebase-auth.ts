@@ -32,13 +32,15 @@ function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
     /^localhost(?::\d+)?$/i.test(host) ||
     /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
     /^\[::1\](?::\d+)?$/i.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host)
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(host)
 
   const originIsLocal =
     /^https?:\/\/localhost(?::\d+)?$/i.test(origin) ||
     /^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin) ||
     /^https?:\/\/\[::1\](?::\d+)?$/i.test(origin) ||
-    /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin)
+    /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin) ||
+    /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin)
 
   const headersConsistent = (!hostProvided || hostIsLocal) && (!originProvided || originIsLocal)
   if (!headersConsistent) return null
