@@ -18,8 +18,8 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
     "kind": "click" | "double_click" | "type" | "scroll" | "keypress" | "wait" | "done",
     "x": 0, "y": 0,          // required for click/double_click
     "text": "string",        // for type
-    "dy": 400,                // for scroll (vertical)
-    "dx": 0,                  // optional horizontal scroll
+    "dy": 400,                // for scroll (vertical, default 0 if omitted)
+    "dx": 0,                  // optional horizontal scroll (default 0); at least one of dx/dy must be non-zero for scroll
     "key": "Tab" | "Enter" | "Escape", // for keypress
     "ms": 800,                // for wait
     "reason": "why done"     // for done
@@ -33,7 +33,7 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
 3. Send context + screenshot to the local CLI provider (claude/codex/gemini wrapper) expecting the JSON schema above. If JSON parse fails, retry once with a hard stop.
 4. Execute the returned action via CDP:
    - click/double_click → `Input.dispatchMouseEvent`
-   - type → ensure focus is on an input/textarea/contenteditable; if not, send `Tab`; if still unfocused, send a gentle center click, then `Input.insertText`
+   - type → only proceed if `document.activeElement` is an input/textarea/contenteditable; otherwise fail the action so the model must click first, then `Input.insertText`
    - scroll → `window.scrollBy(dx, dy)`
    - keypress → `Input.dispatchKeyEvent`
    - wait → `setTimeout`
@@ -41,13 +41,14 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
 6. Stream concise progress events to renderer (step number, action kind, result) for user visibility.
 
 **Configurability:** expose `AGENT_MAX_STEPS` in app config (env or simple JSON settings) with a default of 40; the loop reads this value once at start so operators can tune without code changes.
+Optionally expose `AGENT_STUCK_HASH_THRESHOLD` (default 3) to tune “no progress” detection.
 
 ## Prompts (per step, minimal)
 ```
 You automate a job application form.
 Goal: <goal text>
 URL: <url>
-Recent actions: <n=3, with outcomes>
+Recent actions: <last 3 actions, with outcomes>
 Previous screenshot hash: <hash>
 Screenshot (base64 JPEG): <data:image/jpeg;base64,...>
 
@@ -56,9 +57,9 @@ Return exactly one JSON object matching the schema. Prefer click → type → Ta
 
 ## Failure / Safety Rules
 - Reject/ignore actions whose coordinates are outside the visible viewport bounds.
-- If focused element is not form-capable, auto-send a Tab before typing; if still unfocused, single center click before typing.
+- If focused element is not form-capable, the `type` action should fail so the model issues a click first (no implicit Tab/click side effects).
 - Per-loop timeout: 45s; per-action timeout: 3s. Abort with an error message on timeout.
-- Detect “no progress” when two consecutive screenshot hashes match after an action; **do not run this check for pure wait actions**; treat N=2 consecutive non-wait no-change events as “stuck” and abort with a clear message.
+- Detect “no progress” when three consecutive screenshot hashes match after an action; **do not run this check for pure wait actions**; treat N=3 consecutive non-wait no-change events as “stuck” and abort with a clear message. (Threshold configurable via `AGENT_STUCK_HASH_THRESHOLD`.)
 
 ## Telemetry (lightweight)
 - Log per-step: action, result (`ok`/`blocked`), screenshot byte size, hash.
@@ -69,5 +70,5 @@ Return exactly one JSON object matching the schema. Prefer click → type → Ta
 2) Add `runVisionAgent(goal, provider)` loop implementing the steps above and CDP action executors.
 3) Replace existing fill IPC with `agent-fill` that calls the loop and streams progress to renderer.
 4) Update renderer `fill` button handler to invoke `agent-fill` and display streamed log/results (no legacy filler path).
-5) Wire CLI prompt template and JSON parsing with one retry on parse failure; enforce 8-step cap and timeouts.
+5) Wire CLI prompt template and JSON parsing with one retry on parse failure; enforce `AGENT_MAX_STEPS` (default 40) cap and timeouts.
 6) Add minimal tests: unit test for action schema parser and hash-based “no change” detection; integration happy-path behind `vitest --runInBand` using a fixture page.
