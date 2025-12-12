@@ -23,6 +23,7 @@ import {
   handleQueueEventsSse,
   sendCommandToWorker
 } from './queue-events'
+import { ApiHttpError } from '../../middleware/api-error'
 import { requireRole } from '../../middleware/firebase-auth'
 import {
   enqueueScrapeJob,
@@ -115,7 +116,14 @@ export function buildJobQueueRouter() {
   router.get(
     '/',
     asyncHandler((req, res) => {
-      const query = listQueueSchema.parse(req.query)
+      const parsed = listQueueSchema.safeParse(req.query)
+      if (!parsed.success) {
+        throw new ApiHttpError(ApiErrorCode.INVALID_REQUEST, 'Invalid queue query parameters', {
+          status: 400,
+          details: parsed.error.flatten()
+        })
+      }
+      const query = parsed.data
       const { items, total } = service.listWithTotal({
         status: query.status,
         type: query.type,
