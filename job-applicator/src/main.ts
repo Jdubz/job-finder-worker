@@ -981,15 +981,19 @@ Begin by taking a screenshot to see the form.`
       // Forward stdout to renderer
       activeClaudeProcess.stdout?.on("data", (data: Buffer) => {
         const text = data.toString()
+        logger.info(`[FillForm] stdout (${text.length} chars): ${text.slice(0, 200)}`)
         mainWindow?.webContents.send("agent-output", { text, isError: false })
       })
 
       // Forward stderr to renderer
       activeClaudeProcess.stderr?.on("data", (data: Buffer) => {
         const text = data.toString()
-        logger.warn(`[FillForm] stderr: ${text}`)
+        logger.warn(`[FillForm] stderr (${text.length} chars): ${text.slice(0, 200)}`)
         mainWindow?.webContents.send("agent-output", { text, isError: true })
       })
+
+      // Log when process actually starts
+      logger.info(`[FillForm] Claude CLI process spawned with PID: ${activeClaudeProcess.pid}`)
 
       // Handle process completion
       activeClaudeProcess.on("close", (code: number | null) => {
