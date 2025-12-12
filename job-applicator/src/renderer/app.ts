@@ -701,8 +701,8 @@ async function navigate() {
 // Agent Session Management
 // ============================================================================
 
-// Agent session state
-let agentSessionState: AgentSessionState = "stopped"
+// Agent session state (tracked for potential future use)
+let _agentSessionState: AgentSessionState = "stopped"
 let unsubscribeAgentOutput: (() => void) | null = null
 let unsubscribeAgentStatus: (() => void) | null = null
 let unsubscribeAgentToolCall: (() => void) | null = null
@@ -717,7 +717,7 @@ function escapeHtml(text: string): string {
 
 // Update agent status display
 function updateAgentStatusUI(state: AgentSessionState) {
-  agentSessionState = state
+  _agentSessionState = state
   const statusDot = agentStatus.querySelector(".status-dot")
   const statusText = agentStatus.querySelector(".status-text")
 
