@@ -181,7 +181,7 @@ export function CompaniesPage() {
       setDeleteRequest({ id, name: company?.name, resolve, reject })
     })
 
-  const handleReanalyze = async (company: Company, options?: { navigateAfter?: boolean }) => {
+  const handleReanalyze = async (company: Company) => {
     if (!company.id) {
       throw new Error("Company ID is missing, cannot re-analyze.")
     }
@@ -192,10 +192,6 @@ export function CompaniesPage() {
         companyId: company.id,
         allowReanalysis: true,
       })
-      if (options?.navigateAfter) {
-        // Send user to queue management to watch processing progress
-        navigate("/queue-management")
-      }
     } catch (err) {
       console.error("Failed to submit re-analysis:", err)
       throw err
@@ -496,7 +492,7 @@ export function CompaniesPage() {
                           company,
                           handlers: {
                             onDelete: company.id ? () => handleDelete(company.id as string) : undefined,
-                            onReanalyze: (co) => handleReanalyze(co, { navigateAfter: true }),
+                            onReanalyze: handleReanalyze,
                           },
                         })
                       }

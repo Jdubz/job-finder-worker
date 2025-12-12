@@ -573,7 +573,7 @@ describe("CompaniesPage", () => {
       })
     })
 
-    it("should navigate to queue management after successful re-analyze submission", async () => {
+    it("should not navigate after successful re-analyze submission", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
       renderWithProviders()
@@ -592,7 +592,7 @@ describe("CompaniesPage", () => {
       const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
       await user.click(reanalyzeButton)
 
-      // After successful submission, the modal should close and navigate to queue management
+      // After successful submission, the modal should close and stay on the page
       await waitFor(() => {
         expect(mockSubmitCompany).toHaveBeenCalledWith({
           companyName: "Acme Corporation",
@@ -600,7 +600,7 @@ describe("CompaniesPage", () => {
           companyId: "company-1",
           allowReanalysis: true,
         })
-        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+        expect(mockNavigate).not.toHaveBeenCalledWith("/queue-management")
       })
     })
 
