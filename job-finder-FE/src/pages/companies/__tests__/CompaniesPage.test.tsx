@@ -229,7 +229,7 @@ describe("CompaniesPage", () => {
 
       await waitFor(() => {
         const row = screen.getByText("StartupXYZ").closest("tr")!
-        expect(within(row).getByText(/enriching/i)).toBeInTheDocument()
+        expect(within(row).getByText(/pending/i)).toBeInTheDocument()
       })
     })
   })

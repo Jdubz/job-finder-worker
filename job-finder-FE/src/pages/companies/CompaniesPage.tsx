@@ -59,25 +59,38 @@ const safeText = (value: unknown, fallback = "—") => {
   }
 }
 
+// Fields we expect to be populated for a company to be considered "complete".
+// Keep this focused on data we actually collect/render; optional extras (e.g., mission)
+// aren't required for completeness.
+const completenessFields: (keyof Company)[] = [
+  "name",
+  "website",
+  "about",
+  "culture",
+  "industry",
+  "headquartersLocation",
+  "techStack",
+]
+
+const hasValue = (value: unknown) => {
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === "string") return value.trim().length > 0
+  return value !== null && value !== undefined
+}
+
 /**
- * Derive company data status from content completeness.
- * A company has "good" data if it has meaningful about/culture content.
+ * Derive company status using a single, simple rule-set:
+ * - Pending: an enrichment job is currently queued
+ * - Complete: all tracked company properties have values
+ * - Partial: anything else
  */
 function getDataStatus(company: Company, isPending: boolean): { label: string; color: string } {
-  if (isPending) return { label: "Enriching", color: "bg-blue-100 text-blue-800" }
+  if (isPending) return { label: "Pending", color: "bg-blue-100 text-blue-800" }
 
-  const hasAbout = !!company.about?.trim()
-  const hasCulture = !!company.culture?.trim()
+  const isComplete = completenessFields.every((field) => hasValue(company[field]))
+  if (isComplete) return { label: "Complete", color: "bg-green-100 text-green-800" }
 
-  if (hasAbout && hasCulture) {
-    return { label: "Complete", color: "bg-green-100 text-green-800" }
-  }
-
-  if (hasAbout || hasCulture) {
-    return { label: "Partial", color: "bg-yellow-100 text-yellow-800" }
-  }
-
-  return { label: "Needs Enrichment", color: "bg-amber-100 text-amber-900" }
+  return { label: "Partial", color: "bg-amber-100 text-amber-900" }
 }
 
 /** Badge component showing company data completeness status */
@@ -403,8 +416,8 @@ export function CompaniesPage() {
             <div>
               <CardTitle>Tracked Companies</CardTitle>
               <CardDescription>
-                Click on a company to view details. “Enriching” only appears when an enrichment task is
-                actively queued; otherwise “Needs Enrichment” means no task is running but data is incomplete.
+                Click on a company to view details. Statuses: “Pending” = enrichment queued, “Complete” = all
+                properties filled, “Partial” = anything else.
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
