@@ -90,7 +90,6 @@ import {
   findJobMatchByUrl,
   updateJobMatchStatus,
   fetchDocuments,
-  fetchGeneratorRequest,
   startGeneration,
   executeGenerationStep,
   submitJobToQueue,
@@ -337,7 +336,7 @@ ipcMain.handle(
   "upload-resume",
   async (
     _event: IpcMainInvokeEvent,
-    options?: { documentId?: string; type?: "resume" | "coverLetter" }
+    options?: { documentUrl?: string; type?: "resume" | "coverLetter" }
   ): Promise<{ success: boolean; message: string; filePath?: string }> => {
     let resolvedPath: string | null = null
 
@@ -359,37 +358,10 @@ ipcMain.handle(
         return { success: false, message: "No file input found on page" }
       }
 
-      // Resolve file path from document or fallback to env var
-      if (options?.documentId) {
-        logger.info(`[Upload] Fetching document with ID: ${options.documentId}`)
-
-        // Validate documentId format - accepts either:
-        // - Backend format: resume-generator-request-{timestamp}-{random}
-        // - UUID v4 format (legacy compatibility)
-        const backendIdPattern = /^resume-generator-request-\d+-[a-z0-9]+$/
-        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-        if (!backendIdPattern.test(options.documentId) && !uuidPattern.test(options.documentId)) {
-          logger.warn(`[Upload] Invalid document ID format: ${options.documentId}`)
-          return { success: false, message: `Invalid document ID format: ${options.documentId}` }
-        }
-
-        // Fetch document details from backend using typed API client
-        logger.info(`[Upload] Calling fetchGeneratorRequest for: ${options.documentId}`)
-        const doc = await fetchGeneratorRequest(options.documentId)
-        logger.info(`[Upload] Fetched document: ${JSON.stringify(doc)}`)
-
-        // Get the appropriate URL based on type
-        const docType = options.type || "resume"
-        const docUrl = docType === "coverLetter" ? doc.coverLetterUrl : doc.resumeUrl
-
-        if (!docUrl) {
-          return {
-            success: false,
-            message: `No ${docType} file found for this document. Generate one first.`,
-          }
-        }
-
-        resolvedPath = resolveDocumentPath(docUrl, ARTIFACTS_DIR)
+      // Resolve file path from document URL or fallback to env var
+      if (options?.documentUrl) {
+        logger.info(`[Upload] Using document URL: ${options.documentUrl}`)
+        resolvedPath = resolveDocumentPath(options.documentUrl, ARTIFACTS_DIR)
       } else {
         // Fallback to RESUME_PATH environment variable
         resolvedPath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
@@ -404,14 +376,14 @@ ipcMain.handle(
       }
 
       // Use Electron's debugger API to set the file
-      logger.info(`Uploading file: ${resolvedPath} to ${fileInputSelector}`)
+      logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
       await setFileInputFiles(browserView.webContents, fileInputSelector, [resolvedPath])
 
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
       return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logger.error("Upload error:", message)
+      logger.error("[Upload] Error:", message)
       return {
         success: false,
         message: resolvedPath ? `Upload failed: ${message}. File path: ${resolvedPath}` : message,

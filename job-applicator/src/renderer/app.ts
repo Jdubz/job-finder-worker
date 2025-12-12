@@ -261,7 +261,7 @@ interface ElectronAPI {
 
   // File upload
   uploadResume: (options?: {
-    documentId?: string
+    documentUrl?: string
     type?: "resume" | "coverLetter"
   }) => Promise<{ success: boolean; message: string; filePath?: string }>
   submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
@@ -1187,8 +1187,10 @@ function cleanupAgentListeners() {
 
 // Upload document (resume or cover letter)
 async function uploadDocument(type: "resume" | "coverLetter") {
-  const documentId = type === "resume" ? selectedResumeId : selectedCoverLetterId
-  if (!documentId) {
+  const doc = type === "resume" ? getSelectedResume() : getSelectedCoverLetter()
+  const documentUrl = type === "resume" ? doc?.resumeUrl : doc?.coverLetterUrl
+
+  if (!documentUrl) {
     setStatus(`Select a ${type === "coverLetter" ? "cover letter" : "resume"} first`, "error")
     return
   }
@@ -1199,7 +1201,7 @@ async function uploadDocument(type: "resume" | "coverLetter") {
     setButtonsEnabled(false)
     setStatus(`Uploading ${typeLabel}...`, "loading")
 
-    const result = await api.uploadResume({ documentId, type })
+    const result = await api.uploadResume({ documentUrl, type })
 
     if (result.success) {
       setStatus(result.message, "success")
