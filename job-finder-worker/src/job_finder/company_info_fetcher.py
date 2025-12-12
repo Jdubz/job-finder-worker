@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Domains that often appear but rarely represent the company homepage; we down-rank
+# them instead of hard-blocking to avoid brittleness.
+DISCOURAGED_DOMAINS = {
+    "lsvp.com",  # Lightspeed (VC) – was picked for Grafana previously
+    "crunchbase.com",
+    "pitchbook.com",
+    "linkedin.com",
+    "angel.co",
+    "imdb.com",
+    "rottentomatoes.com",
+}
+
+# Tokens that indicate non-company entities we should avoid (movies, songs, etc.)
+NON_COMPANY_TOKENS = {"film", "movie", "episode", "song", "album", "soundtrack"}
+
 # Known Workday subdomain to company name mappings (stock tickers, abbreviations)
 WORKDAY_COMPANY_MAP = {
     "mdlz": "Mondelez International",
@@ -93,25 +108,37 @@ class CompanyInfoFetcher:
         source_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Fetch comprehensive company information.
+        Fetch comprehensive company information using two passes:
+        1) FAST: light search + wikipedia
+        2) FOCUSED (only if needed): stronger instructions + broader queries/scrape
 
-        Strategy:
-        0. Try Wikipedia first (fast, high-quality for established companies)
-        1. Search for company by name (fills gaps Wikipedia doesn't cover)
-        2. AI extracts structured data from search results
-        3. Optionally scrape website for additional detail (if valid URL found)
-
-        Args:
-            company_name: Name of the company (required)
-            url_hint: Optional URL hint (may be ignored if it's a job board)
-            source_context: Optional context from job source with keys:
-                - aggregator_domain: e.g., "greenhouse.io", "lever.co"
-                - base_url: e.g., "https://mdlz.wd3.myworkdayjobs.com"
-                - source_name: Name of the job source
-
-        Returns:
-            Dictionary with company information
+        The first acceptable result is returned; otherwise the better of the two.
         """
+        fast = self._run_enrichment_pass(company_name, url_hint, source_context, mode="fast")
+        if self._is_acceptable(fast):
+            return fast
+
+        focused = self._run_enrichment_pass(company_name, url_hint, source_context, mode="focused")
+        if self._is_acceptable(focused):
+            return focused
+
+        # Fall back to whichever is more informative
+        return (
+            focused if self._score_completeness(focused) >= self._score_completeness(fast) else fast
+        )
+
+    # ============================================================
+    # Pass runner
+    # ============================================================
+    def _run_enrichment_pass(
+        self,
+        company_name: str,
+        url_hint: Optional[str],
+        source_context: Optional[Dict[str, Any]],
+        mode: str = "fast",
+    ) -> Dict[str, Any]:
+        _, company_display = format_company_name(company_name)
+        logger.info("Enriching %s (%s pass)", company_display, mode.upper())
         _, company_display = format_company_name(company_name)
         logger.info(f"Fetching company info for {company_display}")
 
@@ -151,31 +178,33 @@ class CompanyInfoFetcher:
         }
 
         try:
-            # STEP 0: Try Wikipedia first (fast, high-quality for established companies)
-            # Uses search_name (post-Workday resolution) for better accuracy
-            wiki_info = self._try_wikipedia(search_name)
-            wiki_website = wiki_info.get("website") if wiki_info else None
-            if wiki_info:
-                result = self._merge_company_info(
-                    result, wiki_info, company_name=company_name, preferred_website=wiki_website
-                )
-                logger.info(
-                    "Wikipedia found data for %s: about=%d chars",
-                    company_display,
-                    len(result.get("about", "")),
-                )
+            # STEP 0: Try Wikipedia first (fast pass only)
+            wiki_info = None
+            wiki_website = None
+            if mode == "fast":
+                wiki_info = self._try_wikipedia(search_name)
+                wiki_website = wiki_info.get("website") if wiki_info else None
+                if wiki_info:
+                    result = self._merge_company_info(
+                        result, wiki_info, company_name=company_name, preferred_website=wiki_website
+                    )
+                    logger.info(
+                        "Wikipedia found data for %s: about=%d chars",
+                        company_display,
+                        len(result.get("about", "")),
+                    )
 
             # STEP 1: Search for company info (fills gaps Wikipedia doesn't cover)
-            # Wikipedia doesn't provide: culture, mission, techStack, products, etc.
             search_info = self._search_and_extract(
-                search_name, source_context, wiki_website=wiki_website
+                search_name, source_context, wiki_website=wiki_website, mode=mode
             )
             if search_info:
                 result = self._merge_company_info(
                     result, search_info, company_name=company_name, preferred_website=wiki_website
                 )
                 logger.info(
-                    "Search extraction for %s: about=%d chars",
+                    "[%s] Search extraction for %s: about=%d chars",
+                    mode,
                     company_display,
                     len(result.get("about", "")),
                 )
@@ -184,15 +213,13 @@ class CompanyInfoFetcher:
             # Priority: extracted website > url_hint (if not job board/search engine)
             website = result.get("website") or ""
             if not website and url_hint:
-                # Only use url_hint if it's a valid company website
                 if not self._is_job_board_url(url_hint) and not self._is_search_engine_url(
                     url_hint
                 ):
                     website = url_hint
                     result["website"] = website
 
-            # STEP 3: Optional scrape for additional detail
-            # Skip scraping if website is a search engine URL (placeholder)
+            # STEP 3: Optional scrape for additional detail (focused pass or when gaps)
             if (
                 website
                 and self._needs_enrichment(result)
@@ -206,7 +233,7 @@ class CompanyInfoFetcher:
                         company_name=company_name,
                         preferred_website=wiki_website,
                     )
-                    logger.info("Supplemented with scrape data for %s", company_display)
+                    logger.info("[%s] Supplemented with scrape data for %s", mode, company_display)
 
             # Final website selection: prefer Wikipedia site; lightly probe candidate to avoid obvious mismatches
             result["website"] = self._choose_best_website(
@@ -259,6 +286,7 @@ class CompanyInfoFetcher:
         company_name: str,
         source_context: Optional[Dict[str, Any]] = None,
         wiki_website: Optional[str] = None,
+        mode: str = "fast",
     ) -> Optional[Dict[str, Any]]:
         """
         Search for company and extract structured info from results.
@@ -275,11 +303,11 @@ class CompanyInfoFetcher:
         """
         if not self.search_client:
             logger.debug("No search client configured, skipping search")
-            return self._fallback_ai_search(company_name)
+            return self._fallback_ai_search(company_name, mode=mode)
 
         try:
             # Try multiple search queries until one works
-            results = self._search_with_fallbacks(company_name, source_context)
+            results = self._search_with_fallbacks(company_name, source_context, mode=mode)
 
             if not results:
                 logger.warning("No quality search results for %s", company_name)
@@ -295,6 +323,7 @@ class CompanyInfoFetcher:
                     search_context,
                     source_context,
                     wiki_website=wiki_website,
+                    mode=mode,
                 )
 
             # No AI - use heuristics on search snippets
@@ -302,10 +331,10 @@ class CompanyInfoFetcher:
 
         except Exception as e:
             logger.warning("Search failed for %s: %s", company_name, e)
-            return self._fallback_ai_search(company_name)
+            return self._fallback_ai_search(company_name, mode=mode)
 
     def _search_with_fallbacks(
-        self, company_name: str, source_context: Optional[Dict[str, Any]] = None
+        self, company_name: str, source_context: Optional[Dict[str, Any]] = None, mode: str = "fast"
     ) -> List[SearchResult]:
         """
         Try multiple search strategies until one returns quality results.
@@ -317,7 +346,7 @@ class CompanyInfoFetcher:
         Returns:
             List of SearchResult objects, or empty list if all queries fail
         """
-        queries = self._build_search_queries(company_name, source_context)
+        queries = self._build_search_queries(company_name, source_context, mode=mode)
 
         for query in queries:
             try:
@@ -335,7 +364,7 @@ class CompanyInfoFetcher:
             return []
 
     def _build_search_queries(
-        self, company_name: str, source_context: Optional[Dict[str, Any]] = None
+        self, company_name: str, source_context: Optional[Dict[str, Any]] = None, mode: str = "fast"
     ) -> List[str]:
         """
         Build a list of search queries to try, ordered by expected quality.
@@ -357,11 +386,22 @@ class CompanyInfoFetcher:
                 if subdomain and subdomain.lower() != company_name.lower():
                     queries.append(f"{subdomain} company official website about")
 
-        # Exact match query (quoted)
+        # Exact match query (quoted) with "official website" bias
         queries.append(f'"{company_name}" company official website')
 
         # Standard query with disambiguation
         queries.append(f"{company_name} company about headquarters employees")
+
+        # Culture/values focused query to improve culture coverage
+        queries.append(f"{company_name} company culture values mission")
+
+        # Tech stack focused query to surface engineering content/StackShare
+        queries.append(f"{company_name} engineering tech stack technologies used stackshare")
+
+        if mode == "focused":
+            # Push for official about/careers content explicitly
+            queries.append(f"{company_name} official site about careers leadership team")
+            queries.append(f"{company_name} corporate site headquarters leadership")
 
         # Tech company context if from tech job board
         if source_context:
@@ -389,23 +429,39 @@ class CompanyInfoFetcher:
             return False
 
         company_lower = company_name.lower()
-        relevant_count = 0
+        score = 0
+        domain_hits = 0
 
         for result in results[:5]:  # Check top 5 results
             title_lower = result.title.lower()
             snippet_lower = result.snippet.lower()
+            domain = self._domain_from_url(result.url)
+
+            # Down-rank VC/entertainment domains but do not hard-fail
+            discouraged = domain in DISCOURAGED_DOMAINS
+            if any(
+                tok in title_lower for tok in NON_COMPANY_TOKENS
+            ) and not self._domain_matches_company(domain, company_lower):
+                continue
 
             # Check if company name appears in title or snippet
             if company_lower in title_lower or company_lower in snippet_lower:
-                relevant_count += 1
+                score += 1
 
             # Check for company-related terms
-            company_terms = ["company", "about", "careers", "jobs", "headquarters"]
+            company_terms = ["company", "about", "careers", "jobs", "headquarters", "official site"]
             if any(term in title_lower or term in snippet_lower for term in company_terms):
-                relevant_count += 1
+                score += 1
 
-        # Consider quality if at least 2 relevant signals
-        return relevant_count >= 2
+            if self._domain_matches_company(domain, company_lower):
+                domain_hits += 1
+                score += 2  # strong signal
+
+            if discouraged:
+                score -= 1  # soft penalty but keep in consideration
+
+        # Consider quality if we have at least 2 points and one plausible domain match
+        return score >= 2 and domain_hits >= 1
 
     def _format_search_results(self, results: List[SearchResult]) -> str:
         """Format search results into context string for AI."""
@@ -420,6 +476,7 @@ class CompanyInfoFetcher:
         search_context: str,
         source_context: Optional[Dict[str, Any]] = None,
         wiki_website: Optional[str] = None,
+        mode: str = "fast",
     ) -> Optional[Dict[str, Any]]:
         """Use AI to extract structured company data from search results."""
         if not self.agent_manager:
@@ -437,7 +494,14 @@ class CompanyInfoFetcher:
                 else "If Wikipedia lists an official website, prefer that. Brand domains may be shortened or acronyms (e.g., ibm.com)."
             )
 
-            prompt = f"""Extract company information for "{company_name}" from these search results.
+            focus_hint = (
+                "FOCUSED RETRY: You previously lacked culture/tech stack. Prioritize official about/careers pages, engineering blogs, and StackShare evidence. "
+                "If uncertain, leave fields blank.\n"
+                if mode == "focused"
+                else ""
+            )
+
+            prompt = f"""{focus_hint}Extract company information for "{company_name}" from these search results.
 {disambiguation_hint}
 SEARCH RESULTS:
 {search_context[:6000]}
@@ -451,7 +515,11 @@ IMPORTANT INSTRUCTIONS:
 - {wiki_hint}
 - Prefer the domain that represents the company itself (homepage/about pages). It's okay if the domain is a short brand or acronym.
 - Reject investor/portfolio/VC sites (e.g., lsvp.com), generic search pages, unrelated blogs, or recruiter pages.
+- Reject Wikipedia/other pages that are about movies, songs, episodes, or books with the same name.
+- If multiple domains appear, favor the one whose homepage/about text clearly mentions the company name/brand.
 - If multiple candidates appear, pick the one whose homepage/about page text mentions the company name/brand; otherwise choose the Wikipedia site.
+- To fill culture, look for values/mission/culture statements on About/Careers pages.
+- For techStack, look for engineering blogs, stackshare.io, hiring pages mentioning technologies; do NOT invent technologies—leave [] if not stated.
 
 Return a JSON object with these fields:
 - website: official company website URL (NOT greenhouse.io, lever.co, workday, etc.)
@@ -533,16 +601,26 @@ Return ONLY valid JSON, no explanations or markdown formatting."""
             return "\nCONTEXT:\n" + "\n".join(f"- {h}" for h in hints) + "\n"
         return ""
 
-    def _fallback_ai_search(self, company_name: str) -> Optional[Dict[str, Any]]:
+    def _fallback_ai_search(
+        self, company_name: str, mode: str = "fast"
+    ) -> Optional[Dict[str, Any]]:
         """Fallback: Ask AI directly (relies on AI's web search capability if available)."""
         if not self.agent_manager:
             return None
 
         try:
-            prompt = f"""Search the web for factual information about "{company_name}" company.
+            focus_hint = (
+                "FOCUSED RETRY: prioritize official about/careers pages and tech evidence; leave blanks if unsure.\n"
+                if mode == "focused"
+                else ""
+            )
+            prompt = f"""{focus_hint}Search the web for factual information about "{company_name}" company.
 
 Return JSON with: website, about, culture, mission, industry, founded, headquarters,
 employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack.
+
+- Ignore VC/portfolio sites, recruiter sites, and entertainment results (films, songs, etc.).
+- Do not invent tech stacks; only include technologies explicitly mentioned in reliable sources.
 
 Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
 
@@ -829,7 +907,33 @@ Be factual. Return ONLY valid JSON."""
         min_about = text_limits.get("minCompanyPageLength", 200)
 
         about_len = len(info.get("about", "") or "")
-        return about_len < min_about
+        culture_missing = not (info.get("culture") or "").strip()
+        tech_missing = not info.get("techStack")
+        return about_len < min_about or culture_missing or tech_missing
+
+    def _is_acceptable(self, info: Dict[str, Any]) -> bool:
+        """Simple acceptance: required fields populated with minimal length."""
+        if not info:
+            return False
+        about_ok = len(info.get("about", "") or "") >= 120
+        culture_ok = len(info.get("culture", "") or "") >= 50
+        hq_ok = bool((info.get("headquarters") or info.get("headquartersLocation") or "").strip())
+        website_ok = bool((info.get("website") or "").strip()) and not self._is_job_board_url(
+            info.get("website")
+        )
+        tech_ok = bool(info.get("techStack"))
+        return about_ok and culture_ok and hq_ok and website_ok and tech_ok
+
+    def _score_completeness(self, info: Dict[str, Any]) -> int:
+        if not info:
+            return 0
+        score = 0
+        score += min(len(info.get("about", "")) // 100, 3)
+        score += min(len(info.get("culture", "")) // 50, 2)
+        score += 1 if (info.get("headquarters") or info.get("headquartersLocation")) else 0
+        score += 1 if info.get("website") else 0
+        score += min(len(info.get("techStack", [])), 3)
+        return score
 
     def _choose_best_website(
         self,
@@ -886,6 +990,25 @@ Be factual. Return ONLY valid JSON."""
             url = f"https://{url}"
 
         return url
+
+    def _domain_from_url(self, url: Optional[str]) -> str:
+        """Extract domain from URL safely."""
+        if not url:
+            return ""
+        try:
+            parsed = urlparse(url if "://" in url else f"https://{url}")
+            return parsed.netloc.lower()
+        except Exception:
+            return ""
+
+    def _domain_matches_company(self, domain: str, company_lower: str) -> bool:
+        """Heuristic: does domain contain a token from the company name?"""
+        if not domain or not company_lower:
+            return False
+        # remove tld
+        root = domain.split(":")[0].split(".")[0]
+        tokens = [t for t in re.findall(r"[a-z0-9]+", company_lower) if len(t) >= 3]
+        return any(tok in root for tok in tokens)
 
     def _homepage_mentions_brand(self, url: str, company_name: str, timeout: int = 5) -> bool:
         """
