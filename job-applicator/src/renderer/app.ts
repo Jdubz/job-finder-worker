@@ -261,6 +261,9 @@ async function selectJobMatch(id: string) {
   // Update UI
   renderJobList()
 
+  // Update fill button state (depends on selectedJobMatchId)
+  updateAgentStatusUI(_agentSessionState)
+
   // Find the match
   const match = jobMatches.find((m) => m.id === id)
   if (!match) return
@@ -627,6 +630,9 @@ async function checkUrlForJobMatch(url: string) {
       selectedJobMatchId = match.id ?? null
       selectedDocumentId = null
       renderJobList()
+
+      // Update fill button state (depends on selectedJobMatchId)
+      updateAgentStatusUI(_agentSessionState)
 
       // Update workflow state
       setWorkflowStep("job", "completed")
