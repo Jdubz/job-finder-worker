@@ -9,6 +9,7 @@ import type {
   AgentOutputData,
   AgentStatusData,
 } from "../types.js"
+import { StreamingParser, type ParsedActivity } from "./agent-output-parser.js"
 
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
@@ -706,6 +707,7 @@ let unsubscribeAgentOutput: (() => void) | null = null
 let unsubscribeAgentStatus: (() => void) | null = null
 let unsubscribeBrowserUrlChanged: (() => void) | null = null
 let isFormFillActive = false
+const agentOutputParser = new StreamingParser()
 
 // Escape HTML to prevent XSS in output
 function escapeHtml(text: string): string {
@@ -809,7 +811,8 @@ async function fillFormWithAgent() {
   isFormFillActive = true
   fillFormBtn.disabled = true
 
-  // Clear output and show loading state
+  // Reset parser and clear output
+  agentOutputParser.reset()
   agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
 
   const result = await api.fillForm({
@@ -827,7 +830,41 @@ async function fillFormWithAgent() {
   }
 }
 
-// Append text to agent output
+// Render a single parsed activity as a DOM element
+function renderActivity(activity: ParsedActivity): HTMLElement {
+  const div = document.createElement("div")
+  div.className = `agent-activity ${activity.type}`
+
+  switch (activity.type) {
+    case "tool_call":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "🔧"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "tool_result":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "✓"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "thinking":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "🤔"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "completion":
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "✅"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    case "error":
+      div.classList.add("agent-error")
+      div.innerHTML = `<span class="activity-icon">${activity.icon || "❌"}</span><span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      break
+    default:
+      // Plain text - only show if meaningful (not just whitespace or short noise)
+      if (activity.displayText.length > 10) {
+        div.innerHTML = `<span class="activity-text">${escapeHtml(activity.displayText)}</span>`
+      } else {
+        return div // Return empty div for short noise
+      }
+  }
+
+  return div
+}
+
+// Append text to agent output with parsing
 function appendAgentOutput(text: string, type?: "error") {
   // Remove placeholder if present
   const placeholder = agentOutput.querySelector(".empty-placeholder, .loading-placeholder")
@@ -835,12 +872,22 @@ function appendAgentOutput(text: string, type?: "error") {
     agentOutput.innerHTML = ""
   }
 
-  const span = document.createElement("span")
   if (type === "error") {
-    span.className = "agent-error"
+    // Errors are displayed directly without parsing
+    const div = document.createElement("div")
+    div.className = "agent-activity error agent-error"
+    div.innerHTML = `<span class="activity-icon">❌</span><span class="activity-text">${escapeHtml(text)}</span>`
+    agentOutput.appendChild(div)
+  } else {
+    // Parse the output and render activities
+    const activities = agentOutputParser.addChunk(text)
+    for (const activity of activities) {
+      const element = renderActivity(activity)
+      if (element.innerHTML) { // Only append if there's content
+        agentOutput.appendChild(element)
+      }
+    }
   }
-  span.textContent = text
-  agentOutput.appendChild(span)
 
   // Auto-scroll to bottom
   agentOutput.scrollTop = agentOutput.scrollHeight
