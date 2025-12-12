@@ -1,7 +1,6 @@
 import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
 import type { WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
-import * as readline from "readline"
 import * as path from "path"
 import * as fs from "fs"
 import * as os from "os"
@@ -33,22 +32,21 @@ ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => 
 // Import shared types and utilities
 import type {
   CliProvider,
-  FormField,
-  EnhancedFillInstruction,
-  FormFillSummary,
-  FormFillProgress,
   JobExtraction,
   GenerationStep,
   GenerationProgress,
+  AgentAction,
+  AgentActionResult,
+  AgentProgress,
+  AgentSummary,
 } from "./types.js"
-import { getCliCommand, getStreamingCliCommand } from "./cli-config.js"
+import { getCliCommand } from "./cli-config.js"
+import * as crypto from "crypto"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
-  buildPromptFromProfileText,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
-  parseCliArrayOutput,
   parseCliObjectOutput,
 } from "./utils.js"
 // Typed API client
@@ -82,6 +80,14 @@ const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s,
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
 
+// Vision agent configuration
+const AGENT_MAX_STEPS = parseInt(process.env.AGENT_MAX_STEPS || "40", 10)
+const AGENT_STUCK_HASH_THRESHOLD = parseInt(process.env.AGENT_STUCK_HASH_THRESHOLD || "3", 10)
+const AGENT_LOOP_TIMEOUT_MS = 45000 // 45s per CLI call
+const AGENT_ACTION_TIMEOUT_MS = 3000 // 3s per action
+const AGENT_RENDER_DELAY_MS = 500 // 500ms delay after action for page to render
+const AGENT_SCREENSHOT_WIDTH = 1280 // Target screenshot width
+
 // Global state
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
@@ -97,40 +103,6 @@ function updateBrowserViewBounds(): void {
     height: bounds.height - TOOLBAR_HEIGHT,
   })
 }
-
-// Form extraction script - injected into page
-const EXTRACT_FORM_SCRIPT = `
-(() => {
-  const inputs = document.querySelectorAll('input, select, textarea')
-  return Array.from(inputs).map(el => {
-    // Build selector: prefer id, then name, then data-testid
-    const selector = el.id ? '#' + CSS.escape(el.id)
-      : el.name ? '[name="' + CSS.escape(el.name) + '"]'
-      : el.dataset.testid ? '[data-testid="' + CSS.escape(el.dataset.testid) + '"]'
-      : null
-
-    // Find label: check label[for], aria-label, aria-labelledby
-    const forLabel = el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')
-    const ariaLabel = el.getAttribute('aria-label')
-    const ariaLabelledBy = el.getAttribute('aria-labelledby')
-    const labelledByEl = ariaLabelledBy && document.getElementById(ariaLabelledBy)
-
-    // Extract options for select elements
-    const options = el.tagName.toLowerCase() === 'select'
-      ? Array.from(el.options).map(opt => ({ value: opt.value, text: opt.textContent?.trim() }))
-      : null
-
-    return {
-      selector,
-      type: el.type || el.tagName.toLowerCase(),
-      label: forLabel?.textContent?.trim() || ariaLabel || labelledByEl?.textContent?.trim() || null,
-      placeholder: el.placeholder || null,
-      required: el.required || false,
-      options
-    }
-  }).filter(f => f.selector && f.type !== 'hidden' && f.type !== 'submit' && f.type !== 'button')
-})()
-`
 
 async function createWindow(): Promise<void> {
   logger.info("Creating main window...")
@@ -317,164 +289,6 @@ async function setFileInputFiles(webContents: WebContents, selector: string, fil
       logger.warn("Failed to detach debugger, this may be expected:", err)
     }
   }
-}
-
-/**
- * Robust form field filling that works with React/Vue/Angular controlled inputs.
- *
- * The problem: Modern frameworks like React intercept the native `value` setter.
- * Simply setting `el.value = "x"` only updates the DOM, not React's internal state.
- * When the user interacts with the form, React re-renders using its state (which is
- * still empty), wiping out all manually-set values.
- *
- * The solution: Use the native HTMLInputElement value setter to bypass React's
- * interception, then dispatch proper events to notify the framework of the change.
- *
- * References:
- * - https://coryrylan.com/blog/trigger-input-updates-with-react-controlled-inputs
- * - https://github.com/facebook/react/issues/1152
- */
-async function fillFormField(
-  webContents: WebContents,
-  selector: string,
-  value: string,
-  fieldType?: string
-): Promise<boolean> {
-  const safeSelector = JSON.stringify(selector)
-  const safeValue = JSON.stringify(value)
-
-  // Handle checkboxes and radio buttons differently
-  if (fieldType === "checkbox" || fieldType === "radio") {
-    return await webContents.executeJavaScript(`
-      (() => {
-        const el = document.querySelector(${safeSelector});
-        if (!el) return false;
-
-        const shouldBeChecked = ${safeValue}.toLowerCase() === 'true' ||
-                               ${safeValue}.toLowerCase() === 'yes' ||
-                               ${safeValue} === '1';
-
-        if (el.checked !== shouldBeChecked) {
-          // Use native setter for checked property
-          const nativeCheckedSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, 'checked'
-          )?.set;
-
-          if (nativeCheckedSetter) {
-            nativeCheckedSetter.call(el, shouldBeChecked);
-          } else {
-            el.checked = shouldBeChecked;
-          }
-
-          // Dispatch click and change events
-          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        return true;
-      })()
-    `)
-  }
-
-  // Handle select elements
-  if (fieldType === "select" || fieldType === "select-one" || fieldType === "select-multiple") {
-    return await webContents.executeJavaScript(`
-      (() => {
-        const el = document.querySelector(${safeSelector});
-        if (!el || el.tagName.toLowerCase() !== 'select') return false;
-
-        // Find matching option (case-insensitive, trimmed)
-        const targetValue = ${safeValue}.toLowerCase().trim();
-        let matchedValue = null;
-
-        for (const opt of el.options) {
-          if (opt.value.toLowerCase().trim() === targetValue ||
-              opt.textContent?.toLowerCase().trim() === targetValue) {
-            matchedValue = opt.value;
-            break;
-          }
-        }
-
-        if (matchedValue === null) {
-          // Try partial match if exact match not found
-          for (const opt of el.options) {
-            if (opt.value.toLowerCase().includes(targetValue) ||
-                opt.textContent?.toLowerCase().includes(targetValue)) {
-              matchedValue = opt.value;
-              break;
-            }
-          }
-        }
-
-        if (matchedValue !== null) {
-          el.value = matchedValue;
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          return true;
-        }
-
-        // If still no match, try setting directly
-        el.value = ${safeValue};
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
-      })()
-    `)
-  }
-
-  // Handle text inputs, textareas, and other input types
-  // This is the critical fix for React controlled inputs
-  return await webContents.executeJavaScript(`
-    (() => {
-      const el = document.querySelector(${safeSelector});
-      if (!el) return false;
-
-      const tagName = el.tagName.toLowerCase();
-      const isInput = tagName === 'input';
-      const isTextarea = tagName === 'textarea';
-
-      if (!isInput && !isTextarea) return false;
-
-      // Focus the element first (important for some frameworks)
-      el.focus();
-
-      // Get the native value setter to bypass React's interception
-      // React overloads the value setter to track state changes, but we need
-      // to bypass that to set the value directly on the DOM element
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set;
-      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set;
-
-      // Use the appropriate native setter
-      if (isInput && nativeInputValueSetter) {
-        nativeInputValueSetter.call(el, ${safeValue});
-      } else if (isTextarea && nativeTextAreaValueSetter) {
-        nativeTextAreaValueSetter.call(el, ${safeValue});
-      } else {
-        // Fallback to direct assignment
-        el.value = ${safeValue};
-      }
-
-      // Dispatch events to notify React/Vue/Angular of the change
-      // InputEvent is more reliable than Event for modern frameworks
-      el.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: ${safeValue}
-      }));
-
-      // Also dispatch change event for frameworks that listen to it
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-
-      // Blur to trigger validation and ensure the value is committed
-      el.blur();
-
-      return true;
-    })()
-  `)
 }
 
 // Upload resume/document to form using Electron's debugger API (CDP)
@@ -894,267 +708,6 @@ ipcMain.handle(
   }
 )
 
-// Fill form with AI using optimized profile endpoint
-// Includes EEO data, job match context, streaming progress, and results tracking
-ipcMain.handle(
-  "fill-form",
-  async (
-    _event: IpcMainInvokeEvent,
-    options: { provider: CliProvider; jobMatchId?: string; documentId?: string }
-  ): Promise<{ success: boolean; data?: FormFillSummary; message?: string }> => {
-    const startTime = Date.now()
-
-    try {
-      if (!browserView) throw new Error("BrowserView not initialized")
-
-      // Send initial progress
-      sendFormFillProgress({
-        phase: "starting",
-        message: "Preparing to fill form...",
-      })
-
-      // 1. Get pre-formatted profile text from optimized applicator endpoint
-      logger.info("Fetching applicator profile from backend...")
-      sendFormFillProgress({
-        phase: "starting",
-        message: "Loading your profile...",
-      })
-
-      let profileText: string
-      try {
-        profileText = await fetchApplicatorProfile()
-        logger.info(`Received profile text (${profileText.length} chars)`)
-      } catch (err) {
-        const rawMessage = err instanceof Error ? err.message : String(err)
-        logger.error(`Profile fetch failed with raw error: ${rawMessage}`)
-        const errorMsg = `Failed to fetch profile: ${getUserFriendlyErrorMessage(err instanceof Error ? err : new Error(rawMessage), logger)}`
-        sendFormFillProgress({
-          phase: "failed",
-          message: errorMsg,
-          error: errorMsg,
-        })
-        throw new Error(errorMsg)
-      }
-
-      // Validate profile has content
-      if (!profileText || profileText.trim().length < 50) {
-        const errorMsg = "Profile data is empty or incomplete. Please configure your profile before filling forms."
-        sendFormFillProgress({
-          phase: "failed",
-          message: errorMsg,
-          error: errorMsg,
-        })
-        throw new Error(errorMsg)
-      }
-
-      // 2. Get job match context if provided
-      let jobContext: { company?: string; role?: string; matchedSkills?: string[] } | null = null
-      if (options.jobMatchId) {
-        sendFormFillProgress({
-          phase: "starting",
-          message: "Loading job details...",
-        })
-        try {
-          const match = await fetchJobMatch(options.jobMatchId)
-          jobContext = {
-            company: match.listing?.companyName,
-            role: match.listing?.title,
-            matchedSkills: match.matchedSkills as string[] | undefined,
-          }
-        } catch (err) {
-          logger.warn("Failed to fetch job match data, continuing without it:", err)
-        }
-      }
-
-      // 3. Extract form fields from page
-      logger.info("Extracting form fields...")
-      sendFormFillProgress({
-        phase: "starting",
-        message: "Analyzing form fields...",
-      })
-
-      const fields: FormField[] = await browserView.webContents.executeJavaScript(EXTRACT_FORM_SCRIPT)
-      logger.info(`Found ${fields.length} form fields`)
-
-      if (fields.length === 0) {
-        sendFormFillProgress({
-          phase: "failed",
-          message: "No form fields found on page",
-          error: "No form fields found on page",
-        })
-        return { success: false, message: "No form fields found on page" }
-      }
-
-      // 4. Build prompt
-      const prompt = buildPromptFromProfileText(fields, profileText, jobContext)
-      logger.info(`Calling ${options.provider} CLI for field mapping...`)
-
-      // 5. Call CLI with streaming progress
-      sendFormFillProgress({
-        phase: "ai-processing",
-        message: "AI is analyzing the form...",
-        isStreaming: true,
-        totalFields: fields.length,
-      })
-
-      // Use streaming CLI for real-time progress updates
-      const instructions = await runStreamingCli(
-        options.provider,
-        prompt,
-        (text, isComplete) => {
-          sendFormFillProgress({
-            phase: "ai-processing",
-            message: isComplete ? "AI analysis complete" : "AI is generating fill instructions...",
-            streamingText: text,
-            isStreaming: !isComplete,
-            totalFields: fields.length,
-          })
-        }
-      )
-      logger.info(`Got ${instructions.length} fill instructions`)
-
-      // 6. Fill fields with progress updates
-      sendFormFillProgress({
-        phase: "filling",
-        message: "Filling form fields...",
-        totalFields: instructions.length,
-        processedFields: 0,
-      })
-
-      let filledCount = 0
-      const skippedFields: Array<{ label: string; reason: string }> = []
-
-      // Create a map of selectors to field types
-      const fieldTypeMap = new Map<string, string>()
-      for (const field of fields) {
-        if (field.selector) {
-          fieldTypeMap.set(field.selector, field.type)
-        }
-      }
-
-      for (let i = 0; i < instructions.length; i++) {
-        const instruction = instructions[i]
-
-        if (instruction.status === "skipped") {
-          skippedFields.push({
-            label: instruction.label || instruction.selector || "Unknown field",
-            reason: instruction.reason || "No data available",
-          })
-
-          sendFormFillProgress({
-            phase: "filling",
-            message: `Skipped: ${instruction.label || instruction.selector}`,
-            totalFields: instructions.length,
-            processedFields: i + 1,
-            currentField: {
-              label: instruction.label || instruction.selector || "Unknown",
-              selector: instruction.selector,
-              status: "skipped",
-            },
-          })
-          continue
-        }
-
-        if (!instruction.value) continue
-
-        // Send progress before filling
-        sendFormFillProgress({
-          phase: "filling",
-          message: `Filling: ${instruction.label || instruction.selector}`,
-          totalFields: instructions.length,
-          processedFields: i,
-          currentField: {
-            label: instruction.label || instruction.selector || "Unknown",
-            selector: instruction.selector,
-            status: "processing",
-          },
-        })
-
-        try {
-          const fieldType = fieldTypeMap.get(instruction.selector)
-          const filled = await fillFormField(
-            browserView.webContents,
-            instruction.selector,
-            instruction.value,
-            fieldType
-          )
-
-          if (filled) {
-            filledCount++
-            // Send progress after successful fill
-            sendFormFillProgress({
-              phase: "filling",
-              message: `Filled: ${instruction.label || instruction.selector}`,
-              totalFields: instructions.length,
-              processedFields: i + 1,
-              currentField: {
-                label: instruction.label || instruction.selector || "Unknown",
-                selector: instruction.selector,
-                status: "filled",
-              },
-            })
-          } else {
-            // fillFormField returned false (element not found, etc.)
-            logger.warn(`Failed to fill ${instruction.selector}: element not found or fill failed`)
-            skippedFields.push({
-              label: instruction.label || instruction.selector || "Unknown field",
-              reason: "Element not found or fill failed",
-            })
-            sendFormFillProgress({
-              phase: "filling",
-              message: `Failed: ${instruction.label || instruction.selector}`,
-              totalFields: instructions.length,
-              processedFields: i + 1,
-              currentField: {
-                label: instruction.label || instruction.selector || "Unknown",
-                selector: instruction.selector,
-                status: "skipped",
-              },
-            })
-          }
-        } catch (err) {
-          logger.warn(`Failed to fill ${instruction.selector}:`, err)
-          skippedFields.push({
-            label: instruction.label || instruction.selector || "Unknown field",
-            reason: err instanceof Error ? err.message : "Fill error",
-          })
-        }
-      }
-
-      const duration = Date.now() - startTime
-      const summary: FormFillSummary = {
-        totalFields: fields.length,
-        filledCount,
-        skippedCount: skippedFields.length,
-        skippedFields,
-        duration,
-      }
-
-      // Send completion
-      sendFormFillProgress({
-        phase: "completed",
-        message: `Filled ${filledCount} of ${fields.length} fields`,
-        totalFields: fields.length,
-        processedFields: instructions.length,
-        summary,
-      })
-
-      return { success: true, data: summary }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error("Fill form error:", message)
-
-      sendFormFillProgress({
-        phase: "failed",
-        message,
-        error: message,
-      })
-
-      return { success: false, message }
-    }
-  }
-)
-
 /**
  * CLI command configurations for different AI providers.
  *
@@ -1235,27 +788,6 @@ function runCliCommon<T>(
   })
 }
 
-function runEnhancedCli(provider: CliProvider, prompt: string): Promise<EnhancedFillInstruction[]> {
-  return runCliCommon<EnhancedFillInstruction[]>(
-    provider,
-    prompt,
-    (stdout) => {
-      const parsed = parseCliArrayOutput(stdout)
-      if (!Array.isArray(parsed)) {
-        throw new Error("CLI did not return an array")
-      }
-      return (parsed as Array<Record<string, unknown>>).map((item) => ({
-        selector: String(item.selector || ""),
-        value: item.value != null ? String(item.value) : null,
-        status: item.status === "skipped" ? "skipped" : "filled",
-        reason: item.reason ? String(item.reason) : undefined,
-        label: item.label ? String(item.label) : undefined,
-      }))
-    },
-    "form-fill"
-  )
-}
-
 function runCliForExtraction(provider: CliProvider, prompt: string): Promise<JobExtraction> {
   return runCliCommon<JobExtraction>(
     provider,
@@ -1275,182 +807,569 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
   )
 }
 
-/**
- * Streaming CLI runner for form filling with real-time progress updates.
- *
- * Uses Claude CLI's stream-json output format which emits NDJSON:
- * - {"type":"system",...} - Session init
- * - {"type":"stream_event","event":{"type":"content_block_delta","delta":{"text":"..."}}} - Token streaming
- * - {"type":"assistant","message":{...}} - Complete message
- * - {"type":"result","result":"..."} - Final result
- *
- * Falls back to non-streaming for providers that don't support it.
- */
-function runStreamingCli(
-  provider: CliProvider,
-  prompt: string,
-  onProgress: (text: string, isComplete: boolean) => void
-): Promise<EnhancedFillInstruction[]> {
-  const streamingCommand = getStreamingCliCommand(provider)
+// ============================================================================
+// Vision Agent Functions
+// ============================================================================
 
-  // Fall back to non-streaming if provider doesn't support it
-  if (!streamingCommand) {
-    logger.info(`[CLI] Provider ${provider} doesn't support streaming, using standard mode`)
-    return runEnhancedCli(provider, prompt)
+/**
+ * Capture screenshot of BrowserView and compute hash for change detection.
+ * Resizes to ~1280px wide for consistent model input.
+ */
+async function capturePage(): Promise<{ screenshot: Buffer; hash: string }> {
+  if (!browserView) throw new Error("BrowserView not initialized")
+
+  // Capture screenshot as NativeImage
+  const nativeImage = await browserView.webContents.capturePage()
+
+  // Resize to target width while maintaining aspect ratio
+  const size = nativeImage.getSize()
+  let resized = nativeImage
+  if (size.width > AGENT_SCREENSHOT_WIDTH) {
+    const scale = AGENT_SCREENSHOT_WIDTH / size.width
+    const newHeight = Math.round(size.height * scale)
+    resized = nativeImage.resize({ width: AGENT_SCREENSHOT_WIDTH, height: newHeight, quality: "good" })
   }
 
-  const [cmd, args] = streamingCommand
+  // Convert to JPEG with quality 60
+  const jpeg = resized.toJPEG(60)
+
+  // Compute SHA1 hash for change detection
+  const hash = crypto.createHash("sha1").update(jpeg).digest("hex")
+
+  return { screenshot: jpeg, hash }
+}
+
+/**
+ * Wrap a promise with a timeout.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(errorMsg)), ms)
+    promise
+      .then((result) => {
+        clearTimeout(timer)
+        resolve(result)
+      })
+      .catch((err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+  })
+}
+
+/**
+ * Execute a single action via CDP (Chrome DevTools Protocol).
+ * Has a per-action timeout to prevent hanging.
+ */
+async function executeAction(action: AgentAction): Promise<"ok" | "blocked" | "error"> {
+  if (!browserView) throw new Error("BrowserView not initialized")
+
+  // Wrap the entire action execution with timeout
+  return withTimeout(
+    executeActionInternal(action),
+    AGENT_ACTION_TIMEOUT_MS,
+    `Action ${action.kind} timed out after ${AGENT_ACTION_TIMEOUT_MS}ms`
+  ).catch((err) => {
+    logger.warn(`[Agent] Action timeout/error: ${err.message}`)
+    return "error" as const
+  })
+}
+
+/**
+ * Internal action executor (no timeout).
+ */
+async function executeActionInternal(action: AgentAction): Promise<"ok" | "blocked" | "error"> {
+  if (!browserView) throw new Error("BrowserView not initialized")
+  const debugger_ = browserView.webContents.debugger
+
+  try {
+    debugger_.attach("1.3")
+  } catch (err) {
+    if (!(err instanceof Error && err.message.includes("Already attached"))) throw err
+  }
+
+  try {
+    const bounds = browserView.getBounds()
+
+    // Calculate scale factor: model sees screenshot at AGENT_SCREENSHOT_WIDTH, but view may be larger
+    // We need to scale coordinates from screenshot space to view space
+    // If view is wider than screenshot target, scale up; otherwise 1:1
+    const scale = bounds.width > AGENT_SCREENSHOT_WIDTH ? bounds.width / AGENT_SCREENSHOT_WIDTH : 1
+
+    switch (action.kind) {
+      case "click":
+      case "double_click": {
+        // Validate coordinates in screenshot space
+        if (action.x === undefined || action.y === undefined) return "blocked"
+        if (action.x < 0 || action.x > AGENT_SCREENSHOT_WIDTH || action.y < 0) {
+          logger.warn(`[Agent] Click coordinates out of screenshot bounds: (${action.x}, ${action.y})`)
+          return "blocked"
+        }
+
+        // Scale coordinates from screenshot space to view space
+        const scaledX = Math.round(action.x * scale)
+        const scaledY = Math.round(action.y * scale)
+
+        // Validate scaled coordinates against actual view bounds
+        if (scaledX > bounds.width || scaledY > bounds.height) {
+          logger.warn(`[Agent] Scaled click out of view bounds: (${scaledX}, ${scaledY}) vs (${bounds.width}, ${bounds.height})`)
+          return "blocked"
+        }
+
+        logger.info(`[Agent] Click: screenshot (${action.x}, ${action.y}) → view (${scaledX}, ${scaledY}), scale=${scale.toFixed(2)}`)
+
+        const clickCount = action.kind === "double_click" ? 2 : 1
+        await debugger_.sendCommand("Input.dispatchMouseEvent", {
+          type: "mousePressed",
+          x: scaledX,
+          y: scaledY,
+          button: "left",
+          clickCount,
+        })
+        await debugger_.sendCommand("Input.dispatchMouseEvent", {
+          type: "mouseReleased",
+          x: scaledX,
+          y: scaledY,
+          button: "left",
+          clickCount,
+        })
+        return "ok"
+      }
+
+      case "type": {
+        if (!action.text) return "blocked"
+
+        // Check if focused element is form-capable
+        const canType = await browserView.webContents.executeJavaScript(`
+          (() => {
+            const el = document.activeElement
+            if (!el) return false
+            const tag = el.tagName.toLowerCase()
+            if (tag === "input" || tag === "textarea") return true
+            if (el.isContentEditable) return true
+            return false
+          })()
+        `)
+
+        if (!canType) {
+          logger.warn("[Agent] Type action blocked: focused element is not form-capable")
+          return "blocked"
+        }
+
+        await debugger_.sendCommand("Input.insertText", { text: action.text })
+        return "ok"
+      }
+
+      case "scroll": {
+        const dx = action.dx || 0
+        const dy = action.dy || 0
+        if (dx === 0 && dy === 0) return "blocked"
+
+        await browserView.webContents.executeJavaScript(`window.scrollBy(${dx}, ${dy})`)
+        return "ok"
+      }
+
+      case "keypress": {
+        if (!action.key) return "blocked"
+
+        // Special case: SelectAll (Ctrl+A) to select all text in a field
+        if (action.key === "SelectAll") {
+          await debugger_.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "Control",
+            code: "ControlLeft",
+            windowsVirtualKeyCode: 17,
+            nativeVirtualKeyCode: 17,
+            modifiers: 2, // Ctrl modifier
+          })
+          await debugger_.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "a",
+            code: "KeyA",
+            windowsVirtualKeyCode: 65,
+            nativeVirtualKeyCode: 65,
+            modifiers: 2, // Ctrl modifier
+          })
+          await debugger_.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "a",
+            code: "KeyA",
+            windowsVirtualKeyCode: 65,
+            nativeVirtualKeyCode: 65,
+            modifiers: 2,
+          })
+          await debugger_.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "Control",
+            code: "ControlLeft",
+            windowsVirtualKeyCode: 17,
+            nativeVirtualKeyCode: 17,
+            modifiers: 0,
+          })
+          return "ok"
+        }
+
+        const keyMap: Record<string, { key: string; code: string; keyCode: number }> = {
+          Tab: { key: "Tab", code: "Tab", keyCode: 9 },
+          Enter: { key: "Enter", code: "Enter", keyCode: 13 },
+          Escape: { key: "Escape", code: "Escape", keyCode: 27 },
+          Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+        }
+        const keyInfo = keyMap[action.key]
+        if (!keyInfo) return "blocked"
+
+        await debugger_.sendCommand("Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: keyInfo.key,
+          code: keyInfo.code,
+          windowsVirtualKeyCode: keyInfo.keyCode,
+          nativeVirtualKeyCode: keyInfo.keyCode,
+        })
+        await debugger_.sendCommand("Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: keyInfo.key,
+          code: keyInfo.code,
+          windowsVirtualKeyCode: keyInfo.keyCode,
+          nativeVirtualKeyCode: keyInfo.keyCode,
+        })
+        return "ok"
+      }
+
+      case "wait": {
+        const ms = action.ms || 800
+        await new Promise((resolve) => setTimeout(resolve, ms))
+        return "ok"
+      }
+
+      case "done":
+        return "ok"
+
+      default:
+        return "blocked"
+    }
+  } finally {
+    try {
+      debugger_.detach()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Build the prompt for the vision agent CLI call.
+ */
+function buildAgentPrompt(
+  goal: string,
+  url: string,
+  profileText: string,
+  recentActions: AgentActionResult[],
+  previousHash: string,
+  screenshot: Buffer
+): string {
+  const recentStr =
+    recentActions.length > 0 ? recentActions.map((a) => `${a.action.kind} → ${a.result}`).join(", ") : "none"
+
+  const base64 = screenshot.toString("base64")
+
+  return `You automate a job application form.
+Goal: ${goal}
+URL: ${url}
+
+## User Profile (use this data to fill forms)
+${profileText}
+
+## Context
+Recent actions: ${recentStr}
+Previous screenshot hash: ${previousHash || "none"}
+Screenshot (base64 JPEG): data:image/jpeg;base64,${base64}
+
+## Instructions
+Return exactly one JSON object matching the schema. Prefer click → type → Tab/Enter to submit. Use done when the form is submitted or you are blocked.
+When you need to type text, use the profile data above for the appropriate fields (name, email, phone, work history, etc.).
+To clear a field before typing, use SelectAll then type the new value (SelectAll selects existing text which gets replaced on type).
+
+Schema:
+{
+  "action": {
+    "kind": "click" | "double_click" | "type" | "scroll" | "keypress" | "wait" | "done",
+    "x": number,        // for click/double_click
+    "y": number,        // for click/double_click
+    "text": "string",   // for type
+    "dx": number,       // for scroll
+    "dy": number,       // for scroll
+    "key": "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll",  // for keypress
+    "ms": number,       // for wait
+    "reason": "string"  // for done
+  }
+}`
+}
+
+/**
+ * Run the agent CLI and parse the action response.
+ */
+async function runAgentCli(provider: CliProvider, prompt: string): Promise<AgentAction> {
+  const [cmd, args] = getCliCommand(provider)
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
-    let accumulatedText = ""
-    let finalResult: string | null = null
+    let stdout = ""
     let stderr = ""
-
-    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
-      setTimeout(() => {
-        logger.warn(`[CLI] ${provider} streaming still running after ${ms / 1000}s...`)
-      }, ms)
-    )
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (streaming form-fill)`))
-    }, CLI_TIMEOUT_MS)
+      reject(new Error(`${provider} CLI timed out`))
+    }, AGENT_LOOP_TIMEOUT_MS)
 
-    const clearAllTimers = () => {
-      warningTimers.forEach(clearTimeout)
-      clearTimeout(timeout)
-    }
-
-    // Write prompt to stdin
     child.stdin.write(prompt)
     child.stdin.end()
 
-    // Process stdout line-by-line (NDJSON format)
-    const rl = readline.createInterface({
-      input: child.stdout,
-      crlfDelay: Infinity,
-    })
-
-    rl.on("line", (line) => {
-      if (!line.trim()) return
-
-      try {
-        const event = JSON.parse(line)
-        logger.debug(`[CLI Streaming] Event type: ${event.type}`)
-
-        // Handle streaming token deltas
-        if (event.type === "stream_event" && event.event?.type === "content_block_delta") {
-          const text = event.event.delta?.text
-          if (text) {
-            accumulatedText += text
-            logger.debug(`[CLI Streaming] Delta text (${text.length} chars), total: ${accumulatedText.length}`)
-            onProgress(accumulatedText, false)
-          }
-        }
-
-        // Handle complete assistant message (backup if streaming events missed)
-        if (event.type === "assistant" && event.message?.content) {
-          const content = event.message.content
-          if (Array.isArray(content) && content[0]?.type === "text") {
-            accumulatedText = content[0].text
-            logger.debug(`[CLI Streaming] Assistant message: ${accumulatedText.length} chars`)
-            onProgress(accumulatedText, false)
-          }
-        }
-
-        // Handle final result
-        if (event.type === "result") {
-          finalResult = event.result
-          logger.info(`[CLI Streaming] Result received: ${finalResult?.length || 0} chars`)
-          onProgress(finalResult || accumulatedText, true)
-        }
-      } catch {
-        // Log parse errors but don't fail - might be debug output
-        logger.warn(`[CLI] Failed to parse streaming line: ${line.slice(0, 100)}`)
-      }
-    })
-
+    child.stdout.on("data", (d) => (stdout += d))
     child.stderr.on("data", (d) => (stderr += d))
 
     child.on("error", (err) => {
-      clearAllTimers()
+      clearTimeout(timeout)
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
       } else {
-        reject(new Error(`Failed to spawn ${provider} CLI (streaming form-fill): ${err.message}`))
+        reject(new Error(`Failed to spawn ${provider} CLI: ${err.message}`))
       }
     })
 
     child.on("close", (code) => {
-      clearAllTimers()
-
+      clearTimeout(timeout)
       if (code !== 0) {
-        let errorMsg = `${provider} CLI failed (exit ${code}).`
-        if (stderr?.trim()) {
-          errorMsg += ` Error: ${stderr.trim()}`
-        }
-        reject(new Error(errorMsg))
-        return
-      }
-
-      // Parse the final result
-      const resultText = finalResult || accumulatedText
-      logger.info(`[CLI Streaming] Close - finalResult: ${finalResult?.length || 0}, accumulatedText: ${accumulatedText.length}`)
-      logger.debug(`[CLI Streaming] Result text preview: ${resultText?.slice(0, 500)}`)
-
-      if (!resultText) {
-        reject(new Error(`${provider} CLI returned no output (streaming form-fill)`))
+        reject(new Error(`${provider} CLI failed (exit ${code}): ${stderr || stdout}`))
         return
       }
 
       try {
-        // The result should be a JSON array of instructions
-        // Try parsing directly first (streaming might give us clean JSON)
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(resultText)
-          logger.debug(`[CLI Streaming] Parsed as direct JSON`)
-        } catch {
-          // Fall back to array extraction if not clean JSON
-          logger.debug(`[CLI Streaming] Direct JSON failed, trying array extraction`)
-          parsed = parseCliArrayOutput(resultText)
+        const parsed = parseCliObjectOutput(stdout)
+        const action = parsed.action as AgentAction
+        if (!action || !action.kind) {
+          throw new Error("Missing action.kind in response")
         }
-
-        if (!Array.isArray(parsed)) {
-          logger.error(`[CLI Streaming] Parsed result is not an array: ${typeof parsed}`)
-          throw new Error("CLI did not return an array")
-        }
-
-        logger.info(`[CLI Streaming] Parsed ${parsed.length} instructions`)
-
-        const instructions = (parsed as Array<Record<string, unknown>>).map((item) => ({
-          selector: String(item.selector || ""),
-          value: item.value != null ? String(item.value) : null,
-          status: (item.status === "skipped" ? "skipped" : "filled") as "filled" | "skipped",
-          reason: item.reason ? String(item.reason) : undefined,
-          label: item.label ? String(item.label) : undefined,
-        }))
-
-        resolve(instructions)
+        resolve(action)
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logger.error(`[CLI Streaming] Parse error: ${msg}`)
-        reject(new Error(`${provider} CLI returned invalid JSON (streaming form-fill): ${msg}`))
+        reject(new Error(`${provider} CLI returned invalid JSON: ${err}`))
       }
     })
   })
 }
 
 /**
- * Helper to send form fill progress to renderer
+ * Main vision agent loop - captures screenshots, calls CLI, executes actions.
  */
-function sendFormFillProgress(progress: FormFillProgress): void {
-  if (mainWindow) {
-    mainWindow.webContents.send("form-fill-progress", progress)
+async function runVisionAgent(
+  goal: string,
+  provider: CliProvider,
+  onProgress: (progress: AgentProgress) => void
+): Promise<AgentSummary> {
+  const startTime = Date.now()
+  const recentActions: AgentActionResult[] = []
+  let previousHash = ""
+  let consecutiveNoChange = 0
+
+  onProgress({
+    phase: "starting",
+    step: 0,
+    totalSteps: AGENT_MAX_STEPS,
+    message: "Initializing agent...",
+  })
+
+  // Fetch profile data once at the start - fail fast if unavailable
+  let profileText = ""
+  try {
+    onProgress({
+      phase: "starting",
+      step: 0,
+      totalSteps: AGENT_MAX_STEPS,
+      message: "Fetching profile data...",
+    })
+    profileText = await fetchApplicatorProfile()
+    logger.info(`[Agent] Fetched profile (${profileText.length} chars)`)
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    logger.error(`[Agent] Failed to fetch profile: ${errorMsg}`)
+    onProgress({
+      phase: "failed",
+      step: 0,
+      totalSteps: AGENT_MAX_STEPS,
+      message: "Failed to fetch profile data",
+    })
+    return {
+      stepsUsed: 0,
+      stopReason: "error",
+      elapsedMs: Date.now() - startTime,
+      finalReason: `Cannot fill forms without profile data: ${errorMsg}`,
+    }
+  }
+
+  for (let step = 1; step <= AGENT_MAX_STEPS; step++) {
+    // 1. Capture screenshot + hash
+    const { screenshot, hash } = await capturePage()
+
+    onProgress({
+      phase: "running",
+      step,
+      totalSteps: AGENT_MAX_STEPS,
+      message: `Step ${step}: Analyzing page...`,
+      screenshotHash: hash,
+    })
+
+    // 2. Get current URL
+    const url = browserView?.webContents.getURL() || ""
+
+    // 3. Build prompt and call CLI
+    const prompt = buildAgentPrompt(goal, url, profileText, recentActions.slice(-3), previousHash, screenshot)
+
+    let action: AgentAction
+    try {
+      action = await runAgentCli(provider, prompt)
+    } catch (err) {
+      // Retry once on parse failure
+      try {
+        logger.warn(`[Agent] CLI failed, retrying: ${err}`)
+        action = await runAgentCli(provider, prompt)
+      } catch (retryErr) {
+        return {
+          stepsUsed: step,
+          stopReason: "error",
+          elapsedMs: Date.now() - startTime,
+          finalReason: retryErr instanceof Error ? retryErr.message : "CLI parse failure",
+        }
+      }
+    }
+
+    // 4. Check for done action
+    if (action.kind === "done") {
+      onProgress({
+        phase: "completed",
+        step,
+        totalSteps: AGENT_MAX_STEPS,
+        message: action.reason || "Agent completed",
+      })
+      return {
+        stepsUsed: step,
+        stopReason: "done",
+        elapsedMs: Date.now() - startTime,
+        finalReason: action.reason,
+      }
+    }
+
+    // 5. Execute action
+    onProgress({
+      phase: "running",
+      step,
+      totalSteps: AGENT_MAX_STEPS,
+      currentAction: action,
+      message: `Step ${step}: ${action.kind}...`,
+    })
+
+    const result = await executeAction(action)
+    recentActions.push({ step, action, result })
+
+    onProgress({
+      phase: "running",
+      step,
+      totalSteps: AGENT_MAX_STEPS,
+      currentAction: action,
+      lastResult: result,
+      message: `Step ${step}: ${action.kind} → ${result}`,
+    })
+
+    // Wait for page to render after action (except for wait actions which already delay)
+    if (action.kind !== "wait") {
+      await new Promise((resolve) => setTimeout(resolve, AGENT_RENDER_DELAY_MS))
+    }
+
+    // 6. Check for stuck (consecutive no-change, excluding wait)
+    if (action.kind !== "wait") {
+      if (hash === previousHash) {
+        consecutiveNoChange++
+        if (consecutiveNoChange >= AGENT_STUCK_HASH_THRESHOLD) {
+          onProgress({
+            phase: "failed",
+            step,
+            totalSteps: AGENT_MAX_STEPS,
+            message: "Agent stuck - no visual progress",
+          })
+          return {
+            stepsUsed: step,
+            stopReason: "stuck",
+            elapsedMs: Date.now() - startTime,
+            finalReason: `No visual change after ${AGENT_STUCK_HASH_THRESHOLD} consecutive actions`,
+          }
+        }
+      } else {
+        consecutiveNoChange = 0
+      }
+    }
+
+    previousHash = hash
+
+    // Log telemetry
+    logger.info(
+      `[Agent] Step ${step}: ${action.kind} → ${result}, hash=${hash.slice(0, 8)}, bytes=${screenshot.length}`
+    )
+  }
+
+  // Hit step limit
+  onProgress({
+    phase: "failed",
+    step: AGENT_MAX_STEPS,
+    totalSteps: AGENT_MAX_STEPS,
+    message: "Step limit reached",
+  })
+  return {
+    stepsUsed: AGENT_MAX_STEPS,
+    stopReason: "limit",
+    elapsedMs: Date.now() - startTime,
+    finalReason: `Reached ${AGENT_MAX_STEPS} step limit`,
   }
 }
+
+// ============================================================================
+// Agent Fill IPC Handler
+// ============================================================================
+
+/**
+ * Agent-based form fill - replaces legacy selector-based fill-form.
+ * Uses vision/action loop to interact with forms via screenshots and CDP.
+ */
+ipcMain.handle(
+  "agent-fill",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: { provider: CliProvider; goal: string }
+  ): Promise<{ success: boolean; data?: AgentSummary; message?: string }> => {
+    try {
+      if (!browserView) throw new Error("BrowserView not initialized")
+
+      logger.info(`[Agent] Starting vision agent with provider: ${options.provider}`)
+      logger.info(`[Agent] Goal: ${options.goal}`)
+
+      const summary = await runVisionAgent(options.goal, options.provider, (progress) => {
+        if (mainWindow) {
+          mainWindow.webContents.send("agent-progress", progress)
+        }
+      })
+
+      const success = summary.stopReason === "done"
+      logger.info(`[Agent] Completed: ${summary.stopReason}, steps=${summary.stepsUsed}, elapsed=${summary.elapsedMs}ms`)
+
+      return {
+        success,
+        data: summary,
+        message: success ? "Form filled successfully" : summary.finalReason,
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("[Agent] Fill error:", message)
+      return { success: false, message }
+    }
+  }
+)
 
 // App lifecycle
 app.whenReady().then(() => {

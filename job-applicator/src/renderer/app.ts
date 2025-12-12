@@ -1,8 +1,8 @@
 import type {
   JobMatchWithListing as JobMatchListItem,
   DocumentInfo,
-  FormFillSummary,
-  FormFillProgress,
+  AgentProgress,
+  AgentSummary,
   GenerationProgress,
   GenerationStep,
   WorkflowState,
@@ -12,11 +12,10 @@ import type {
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
-  fillForm: (options: {
+  agentFill: (options: {
     provider: "claude" | "codex" | "gemini"
-    jobMatchId?: string
-    documentId?: string
-  }) => Promise<{ success: boolean; data?: FormFillSummary; message?: string }>
+    goal: string
+  }) => Promise<{ success: boolean; data?: AgentSummary; message?: string }>
   uploadResume: (options?: {
     documentId?: string
     type?: "resume" | "coverLetter"
@@ -50,7 +49,7 @@ interface ElectronAPI {
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
-  onFormFillProgress: (callback: (progress: FormFillProgress) => void) => () => void
+  onAgentProgress: (callback: (progress: AgentProgress) => void) => () => void
   onRefreshJobMatches: (callback: () => void) => () => void
 }
 
@@ -677,101 +676,33 @@ async function navigate() {
   setButtonsEnabled(true)
 }
 
-// Track form fill progress subscription
-let unsubscribeFormFillProgress: (() => void) | null = null
+// Track agent progress subscription
+let unsubscribeAgentProgress: (() => void) | null = null
 
-// Handle form fill progress updates
-function handleFormFillProgress(progress: FormFillProgress) {
-  // Update status message based on phase
-  if (progress.phase === "failed") {
-    setStatus(progress.message, "error")
-    hideFormFillProgress()
-    return
-  }
+// Handle agent progress updates
+function handleAgentProgress(progress: AgentProgress) {
+  const percent = Math.round((progress.step / progress.totalSteps) * 100)
+
+  fillOutput.innerHTML = `
+    <div class="agent-progress">
+      <div class="agent-phase">${escapeHtml(progress.message)}</div>
+      <div class="agent-progress-bar">
+        <div class="agent-progress-fill" style="width: ${percent}%"></div>
+      </div>
+      <div class="agent-step">Step ${progress.step} / ${progress.totalSteps}</div>
+      ${progress.currentAction ? `<div class="agent-action">${escapeHtml(progress.currentAction.kind)}${progress.lastResult ? ` → ${progress.lastResult}` : ""}</div>` : ""}
+    </div>
+  `
 
   if (progress.phase === "completed") {
-    if (progress.summary) {
-      renderFillResults(progress.summary)
-    }
-    setStatus(progress.message, "success")
-    hideFormFillProgress()
+    setStatus("Agent completed successfully", "success")
     setWorkflowStep("fill", "completed")
     setWorkflowStep("submit", "active")
-    return
+  } else if (progress.phase === "failed") {
+    setStatus(progress.message, "error")
+  } else {
+    setStatus(progress.message, "loading")
   }
-
-  // Show progress UI
-  showFormFillProgress(progress)
-}
-
-// Show form fill progress UI
-function showFormFillProgress(progress: FormFillProgress) {
-  let progressHtml = ""
-  const safeMessage = escapeHtml(progress.message)
-
-  if (progress.phase === "starting") {
-    progressHtml = `
-      <div class="fill-progress">
-        <div class="fill-phase">${safeMessage}</div>
-        <div class="fill-spinner"></div>
-      </div>
-    `
-  } else if (progress.phase === "ai-processing") {
-    // Parse streaming text to show field count and last few fields being processed
-    let streamingInfo = ""
-    if (progress.streamingText) {
-      // Count how many complete field objects we can see
-      const fieldMatches = progress.streamingText.match(/"selector":/g)
-      const fieldCount = fieldMatches ? fieldMatches.length : 0
-
-      // Extract the last few field labels for display
-      const labelMatches = progress.streamingText.match(/"label":\s*"([^"]+)"/g)
-      const lastLabels = labelMatches
-        ? labelMatches.slice(-3).map((m) => m.match(/"label":\s*"([^"]+)"/)?.[1] || "").filter(Boolean)
-        : []
-
-      const charCount = progress.streamingText.length
-      // Escape labels to prevent XSS from malicious form field names
-      const safeLabels = lastLabels.map((l) => escapeHtml(l)).join(", ")
-      streamingInfo = `
-        <div class="streaming-info">
-          <div class="streaming-stat"><span class="stat-value">${fieldCount}</span> fields analyzed</div>
-          <div class="streaming-stat"><span class="stat-value">${Math.round(charCount / 1024)}KB</span> received</div>
-          ${lastLabels.length > 0 ? `<div class="streaming-recent">Recent: ${safeLabels}</div>` : ""}
-        </div>
-      `
-    }
-
-    progressHtml = `
-      <div class="fill-progress">
-        <div class="fill-phase">${safeMessage}</div>
-        ${progress.isStreaming ? '<div class="fill-spinner"></div>' : ""}
-        ${streamingInfo}
-      </div>
-    `
-  } else if (progress.phase === "filling") {
-    const percent = progress.totalFields
-      ? Math.round(((progress.processedFields || 0) / progress.totalFields) * 100)
-      : 0
-
-    progressHtml = `
-      <div class="fill-progress">
-        <div class="fill-phase">${safeMessage}</div>
-        <div class="fill-progress-bar">
-          <div class="fill-progress-fill" style="width: ${percent}%"></div>
-        </div>
-        <div class="fill-progress-text">${progress.processedFields || 0} / ${progress.totalFields || 0} fields</div>
-      </div>
-    `
-  }
-
-  fillOutput.innerHTML = progressHtml
-  setStatus(progress.message, "loading")
-}
-
-// Hide form fill progress UI
-function hideFormFillProgress() {
-  // Progress UI is replaced by results or cleared on error
 }
 
 // Escape HTML to prevent XSS in streaming preview
@@ -781,88 +712,89 @@ function escapeHtml(text: string): string {
   return div.innerHTML
 }
 
-// Fill form with AI
-async function fillForm() {
+// Fill form with AI using vision agent
+async function agentFill() {
   const provider = providerSelect.value as "claude" | "codex" | "gemini"
+
+  // Build goal from job context with details to help answer job-specific questions
+  const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+  let goal: string
+  if (match) {
+    const parts = [
+      `Fill out this job application form for ${match.listing.title} at ${match.listing.companyName}.`,
+    ]
+    if (match.listing.location) {
+      parts.push(`Location: ${match.listing.location}.`)
+    }
+    if (match.listing.description) {
+      // Truncate long descriptions to avoid token bloat
+      const desc = match.listing.description.length > 500
+        ? match.listing.description.slice(0, 500) + "..."
+        : match.listing.description
+      parts.push(`Job description: ${desc}`)
+    }
+    parts.push("Use my profile information to complete all fields.")
+    goal = parts.join(" ")
+  } else {
+    goal = "Fill out this job application form using my profile information."
+  }
 
   try {
     setButtonsEnabled(false)
-    setStatus(`Filling form with ${provider}...`, "loading")
+    setStatus(`Starting agent with ${provider}...`, "loading")
     setWorkflowStep("fill", "active")
 
-    // Clean up any existing subscription before creating a new one
-    if (unsubscribeFormFillProgress) {
-      unsubscribeFormFillProgress()
-      unsubscribeFormFillProgress = null
+    // Clean up existing subscription
+    if (unsubscribeAgentProgress) {
+      unsubscribeAgentProgress()
+      unsubscribeAgentProgress = null
     }
 
     // Subscribe to progress events
-    unsubscribeFormFillProgress = api.onFormFillProgress(handleFormFillProgress)
+    unsubscribeAgentProgress = api.onAgentProgress(handleAgentProgress)
 
-    const result = await api.fillForm({
-      provider,
-      jobMatchId: selectedJobMatchId || undefined,
-      documentId: selectedDocumentId || undefined,
-    })
+    const result = await api.agentFill({ provider, goal })
 
-    // Unsubscribe from progress events
-    if (unsubscribeFormFillProgress) {
-      unsubscribeFormFillProgress()
-      unsubscribeFormFillProgress = null
+    // Unsubscribe
+    if (unsubscribeAgentProgress) {
+      unsubscribeAgentProgress()
+      unsubscribeAgentProgress = null
     }
 
-    // Handle result (progress events should have already updated UI)
     if (result.success && result.data) {
-      renderFillResults(result.data)
-      setStatus(`Filled ${result.data.filledCount}/${result.data.totalFields} fields`, "success")
+      renderAgentResults(result.data)
+      setStatus("Agent completed", "success")
       setWorkflowStep("fill", "completed")
       setWorkflowStep("submit", "active")
-    } else if (!result.success) {
-      setStatus(result.message || "Fill failed", "error")
+    } else {
+      setStatus(result.message || "Agent failed", "error")
     }
-  } catch (err: unknown) {
+  } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    setStatus(`Fill failed: ${message}`, "error")
+    setStatus(`Agent failed: ${message}`, "error")
   } finally {
-    // Clean up subscription
-    if (unsubscribeFormFillProgress) {
-      unsubscribeFormFillProgress()
-      unsubscribeFormFillProgress = null
+    if (unsubscribeAgentProgress) {
+      unsubscribeAgentProgress()
+      unsubscribeAgentProgress = null
     }
     setButtonsEnabled(true)
   }
 }
 
-// Render fill results in sidebar
-function renderFillResults(summary: FormFillSummary) {
-  const hasSkipped = summary.skippedFields.length > 0
+// Render agent results in sidebar
+function renderAgentResults(summary: AgentSummary) {
+  const isSuccess = summary.stopReason === "done"
+  const resultClass = isSuccess ? "success" : "error"
+  const resultText = isSuccess ? "✓ Completed" : `✗ ${summary.stopReason}`
 
   fillOutput.innerHTML = `
-    <div class="results-summary">
-      <div class="results-header">
-        <span class="results-count">${summary.filledCount}</span>
-        <span class="results-label">of ${summary.totalFields} fields filled</span>
+    <div class="agent-summary">
+      <div class="agent-result ${resultClass}">${resultText}</div>
+      <div class="agent-stats">
+        <div>Steps: ${summary.stepsUsed}</div>
+        <div>Time: ${(summary.elapsedMs / 1000).toFixed(1)}s</div>
       </div>
-      <div class="results-duration">${(summary.duration / 1000).toFixed(1)}s</div>
-      ${
-        hasSkipped
-          ? `
-        <div class="skipped-header">Skipped Fields (${summary.skippedCount})</div>
-        <div class="skipped-list">
-          ${summary.skippedFields
-            .map(
-              (f) => `
-            <div class="skipped-item">
-              <div class="skipped-label">${escapeHtml(f.label)}</div>
-              <div class="skipped-reason">${escapeHtml(f.reason)}</div>
-            </div>
-          `
-            )
-            .join("")}
-        </div>
-      `
-          : ""
-      }
+      ${summary.finalReason ? `<div class="agent-reason">${escapeHtml(summary.finalReason)}</div>` : ""}
     </div>
   `
 
@@ -946,7 +878,7 @@ function initializeApp() {
       navigate()
     }
   })
-  fillBtn.addEventListener("click", fillForm)
+  fillBtn.addEventListener("click", agentFill)
   submitJobBtn.addEventListener("click", submitJob)
 
   // Event listeners - Sidebar

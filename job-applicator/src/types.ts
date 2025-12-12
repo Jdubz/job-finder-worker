@@ -73,71 +73,50 @@ export interface JobMatchListItem {
 }
 
 // ============================================================================
-// Form Types (app-specific)
+// Vision Agent Types (app-specific)
 // ============================================================================
 
-export interface SelectOption {
-  value: string
-  text: string
+/** Action kinds the vision agent can perform */
+export type AgentActionKind = "click" | "double_click" | "type" | "scroll" | "keypress" | "wait" | "done"
+
+/** Action schema returned by CLI */
+export interface AgentAction {
+  kind: AgentActionKind
+  x?: number // click/double_click
+  y?: number // click/double_click
+  text?: string // type
+  dx?: number // scroll (default 0)
+  dy?: number // scroll (default 0)
+  key?: "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll" // keypress
+  ms?: number // wait
+  reason?: string // done
 }
 
-export interface FormField {
-  selector: string | null
-  type: string
-  label: string | null
-  placeholder: string | null
-  required: boolean
-  options: SelectOption[] | null
-}
-
-export interface FillInstruction {
-  selector: string
-  value: string
-}
-
-export interface EnhancedFillInstruction {
-  selector: string
-  value: string | null
-  status: "filled" | "skipped"
-  reason?: string
-  label?: string
-}
-
-export interface FormFillSummary {
-  totalFields: number
-  filledCount: number
-  skippedCount: number
-  skippedFields: Array<{ label: string; reason: string }>
-  duration: number
-}
-
-/**
- * Progress updates for form filling - sent via IPC during the fill process.
- * Supports streaming CLI output and field-by-field fill progress.
- */
-export interface FormFillProgress {
-  /** Current phase of the fill process */
-  phase: "starting" | "ai-processing" | "filling" | "completed" | "failed"
-  /** Status message to display */
-  message: string
-  /** Streaming text from AI (token-by-token as it arrives) */
-  streamingText?: string
-  /** Whether AI is still generating */
-  isStreaming?: boolean
-  /** Total form fields detected */
-  totalFields?: number
-  /** Number of fields processed so far */
-  processedFields?: number
-  /** Current field being filled */
-  currentField?: {
-    label: string
-    selector: string
-    status: "processing" | "filled" | "skipped"
-  }
-  /** Final summary (only on completion) */
-  summary?: FormFillSummary
-  /** Error message (only on failure) */
+/** Result of executing an action */
+export interface AgentActionResult {
+  step: number
+  action: AgentAction
+  result: "ok" | "blocked" | "error"
   error?: string
+}
+
+/** Progress updates sent during agent execution */
+export interface AgentProgress {
+  phase: "starting" | "running" | "completed" | "failed"
+  step: number
+  totalSteps: number
+  currentAction?: AgentAction
+  lastResult?: "ok" | "blocked" | "error"
+  message: string
+  screenshotHash?: string
+}
+
+/** Final summary after agent completes */
+export interface AgentSummary {
+  stepsUsed: number
+  stopReason: "done" | "limit" | "stuck" | "error"
+  elapsedMs: number
+  finalReason?: string // from done action or error message
 }
 
 // ============================================================================

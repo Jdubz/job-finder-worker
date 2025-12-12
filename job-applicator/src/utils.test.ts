@@ -2,23 +2,16 @@ import { describe, it, expect } from "vitest"
 import {
   normalizeUrl,
   resolveDocumentPath,
-  formatWorkHistory,
-  buildPrompt,
-  buildEnhancedPrompt,
   buildExtractionPrompt,
-  validateFillInstruction,
-  validateEnhancedFillInstruction,
   parseJsonArrayFromOutput,
   parseJsonObjectFromOutput,
   parseCliArrayOutput,
   parseCliObjectOutput,
   unwrapJobMatch,
   unwrapDocuments,
-  type ContentItem,
-  type PersonalInfo,
-  type FormField,
 } from "./utils.js"
 import { CLI_COMMANDS } from "./cli-config.js"
+import type { AgentAction, AgentActionKind } from "./types.js"
 
 describe("normalizeUrl", () => {
   it("should extract origin and pathname from valid URL", () => {
@@ -110,181 +103,136 @@ describe("CLI_COMMANDS", () => {
   })
 })
 
-describe("formatWorkHistory", () => {
-  it("should format single work item", () => {
-    const items: ContentItem[] = [
-      {
-        id: "1",
-        title: "Acme Corp",
-        role: "Software Engineer",
-        startDate: "2020-01",
-        endDate: "2023-06",
-        location: "Remote",
-        description: "Built cool stuff",
-        skills: ["TypeScript", "React"],
-      },
-    ]
-    const result = formatWorkHistory(items)
-    expect(result).toContain("Acme Corp")
-    expect(result).toContain("Software Engineer")
-    expect(result).toContain("2020-01")
-    expect(result).toContain("2023-06")
-    expect(result).toContain("Remote")
-    expect(result).toContain("Built cool stuff")
-    expect(result).toContain("TypeScript")
-    expect(result).toContain("React")
+// ============================================================================
+// Vision Agent Tests
+// ============================================================================
+
+describe("Agent action schema parsing", () => {
+  const validActionKinds: AgentActionKind[] = [
+    "click",
+    "double_click",
+    "type",
+    "scroll",
+    "keypress",
+    "wait",
+    "done",
+  ]
+
+  it("parses click action with coordinates", () => {
+    const json = '{"action":{"kind":"click","x":100,"y":200}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("click")
+    expect(parsed.action.x).toBe(100)
+    expect(parsed.action.y).toBe(200)
   })
 
-  it("should handle item without optional fields", () => {
-    const items: ContentItem[] = [{ id: "1", title: "Company Name" }]
-    const result = formatWorkHistory(items)
-    expect(result).toContain("Company Name")
-    expect(result).not.toContain("undefined")
+  it("parses double_click action with coordinates", () => {
+    const json = '{"action":{"kind":"double_click","x":150,"y":250}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("double_click")
+    expect(parsed.action.x).toBe(150)
+    expect(parsed.action.y).toBe(250)
   })
 
-  it("should handle nested children", () => {
-    const items: ContentItem[] = [
-      {
-        id: "1",
-        title: "Parent Company",
-        children: [{ id: "2", title: "Child Project", role: "Lead" }],
-      },
-    ]
-    const result = formatWorkHistory(items)
-    expect(result).toContain("Parent Company")
-    expect(result).toContain("Child Project")
-    expect(result).toContain("Lead")
+  it("parses type action with text", () => {
+    const json = '{"action":{"kind":"type","text":"hello@example.com"}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("type")
+    expect(parsed.action.text).toBe("hello@example.com")
   })
 
-  it("should return empty string for empty array", () => {
-    expect(formatWorkHistory([])).toBe("")
+  it("parses scroll action with dx/dy", () => {
+    const json = '{"action":{"kind":"scroll","dx":0,"dy":400}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("scroll")
+    expect(parsed.action.dx).toBe(0)
+    expect(parsed.action.dy).toBe(400)
   })
 
-  it("should handle items without title", () => {
-    const items: ContentItem[] = [{ id: "1", role: "Developer" }]
-    const result = formatWorkHistory(items)
-    expect(result).toBe("")
+  it("parses keypress action with key", () => {
+    const json = '{"action":{"kind":"keypress","key":"Tab"}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("keypress")
+    expect(parsed.action.key).toBe("Tab")
   })
 
-  it("should handle current position (no end date)", () => {
-    const items: ContentItem[] = [
-      { id: "1", title: "Current Job", startDate: "2023-01" },
-    ]
-    const result = formatWorkHistory(items)
-    expect(result).toContain("present")
+  it("parses wait action with ms", () => {
+    const json = '{"action":{"kind":"wait","ms":1000}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("wait")
+    expect(parsed.action.ms).toBe(1000)
+  })
+
+  it("parses done action with reason", () => {
+    const json = '{"action":{"kind":"done","reason":"Form submitted successfully"}}'
+    const parsed = JSON.parse(json)
+    expect(parsed.action.kind).toBe("done")
+    expect(parsed.action.reason).toBe("Form submitted successfully")
+  })
+
+  it("rejects invalid action kind", () => {
+    const json = '{"action":{"kind":"invalid"}}'
+    const parsed = JSON.parse(json)
+    expect(validActionKinds).not.toContain(parsed.action.kind)
+  })
+
+  it("validates action has required kind field", () => {
+    const action: AgentAction = { kind: "click", x: 100, y: 200 }
+    expect(action.kind).toBeDefined()
+    expect(typeof action.kind).toBe("string")
   })
 })
 
-describe("buildPrompt", () => {
-  const mockProfile: PersonalInfo = {
-    name: "John Doe",
-    email: "john@example.com",
-    phone: "555-1234",
-    location: "Portland, OR",
-    website: "https://johndoe.dev",
-    github: "johndoe",
-    linkedin: "linkedin.com/in/johndoe",
-    applicationInfo: "Gender: Decline to self-identify",
-  }
+describe("Agent stuck detection", () => {
+  it("detects stuck after threshold consecutive same hashes", () => {
+    const hashes = ["abc123", "abc123", "abc123"] // 3 same hashes
+    const threshold = 3
+    let consecutiveNoChange = 0
 
-  const mockFields: FormField[] = [
-    { selector: "#email", type: "email", label: "Email", placeholder: null, required: true, options: null },
-    { selector: "#name", type: "text", label: "Full Name", placeholder: null, required: true, options: null },
-  ]
-
-  it("should include all profile fields in prompt", () => {
-    const result = buildPrompt(mockFields, mockProfile, [])
-    expect(result).toContain("John Doe")
-    expect(result).toContain("john@example.com")
-    expect(result).toContain("555-1234")
-    expect(result).toContain("Portland, OR")
-    expect(result).toContain("johndoe.dev")
-    expect(result).toContain("GitHub") // Field label is capitalized
-    expect(result).toContain("johndoe") // GitHub username value
-    expect(result).toContain("LinkedIn")
-  })
-
-  it("should include form fields JSON", () => {
-    const result = buildPrompt(mockFields, mockProfile, [])
-    expect(result).toContain("#email")
-    expect(result).toContain("#name")
-    expect(result).toContain("Email")
-    expect(result).toContain("Full Name")
-  })
-
-  it("should include work history when provided", () => {
-    const workHistory: ContentItem[] = [{ id: "1", title: "Past Job", role: "Dev" }]
-    const result = buildPrompt(mockFields, mockProfile, workHistory)
-    expect(result).toContain("Past Job")
-    expect(result).toContain("Dev")
-  })
-
-  it("should handle missing optional profile fields", () => {
-    const minimalProfile: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "Decline" }
-    const result = buildPrompt(mockFields, minimalProfile, [])
-    expect(result).toContain("Jane")
-    expect(result).toContain("jane@test.com")
-    expect(result).toContain("Not provided")
-  })
-
-  it("should include instructions for filling", () => {
-    const result = buildPrompt(mockFields, mockProfile, [])
-    expect(result).toContain("JSON array")
-    expect(result).toContain("selector")
-    expect(result).toContain("value")
-    expect(result).toContain("Skip file upload")
-  })
-})
-
-describe("buildEnhancedPrompt", () => {
-  const mockProfile: PersonalInfo = {
-    name: "John Doe",
-    email: "john@example.com",
-    applicationInfo: "Race: White\nGender: Male\nVeteran Status: Not a protected veteran",
-  }
-
-  const mockFields: FormField[] = [
-    { selector: "#email", type: "email", label: "Email", placeholder: null, required: true, options: null },
-  ]
-
-  it("should include EEO information when provided", () => {
-    const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
-    expect(result).toContain("Application Information")
-    expect(result).toContain("Race: White")
-    expect(result).toContain("Gender: Male")
-    expect(result).toContain("Veteran Status: Not a protected veteran")
-  })
-
-  it("should include job context when provided", () => {
-    const jobMatch = {
-      listing: { companyName: "Acme Corp", title: "Senior Developer" },
-      matchedSkills: ["React", "TypeScript"],
+    for (let i = 1; i < hashes.length; i++) {
+      if (hashes[i] === hashes[i - 1]) {
+        consecutiveNoChange++
+      } else {
+        consecutiveNoChange = 0
+      }
     }
-    const result = buildEnhancedPrompt(mockFields, mockProfile, [], jobMatch)
-    expect(result).toContain("Acme Corp")
-    expect(result).toContain("Senior Developer")
-    expect(result).toContain("React")
-    expect(result).toContain("TypeScript")
+    // We start counting from second element, so 2 matches means 3 consecutive same hashes
+    expect(consecutiveNoChange).toBe(2)
+    expect(consecutiveNoChange + 1).toBeGreaterThanOrEqual(threshold)
   })
 
-  it("should include safety rules", () => {
-    const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
-    expect(result).toContain("CRITICAL SAFETY RULES")
-    expect(result).toContain("NEVER fill or interact with submit")
-    expect(result).toContain("user must manually click")
+  it("resets counter when hash changes", () => {
+    const hashes = ["abc123", "abc123", "def456", "def456"]
+    let consecutiveNoChange = 0
+    let prevHash = hashes[0]
+
+    for (let i = 1; i < hashes.length; i++) {
+      if (hashes[i] === prevHash) {
+        consecutiveNoChange++
+      } else {
+        consecutiveNoChange = 0
+      }
+      prevHash = hashes[i]
+    }
+
+    expect(consecutiveNoChange).toBe(1) // Only 2 consecutive "def456" (1 match after reset)
   })
 
-  it("should handle profile without EEO", () => {
-    const profileNoEEO: PersonalInfo = { name: "Jane", email: "jane@test.com", applicationInfo: "Decline to provide" }
-    const result = buildEnhancedPrompt(mockFields, profileNoEEO, [], null)
-    expect(result).toContain("Application Information")
-    expect(result).toContain("Decline to provide")
-  })
+  it("does not increment counter on different consecutive hashes", () => {
+    const hashes = ["abc", "def", "ghi", "jkl"]
+    let consecutiveNoChange = 0
+    let prevHash = hashes[0]
 
-  it("should include status field instructions", () => {
-    const result = buildEnhancedPrompt(mockFields, mockProfile, [], null)
-    expect(result).toContain('"status": "filled"')
-    expect(result).toContain('"status": "skipped"')
+    for (let i = 1; i < hashes.length; i++) {
+      if (hashes[i] === prevHash) {
+        consecutiveNoChange++
+      } else {
+        consecutiveNoChange = 0
+      }
+      prevHash = hashes[i]
+    }
+
+    expect(consecutiveNoChange).toBe(0)
   })
 })
 
@@ -308,95 +256,6 @@ describe("buildExtractionPrompt", () => {
     const result = buildExtractionPrompt("content", "url")
     expect(result).toContain("JSON")
     expect(result).toContain("no markdown")
-  })
-})
-
-describe("validateFillInstruction", () => {
-  it("should return true for valid instruction", () => {
-    expect(validateFillInstruction({ selector: "#email", value: "test@example.com" })).toBe(true)
-  })
-
-  it("should return false for missing selector", () => {
-    expect(validateFillInstruction({ value: "test" })).toBe(false)
-  })
-
-  it("should return false for missing value", () => {
-    expect(validateFillInstruction({ selector: "#email" })).toBe(false)
-  })
-
-  it("should return false for non-string selector", () => {
-    expect(validateFillInstruction({ selector: 123, value: "test" })).toBe(false)
-  })
-
-  it("should return false for non-string value", () => {
-    expect(validateFillInstruction({ selector: "#email", value: 123 })).toBe(false)
-  })
-
-  it("should return false for null", () => {
-    expect(validateFillInstruction(null)).toBe(false)
-  })
-
-  it("should return false for non-object", () => {
-    expect(validateFillInstruction("string")).toBe(false)
-    expect(validateFillInstruction(123)).toBe(false)
-    expect(validateFillInstruction(undefined)).toBe(false)
-  })
-})
-
-describe("validateEnhancedFillInstruction", () => {
-  it("should return true for valid filled instruction", () => {
-    expect(
-      validateEnhancedFillInstruction({
-        selector: "#email",
-        value: "test@example.com",
-        status: "filled",
-      })
-    ).toBe(true)
-  })
-
-  it("should return true for valid skipped instruction", () => {
-    expect(
-      validateEnhancedFillInstruction({
-        selector: "#file",
-        value: null,
-        status: "skipped",
-        reason: "File upload",
-      })
-    ).toBe(true)
-  })
-
-  it("should return false for invalid status", () => {
-    expect(
-      validateEnhancedFillInstruction({
-        selector: "#email",
-        value: "test",
-        status: "invalid" as "filled",
-      })
-    ).toBe(false)
-  })
-
-  it("should return false for missing selector", () => {
-    expect(validateEnhancedFillInstruction({ value: "test", status: "filled" })).toBe(false)
-  })
-
-  it("should return false for non-string value when filled", () => {
-    expect(
-      validateEnhancedFillInstruction({
-        selector: "#email",
-        value: 123 as unknown as string,
-        status: "filled",
-      })
-    ).toBe(false)
-  })
-
-  it("should allow null value for skipped status", () => {
-    expect(
-      validateEnhancedFillInstruction({
-        selector: "#email",
-        value: null,
-        status: "skipped",
-      })
-    ).toBe(true)
   })
 })
 

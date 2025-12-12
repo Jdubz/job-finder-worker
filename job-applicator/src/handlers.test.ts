@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import {
   normalizeUrl,
-  validateFillInstruction,
-  validateEnhancedFillInstruction,
   parseJsonArrayFromOutput,
   parseJsonObjectFromOutput,
 } from "./utils.js"
@@ -290,8 +288,8 @@ describe("API Integration Helpers", () => {
 // Note: Document path resolution and URL normalization tests are in utils.test.ts
 
 describe("CLI Output Parsing", () => {
-  describe("Fill instructions parsing", () => {
-    it("should parse valid fill instructions", () => {
+  describe("JSON array parsing", () => {
+    it("should parse valid JSON array from output", () => {
       const output = `
 Analyzing form fields...
 [
@@ -303,21 +301,6 @@ Done.
 `
       const result = parseJsonArrayFromOutput(output)
       expect(result).toHaveLength(3)
-      result.forEach((item) => {
-        expect(validateFillInstruction(item)).toBe(true)
-      })
-    })
-
-    it("should parse enhanced fill instructions with status", () => {
-      const output = `[
-  {"selector": "#email", "value": "john@test.com", "status": "filled", "label": "Email"},
-  {"selector": "#resume", "value": null, "status": "skipped", "reason": "File upload", "label": "Resume"}
-]`
-      const result = parseJsonArrayFromOutput(output)
-      expect(result).toHaveLength(2)
-      result.forEach((item) => {
-        expect(validateEnhancedFillInstruction(item)).toBe(true)
-      })
     })
 
     it("should handle Claude CLI output format", () => {

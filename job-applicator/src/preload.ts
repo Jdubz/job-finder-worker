@@ -2,7 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron")
 
-import type { GenerationProgress, FormFillProgress } from "./types.js"
+import type { GenerationProgress, AgentProgress } from "./types.js"
 import type { IpcRendererEvent } from "electron"
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -10,9 +10,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   navigate: (url: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke("navigate", url),
   getUrl: () => ipcRenderer.invoke("get-url"),
 
-  // Form filling
-  fillForm: (options: { provider: "claude" | "codex" | "gemini"; jobMatchId?: string; documentId?: string }) =>
-    ipcRenderer.invoke("fill-form", options),
+  // Agent-based form filling (vision/action loop)
+  agentFill: (options: { provider: "claude" | "codex" | "gemini"; goal: string }) =>
+    ipcRenderer.invoke("agent-fill", options),
 
   // File upload
   uploadResume: (options?: { documentId?: string; type?: "resume" | "coverLetter" }) =>
@@ -48,12 +48,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("generation-progress", handler)
   },
 
-  // Event listeners for form fill progress (streaming)
-  onFormFillProgress: (callback: (progress: FormFillProgress) => void) => {
-    const handler = (_event: IpcRendererEvent, progress: FormFillProgress) => callback(progress)
-    ipcRenderer.on("form-fill-progress", handler)
+  // Event listeners for agent progress (vision/action loop)
+  onAgentProgress: (callback: (progress: AgentProgress) => void) => {
+    const handler = (_event: IpcRendererEvent, progress: AgentProgress) => callback(progress)
+    ipcRenderer.on("agent-progress", handler)
     // Return unsubscribe function
-    return () => ipcRenderer.removeListener("form-fill-progress", handler)
+    return () => ipcRenderer.removeListener("agent-progress", handler)
   },
 
   // Event listener for refresh job matches (triggered by global Ctrl+R shortcut)
