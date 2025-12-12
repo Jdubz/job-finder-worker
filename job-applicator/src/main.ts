@@ -66,7 +66,7 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer } from "./tool-server.js"
-import { setBrowserView, setCurrentJobMatchId, clearJobContext } from "./tool-executor.js"
+import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback } from "./tool-executor.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -917,6 +917,22 @@ ipcMain.handle(
       // Set job context for document generation tools
       setCurrentJobMatchId(options.jobMatchId)
 
+      // Set completion callback to kill CLI when done is called
+      setCompletionCallback((summary: string) => {
+        logger.info(`[FillForm] Agent completed: ${summary}`)
+        if (activeClaudeProcess) {
+          activeClaudeProcess.kill()
+          activeClaudeProcess = null
+        }
+        clearJobContext()
+        setCompletionCallback(null)
+        mainWindow?.webContents.send("agent-status", { state: "idle" })
+        mainWindow?.webContents.send("agent-output", {
+          text: `\n✓ ${summary}\n`,
+          isError: false,
+        })
+      })
+
       // Build the prompt
       const prompt = `You are filling a job application form. Use the MCP tools to interact with the browser.
 
@@ -980,6 +996,7 @@ Begin by taking a screenshot to see the form.`
         logger.info(`[FillForm] Claude CLI exited with code ${code}`)
         activeClaudeProcess = null
         clearJobContext()
+        setCompletionCallback(null)
         mainWindow?.webContents.send("agent-status", {
           state: code === 0 ? "idle" : "stopped",
         })
@@ -989,6 +1006,7 @@ Begin by taking a screenshot to see the form.`
         logger.error(`[FillForm] Claude CLI error: ${err.message}`)
         activeClaudeProcess = null
         clearJobContext()
+        setCompletionCallback(null)
         mainWindow?.webContents.send("agent-status", { state: "stopped" })
         mainWindow?.webContents.send("agent-output", {
           text: `Error: ${err.message}\n`,
@@ -1014,6 +1032,7 @@ ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
     activeClaudeProcess = null
   }
   clearJobContext()
+  setCompletionCallback(null)
   mainWindow?.webContents.send("agent-status", { state: "stopped" })
   return { success: true }
 })

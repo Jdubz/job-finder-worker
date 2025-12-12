@@ -48,6 +48,20 @@ export function setBrowserView(view: BrowserView | null): void {
   logger.info(`[ToolExecutor] BrowserView ${view ? "set" : "cleared"}`)
 }
 
+// ============================================================================
+// Completion Callback
+// ============================================================================
+
+let completionCallback: ((summary: string) => void) | null = null
+
+/**
+ * Set a callback to be invoked when the agent calls "done"
+ * This allows the main process to know when to stop the CLI
+ */
+export function setCompletionCallback(callback: ((summary: string) => void) | null): void {
+  completionCallback = callback
+}
+
 /**
  * Get the current BrowserView reference
  */
@@ -701,6 +715,11 @@ async function handleUploadFile(params: {
 function handleDone(params: { summary?: string }): ToolResult {
   const summary = params.summary || "Form filling completed"
   logger.info(`[ToolExecutor] Done: ${summary}`)
+
+  // Notify main process to stop the CLI (deferred to allow response to be sent)
+  if (completionCallback) {
+    setTimeout(() => completionCallback?.(summary), 100)
+  }
 
   return {
     success: true,

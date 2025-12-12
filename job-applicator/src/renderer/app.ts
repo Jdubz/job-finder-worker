@@ -753,9 +753,11 @@ function startAgentSession() {
   })
   unsubscribeAgentStatus = api.onAgentStatus((data) => {
     updateAgentStatusUI(data.state as AgentSessionState)
-    // When agent finishes, mark form fill as inactive
+    // When agent finishes, mark form fill as inactive and re-enable button
     if (data.state === "idle" || data.state === "stopped") {
       isFormFillActive = false
+      // Re-enable fill button if a job is selected
+      fillFormBtn.disabled = data.state !== "idle" || !selectedJobMatchId
     }
   })
   unsubscribeBrowserUrlChanged = api.onBrowserUrlChanged((data) => {
@@ -805,6 +807,10 @@ async function fillFormWithAgent() {
   setStatus("Filling form...", "loading")
   setWorkflowStep("fill", "active")
   isFormFillActive = true
+  fillFormBtn.disabled = true
+
+  // Clear output and show loading state
+  agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
 
   const result = await api.fillForm({
     jobMatchId: selectedJobMatchId,
@@ -812,10 +818,12 @@ async function fillFormWithAgent() {
   })
 
   if (result.success) {
-    setStatus("Form fill started", "success")
+    setStatus("Form fill running", "success")
   } else {
     setStatus(result.message || "Fill failed", "error")
     isFormFillActive = false
+    fillFormBtn.disabled = false
+    agentOutput.innerHTML = `<div class="empty-placeholder">${result.message || "Fill failed"}</div>`
   }
 }
 
