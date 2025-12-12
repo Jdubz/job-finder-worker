@@ -1005,14 +1005,14 @@ function ensureAgentListeners() {
   if (!unsubscribeAgentOutput) {
     console.log("[app.ts] Setting up agent output listener")
     unsubscribeAgentOutput = api.onAgentOutput((data) => {
-      console.log("[app.ts] Received agent output:", data.text.slice(0, 100))
+      console.log("[app.ts] Received agent output (" + data.text.length + " chars):", data.text.slice(0, 100).replace(/\n/g, "\\n"))
       appendAgentOutput(data.text, data.isError ? "error" : undefined)
     })
   }
   if (!unsubscribeAgentStatus) {
     console.log("[app.ts] Setting up agent status listener")
     unsubscribeAgentStatus = api.onAgentStatus((data) => {
-      console.log("[app.ts] Received agent status:", data.state)
+      console.log("[app.ts] Received agent status:", JSON.stringify(data))
       updateAgentStatusUI(data.state as AgentSessionState)
       if (data.state === "idle" || data.state === "stopped") {
         isFormFillActive = false
@@ -1063,7 +1063,7 @@ async function fillFormWithAgent() {
     jobMatchId: selectedJobMatchId,
     jobContext,
   })
-  console.log("[app.ts] api.fillForm returned:", result)
+  console.log("[app.ts] api.fillForm returned:", JSON.stringify(result))
 
   if (result.success) {
     setStatus("Form fill running", "success")
