@@ -319,7 +319,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       }
       return id
     },
-    [normalizeQueueItem, matchesFilters, limit]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const submitCompany = useCallback(
@@ -343,7 +343,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       }
       return id
     },
-    [normalizeQueueItem, matchesFilters, limit]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const submitSourceDiscovery = useCallback(
@@ -365,7 +365,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       }
       return id
     },
-    [normalizeQueueItem, matchesFilters, limit]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const updateQueueItem = useCallback(
