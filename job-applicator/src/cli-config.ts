@@ -5,6 +5,8 @@ import type { CliProvider } from "./types.js"
 // the Electron shell cannot grant permissions interactively. Each command
 // below includes the provider's "full permissions" / "autonomous" flag to
 // skip any approval prompts.
+
+// One-shot mode: CLI runs once, processes prompt, outputs JSON, exits
 export const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   claude: [
     "claude",
@@ -17,28 +19,24 @@ export const CLI_COMMANDS: Record<CliProvider, [string, string[]]> = {
   gemini: ["gemini", ["-o", "json", "--yolo"]],
 }
 
-// Streaming CLI config for Claude - outputs NDJSON with token-by-token updates
-export const CLI_COMMANDS_STREAMING: Record<CliProvider, [string, string[]] | null> = {
+// Session mode: CLI stays running for interactive conversation
+// Used by AgentSession for persistent form-filling sessions
+export const CLI_SESSION_COMMANDS: Record<CliProvider, [string, string[]]> = {
   claude: [
     "claude",
-    [
-      "--print",
-      "--output-format", "stream-json",
-      "--verbose",
-      "--include-partial-messages",
-      "--dangerously-skip-permissions",
-      "-p", "-"
-    ],
+    ["--dangerously-skip-permissions"],
   ],
-  // Other providers don't support streaming yet
-  codex: null,
-  gemini: null,
+  codex: [
+    "codex",
+    ["--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox"],
+  ],
+  gemini: ["gemini", ["--yolo"]],
 }
 
 export function getCliCommand(provider: CliProvider): [string, string[]] {
   return CLI_COMMANDS[provider]
 }
 
-export function getStreamingCliCommand(provider: CliProvider): [string, string[]] | null {
-  return CLI_COMMANDS_STREAMING[provider]
+export function getCliSessionCommand(provider: CliProvider): [string, string[]] {
+  return CLI_SESSION_COMMANDS[provider]
 }

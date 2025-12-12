@@ -2,7 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron")
 
-import type { GenerationProgress, FormFillProgress } from "./types.js"
+import type { GenerationProgress, AgentOutputData, AgentStatusData } from "./types.js"
 import type { IpcRendererEvent } from "electron"
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -10,9 +10,38 @@ contextBridge.exposeInMainWorld("electronAPI", {
   navigate: (url: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke("navigate", url),
   getUrl: () => ipcRenderer.invoke("get-url"),
 
-  // Form filling
-  fillForm: (options: { provider: "claude" | "codex" | "gemini"; jobMatchId?: string; documentId?: string }) =>
-    ipcRenderer.invoke("fill-form", options),
+  // Agent Session API
+  agentStartSession: (options?: { provider?: "claude" | "codex" | "gemini" }) =>
+    ipcRenderer.invoke("agent-start-session", options || {}),
+  agentStopSession: () => ipcRenderer.invoke("agent-stop-session"),
+  agentSendCommand: (command: string) => ipcRenderer.invoke("agent-send-command", command),
+  agentFillForm: (options: { jobMatchId: string; jobContext: string }) =>
+    ipcRenderer.invoke("agent-fill-form", options),
+  agentGetStatus: () => ipcRenderer.invoke("agent-get-status"),
+
+  // Agent event listeners
+  onAgentOutput: (callback: (data: AgentOutputData) => void) => {
+    const handler = (_event: IpcRendererEvent, data: AgentOutputData) => callback(data)
+    ipcRenderer.on("agent-output", handler)
+    return () => ipcRenderer.removeListener("agent-output", handler)
+  },
+  onAgentStatus: (callback: (data: AgentStatusData) => void) => {
+    const handler = (_event: IpcRendererEvent, data: AgentStatusData) => callback(data)
+    ipcRenderer.on("agent-status", handler)
+    return () => ipcRenderer.removeListener("agent-status", handler)
+  },
+  onAgentToolCall: (callback: (data: { name: string; params?: Record<string, unknown>; status: string; success?: boolean }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { name: string; params?: Record<string, unknown>; status: string; success?: boolean }) => callback(data)
+    ipcRenderer.on("agent-tool-call", handler)
+    return () => ipcRenderer.removeListener("agent-tool-call", handler)
+  },
+
+  // Browser URL change listener
+  onBrowserUrlChanged: (callback: (data: { url: string }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { url: string }) => callback(data)
+    ipcRenderer.on("browser-url-changed", handler)
+    return () => ipcRenderer.removeListener("browser-url-changed", handler)
+  },
 
   // File upload
   uploadResume: (options?: { documentId?: string; type?: "resume" | "coverLetter" }) =>
@@ -44,23 +73,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => {
     const handler = (_event: IpcRendererEvent, progress: GenerationProgress) => callback(progress)
     ipcRenderer.on("generation-progress", handler)
-    // Return unsubscribe function
     return () => ipcRenderer.removeListener("generation-progress", handler)
-  },
-
-  // Event listeners for form fill progress (streaming)
-  onFormFillProgress: (callback: (progress: FormFillProgress) => void) => {
-    const handler = (_event: IpcRendererEvent, progress: FormFillProgress) => callback(progress)
-    ipcRenderer.on("form-fill-progress", handler)
-    // Return unsubscribe function
-    return () => ipcRenderer.removeListener("form-fill-progress", handler)
   },
 
   // Event listener for refresh job matches (triggered by global Ctrl+R shortcut)
   onRefreshJobMatches: (callback: () => void) => {
     const handler = () => callback()
     ipcRenderer.on("refresh-job-matches", handler)
-    // Return unsubscribe function
     return () => ipcRenderer.removeListener("refresh-job-matches", handler)
   },
 })

@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  skyvern:
+    image: skyvernai/skyvern:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@postgres:5432/skyvern
+      - BROWSER_TYPE=chromium-headful
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LLM_KEY=ANTHROPIC
+    depends_on:
+      - postgres
+    volumes:
+      - skyvern-data:/data
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=skyvern
+      - POSTGRES_PASSWORD=skyvern
+      - POSTGRES_DB=skyvern
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  skyvern-data:
+  postgres-data:

@@ -23,8 +23,15 @@ import type {
 import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
 
-// Configuration from environment
-const API_URL = process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
+// Configuration from environment - use getter to read lazily after .env is loaded
+// This MUST be a function, not a const, because ES module imports are hoisted
+// and evaluated before any other code runs in main.ts (including .env loading)
+function getApiUrl(): string {
+  return process.env.JOB_FINDER_API_URL || "http://localhost:3000/api"
+}
+
+// Export for code that imports API_URL directly (evaluates at call time via getter)
+export { getApiUrl as API_URL_GETTER }
 
 /**
  * Helper to create fetch options with JSON content type
@@ -44,7 +51,7 @@ function fetchOptions(options: RequestInit = {}): RequestInit {
  */
 export async function fetchPersonalInfo(): Promise<PersonalInfo> {
   const res = await fetchWithRetry(
-    `${API_URL}/config/personal-info`,
+    `${getApiUrl()}/config/personal-info`,
     fetchOptions(),
     { maxRetries: 2, timeoutMs: 15000 }
   )
@@ -68,7 +75,7 @@ export async function fetchPersonalInfo(): Promise<PersonalInfo> {
  * as markdown-formatted text ready for injection into prompts.
  */
 export async function fetchApplicatorProfile(): Promise<string> {
-  const url = `${API_URL}/applicator/profile`
+  const url = `${getApiUrl()}/applicator/profile`
   logger.info(`Fetching applicator profile from: ${url}`)
 
   try {
@@ -104,7 +111,7 @@ export async function fetchContentItems(options?: {
   if (options?.limit) params.set("limit", String(options.limit))
   if (options?.parentId) params.set("parentId", options.parentId)
 
-  const url = `${API_URL}/content-items${params.toString() ? `?${params}` : ""}`
+  const url = `${getApiUrl()}/content-items${params.toString() ? `?${params}` : ""}`
   const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
 
   if (!res.ok) {
@@ -142,7 +149,7 @@ export async function fetchJobMatches(
   })
 
   const res = await fetchWithRetry(
-    `${API_URL}/job-matches?${params}`,
+    `${getApiUrl()}/job-matches?${params}`,
     fetchOptions(),
     { maxRetries: 2, timeoutMs: 15000 }
   )
@@ -161,7 +168,7 @@ export async function fetchJobMatches(
  */
 export async function fetchJobMatch(id: string): Promise<JobMatchWithListing> {
   const res = await fetchWithRetry(
-    `${API_URL}/job-matches/${id}`,
+    `${getApiUrl()}/job-matches/${id}`,
     fetchOptions(),
     { maxRetries: 2, timeoutMs: 15000 }
   )
@@ -215,7 +222,7 @@ export async function updateJobMatchStatus(
   status: "active" | "ignored" | "applied"
 ): Promise<void> {
   const res = await fetchWithRetry(
-    `${API_URL}/job-matches/${id}/status`,
+    `${getApiUrl()}/job-matches/${id}/status`,
     fetchOptions({
       method: "PATCH",
       body: JSON.stringify({ status }),
@@ -264,7 +271,7 @@ export interface GenerationStepResponse {
  * Uses shared GeneratorDocumentsResponse type for type safety.
  */
 export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocument[]> {
-  const url = `${API_URL}/generator/job-matches/${jobMatchId}/documents`
+  const url = `${getApiUrl()}/generator/job-matches/${jobMatchId}/documents`
   const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
 
   // 404 is fine - means no documents yet
@@ -287,7 +294,7 @@ export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocum
  */
 export async function fetchGeneratorRequest(requestId: string): Promise<GeneratorDocument> {
   const res = await fetchWithRetry(
-    `${API_URL}/generator/requests/${requestId}`,
+    `${getApiUrl()}/generator/requests/${requestId}`,
     fetchOptions(),
     { maxRetries: 2, timeoutMs: 15000 }
   )
@@ -312,7 +319,7 @@ export async function startGeneration(options: {
   const match = await fetchJobMatch(options.jobMatchId)
 
   const res = await fetchWithRetry(
-    `${API_URL}/generator/start`,
+    `${getApiUrl()}/generator/start`,
     fetchOptions({
       method: "POST",
       body: JSON.stringify({
@@ -345,7 +352,7 @@ export async function startGeneration(options: {
  */
 export async function executeGenerationStep(requestId: string): Promise<GenerationStepResponse> {
   const res = await fetchWithRetry(
-    `${API_URL}/generator/step/${requestId}`,
+    `${getApiUrl()}/generator/step/${requestId}`,
     fetchOptions({
       method: "POST",
       body: JSON.stringify({}),
@@ -385,7 +392,7 @@ export async function submitJobToQueue(job: {
   source?: string
 }): Promise<SubmitJobResponse> {
   const res = await fetchWithRetry(
-    `${API_URL}/queue/jobs`,
+    `${getApiUrl()}/queue/jobs`,
     fetchOptions({
       method: "POST",
       body: JSON.stringify({
@@ -413,4 +420,5 @@ export async function submitJobToQueue(job: {
 // Re-export for convenience
 // ============================================================================
 
-export { API_URL }
+// Export getter function - callers should use getApiUrl() to get current API URL
+export { getApiUrl }
