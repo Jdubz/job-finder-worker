@@ -890,8 +890,11 @@ ipcMain.handle(
     try {
       // Kill any existing process
       if (activeClaudeProcess) {
+        logger.info(`[FillForm] Killing existing process PID: ${activeClaudeProcess.pid}`)
         activeClaudeProcess.kill()
         activeClaudeProcess = null
+      } else {
+        logger.info(`[FillForm] No existing process to kill`)
       }
 
       // Fetch the user's profile with explicit error handling
@@ -918,9 +921,11 @@ ipcMain.handle(
       setCurrentJobMatchId(options.jobMatchId)
 
       // Set completion callback to kill CLI when done is called
+      logger.info(`[FillForm] Setting completion callback`)
       setCompletionCallback((summary: string) => {
-        logger.info(`[FillForm] Agent completed: ${summary}`)
+        logger.info(`[FillForm] Completion callback fired with: ${summary}`)
         if (activeClaudeProcess) {
+          logger.info(`[FillForm] Killing process PID ${activeClaudeProcess.pid} from completion callback`)
           activeClaudeProcess.kill()
           activeClaudeProcess = null
         }
@@ -964,19 +969,23 @@ ${options.jobContext}
 Begin by taking a screenshot to see the form.`
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
+      logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)
+      logger.info(`[FillForm] Prompt length: ${prompt.length} chars`)
 
       // Notify renderer that fill is starting
       mainWindow?.webContents.send("agent-status", { state: "working" })
 
       // Spawn Claude CLI with MCP server configured
-      activeClaudeProcess = spawn("claude", [
+      const spawnArgs = [
         "--print",
         "--dangerously-skip-permissions",
         "--mcp-config",
         mcpConfigPath,
         "-p",
         prompt,
-      ])
+      ]
+      logger.info(`[FillForm] Spawning: claude ${spawnArgs.slice(0, 4).join(" ")} -p <prompt>`)
+      activeClaudeProcess = spawn("claude", spawnArgs)
 
       // Forward stdout to renderer
       activeClaudeProcess.stdout?.on("data", (data: Buffer) => {
@@ -1031,7 +1040,9 @@ Begin by taking a screenshot to see the form.`
  * Stop form filling
  */
 ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
+  logger.info(`[FillForm] stop-fill-form called`)
   if (activeClaudeProcess) {
+    logger.info(`[FillForm] Killing process PID ${activeClaudeProcess.pid} from stop-fill-form`)
     activeClaudeProcess.kill()
     activeClaudeProcess = null
   }
