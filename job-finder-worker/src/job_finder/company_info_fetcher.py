@@ -847,14 +847,18 @@ Be factual. Return ONLY valid JSON."""
         candidate_normalized = self._normalize_url(candidate)
 
         # Prefer Wikipedia if present and not obviously invalid
-        if wiki_normalized and not self._is_job_board_url(wiki_normalized) and not self._is_search_engine_url(
+        if (
             wiki_normalized
+            and not self._is_job_board_url(wiki_normalized)
+            and not self._is_search_engine_url(wiki_normalized)
         ):
             return wiki_normalized
 
         # Otherwise, keep candidate if it passes basic filters
-        if candidate_normalized and not self._is_job_board_url(candidate_normalized) and not self._is_search_engine_url(
+        if (
             candidate_normalized
+            and not self._is_job_board_url(candidate_normalized)
+            and not self._is_search_engine_url(candidate_normalized)
         ):
             # Soft probe: check if homepage mentions company brand; ignore failures
             try:
@@ -934,7 +938,11 @@ Be factual. Return ONLY valid JSON."""
                         continue
 
                 # Otherwise, replace if we didn't have one or current was invalid
-                if not current or self._is_job_board_url(current) or self._is_search_engine_url(current):
+                if (
+                    not current
+                    or self._is_job_board_url(current)
+                    or self._is_search_engine_url(current)
+                ):
                     merged["website"] = candidate
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []
