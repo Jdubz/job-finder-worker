@@ -47,9 +47,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     ports:
-      # Expose API on localhost:3000 for job-applicator desktop app
-      # This bypasses auth (localhost-only) - see firebase-auth middleware
-      - "127.0.0.1:3000:8080"
+      # Expose API on LAN for job-applicator desktop app (auth bypassed for private IPs)
+      - "0.0.0.0:3000:8080"
     env_file:
       - /srv/job-finder/secrets/api.env
     environment:
