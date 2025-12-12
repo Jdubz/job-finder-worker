@@ -27,7 +27,7 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
 }
 ```
 
-## Loop (max 12 steps per fill)
+## Loop (max 40 steps per fill)
 1. Capture single screenshot of BrowserView at ~1280px wide, JPEG quality ~60; compute a fast hash (e.g., sha1) for “no visual change” detection; discard previous image bytes after hashing.
 2. Gather context: goal text, current URL, last 3 actions/outcomes, hash of previous screenshot.
 3. Send context + screenshot to the local CLI provider (claude/codex/gemini wrapper) expecting the JSON schema above. If JSON parse fails, retry once with a hard stop.
