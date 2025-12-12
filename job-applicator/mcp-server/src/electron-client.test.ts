@@ -22,7 +22,7 @@ describe("Electron Client", () => {
         json: async () => ({ success: true, data: { test: "result" } }),
       })
 
-      const result = await callTool("screenshot", {})
+      await callTool("screenshot", {})
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://127.0.0.1:19524/tool",
