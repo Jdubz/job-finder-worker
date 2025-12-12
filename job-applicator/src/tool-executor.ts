@@ -1,7 +1,7 @@
 /**
- * Agent Tool Handlers
+ * Tool Executor
  *
- * Implements the tools available to the form-filling agent.
+ * Implements the browser automation tools for the MCP server.
  * Each tool handler executes an action and returns a result.
  */
 
@@ -9,13 +9,22 @@ import type { BrowserView } from "electron"
 import * as crypto from "crypto"
 import * as fs from "fs"
 import { logger } from "./logger.js"
-import type { ToolCall, ToolResult } from "./agent-session.js"
 import {
   startGeneration,
   executeGenerationStep,
   fetchGeneratorRequest,
 } from "./api-client.js"
-import { resolveDocumentPath, getConfig, withTimeout } from "./utils.js"
+import { resolveDocumentPath, getConfig } from "./utils.js"
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface ToolResult {
+  success: boolean
+  data?: unknown
+  error?: string
+}
 
 // ============================================================================
 // Configuration
@@ -23,6 +32,7 @@ import { resolveDocumentPath, getConfig, withTimeout } from "./utils.js"
 
 const SCREENSHOT_WIDTH = 1280
 const TOOL_TIMEOUT_MS = 30000 // 30 second timeout for tool execution
+const GENERATION_TIMEOUT_MS = 120000 // 2 minute timeout for document generation
 
 // ============================================================================
 // BrowserView Reference
@@ -35,7 +45,7 @@ let browserView: BrowserView | null = null
  */
 export function setBrowserView(view: BrowserView | null): void {
   browserView = view
-  logger.info(`[AgentTools] BrowserView ${view ? "set" : "cleared"}`)
+  logger.info(`[ToolExecutor] BrowserView ${view ? "set" : "cleared"}`)
 }
 
 /**
@@ -46,7 +56,7 @@ export function getBrowserView(): BrowserView | null {
 }
 
 // ============================================================================
-// Agent Context (set by main.ts when fill command is issued)
+// Job Context
 // ============================================================================
 
 let currentJobMatchId: string | null = null
@@ -61,7 +71,7 @@ export function setCurrentJobMatchId(id: string | null): void {
     lastGeneratedDocumentId = null
   }
   currentJobMatchId = id
-  logger.info(`[AgentTools] Current job match ID: ${id || "(none)"}`)
+  logger.info(`[ToolExecutor] Current job match ID: ${id || "(none)"}`)
 }
 
 /**
@@ -72,12 +82,12 @@ export function getCurrentJobMatchId(): string | null {
 }
 
 /**
- * Clear agent context (call when session stops)
+ * Clear job context
  */
-export function clearAgentContext(): void {
+export function clearJobContext(): void {
   currentJobMatchId = null
   lastGeneratedDocumentId = null
-  logger.info("[AgentTools] Agent context cleared")
+  logger.info("[ToolExecutor] Job context cleared")
 }
 
 // ============================================================================
@@ -85,36 +95,59 @@ export function clearAgentContext(): void {
 // ============================================================================
 
 /**
- * Execute a tool call and return the result (with timeout)
+ * Execute a tool and return the result
  */
-export async function executeTool(tool: ToolCall): Promise<ToolResult> {
-  const { name, params = {} } = tool
-
-  logger.info(`[AgentTools] Executing tool: ${name}`)
+export async function executeTool(
+  tool: string,
+  params: Record<string, unknown> = {}
+): Promise<ToolResult> {
+  logger.info(`[ToolExecutor] Executing: ${tool}`)
 
   try {
-    // Wrap tool execution with timeout (except for long-running operations)
-    const isLongRunning = name === "generate_resume" || name === "generate_cover_letter"
-    const timeoutMs = isLongRunning ? 120000 : TOOL_TIMEOUT_MS // 2 min for generation, 30s for others
-
-    const result = await withTimeout(
-      executeToolInternal(name, params),
-      timeoutMs,
-      `Tool '${name}' timed out after ${timeoutMs / 1000}s`
-    )
+    const result = await executeToolWithTimeout(tool, params)
     return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    logger.error(`[AgentTools] Tool ${name} failed: ${message}`)
+    logger.error(`[ToolExecutor] ${tool} failed: ${message}`)
     return { success: false, error: message }
   }
 }
 
 /**
- * Internal tool executor (without timeout wrapper)
+ * Execute tool with appropriate timeout
  */
-async function executeToolInternal(name: string, params: Record<string, unknown>): Promise<ToolResult> {
-  switch (name) {
+async function executeToolWithTimeout(
+  tool: string,
+  params: Record<string, unknown>
+): Promise<ToolResult> {
+  const isLongRunning = tool === "generate_resume" || tool === "generate_cover_letter"
+  const timeoutMs = isLongRunning ? GENERATION_TIMEOUT_MS : TOOL_TIMEOUT_MS
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Tool '${tool}' timed out after ${timeoutMs / 1000}s`))
+    }, timeoutMs)
+
+    executeToolInternal(tool, params)
+      .then((result) => {
+        clearTimeout(timer)
+        resolve(result)
+      })
+      .catch((err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+  })
+}
+
+/**
+ * Internal tool dispatcher
+ */
+async function executeToolInternal(
+  tool: string,
+  params: Record<string, unknown>
+): Promise<ToolResult> {
+  switch (tool) {
     case "screenshot":
       return await handleScreenshot()
 
@@ -134,6 +167,7 @@ async function executeToolInternal(name: string, params: Record<string, unknown>
       return await handleScroll(params as { dy: number; dx?: number })
 
     case "keypress":
+    case "press_key":
       return await handleKeypress(params as { key: string })
 
     case "generate_resume":
@@ -149,8 +183,8 @@ async function executeToolInternal(name: string, params: Record<string, unknown>
       return handleDone(params as { summary?: string })
 
     default:
-      logger.warn(`[AgentTools] Unknown tool: ${name}`)
-      return { success: false, error: `Unknown tool: ${name}` }
+      logger.warn(`[ToolExecutor] Unknown tool: ${tool}`)
+      return { success: false, error: `Unknown tool: ${tool}` }
   }
 }
 
@@ -182,7 +216,7 @@ async function handleScreenshot(): Promise<ToolResult> {
   const hash = crypto.createHash("sha1").update(jpeg).digest("hex").slice(0, 8)
 
   const finalSize = resized.getSize()
-  logger.info(`[AgentTools] Screenshot captured: ${finalSize.width}x${finalSize.height}, hash=${hash}`)
+  logger.info(`[ToolExecutor] Screenshot: ${finalSize.width}x${finalSize.height}, hash=${hash}`)
 
   return {
     success: true,
@@ -230,7 +264,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
     })()
   `)
 
-  logger.info(`[AgentTools] Found ${fields.length} form fields`)
+  logger.info(`[ToolExecutor] Found ${fields.length} form fields`)
 
   return { success: true, data: { fields } }
 }
@@ -246,7 +280,7 @@ async function handleGetPageInfo(): Promise<ToolResult> {
   const url = browserView.webContents.getURL()
   const title = await browserView.webContents.executeJavaScript("document.title")
 
-  logger.info(`[AgentTools] Page info: ${title} (${url})`)
+  logger.info(`[ToolExecutor] Page: ${title} (${url})`)
 
   return { success: true, data: { url, title } }
 }
@@ -302,7 +336,7 @@ async function handleClick(params: { x: number; y: number }): Promise<ToolResult
       clickCount: 1,
     })
 
-    logger.info(`[AgentTools] Clicked at (${x}, ${y}) -> scaled (${scaledX}, ${scaledY})`)
+    logger.info(`[ToolExecutor] Clicked (${x}, ${y}) -> scaled (${scaledX}, ${scaledY})`)
     return { success: true }
   } finally {
     try {
@@ -353,7 +387,7 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
 
   try {
     await debugger_.sendCommand("Input.insertText", { text })
-    logger.info(`[AgentTools] Typed ${text.length} characters`)
+    logger.info(`[ToolExecutor] Typed ${text.length} characters`)
     return { success: true }
   } finally {
     try {
@@ -379,7 +413,7 @@ async function handleScroll(params: { dy: number; dx?: number }): Promise<ToolRe
   }
 
   await browserView.webContents.executeJavaScript(`window.scrollBy(${dx}, ${dy})`)
-  logger.info(`[AgentTools] Scrolled by (${dx}, ${dy})`)
+  logger.info(`[ToolExecutor] Scrolled by (${dx}, ${dy})`)
 
   return { success: true }
 }
@@ -443,21 +477,27 @@ async function handleKeypress(params: { key: string }): Promise<ToolResult> {
         nativeVirtualKeyCode: 17,
         modifiers: 0,
       })
-      logger.info("[AgentTools] Pressed SelectAll (Ctrl+A)")
+      logger.info("[ToolExecutor] Pressed SelectAll (Ctrl+A)")
       return { success: true }
     }
 
-    // Handle other keys
+    // Key mappings
     const keyMap: Record<string, { key: string; code: string; keyCode: number }> = {
       Tab: { key: "Tab", code: "Tab", keyCode: 9 },
       Enter: { key: "Enter", code: "Enter", keyCode: 13 },
       Escape: { key: "Escape", code: "Escape", keyCode: 27 },
       Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+      ArrowDown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+      ArrowUp: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+      ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+      ArrowRight: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+      Space: { key: " ", code: "Space", keyCode: 32 },
     }
 
     const keyInfo = keyMap[key]
     if (!keyInfo) {
-      return { success: false, error: `Unknown key: ${key}. Valid keys: Tab, Enter, Escape, Backspace, SelectAll` }
+      const validKeys = Object.keys(keyMap).join(", ")
+      return { success: false, error: `Unknown key: ${key}. Valid keys: ${validKeys}, SelectAll` }
     }
 
     await debugger_.sendCommand("Input.dispatchKeyEvent", {
@@ -475,7 +515,7 @@ async function handleKeypress(params: { key: string }): Promise<ToolResult> {
       nativeVirtualKeyCode: keyInfo.keyCode,
     })
 
-    logger.info(`[AgentTools] Pressed ${key}`)
+    logger.info(`[ToolExecutor] Pressed ${key}`)
     return { success: true }
   } finally {
     try {
@@ -497,10 +537,10 @@ async function handleGenerateDocument(
   const jobMatchId = params.jobMatchId || currentJobMatchId
 
   if (!jobMatchId) {
-    return { success: false, error: "No job context available. Please select a job first or provide jobMatchId." }
+    return { success: false, error: "No job context available. Please select a job first." }
   }
 
-  logger.info(`[AgentTools] Starting ${type} generation for job ${jobMatchId}`)
+  logger.info(`[ToolExecutor] Starting ${type} generation for job ${jobMatchId}`)
 
   try {
     // Start generation
@@ -514,7 +554,7 @@ async function handleGenerateDocument(
 
     while (nextStep && stepCount < maxSteps) {
       stepCount++
-      logger.info(`[AgentTools] Generation step ${stepCount}: ${nextStep}`)
+      logger.info(`[ToolExecutor] Generation step ${stepCount}: ${nextStep}`)
 
       const stepResult = await executeGenerationStep(requestId)
 
@@ -526,7 +566,7 @@ async function handleGenerateDocument(
 
       if (stepResult.status === "completed") {
         const url = type === "coverLetter" ? stepResult.coverLetterUrl : stepResult.resumeUrl
-        logger.info(`[AgentTools] Generation completed: ${url}`)
+        logger.info(`[ToolExecutor] Generation completed: ${url}`)
         // Store the documentId for subsequent upload_file calls
         lastGeneratedDocumentId = requestId
         return {
@@ -535,7 +575,7 @@ async function handleGenerateDocument(
             url,
             documentId: requestId,
             type,
-            message: `${type === "coverLetter" ? "Cover letter" : "Resume"} generated. Use upload_file with type="${type}" to upload it.`
+            message: `${type === "coverLetter" ? "Cover letter" : "Resume"} generated. Use upload_file with type="${type}" to upload it.`,
           },
         }
       }
@@ -555,7 +595,10 @@ async function handleGenerateDocument(
 /**
  * Upload a file to a file input on the page
  */
-async function handleUploadFile(params: { type: "resume" | "coverLetter"; documentId?: string }): Promise<ToolResult> {
+async function handleUploadFile(params: {
+  type: "resume" | "coverLetter"
+  documentId?: string
+}): Promise<ToolResult> {
   if (!browserView) {
     return { success: false, error: "BrowserView not initialized" }
   }
@@ -565,7 +608,10 @@ async function handleUploadFile(params: { type: "resume" | "coverLetter"; docume
   const documentId = params.documentId || lastGeneratedDocumentId
 
   if (!documentId) {
-    return { success: false, error: "No document available. Generate a resume or cover letter first, or provide documentId." }
+    return {
+      success: false,
+      error: "No document available. Generate a resume or cover letter first.",
+    }
   }
 
   // Find file input selector
@@ -627,7 +673,7 @@ async function handleUploadFile(params: { type: "resume" | "coverLetter"; docume
         files: [filePath],
       })
 
-      logger.info(`[AgentTools] Uploaded ${type} from ${filePath}`)
+      logger.info(`[ToolExecutor] Uploaded ${type} from ${filePath}`)
       return { success: true, data: { filePath, type } }
     } finally {
       try {
@@ -647,7 +693,7 @@ async function handleUploadFile(params: { type: "resume" | "coverLetter"; docume
  */
 function handleDone(params: { summary?: string }): ToolResult {
   const summary = params.summary || "Form filling completed"
-  logger.info(`[AgentTools] Done: ${summary}`)
+  logger.info(`[ToolExecutor] Done: ${summary}`)
 
   return {
     success: true,

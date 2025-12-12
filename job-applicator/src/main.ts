@@ -56,18 +56,18 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import { getCliCommand } from "./cli-config.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
   resolveDocumentPath,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
   parseCliObjectOutput,
+  getConfig,
 } from "./utils.js"
 
-// Agent session imports
-import { getAgentSession } from "./agent-session.js"
-import { executeTool, setBrowserView, setCurrentJobMatchId, clearAgentContext } from "./agent-tools.js"
+// Tool executor and server
+import { startToolServer, stopToolServer } from "./tool-server.js"
+import { setBrowserView, setCurrentJobMatchId, clearJobContext } from "./tool-executor.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -159,17 +159,10 @@ async function createWindow(): Promise<void> {
     return { action: "deny" }
   })
 
-  // Notify agent session and renderer when URL changes
-  // This helps the agent know when user navigates (e.g., multi-page forms)
+  // Notify renderer when URL changes
   browserView.webContents.on("did-navigate", (_event, url) => {
     logger.info(`[BrowserView] Navigated to: ${url}`)
-    // Notify renderer of URL change
     mainWindow?.webContents.send("browser-url-changed", { url })
-    // Notify agent session if running
-    const session = getAgentSession()
-    if (session.getState() !== "stopped") {
-      session.sendCommand(`[System] Page navigated to: ${url}`)
-    }
   })
 
   // Also handle in-page navigation (SPA apps)
@@ -743,22 +736,18 @@ ipcMain.handle(
 )
 
 /**
- * CLI command configurations for different AI providers.
- *
- * Note: Each CLI has different output formats:
- * - Claude CLI: Returns a wrapper object {"type":"result","result":"[...]"} where "result"
- *   is a string containing the actual JSON (escaped). Must parse wrapper first, then parse result.
- * - Codex/Gemini: Return raw JSON arrays directly.
- *
- * The CLI wrapper functions handle these format differences automatically.
+ * Run CLI for one-shot commands (job extraction)
+ * Uses Claude CLI with JSON output format
  */
 function runCliCommon<T>(
-  provider: CliProvider,
+  _provider: CliProvider,
   prompt: string,
   parse: (stdout: string) => T,
   context: string
 ): Promise<T> {
-  const [cmd, args] = getCliCommand(provider)
+  // Use Claude CLI for job extraction
+  const cmd = "claude"
+  const args = ["--print", "--output-format", "json", "--dangerously-skip-permissions", "-p", "-"]
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args)
@@ -767,13 +756,13 @@ function runCliCommon<T>(
 
     const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
       setTimeout(() => {
-        logger.warn(`[CLI] ${provider} ${context} still running after ${ms / 1000}s...`)
+        logger.warn(`[CLI] Claude ${context} still running after ${ms / 1000}s...`)
       }, ms)
     )
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM")
-      reject(new Error(`${provider} CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (${context})`))
+      reject(new Error(`Claude CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (${context})`))
     }, CLI_TIMEOUT_MS)
 
     const clearAllTimers = () => {
@@ -790,16 +779,16 @@ function runCliCommon<T>(
     child.on("error", (err) => {
       clearAllTimers()
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error(`${provider} CLI not found. Please install it first and ensure it's in your PATH.`))
+        reject(new Error("Claude CLI not found. Please install it first and ensure it's in your PATH."))
       } else {
-        reject(new Error(`Failed to spawn ${provider} CLI (${context}): ${err.message}`))
+        reject(new Error(`Failed to spawn Claude CLI (${context}): ${err.message}`))
       }
     })
 
     child.on("close", (code) => {
       clearAllTimers()
       if (code !== 0) {
-        let errorMsg = `${provider} CLI failed (exit ${code}).`
+        let errorMsg = `Claude CLI failed (exit ${code}).`
         const cleanErr = stderr?.trim()
         const cleanOut = stdout?.trim()
         if (cleanErr && cleanOut) {
@@ -816,7 +805,7 @@ function runCliCommon<T>(
         resolve(parse(stdout))
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        reject(new Error(`${provider} CLI returned invalid JSON (${context}): ${msg}`))
+        reject(new Error(`Claude CLI returned invalid JSON (${context}): ${msg}`))
       }
     })
   })
@@ -842,180 +831,199 @@ function runCliForExtraction(provider: CliProvider, prompt: string): Promise<Job
 }
 
 // ============================================================================
-// Agent Session IPC Handlers
+// Form Fill IPC Handler (MCP-based)
 // ============================================================================
 
+// Track active Claude CLI process
+let activeClaudeProcess: ReturnType<typeof spawn> | null = null
+
 /**
- * Start the agent session with profile context
+ * Get the path to the MCP server executable
  */
-ipcMain.handle(
-  "agent-start-session",
-  async (
-    _event: IpcMainInvokeEvent,
-    options: { provider?: CliProvider }
-  ): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const session = getAgentSession()
+function getMcpServerPath(): string {
+  // In development, use the local mcp-server/dist/index.js
+  // In production, it would be bundled with the app
+  const devPath = path.join(import.meta.dirname, "..", "mcp-server", "dist", "index.js")
+  if (fs.existsSync(devPath)) {
+    return devPath
+  }
+  // Fallback for production builds
+  const prodPath = path.join(import.meta.dirname, "mcp-server", "index.js")
+  if (fs.existsSync(prodPath)) {
+    return prodPath
+  }
+  throw new Error("MCP server not found. Run 'npm run build' in mcp-server directory.")
+}
 
-      // Remove any existing listeners to prevent memory leak
-      session.removeAllListeners()
+/**
+ * Create MCP config file for Claude CLI
+ */
+function createMcpConfigFile(): string {
+  const mcpServerPath = getMcpServerPath()
+  const configPath = path.join(os.tmpdir(), `job-applicator-mcp-config-${process.pid}.json`)
 
-      // Set up event listeners BEFORE starting session
-      // (start() emits state-change which we need to catch)
-
-      // Set up tool call handler
-      session.on("tool-call", async (tool) => {
-        logger.info(`[Agent] Tool call received: ${tool.name}`)
-        // Notify renderer of tool execution start
-        mainWindow?.webContents.send("agent-tool-call", {
-          name: tool.name,
-          params: tool.params,
-          status: "executing"
-        })
-        const result = await executeTool(tool)
-        session.sendToolResult(result)
-        // Notify renderer of tool execution complete
-        mainWindow?.webContents.send("agent-tool-call", {
-          name: tool.name,
-          params: tool.params,
-          status: "completed",
-          success: result.success
-        })
-      })
-
-      // Forward output to renderer
-      session.on("output", (data: { text: string; isError?: boolean }) => {
-        mainWindow?.webContents.send("agent-output", data)
-      })
-
-      // Forward state changes
-      session.on("state-change", (state: "idle" | "working" | "stopped") => {
-        logger.info(`[Agent] State changed to: ${state}`)
-        mainWindow?.webContents.send("agent-status", { state })
-      })
-
-      // Forward errors
-      session.on("error", (err: Error) => {
-        logger.error(`[Agent] Session error: ${err.message}`)
-        mainWindow?.webContents.send("agent-output", { text: `Error: ${err.message}\n`, isError: true })
-      })
-
-      // Fetch profile
-      logger.info("[Agent] Fetching profile for session...")
-      const profileText = await fetchApplicatorProfile()
-      logger.info(`[Agent] Profile loaded (${profileText.length} chars)`)
-
-      // Start session (this will emit state-change to "idle")
-      await session.start({
-        profileText,
-        provider: options.provider,
-      })
-
-      logger.info("[Agent] Session started successfully")
-      return { success: true }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error("[Agent] Failed to start session:", message)
-      return { success: false, message }
+  const config = {
+    mcpServers: {
+      "job-applicator": {
+        command: "node",
+        args: [mcpServerPath],
+        env: {
+          JOB_APPLICATOR_URL: `http://127.0.0.1:19524`
+        }
+      }
     }
   }
-)
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+  logger.info(`[FillForm] Created MCP config at ${configPath}`)
+  return configPath
+}
 
 /**
- * Stop the agent session
+ * Fill form using Claude CLI with MCP tools
  */
 ipcMain.handle(
-  "agent-stop-session",
-  async (): Promise<{ success: boolean }> => {
-    const session = getAgentSession()
-    // Remove all listeners before stopping to prevent memory leak
-    session.removeAllListeners()
-    await session.stop()
-    // Clear agent context (jobMatchId, documentId)
-    clearAgentContext()
-    logger.info("[Agent] Session stopped")
-    return { success: true }
-  }
-)
-
-/**
- * Send a command to the agent
- */
-ipcMain.handle(
-  "agent-send-command",
-  async (
-    _event: IpcMainInvokeEvent,
-    command: string
-  ): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const session = getAgentSession()
-      session.sendCommand(command)
-      return { success: true }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return { success: false, message }
-    }
-  }
-)
-
-/**
- * Fill form command - sets job context and sends fill instruction
- */
-ipcMain.handle(
-  "agent-fill-form",
+  "fill-form",
   async (
     _event: IpcMainInvokeEvent,
     options: { jobMatchId: string; jobContext: string }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
-      const session = getAgentSession()
-
-      if (session.getState() === "stopped") {
-        return { success: false, message: "Agent session not running. Start session first." }
+      // Kill any existing process
+      if (activeClaudeProcess) {
+        activeClaudeProcess.kill()
+        activeClaudeProcess = null
       }
 
-      // Store jobMatchId for use by generate_resume/generate_cover_letter tools
+      // Fetch the user's profile with explicit error handling
+      let profileText: string
+      try {
+        profileText = await fetchApplicatorProfile()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] Failed to fetch profile: ${message}`)
+        return { success: false, message: `Failed to fetch profile: ${message}` }
+      }
+
+      // Create MCP config file
+      let mcpConfigPath: string
+      try {
+        mcpConfigPath = createMcpConfigFile()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] Failed to create MCP config: ${message}`)
+        return { success: false, message }
+      }
+
+      // Set job context for document generation tools
       setCurrentJobMatchId(options.jobMatchId)
 
-      // Update job context
-      session.setJobContext(options.jobContext)
+      // Build the prompt
+      const prompt = `You are filling a job application form. Use the MCP tools to interact with the browser.
 
-      // Send fill command with jobMatchId included so agent can reference it
-      session.sendCommand(`Fill out this job application form.
+AVAILABLE TOOLS:
+- screenshot: Capture the current page (call first to see what's there)
+- click: Click at x,y coordinates
+- type: Type text into the focused field
+- press_key: Press Tab, Enter, Escape, Backspace, ArrowDown, ArrowUp, Space
+- scroll: Scroll the page (positive dy = down)
+- get_form_fields: Get all form fields with labels and values
+- generate_resume: Generate a tailored resume PDF
+- generate_cover_letter: Generate a tailored cover letter PDF
+- upload_file: Upload a generated document (type: "resume" or "coverLetter")
+- done: Signal completion (include a summary)
 
-Job Match ID: ${options.jobMatchId}
+RULES:
+1. Start with screenshot to see the current page
+2. Fill fields using the profile data below - be accurate
+3. For file uploads: generate_resume/generate_cover_letter first, then upload_file
+4. Call done with a summary when finished
+5. DO NOT click submit/apply buttons - user will review and submit
+
+USER PROFILE:
+${profileText}
+
+JOB DETAILS:
 ${options.jobContext}
 
-Instructions:
-1. Start by taking a screenshot to see the current form state
-2. Use get_form_fields to understand the form structure
-3. Fill each field using the user profile data
-4. If file upload is needed, call generate_resume or generate_cover_letter (no parameters needed - current job context is already set)
-5. After generating, call upload_file with type "resume" or "coverLetter" (documentId will be auto-filled)
-6. Call done() when the form is completely filled`)
+Begin by taking a screenshot to see the form.`
 
-      logger.info(`[Agent] Fill form command sent for job ${options.jobMatchId}`)
+      logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
+
+      // Notify renderer that fill is starting
+      mainWindow?.webContents.send("agent-status", { state: "working" })
+
+      // Spawn Claude CLI with MCP server configured
+      activeClaudeProcess = spawn("claude", [
+        "--print",
+        "--dangerously-skip-permissions",
+        "--mcp-config",
+        mcpConfigPath,
+        "-p",
+        prompt,
+      ])
+
+      // Forward stdout to renderer
+      activeClaudeProcess.stdout?.on("data", (data: Buffer) => {
+        const text = data.toString()
+        mainWindow?.webContents.send("agent-output", { text, isError: false })
+      })
+
+      // Forward stderr to renderer
+      activeClaudeProcess.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString()
+        logger.warn(`[FillForm] stderr: ${text}`)
+        mainWindow?.webContents.send("agent-output", { text, isError: true })
+      })
+
+      // Handle process completion
+      activeClaudeProcess.on("close", (code: number | null) => {
+        logger.info(`[FillForm] Claude CLI exited with code ${code}`)
+        activeClaudeProcess = null
+        clearJobContext()
+        mainWindow?.webContents.send("agent-status", {
+          state: code === 0 ? "idle" : "stopped",
+        })
+      })
+
+      activeClaudeProcess.on("error", (err: Error) => {
+        logger.error(`[FillForm] Claude CLI error: ${err.message}`)
+        activeClaudeProcess = null
+        clearJobContext()
+        mainWindow?.webContents.send("agent-status", { state: "stopped" })
+        mainWindow?.webContents.send("agent-output", {
+          text: `Error: ${err.message}\n`,
+          isError: true,
+        })
+      })
+
       return { success: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      logger.error(`[FillForm] Error: ${message}`)
       return { success: false, message }
     }
   }
 )
 
 /**
- * Get current agent session status
+ * Stop form filling
  */
-ipcMain.handle(
-  "agent-get-status",
-  async (): Promise<{ state: string }> => {
-    const session = getAgentSession()
-    return { state: session.getState() }
+ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
+  if (activeClaudeProcess) {
+    activeClaudeProcess.kill()
+    activeClaudeProcess = null
   }
-)
+  clearJobContext()
+  mainWindow?.webContents.send("agent-status", { state: "stopped" })
+  return { success: true }
+})
 
 // App lifecycle
 app.whenReady().then(() => {
+  // Start the tool server for MCP communication
+  startToolServer()
+
   createWindow()
 
   // Register global shortcuts for DevTools
@@ -1099,6 +1107,7 @@ app.whenReady().then(() => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll()
+  stopToolServer()
 })
 
 app.on("window-all-closed", () => {

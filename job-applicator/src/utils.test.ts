@@ -10,7 +10,6 @@ import {
   unwrapJobMatch,
   unwrapDocuments,
 } from "./utils.js"
-import { CLI_COMMANDS } from "./cli-config.js"
 
 describe("normalizeUrl", () => {
   it("should extract origin and pathname from valid URL", () => {
@@ -65,40 +64,6 @@ describe("resolveDocumentPath", () => {
       "/srv/artifacts"
     )
     expect(result).toBe("/srv/artifacts/2025/12/04/long-filename_with-dashes.pdf")
-  })
-})
-
-describe("CLI_COMMANDS", () => {
-  it("requires claude CLI to include skip-permissions flag", () => {
-    const [, args] = CLI_COMMANDS.claude
-    expect(args).toContain("--dangerously-skip-permissions")
-  })
-
-  it("requires codex CLI to include bypass approvals flag", () => {
-    const [, args] = CLI_COMMANDS.codex
-    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox")
-  })
-
-  it("requires gemini CLI to include yolo (non-interactive) flag", () => {
-    const [, args] = CLI_COMMANDS.gemini
-    expect(args).toContain("--yolo")
-  })
-
-  it("ensures each provider has a non-interactive safety bypass flag", () => {
-    const requiredFlags: Record<string, string> = {
-      claude: "--dangerously-skip-permissions",
-      codex: "--dangerously-bypass-approvals-and-sandbox",
-      gemini: "--yolo",
-    }
-    for (const provider of ["claude", "codex", "gemini"] as const) {
-      const [, args] = CLI_COMMANDS[provider]
-      expect(args).toContain(requiredFlags[provider])
-    }
-  })
-
-  it("uses stdin placeholder for claude non-interactive prompt", () => {
-    const [, args] = CLI_COMMANDS.claude
-    expect(args).toContain("-")
   })
 })
 

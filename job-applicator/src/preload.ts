@@ -7,19 +7,16 @@ import type { IpcRendererEvent } from "electron"
 
 contextBridge.exposeInMainWorld("electronAPI", {
   // Navigation
-  navigate: (url: string): Promise<{ success: boolean; message?: string }> => ipcRenderer.invoke("navigate", url),
+  navigate: (url: string): Promise<{ success: boolean; message?: string }> =>
+    ipcRenderer.invoke("navigate", url),
   getUrl: () => ipcRenderer.invoke("get-url"),
 
-  // Agent Session API
-  agentStartSession: (options?: { provider?: "claude" | "codex" | "gemini" }) =>
-    ipcRenderer.invoke("agent-start-session", options || {}),
-  agentStopSession: () => ipcRenderer.invoke("agent-stop-session"),
-  agentSendCommand: (command: string) => ipcRenderer.invoke("agent-send-command", command),
-  agentFillForm: (options: { jobMatchId: string; jobContext: string }) =>
-    ipcRenderer.invoke("agent-fill-form", options),
-  agentGetStatus: () => ipcRenderer.invoke("agent-get-status"),
+  // Form Fill API (MCP-based)
+  fillForm: (options: { jobMatchId: string; jobContext: string }) =>
+    ipcRenderer.invoke("fill-form", options),
+  stopFillForm: () => ipcRenderer.invoke("stop-fill-form"),
 
-  // Agent event listeners
+  // Agent event listeners (used by form fill)
   onAgentOutput: (callback: (data: AgentOutputData) => void) => {
     const handler = (_event: IpcRendererEvent, data: AgentOutputData) => callback(data)
     ipcRenderer.on("agent-output", handler)
@@ -29,11 +26,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const handler = (_event: IpcRendererEvent, data: AgentStatusData) => callback(data)
     ipcRenderer.on("agent-status", handler)
     return () => ipcRenderer.removeListener("agent-status", handler)
-  },
-  onAgentToolCall: (callback: (data: { name: string; params?: Record<string, unknown>; status: string; success?: boolean }) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { name: string; params?: Record<string, unknown>; status: string; success?: boolean }) => callback(data)
-    ipcRenderer.on("agent-tool-call", handler)
-    return () => ipcRenderer.removeListener("agent-tool-call", handler)
   },
 
   // Browser URL change listener
@@ -55,7 +47,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkFileInput: () => ipcRenderer.invoke("check-file-input"),
 
   // Job matches
-  getJobMatches: (options?: { limit?: number; status?: string }) => ipcRenderer.invoke("get-job-matches", options),
+  getJobMatches: (options?: { limit?: number; status?: string }) =>
+    ipcRenderer.invoke("get-job-matches", options),
   getJobMatch: (id: string) => ipcRenderer.invoke("get-job-match", id),
   findJobMatchByUrl: (url: string) => ipcRenderer.invoke("find-job-match-by-url", url),
   updateJobMatchStatus: (options: { id: string; status: "active" | "ignored" | "applied" }) =>

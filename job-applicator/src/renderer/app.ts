@@ -1,28 +1,24 @@
 import type {
   JobMatchWithListing as JobMatchListItem,
   DocumentInfo,
-  AgentSessionState,
-  AgentOutputData,
-  AgentStatusData,
   GenerationProgress,
   GenerationStep,
   WorkflowState,
   WorkflowStep,
+  AgentSessionState,
+  AgentOutputData,
+  AgentStatusData,
 } from "../types.js"
 
 interface ElectronAPI {
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
 
-  // Agent Session API
-  agentStartSession: (options?: { provider?: "claude" | "codex" | "gemini" }) => Promise<{ success: boolean; message?: string }>
-  agentStopSession: () => Promise<{ success: boolean }>
-  agentSendCommand: (command: string) => Promise<{ success: boolean; message?: string }>
-  agentFillForm: (options: { jobMatchId: string; jobContext: string }) => Promise<{ success: boolean; message?: string }>
-  agentGetStatus: () => Promise<{ state: string }>
+  // Form Fill API (MCP-based)
+  fillForm: (options: { jobMatchId: string; jobContext: string }) => Promise<{ success: boolean; message?: string }>
+  stopFillForm: () => Promise<{ success: boolean }>
   onAgentOutput: (callback: (data: AgentOutputData) => void) => () => void
   onAgentStatus: (callback: (data: AgentStatusData) => void) => () => void
-  onAgentToolCall: (callback: (data: { name: string; params?: Record<string, unknown>; status: string; success?: boolean }) => void) => () => void
   onBrowserUrlChanged: (callback: (data: { url: string }) => void) => () => void
 
   // File upload
@@ -134,9 +130,6 @@ const startSessionBtn = getElement<HTMLButtonElement>("startSessionBtn")
 const stopSessionBtn = getElement<HTMLButtonElement>("stopSessionBtn")
 const agentActions = getElement<HTMLDivElement>("agentActions")
 const fillFormBtn = getElement<HTMLButtonElement>("fillFormBtn")
-const agentCommand = getElement<HTMLDivElement>("agentCommand")
-const agentCommandInput = getElement<HTMLInputElement>("agentCommandInput")
-const sendCommandBtn = getElement<HTMLButtonElement>("sendCommandBtn")
 const agentOutput = getElement<HTMLDivElement>("agentOutput")
 
 // DOM elements - Upload section
@@ -701,12 +694,12 @@ async function navigate() {
 // Agent Session Management
 // ============================================================================
 
-// Agent session state (tracked for potential future use)
+// Agent session state
 let _agentSessionState: AgentSessionState = "stopped"
 let unsubscribeAgentOutput: (() => void) | null = null
 let unsubscribeAgentStatus: (() => void) | null = null
-let unsubscribeAgentToolCall: (() => void) | null = null
 let unsubscribeBrowserUrlChanged: (() => void) | null = null
+let isFormFillActive = false
 
 // Escape HTML to prevent XSS in output
 function escapeHtml(text: string): string {
@@ -731,26 +724,22 @@ function updateAgentStatusUI(state: AgentSessionState) {
     startSessionBtn.classList.remove("hidden")
     stopSessionBtn.classList.add("hidden")
     agentActions.classList.add("hidden")
-    agentCommand.classList.add("hidden")
     startSessionBtn.disabled = false
   } else {
     startSessionBtn.classList.add("hidden")
     stopSessionBtn.classList.remove("hidden")
     agentActions.classList.remove("hidden")
-    agentCommand.classList.remove("hidden")
   }
 
   // Fill button enabled only when idle and job selected
   fillFormBtn.disabled = state !== "idle" || !selectedJobMatchId
 }
 
-// Start agent session
-async function startAgentSession() {
-  const provider = agentProviderSelect.value as "claude" | "codex" | "gemini"
-
+// Start agent session - sets up listeners and transitions to idle state
+function startAgentSession() {
   startSessionBtn.disabled = true
   setStatus("Starting agent session...", "loading")
-  agentOutput.innerHTML = '<div class="loading-placeholder">Starting session...</div>'
+  agentOutput.innerHTML = '<div class="empty-placeholder">Ready for form fill</div>'
 
   // Subscribe to events
   unsubscribeAgentOutput = api.onAgentOutput((data) => {
@@ -758,53 +747,34 @@ async function startAgentSession() {
   })
   unsubscribeAgentStatus = api.onAgentStatus((data) => {
     updateAgentStatusUI(data.state as AgentSessionState)
-  })
-  unsubscribeAgentToolCall = api.onAgentToolCall((data) => {
-    const icon = data.status === "executing" ? "⏳" : (data.success ? "✓" : "✗")
-    appendAgentOutput(`${icon} ${data.name}${data.status === "executing" ? "..." : ""}\n`, "tool")
+    // When agent finishes, mark form fill as inactive
+    if (data.state === "idle" || data.state === "stopped") {
+      isFormFillActive = false
+    }
   })
   unsubscribeBrowserUrlChanged = api.onBrowserUrlChanged((data) => {
     // Update URL input when browser navigates
     urlInput.value = data.url
   })
 
-  const result = await api.agentStartSession({ provider })
-
-  if (result.success) {
-    setStatus("Agent session started", "success")
-    updateAgentStatusUI("idle")
-  } else {
-    setStatus(result.message || "Failed to start session", "error")
-    startSessionBtn.disabled = false
-    cleanupAgentListeners()
-  }
+  setStatus("Agent session ready", "success")
+  updateAgentStatusUI("idle")
 }
 
-// Stop agent session
+// Stop agent session and any active form fill
 async function stopAgentSession() {
   setStatus("Stopping agent session...", "loading")
 
-  await api.agentStopSession()
+  // Stop any active form fill
+  if (isFormFillActive) {
+    await api.stopFillForm()
+    isFormFillActive = false
+  }
 
   cleanupAgentListeners()
   updateAgentStatusUI("stopped")
   setStatus("Agent session stopped", "success")
   agentOutput.innerHTML = '<div class="empty-placeholder">Session ended</div>'
-}
-
-// Send command to agent
-async function sendAgentCommand() {
-  const command = agentCommandInput.value.trim()
-  if (!command) return
-
-  agentCommandInput.value = ""
-  appendAgentOutput(`> ${command}\n`, "command")
-
-  const result = await api.agentSendCommand(command)
-
-  if (!result.success) {
-    appendAgentOutput(`Error: ${result.message}\n`, "error")
-  }
 }
 
 // Fill form with agent
@@ -828,8 +798,9 @@ async function fillFormWithAgent() {
 
   setStatus("Filling form...", "loading")
   setWorkflowStep("fill", "active")
+  isFormFillActive = true
 
-  const result = await api.agentFillForm({
+  const result = await api.fillForm({
     jobMatchId: selectedJobMatchId,
     jobContext,
   })
@@ -838,11 +809,12 @@ async function fillFormWithAgent() {
     setStatus("Form fill started", "success")
   } else {
     setStatus(result.message || "Fill failed", "error")
+    isFormFillActive = false
   }
 }
 
 // Append text to agent output
-function appendAgentOutput(text: string, type?: "command" | "error" | "tool") {
+function appendAgentOutput(text: string, type?: "error") {
   // Remove placeholder if present
   const placeholder = agentOutput.querySelector(".empty-placeholder, .loading-placeholder")
   if (placeholder) {
@@ -850,12 +822,8 @@ function appendAgentOutput(text: string, type?: "command" | "error" | "tool") {
   }
 
   const span = document.createElement("span")
-  if (type === "command") {
-    span.className = "agent-command-line"
-  } else if (type === "error") {
+  if (type === "error") {
     span.className = "agent-error"
-  } else if (type === "tool") {
-    span.className = "tool-call"
   }
   span.textContent = text
   agentOutput.appendChild(span)
@@ -873,10 +841,6 @@ function cleanupAgentListeners() {
   if (unsubscribeAgentStatus) {
     unsubscribeAgentStatus()
     unsubscribeAgentStatus = null
-  }
-  if (unsubscribeAgentToolCall) {
-    unsubscribeAgentToolCall()
-    unsubscribeAgentToolCall = null
   }
   if (unsubscribeBrowserUrlChanged) {
     unsubscribeBrowserUrlChanged()
@@ -966,12 +930,6 @@ function initializeApp() {
   startSessionBtn.addEventListener("click", startAgentSession)
   stopSessionBtn.addEventListener("click", stopAgentSession)
   fillFormBtn.addEventListener("click", fillFormWithAgent)
-  sendCommandBtn.addEventListener("click", sendAgentCommand)
-  agentCommandInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      sendAgentCommand()
-    }
-  })
 
   // Event listeners - Sidebar
   generateBtn.addEventListener("click", generateDocument)

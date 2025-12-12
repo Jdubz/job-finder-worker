@@ -73,10 +73,10 @@ export interface JobMatchListItem {
 }
 
 // ============================================================================
-// Agent Session Types (app-specific)
+// Agent Types (for MCP-based form filling)
 // ============================================================================
 
-/** Agent session state */
+/** Agent session state for UI display */
 export type AgentSessionState = "idle" | "working" | "stopped"
 
 /** Agent output event data */
