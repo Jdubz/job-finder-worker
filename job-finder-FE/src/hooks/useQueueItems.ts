@@ -121,6 +121,21 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     }
   }, [limit, normalizeQueueItem, status, type])
 
+  const matchesFilters = useCallback(
+    (item: QueueItem | undefined | null) => {
+      if (!item) return false
+      const matchesStatus =
+        status === undefined
+          ? true
+          : Array.isArray(status)
+            ? status.includes(item.status)
+            : item.status === status
+      const matchesType = type ? item.type === type : true
+      return matchesStatus && matchesType
+    },
+    [status, type]
+  )
+
   useEffect(() => {
     let cancelled = false
 
@@ -135,8 +150,9 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       if (cancelled) return
       appendEventLog(eventName, data ?? null)
       if (eventName === "snapshot" && data?.items) {
-        const items = data.items ?? []
-        setQueueItems(items.map(normalizeQueueItem))
+        // Snapshot is already filtered/limited server-side; just normalize.
+        const items = (data.items ?? []).map(normalizeQueueItem)
+        setQueueItems(items)
         setLoading(false)
         return
       }
@@ -147,6 +163,10 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         startTransition(() => {
           setQueueItems((prev) => {
             const normalized = normalizeQueueItem(queueItem)
+            // Drop items that no longer match filters
+            if (!matchesFilters(normalized)) {
+              return prev.filter((i) => i.id !== normalized.id)
+            }
             const existing = prev.find((i) => i.id === normalized.id)
             if (!existing) {
               return [normalized, ...prev]
@@ -270,7 +290,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       cancelled = true
       streamAbortRef.current?.abort()
     }
-  }, [appendEventLog, fetchQueueItems, normalizeQueueItem])
+  }, [appendEventLog, fetchQueueItems, normalizeQueueItem, matchesFilters, limit])
 
   const submitJob = useCallback(
     async (request: SubmitJobRequest): Promise<string> => {
@@ -289,14 +309,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       })
 
       const normalized = normalizeQueueItem(queueItem)
-      setQueueItems((prev) => [normalized, ...prev])
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev]
+      })
       const id = normalized.id ?? queueItem.id
       if (!id) {
         throw new Error('Queue item ID not returned from server')
       }
       return id
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const submitCompany = useCallback(
@@ -310,14 +333,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       })
 
       const normalized = normalizeQueueItem(queueItem)
-      setQueueItems((prev) => [normalized, ...prev])
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev]
+      })
       const id = normalized.id ?? queueItem.id
       if (!id) {
         throw new Error('Queue item ID not returned from server')
       }
       return id
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const submitSourceDiscovery = useCallback(
@@ -329,24 +355,31 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       })
 
       const normalized = normalizeQueueItem(queueItem)
-      setQueueItems((prev) => [normalized, ...prev])
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev]
+      })
       const id = normalized.id ?? queueItem.id
       if (!id) {
         throw new Error('Queue item ID not returned from server')
       }
       return id
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const updateQueueItem = useCallback(
     async (id: string, data: Partial<QueueItem>) => {
       const updated = await queueClient.updateQueueItem(id, data)
-      setQueueItems((prev) =>
-        prev.map((item) => (item.id === id ? normalizeQueueItem(updated) : item))
-      )
+      const normalized = normalizeQueueItem(updated)
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) {
+          return prev.filter((item) => item.id !== id)
+        }
+        return prev.map((item) => (item.id === id ? normalized : item))
+      })
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const deleteQueueItem = useCallback(async (id: string) => {

@@ -192,7 +192,6 @@ export function CompaniesPage() {
         companyId: company.id,
         allowReanalysis: true,
       })
-      navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit re-analysis:", err)
       throw err
