@@ -123,6 +123,7 @@ const uploadCoverBtn = getElement<HTMLButtonElement>("uploadCoverBtn")
 const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
 const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
+const refreshJobsBtn = getElement<HTMLButtonElement>("refreshJobsBtn")
 
 function setStatus(message: string, type: "success" | "error" | "loading" | "" = "") {
   statusEl.textContent = message
@@ -180,6 +181,25 @@ async function loadJobMatches() {
     const message = err instanceof Error ? err.message : String(err)
     jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
     console.error("Failed to load job matches:", err)
+  }
+}
+
+// Refresh job matches with visual feedback
+async function refreshJobMatches() {
+  // Add spinning animation to refresh button
+  refreshJobsBtn.classList.add("refreshing")
+  refreshJobsBtn.disabled = true
+  setStatus("Refreshing job matches...", "loading")
+
+  try {
+    await loadJobMatches()
+    setStatus(`Loaded ${jobMatches.length} job matches`, "success")
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Refresh failed: ${message}`, "error")
+  } finally {
+    refreshJobsBtn.classList.remove("refreshing")
+    refreshJobsBtn.disabled = false
   }
 }
 
@@ -932,6 +952,15 @@ function initializeApp() {
   uploadResumeBtn.addEventListener("click", uploadResumeFile)
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
   rescanBtn.addEventListener("click", checkForFileInput)
+  refreshJobsBtn.addEventListener("click", refreshJobMatches)
+
+  // Keyboard shortcut: Ctrl+R to refresh job matches
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.key === "r") {
+      e.preventDefault() // Prevent browser refresh
+      refreshJobMatches()
+    }
+  })
 
   // Run async initialization
   init()
