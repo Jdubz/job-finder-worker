@@ -361,9 +361,12 @@ ipcMain.handle(
 
       // Resolve file path from document or fallback to env var
       if (options?.documentId) {
-        // Validate documentId format (UUID v4 pattern)
+        // Validate documentId format - accepts either:
+        // - Backend format: resume-generator-request-{timestamp}-{random}
+        // - UUID v4 format (legacy compatibility)
+        const backendIdPattern = /^resume-generator-request-\d+-[a-z0-9]+$/
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-        if (!uuidPattern.test(options.documentId)) {
+        if (!backendIdPattern.test(options.documentId) && !uuidPattern.test(options.documentId)) {
           return { success: false, message: "Invalid document ID format" }
         }
 
@@ -1008,7 +1011,7 @@ ipcMain.handle(
 
 CRITICAL RULES:
 1. MUST call get_user_profile FIRST - NEVER invent or guess user data
-2. Use selector-based tools (fill_field, select_option, set_checkbox) for reliability
+2. Use selector-based tools (fill_field, select_option, set_checkbox, click_element) for reliability
 3. Use screenshot to verify your work and handle complex UI
 4. DO NOT click submit/apply buttons - user will submit manually
 5. SKIP file upload fields - user handles documents separately
@@ -1019,12 +1022,27 @@ WORKFLOW:
 3. For each field, match label to profile data and use:
    - fill_field(selector, value) for text inputs
    - select_option(selector, value) for dropdowns - match against options array
-   - set_checkbox(selector, checked) for checkboxes
+   - set_checkbox(selector, checked) for checkboxes/radios
+   - click_element(selector) for buttons like "Add Another"
 4. screenshot - Verify fields were filled correctly
 5. For any issues or custom UI (date pickers, autocomplete):
    - Use click(x,y) and type(text) as fallback
 6. scroll down and repeat get_form_fields for more fields
 7. done with summary
+
+DYNAMIC FORMS (Education, Employment, etc.):
+- Call get_buttons to find "Add Another", "Add Education", "Add Employment" buttons
+- Use click_element(selector) to add entries for EACH item in the profile
+- After clicking, call get_form_fields again to see the new sub-form fields
+- Fill the sub-form, then click "Add Another" again for the next item
+- Repeat until all education/employment entries from the profile are added
+
+YES/NO QUESTIONS - Use profile data to infer answers:
+- "Do you have X years of experience?" → YES if profile shows enough work history
+- "Are you authorized to work?" → YES (assume authorized)
+- "Will you require sponsorship?" → NO (assume no sponsorship needed)
+- "Email me about future openings?" → YES
+- "Agree to terms/privacy policy?" → YES
 
 IMPORTANT: The 'options' array in get_form_fields shows available dropdown values.
 Match your selection to one of those values, not arbitrary text.

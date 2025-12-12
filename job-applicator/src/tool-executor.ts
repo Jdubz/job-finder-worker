@@ -182,6 +182,12 @@ async function executeToolInternal(
     case "set_checkbox":
       return await handleSetCheckbox(params as { selector: string; checked: boolean })
 
+    case "click_element":
+      return await handleClickElement(params as { selector: string })
+
+    case "get_buttons":
+      return await handleGetButtons()
+
     case "get_page_info":
       return await handleGetPageInfo()
 
@@ -578,6 +584,147 @@ async function handleSetCheckbox(params: { selector: string; checked: boolean })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { success: false, error: message }
+  }
+}
+
+/**
+ * Click an element by CSS selector
+ */
+async function handleClickElement(params: { selector: string }): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const { selector } = params
+
+  if (!selector) {
+    return { success: false, error: "click_element requires selector" }
+  }
+
+  try {
+    const selectorJson = JSON.stringify(selector)
+    const result = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const selector = ${selectorJson};
+        const el = document.querySelector(selector);
+        if (!el) return { success: false, error: 'Element not found: ' + selector };
+
+        // Scroll element into view if needed
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
+
+        // Get element text for logging
+        const text = el.textContent?.trim()?.slice(0, 50) || el.value || '';
+
+        // Focus and click
+        if (el.focus) el.focus();
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+
+        return { success: true, selector: selector, text: text };
+      })()
+    `)
+
+    if (result.success) {
+      logger.info(`[ToolExecutor] Clicked element ${selector} ("${result.text}")`)
+    } else {
+      logger.warn(`[ToolExecutor] click_element failed: ${result.error}`)
+    }
+
+    return result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Get all clickable buttons on the page
+ */
+async function handleGetButtons(): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const buttons = await browserView.webContents.executeJavaScript(`
+    (() => {
+      // Helper: Build a unique CSS selector path for an element
+      function buildSelectorPath(el) {
+        if (el.id) {
+          return '#' + CSS.escape(el.id);
+        }
+        if (el.name) {
+          const tag = el.tagName.toLowerCase();
+          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          if (document.querySelectorAll(nameSelector).length === 1) {
+            return nameSelector;
+          }
+        }
+        const path = [];
+        let current = el;
+        while (current && current !== document.body) {
+          let segment = current.tagName.toLowerCase();
+          if (current.id) {
+            path.unshift('#' + CSS.escape(current.id));
+            break;
+          }
+          const parent = current.parentElement;
+          if (parent) {
+            const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+            if (siblings.length > 1) {
+              const index = siblings.indexOf(current) + 1;
+              segment += ':nth-of-type(' + index + ')';
+            }
+          }
+          path.unshift(segment);
+          current = current.parentElement;
+        }
+        if (path.length > 0 && !path[0].startsWith('#')) {
+          path.unshift('body');
+        }
+        return path.join(' > ');
+      }
+
+      // Find buttons, links that look like buttons, and elements with click handlers
+      const elements = document.querySelectorAll('button, a[role="button"], [type="button"], [type="submit"], a.btn, a.button, [onclick], [data-action]');
+
+      return Array.from(elements).map((el, idx) => {
+        const rect = el.getBoundingClientRect();
+
+        // Skip invisible or disabled elements
+        if (rect.width === 0 || rect.height === 0) return null;
+        if (el.disabled) return null;
+
+        const text = el.textContent?.trim() || el.value || el.getAttribute('aria-label') || '';
+
+        // Skip submit/apply buttons (user should click these manually)
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes('submit') || lowerText.includes('apply now') || lowerText === 'apply') return null;
+
+        return {
+          selector: buildSelectorPath(el),
+          text: text.slice(0, 100),
+          type: el.tagName.toLowerCase(),
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+        };
+      }).filter(b => b !== null && b.text.length > 0);
+    })()
+  `)
+
+  // Filter to most relevant buttons (add, education, employment, experience)
+  const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more'];
+  const relevantButtons = buttons.filter((b: { text: string }) => {
+    const lowerText = b.text.toLowerCase();
+    return relevantKeywords.some(keyword => lowerText.includes(keyword));
+  });
+
+  logger.info(`[ToolExecutor] Found ${buttons.length} buttons, ${relevantButtons.length} relevant for dynamic forms`)
+
+  return {
+    success: true,
+    data: {
+      buttons: relevantButtons.length > 0 ? relevantButtons : buttons.slice(0, 20),
+      totalFound: buttons.length
+    }
   }
 }
 

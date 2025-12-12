@@ -131,6 +131,30 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: "click_element",
+    description:
+      "Click an element by CSS selector. Use for buttons like 'Add Another', 'Add Education', etc. " +
+      "More reliable than coordinate-based clicking. Returns the clicked element's text.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the element to click" },
+      },
+      required: ["selector"],
+    },
+  },
+  {
+    name: "get_buttons",
+    description:
+      "Find all clickable buttons on the page. Returns buttons, links styled as buttons, and clickable elements. " +
+      "Use this to find 'Add Another', 'Add Education', 'Add Employment' buttons for dynamic forms.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "get_page_info",
     description:
       "Get the current page URL and title. Useful for verifying navigation " +
