@@ -361,17 +361,22 @@ ipcMain.handle(
 
       // Resolve file path from document or fallback to env var
       if (options?.documentId) {
+        logger.info(`[Upload] Fetching document with ID: ${options.documentId}`)
+
         // Validate documentId format - accepts either:
         // - Backend format: resume-generator-request-{timestamp}-{random}
         // - UUID v4 format (legacy compatibility)
         const backendIdPattern = /^resume-generator-request-\d+-[a-z0-9]+$/
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
         if (!backendIdPattern.test(options.documentId) && !uuidPattern.test(options.documentId)) {
-          return { success: false, message: "Invalid document ID format" }
+          logger.warn(`[Upload] Invalid document ID format: ${options.documentId}`)
+          return { success: false, message: `Invalid document ID format: ${options.documentId}` }
         }
 
         // Fetch document details from backend using typed API client
+        logger.info(`[Upload] Calling fetchGeneratorRequest for: ${options.documentId}`)
         const doc = await fetchGeneratorRequest(options.documentId)
+        logger.info(`[Upload] Fetched document: ${JSON.stringify(doc)}`)
 
         // Get the appropriate URL based on type
         const docType = options.type || "resume"

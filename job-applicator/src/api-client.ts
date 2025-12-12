@@ -293,14 +293,18 @@ export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocum
  * Uses shared GeneratorSingleDocumentResponse type for type safety.
  */
 export async function fetchGeneratorRequest(requestId: string): Promise<GeneratorDocument> {
+  const url = `${getApiUrl()}/generator/requests/${requestId}`
+  console.log(`[API] Fetching document from: ${url}`)
+
   const res = await fetchWithRetry(
-    `${getApiUrl()}/generator/requests/${requestId}`,
+    url,
     fetchOptions(),
     { maxRetries: 2, timeoutMs: 15000 }
   )
 
   if (!res.ok) {
     const errorMsg = await parseApiError(res)
+    console.error(`[API] Failed to fetch document (${res.status}): ${errorMsg}`)
     throw new Error(`Failed to fetch document: ${errorMsg}`)
   }
 
