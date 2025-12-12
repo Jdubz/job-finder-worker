@@ -13,6 +13,7 @@ vi.mock("@/api", () => ({
     submitCompany: vi.fn(),
     updateQueueItem: vi.fn(),
     deleteQueueItem: vi.fn(),
+    submitSourceDiscovery: vi.fn(),
   },
 }))
 
@@ -39,12 +40,38 @@ describe("useQueueItems", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any)
-    vi.mocked(queueClient.listQueueItems).mockResolvedValue({
-      items: mockQueueItems as any,
-      pagination: { limit: 50, offset: 0, total: mockQueueItems.length, hasMore: false },
+    vi.mocked(queueClient.listQueueItems).mockImplementation(async (params?: any) => {
+      const status = params?.status
+      const type = params?.type
+      const filtered = mockQueueItems.filter((item) => {
+        const statusMatch = !status
+          || (Array.isArray(status) ? status.includes(item.status) : item.status === status)
+        const typeMatch = type ? item.type === type : true
+        return statusMatch && typeMatch
+      })
+      return {
+        items: filtered as any,
+        pagination: { limit: params?.limit ?? 50, offset: 0, total: filtered.length, hasMore: false },
+      }
     })
     vi.mocked(queueClient.submitJob).mockResolvedValue(mockQueueItems[0] as any)
+    vi.mocked(queueClient.submitSourceDiscovery).mockResolvedValue(mockQueueItems[0] as any)
     vi.mocked(queueClient.updateQueueItem).mockResolvedValue(mockQueueItems[0] as any)
+  })
+
+  it("does not add submitted items that fail type filter", async () => {
+    const filteredItem = { ...mockQueueItems[0], type: "job" }
+    vi.mocked(queueClient.submitSourceDiscovery).mockResolvedValue(filteredItem as any)
+
+    const { result } = renderHook(() => useQueueItems({ type: "company" }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const initial = result.current.queueItems.length
+    await act(async () => {
+      await result.current.submitSourceDiscovery({ url: "https://example.com" })
+    })
+
+    expect(result.current.queueItems.length).toBe(initial)
   })
 
   it("fetches queue items on mount", async () => {
@@ -105,6 +132,37 @@ describe("useQueueItems", () => {
     })
 
     expect(queueClient.deleteQueueItem).toHaveBeenCalledWith("queue-1")
+  })
+
+  it("does not add submitted items that fail filters", async () => {
+    const filteredItem = { ...mockQueueItems[0], status: "pending" }
+    vi.mocked(queueClient.submitJob).mockResolvedValue(filteredItem as any)
+
+    const { result } = renderHook(() => useQueueItems({ status: "completed" }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const initial = result.current.queueItems.length
+    await act(async () => {
+      await result.current.submitJob({ url: "https://example.com" } as any)
+    })
+
+    expect(result.current.queueItems.length).toBe(initial)
+  })
+
+  it("filters updates that no longer match status", async () => {
+    const { result } = renderHook(() => useQueueItems({ status: "pending" }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    vi.mocked(queueClient.updateQueueItem).mockResolvedValue({
+      ...mockQueueItems[0],
+      status: "completed",
+    } as any)
+
+    await act(async () => {
+      await result.current.updateQueueItem("queue-1", { status: "completed" } as any)
+    })
+
+    expect(result.current.queueItems.find((i) => i.id === "queue-1")).toBeUndefined()
   })
 
   describe("submitCompany", () => {

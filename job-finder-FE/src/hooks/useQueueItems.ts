@@ -150,10 +150,8 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       if (cancelled) return
       appendEventLog(eventName, data ?? null)
       if (eventName === "snapshot" && data?.items) {
-        const items = (data.items ?? [])
-          .map(normalizeQueueItem)
-          .filter((item) => matchesFilters(item))
-          .slice(0, limit)
+        // Snapshot is already filtered/limited server-side; just normalize.
+        const items = (data.items ?? []).map(normalizeQueueItem)
         setQueueItems(items)
         setLoading(false)
         return
@@ -171,7 +169,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
             }
             const existing = prev.find((i) => i.id === normalized.id)
             if (!existing) {
-              return [normalized, ...prev].slice(0, limit)
+              return [normalized, ...prev]
             }
             return prev.map((item) => (item.id === normalized.id ? normalized : item))
           })
@@ -292,7 +290,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       cancelled = true
       streamAbortRef.current?.abort()
     }
-  }, [appendEventLog, fetchQueueItems, normalizeQueueItem, matchesFilters, limit, status, type])
+  }, [appendEventLog, fetchQueueItems, normalizeQueueItem, matchesFilters, limit])
 
   const submitJob = useCallback(
     async (request: SubmitJobRequest): Promise<string> => {
@@ -313,7 +311,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       const normalized = normalizeQueueItem(queueItem)
       setQueueItems((prev) => {
         if (!matchesFilters(normalized)) return prev
-        return [normalized, ...prev].slice(0, limit)
+        return [normalized, ...prev]
       })
       const id = normalized.id ?? queueItem.id
       if (!id) {
@@ -337,7 +335,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       const normalized = normalizeQueueItem(queueItem)
       setQueueItems((prev) => {
         if (!matchesFilters(normalized)) return prev
-        return [normalized, ...prev].slice(0, limit)
+        return [normalized, ...prev]
       })
       const id = normalized.id ?? queueItem.id
       if (!id) {
@@ -359,7 +357,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       const normalized = normalizeQueueItem(queueItem)
       setQueueItems((prev) => {
         if (!matchesFilters(normalized)) return prev
-        return [normalized, ...prev].slice(0, limit)
+        return [normalized, ...prev]
       })
       const id = normalized.id ?? queueItem.id
       if (!id) {
@@ -373,11 +371,15 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
   const updateQueueItem = useCallback(
     async (id: string, data: Partial<QueueItem>) => {
       const updated = await queueClient.updateQueueItem(id, data)
-      setQueueItems((prev) =>
-        prev.map((item) => (item.id === id ? normalizeQueueItem(updated) : item))
-      )
+      const normalized = normalizeQueueItem(updated)
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) {
+          return prev.filter((item) => item.id !== id)
+        }
+        return prev.map((item) => (item.id === id ? normalized : item))
+      })
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters]
   )
 
   const deleteQueueItem = useCallback(async (id: string) => {
