@@ -18,7 +18,8 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
     "kind": "click" | "double_click" | "type" | "scroll" | "keypress" | "wait" | "done",
     "x": 0, "y": 0,          // required for click/double_click
     "text": "string",        // for type
-    "dy": 400,                // for scroll
+    "dy": 400,                // for scroll (vertical)
+    "dx": 0,                  // optional horizontal scroll
     "key": "Tab" | "Enter" | "Escape", // for keypress
     "ms": 800,                // for wait
     "reason": "why done"     // for done
@@ -26,14 +27,14 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
 }
 ```
 
-## Loop (max 8 steps per fill)
+## Loop (max 12 steps per fill)
 1. Capture single screenshot of BrowserView at ~1280px wide, JPEG quality ~60; compute a fast hash (e.g., sha1) for “no visual change” detection; discard previous image bytes after hashing.
 2. Gather context: goal text, current URL, last 3 actions/outcomes, hash of previous screenshot.
 3. Send context + screenshot to the local CLI provider (claude/codex/gemini wrapper) expecting the JSON schema above. If JSON parse fails, retry once with a hard stop.
 4. Execute the returned action via CDP:
    - click/double_click → `Input.dispatchMouseEvent`
-   - type → ensure focus is on an input/textarea/contenteditable; if not, send `Tab`, then `Input.insertText`
-   - scroll → `window.scrollBy(0, dy)`
+   - type → ensure focus is on an input/textarea/contenteditable; if not, send `Tab`; if still unfocused, send a gentle center click, then `Input.insertText`
+   - scroll → `window.scrollBy(dx, dy)`
    - keypress → `Input.dispatchKeyEvent`
    - wait → `setTimeout`
 5. Stop when action is `done`, when two consecutive hashes match (stuck), or when step cap reached.
@@ -53,9 +54,9 @@ Return exactly one JSON object matching the schema. Prefer click → type → Ta
 
 ## Failure / Safety Rules
 - Reject/ignore actions whose coordinates are outside the visible viewport bounds.
-- If focused element is not form-capable, auto-send a Tab before typing.
+- If focused element is not form-capable, auto-send a Tab before typing; if still unfocused, single center click before typing.
 - Per-loop timeout: 45s; per-action timeout: 3s. Abort with an error message on timeout.
-- Detect “no progress” when two consecutive screenshot hashes match after an action; abort with a clear message.
+- Detect “no progress” when two consecutive screenshot hashes match after an action; **do not run this check for pure wait actions**; treat N=2 consecutive non-wait no-change events as “stuck” and abort with a clear message.
 
 ## Telemetry (lightweight)
 - Log per-step: action, result (`ok`/`blocked`), screenshot byte size, hash.
