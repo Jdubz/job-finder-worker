@@ -56,11 +56,11 @@ let lastGeneratedDocumentId: string | null = null
  * Set the current job match ID for document generation
  */
 export function setCurrentJobMatchId(id: string | null): void {
-  currentJobMatchId = id
   // Clear last generated document when job changes
   if (id !== currentJobMatchId) {
     lastGeneratedDocumentId = null
   }
+  currentJobMatchId = id
   logger.info(`[AgentTools] Current job match ID: ${id || "(none)"}`)
 }
 

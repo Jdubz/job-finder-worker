@@ -20,7 +20,7 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
     "text": "string",        // for type
     "dy": 400,                // for scroll (vertical, default 0 if omitted)
     "dx": 0,                  // optional horizontal scroll (default 0); at least one of dx/dy must be non-zero for scroll
-    "key": "Tab" | "Enter" | "Escape", // for keypress
+    "key": "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll", // for keypress
     "ms": 800,                // for wait
     "reason": "why done"     // for done
   }
@@ -96,7 +96,7 @@ export interface AgentAction {
   text?: string        // type
   dx?: number          // scroll (default 0)
   dy?: number          // scroll (default 0)
-  key?: "Tab" | "Enter" | "Escape"  // keypress
+  key?: "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll"  // keypress
   ms?: number          // wait
   reason?: string      // done
 }
@@ -414,7 +414,7 @@ Schema:
     "text": "string",   // for type
     "dx": number,       // for scroll
     "dy": number,       // for scroll
-    "key": "Tab" | "Enter" | "Escape",  // for keypress
+    "key": "Tab" | "Enter" | "Escape" | "Backspace" | "SelectAll",  // for keypress
     "ms": number,       // for wait
     "reason": "string"  // for done
   }

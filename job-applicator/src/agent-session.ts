@@ -250,9 +250,17 @@ When you understand these instructions, respond with "Ready." and wait for comma
 
     // Cap buffer at MAX_BUFFER_SIZE to prevent memory exhaustion
     if (this.buffer.length > this.MAX_BUFFER_SIZE) {
-      // Keep the last half to preserve any partial tool calls
-      this.buffer = this.buffer.slice(-this.MAX_BUFFER_SIZE / 2)
-      logger.warn(`[AgentSession] Buffer exceeded ${this.MAX_BUFFER_SIZE} chars, truncated`)
+      // Keep the last half, but try to preserve tool call boundaries
+      const halfBuffer = this.buffer.slice(-this.MAX_BUFFER_SIZE / 2)
+      const toolStartIdx = halfBuffer.indexOf(this.TOOL_START)
+      if (toolStartIdx !== -1) {
+        // Preserve from the first tool call start in the last half
+        this.buffer = halfBuffer.slice(toolStartIdx)
+      } else {
+        // No tool call boundary found, keep the last half as-is
+        this.buffer = halfBuffer
+      }
+      logger.warn(`[AgentSession] Buffer exceeded ${this.MAX_BUFFER_SIZE} chars, truncated to ${this.buffer.length}`)
     }
 
     this.emit("output", { text, isError: false })
