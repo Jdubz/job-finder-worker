@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -e
+
+# Auto-sync docker-compose.prod.yml to production when it changes
+# This runs after 'git pull' or 'git merge'
+
+# Check if docker-compose.prod.yml was in the changed files
+if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -q "infra/docker-compose.prod.yml"; then
+  echo "[post-merge] docker-compose.prod.yml changed, syncing to production..."
+  ./scripts/deploy.sh --recreate
+fi
