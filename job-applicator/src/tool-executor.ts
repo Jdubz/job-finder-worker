@@ -383,7 +383,15 @@ async function handleGetFormFields(): Promise<ToolResult> {
     })()
   `)
 
-  logger.info(`[ToolExecutor] Found ${fields.length} form fields`)
+  // Log summary including dropdowns for debugging
+  const dropdowns = fields.filter((f: { type: string; options?: unknown[] }) => f.type === "select-one" || f.type === "select-multiple")
+  logger.info(`[ToolExecutor] Found ${fields.length} form fields (${dropdowns.length} dropdowns)`)
+  if (dropdowns.length > 0) {
+    for (const dd of dropdowns) {
+      const optCount = (dd as { options?: unknown[] }).options?.length || 0
+      logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label: string }).label} (${optCount} options)`)
+    }
+  }
 
   return { success: true, data: { fields } }
 }
@@ -470,6 +478,8 @@ async function handleSelectOption(params: { selector: string; value: string }): 
   if (!selector || typeof value !== "string") {
     return { success: false, error: "select_option requires selector and value" }
   }
+
+  logger.info(`[ToolExecutor] select_option: trying to select "${value}" in ${selector}`)
 
   try {
     const selectorJson = JSON.stringify(selector)

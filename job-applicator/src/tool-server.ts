@@ -144,7 +144,9 @@ export function startToolServer(): http.Server {
           return
         }
 
-        logger.info(`[ToolServer] Executing: ${tool}`)
+        // Log tool call with parameters for debugging
+        const paramsStr = params ? JSON.stringify(params).slice(0, 500) : "{}"
+        logger.info(`[ToolServer] Executing: ${tool}(${paramsStr})`)
         sendStatus(`🔧 ${tool}...`)
         const startTime = Date.now()
 
