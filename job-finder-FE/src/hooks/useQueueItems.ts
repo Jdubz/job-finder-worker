@@ -121,17 +121,8 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     }
   }, [limit, normalizeQueueItem, status, type])
 
-  useEffect(() => {
-    let cancelled = false
-
-    type QueueEventData = Partial<{
-      items: QueueItem[]
-      queueItem: QueueItem
-      queueItemId: string
-    }> &
-      Record<string, unknown>
-
-    const matchesFilters = (item: QueueItem | undefined | null) => {
+  const matchesFilters = useCallback(
+    (item: QueueItem | undefined | null) => {
       if (!item) return false
       const matchesStatus =
         status === undefined
@@ -141,7 +132,19 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
             : item.status === status
       const matchesType = type ? item.type === type : true
       return matchesStatus && matchesType
-    }
+    },
+    [status, type]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    type QueueEventData = Partial<{
+      items: QueueItem[]
+      queueItem: QueueItem
+      queueItemId: string
+    }> &
+      Record<string, unknown>
 
     const handleEvent = (eventName: string, data?: QueueEventData) => {
       if (cancelled) return
@@ -289,7 +292,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       cancelled = true
       streamAbortRef.current?.abort()
     }
-  }, [appendEventLog, fetchQueueItems, normalizeQueueItem, limit, status, type])
+  }, [appendEventLog, fetchQueueItems, normalizeQueueItem, matchesFilters, limit, status, type])
 
   const submitJob = useCallback(
     async (request: SubmitJobRequest): Promise<string> => {
@@ -308,14 +311,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       })
 
       const normalized = normalizeQueueItem(queueItem)
-      setQueueItems((prev) => [normalized, ...prev])
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev].slice(0, limit)
+      })
       const id = normalized.id ?? queueItem.id
       if (!id) {
         throw new Error('Queue item ID not returned from server')
       }
       return id
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters, limit]
   )
 
   const submitCompany = useCallback(
@@ -329,14 +335,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       })
 
       const normalized = normalizeQueueItem(queueItem)
-      setQueueItems((prev) => [normalized, ...prev])
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev].slice(0, limit)
+      })
       const id = normalized.id ?? queueItem.id
       if (!id) {
         throw new Error('Queue item ID not returned from server')
       }
       return id
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters, limit]
   )
 
   const submitSourceDiscovery = useCallback(
@@ -348,14 +357,17 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       })
 
       const normalized = normalizeQueueItem(queueItem)
-      setQueueItems((prev) => [normalized, ...prev])
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev].slice(0, limit)
+      })
       const id = normalized.id ?? queueItem.id
       if (!id) {
         throw new Error('Queue item ID not returned from server')
       }
       return id
     },
-    [normalizeQueueItem]
+    [normalizeQueueItem, matchesFilters, limit]
   )
 
   const updateQueueItem = useCallback(
