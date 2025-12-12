@@ -57,7 +57,23 @@ export function startToolServer(): http.Server {
 
     req.on("end", async () => {
       try {
-        const { tool, params } = JSON.parse(body)
+        // Log raw body for debugging malformed requests
+        if (!body || body.trim().length === 0) {
+          logger.warn(`[ToolServer] Empty request body received`)
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ success: false, error: "Empty request body" }))
+          return
+        }
+
+        let parsed: { tool?: unknown; params?: unknown }
+        try {
+          parsed = JSON.parse(body)
+        } catch (parseErr) {
+          logger.error(`[ToolServer] JSON parse error. Body preview: "${body.slice(0, 100)}"`)
+          throw parseErr
+        }
+
+        const { tool, params } = parsed
 
         if (!tool || typeof tool !== "string") {
           res.writeHead(400, { "Content-Type": "application/json" })
@@ -68,7 +84,7 @@ export function startToolServer(): http.Server {
         logger.info(`[ToolServer] Executing: ${tool}`)
         const startTime = Date.now()
 
-        const result = await executeTool(tool, params || {})
+        const result = await executeTool(tool, (params || {}) as Record<string, unknown>)
 
         const duration = Date.now() - startTime
         logger.info(`[ToolServer] ${tool} completed in ${duration}ms (success=${result.success})`)
