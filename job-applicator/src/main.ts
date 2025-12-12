@@ -163,6 +163,16 @@ async function createWindow(): Promise<void> {
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
+  // Intercept new window/tab requests and navigate in the same BrowserView
+  // This prevents job application pages from opening in separate windows
+  // which would break the form fill flow
+  browserView.webContents.setWindowOpenHandler(({ url }) => {
+    logger.info(`Intercepted new window request: ${url}`)
+    // Navigate in the same BrowserView instead of opening a new window
+    browserView?.webContents.loadURL(url)
+    return { action: "deny" }
+  })
+
   // Capture renderer console messages and errors BEFORE loading HTML
 mainWindow.webContents.on("console-message", (_event: unknown, level: number, message: string, line: number, sourceId: string) => {
     const levelName = ["verbose", "info", "warning", "error"][level] || "unknown"
@@ -1463,6 +1473,12 @@ app.whenReady().then(() => {
     } else {
       browserView?.webContents.openDevTools({ mode: "detach" })
     }
+  })
+
+  // Register Ctrl+R to refresh job matches (works even when BrowserView has focus)
+  globalShortcut.register("CommandOrControl+R", () => {
+    logger.info("Refreshing job matches via global shortcut...")
+    mainWindow?.webContents.send("refresh-job-matches")
   })
 
   // Create application menu with DevTools options
