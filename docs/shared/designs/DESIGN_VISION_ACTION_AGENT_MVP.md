@@ -27,7 +27,7 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
 }
 ```
 
-## Loop (max 40 steps per fill)
+## Loop (max 40 steps per fill, configurable)
 1. Capture single screenshot of BrowserView at ~1280px wide, JPEG quality ~60; compute a fast hash (e.g., sha1) for “no visual change” detection; discard previous image bytes after hashing.
 2. Gather context: goal text, current URL, last 3 actions/outcomes, hash of previous screenshot.
 3. Send context + screenshot to the local CLI provider (claude/codex/gemini wrapper) expecting the JSON schema above. If JSON parse fails, retry once with a hard stop.
@@ -39,6 +39,8 @@ Replace brittle selector-based form filling in the Electron applicator with a mi
    - wait → `setTimeout`
 5. Stop when action is `done`, when two consecutive hashes match (stuck), or when step cap reached.
 6. Stream concise progress events to renderer (step number, action kind, result) for user visibility.
+
+**Configurability:** expose `AGENT_MAX_STEPS` in app config (env or simple JSON settings) with a default of 40; the loop reads this value once at start so operators can tune without code changes.
 
 ## Prompts (per step, minimal)
 ```
