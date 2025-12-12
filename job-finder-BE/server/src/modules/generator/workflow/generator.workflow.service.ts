@@ -524,6 +524,10 @@ export class GeneratorWorkflowService {
             throw new Error(`AI returned invalid/hallucinated skills in category "${s.category}": ${invalidSkills.join(', ')}. Skills must match exactly from content items.`)
           }
 
+          if (validItems.length === 0) {
+            throw new Error(`AI returned no valid skill items in category "${s.category}" - all items were filtered out`)
+          }
+
           return { category: s.category, items: validItems }
         })
 
