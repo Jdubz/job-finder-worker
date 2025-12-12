@@ -132,7 +132,9 @@ export function startToolServer(): http.Server {
         try {
           parsed = JSON.parse(body)
         } catch (parseErr) {
-          logger.error(`[ToolServer] JSON parse error. Body preview: "${body.slice(0, 100)}"`)
+          // Log full details for debugging malformed requests
+          logger.error(`[ToolServer] JSON parse error. Full body: "${body}"`)
+          logger.error(`[ToolServer] Request headers: ${JSON.stringify(req.headers)}`)
           throw parseErr
         }
 
