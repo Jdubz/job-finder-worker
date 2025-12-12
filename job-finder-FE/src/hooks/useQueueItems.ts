@@ -131,12 +131,27 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     }> &
       Record<string, unknown>
 
+    const matchesFilters = (item: QueueItem | undefined | null) => {
+      if (!item) return false
+      const matchesStatus =
+        status === undefined
+          ? true
+          : Array.isArray(status)
+            ? status.includes(item.status)
+            : item.status === status
+      const matchesType = type ? item.type === type : true
+      return matchesStatus && matchesType
+    }
+
     const handleEvent = (eventName: string, data?: QueueEventData) => {
       if (cancelled) return
       appendEventLog(eventName, data ?? null)
       if (eventName === "snapshot" && data?.items) {
-        const items = data.items ?? []
-        setQueueItems(items.map(normalizeQueueItem))
+        const items = (data.items ?? [])
+          .map(normalizeQueueItem)
+          .filter((item) => matchesFilters(item))
+          .slice(0, limit)
+        setQueueItems(items)
         setLoading(false)
         return
       }
@@ -147,9 +162,13 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
         startTransition(() => {
           setQueueItems((prev) => {
             const normalized = normalizeQueueItem(queueItem)
+            // Drop items that no longer match filters
+            if (!matchesFilters(normalized)) {
+              return prev.filter((i) => i.id !== normalized.id)
+            }
             const existing = prev.find((i) => i.id === normalized.id)
             if (!existing) {
-              return [normalized, ...prev]
+              return [normalized, ...prev].slice(0, limit)
             }
             return prev.map((item) => (item.id === normalized.id ? normalized : item))
           })
