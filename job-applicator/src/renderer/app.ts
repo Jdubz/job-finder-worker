@@ -163,7 +163,8 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 
 
 // Load job matches from backend
-async function loadJobMatches() {
+// Returns true on success, false on failure
+async function loadJobMatches(): Promise<boolean> {
   jobList.innerHTML = '<div class="loading-placeholder">Loading...</div>'
 
   try {
@@ -172,15 +173,18 @@ async function loadJobMatches() {
     if (result.success && Array.isArray(result.data)) {
       jobMatches = result.data
       renderJobList()
+      return true
     } else {
       jobMatches = []
       jobList.innerHTML = `<div class="empty-placeholder">${result.message || "Failed to load job matches"}</div>`
+      return false
     }
   } catch (err) {
     jobMatches = []
     const message = err instanceof Error ? err.message : String(err)
     jobList.innerHTML = `<div class="empty-placeholder">Error: ${message}</div>`
     console.error("Failed to load job matches:", err)
+    return false
   }
 }
 
@@ -191,16 +195,15 @@ async function refreshJobMatches() {
   refreshJobsBtn.disabled = true
   setStatus("Refreshing job matches...", "loading")
 
-  try {
-    await loadJobMatches()
+  const success = await loadJobMatches()
+  if (success) {
     setStatus(`Loaded ${jobMatches.length} job matches`, "success")
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    setStatus(`Refresh failed: ${message}`, "error")
-  } finally {
-    refreshJobsBtn.classList.remove("refreshing")
-    refreshJobsBtn.disabled = false
+  } else {
+    setStatus("Failed to refresh job matches", "error")
   }
+
+  refreshJobsBtn.classList.remove("refreshing")
+  refreshJobsBtn.disabled = false
 }
 
 // Render job matches list
