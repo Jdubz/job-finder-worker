@@ -298,23 +298,20 @@ class SourceProcessor(BaseProcessor):
 
                 # Enforce invariant: a source is either company-specific OR an aggregator, not both
                 # If it's on an aggregator domain, it's an aggregator source (no company_id)
-                if aggregator_domain:
-                    persistence_company_id = None
-                    persistence_aggregator = aggregator_domain
-                else:
-                    persistence_company_id = company_id
-                    persistence_aggregator = None
+                company_id, aggregator_domain = (
+                    (None, aggregator_domain) if aggregator_domain else (company_id, None)
+                )
 
                 source_id = self.sources_manager.create_from_discovery(
                     name=source_name,
                     source_type=source_type,
                     config=source_config,
-                    company_id=persistence_company_id,
-                    aggregator_domain=persistence_aggregator,
+                    company_id=company_id,
+                    aggregator_domain=aggregator_domain,
                     status=initial_status,
                 )
             except DuplicateSourceError:
-                if company_id:
+                if company_id or aggregator_domain:
                     # Aggregator may be stripped; fall back to name lookup for dupe handling
                     existing = self.sources_manager.get_source_by_name(source_name)
                     if existing:
