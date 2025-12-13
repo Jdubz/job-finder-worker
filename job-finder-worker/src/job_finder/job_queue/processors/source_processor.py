@@ -317,8 +317,8 @@ class SourceProcessor(BaseProcessor):
                     status=initial_status,
                 )
             except DuplicateSourceError:
-                if company_id:
-                    # Aggregator may be stripped; fall back to name lookup for dupe handling
+                if company_id or aggregator_domain:
+                    # Handle race condition - fall back to name lookup for dupe handling
                     existing = self.sources_manager.get_source_by_name(source_name)
                     if existing:
                         self._handle_existing_source(item, existing, context="race")
