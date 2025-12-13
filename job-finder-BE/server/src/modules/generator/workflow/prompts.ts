@@ -308,9 +308,10 @@ export function buildResumePrompt(
 
   // JSON schema and output format instructions (content guidance is in database prompt)
   const jsonSchema = `
-OUTPUT FORMAT:
-You MUST respond with ONLY valid JSON. Do NOT ask questions or include any text outside the JSON object.
-If a field is missing, leave it empty/null but still return the full JSON object.
+OUTPUT FORMAT (STRICT):
+- You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- If you cannot populate a field, return it as an empty string or null, but still include the field.
 
 Return the result as a JSON object with this exact structure:
 {
