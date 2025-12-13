@@ -5,4 +5,5 @@ export const promptConfigSchema = z.object({
   coverLetterGeneration: z.string(),
   jobScraping: z.string(),
   jobMatching: z.string(),
+  formFill: z.string(),
 })

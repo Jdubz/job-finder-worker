@@ -12,6 +12,7 @@ const createApp = () => {
     coverLetterGeneration: 'cover letter template',
     jobScraping: 'job scraping template',
     jobMatching: 'job matching template',
+    formFill: 'form fill template',
   })
 
   const app = express()

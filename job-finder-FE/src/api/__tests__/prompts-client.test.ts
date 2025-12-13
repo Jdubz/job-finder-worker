@@ -11,6 +11,7 @@ const testPrompts: PromptConfig = {
   coverLetterGeneration: "test cover letter prompt",
   jobScraping: "test job scraping prompt",
   jobMatching: "test job matching prompt",
+  formFill: "test form fill prompt",
 }
 
 describe("PromptsClient", () => {

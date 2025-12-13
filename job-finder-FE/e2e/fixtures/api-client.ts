@@ -370,6 +370,7 @@ export async function seedBaseConfigs(request: APIRequestContext) {
         coverLetterGeneration: "E2E test cover letter generation prompt",
         jobScraping: "E2E test job scraping prompt",
         jobMatching: "E2E test job matching prompt",
+        formFill: "E2E test form fill prompt",
       },
       userEmail: "owner@jobfinder.dev",
     },
