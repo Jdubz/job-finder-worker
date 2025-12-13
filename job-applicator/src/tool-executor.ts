@@ -1079,7 +1079,7 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
             if (target.origin !== window.location.origin) {
               return { success: false, error: 'Navigation blocked: link points outside current site' };
             }
-          } catch {
+          } catch (e) {
             return { success: false, error: 'Navigation blocked: invalid link href' };
           }
         }
