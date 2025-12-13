@@ -418,7 +418,7 @@ class GenericScraper:
         return soup.select(self.config.job_selector)
 
     def _enrich_from_detail(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Enrich a job by fetching its detail page. Errors propagate.
+        """Enrich a job by fetching its detail page.
 
         Extracts data using multiple strategies in order of reliability:
         1. JSON-LD JobPosting schema (via _extract_from_jsonld)
@@ -427,6 +427,10 @@ class GenericScraper:
 
         Only fills fields that are missing to avoid clobbering list-page data.
         Applies rate limiting delay after HTTP requests, even on failure.
+
+        404/410 errors are handled gracefully (stale job listings) - the job is
+        returned unmodified. Other HTTP errors propagate to allow source-level
+        error handling.
         """
         url = job.get("url")
         if not url:
@@ -442,6 +446,15 @@ class GenericScraper:
         try:
             headers = {**DEFAULT_HEADERS, **self.config.headers}
             response = requests.get(url, headers=headers, timeout=15)
+
+            # Handle stale job listings gracefully - 404/410 means the job was removed
+            if response.status_code in (404, 410):
+                logger.debug(
+                    "Detail page not found (stale listing?), skipping enrichment: %s",
+                    url,
+                )
+                return job
+
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
 

@@ -182,6 +182,16 @@ class ScrapeRunner:
                     f"Anti-bot protection: {e.reason}",
                 )
 
+            except ConfigurationError as e:
+                # Invalid config - auto-disable to prevent repeated failures
+                error_msg = f"Config error for {source.get('name')}: {str(e)}"
+                logger.warning(error_msg)
+                stats["errors"].append(error_msg)
+                self.sources_manager.disable_source_with_note(
+                    source["id"],
+                    f"Invalid configuration: {str(e)}. Source needs manual review.",
+                )
+
             except Exception as e:
                 error_msg = f"Error processing {source.get('name')}: {str(e)}"
                 logger.error(error_msg, exc_info=True)

@@ -696,7 +696,10 @@ class SourceProcessor(BaseProcessor):
         # Refresh config-driven components before processing
         self._refresh_runtime_config()
 
-        source_id = item.scraped_data.get("source_id") if item.scraped_data else None
+        # Check item.source_id first (populated from input), then fall back to scraped_data (output)
+        source_id = item.source_id or (
+            item.scraped_data.get("source_id") if item.scraped_data else None
+        )
         source_url = item.url if item.url else None
 
         logger.info(f"SCRAPE_SOURCE: Processing source {source_id or source_url}")
@@ -774,10 +777,15 @@ class SourceProcessor(BaseProcessor):
                 try:
                     expanded_config = expand_config(source_type, config)
                 except ValueError as e:
+                    # Auto-disable the source to prevent repeated failures
+                    self.sources_manager.disable_source_with_note(
+                        source.get("id"),
+                        f"Invalid configuration: {e}. Source needs manual review.",
+                    )
                     self.queue_manager.update_status(
                         item.id,
                         QueueStatus.FAILED,
-                        f"Invalid config: {e}",
+                        f"Invalid config (source disabled): {e}",
                         error_details=f"Source {source_name} config expansion failed",
                     )
                     return
