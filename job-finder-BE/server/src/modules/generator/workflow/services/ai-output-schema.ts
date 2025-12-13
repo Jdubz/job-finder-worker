@@ -97,7 +97,8 @@ export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchem
 
 // =============================================================================
 // JSON Schemas for Claude CLI --json-schema flag
-// These enforce structured output during generation (not just validation after)
+// These schemas encourage structured output during generation (e.g., with Claude CLI's --json-schema flag),
+// but Zod validation still runs after generation as a secondary validation and recovery layer.
 // =============================================================================
 
 /**
@@ -134,7 +135,7 @@ export const resumeJsonSchema: Record<string, unknown> = {
       properties: {
         name: { type: 'string', description: 'Full name of the candidate' },
         title: { type: 'string', description: 'Professional title or headline (e.g., "Senior Software Engineer")' },
-        summary: { type: 'string', description: 'Brief professional summary for the header section (optional, professionalSummary is primary)' },
+        summary: { type: 'string', description: 'Brief professional summary for the header section' },
         contact: {
           type: 'object',
           description: 'Contact information',
@@ -149,7 +150,7 @@ export const resumeJsonSchema: Record<string, unknown> = {
           additionalProperties: false
         }
       },
-      required: ['title', 'contact'],
+      required: ['name', 'title', 'summary', 'contact'],
       additionalProperties: false
     },
     professionalSummary: { type: 'string', description: 'Professional summary paragraph tailored to the job (2-4 sentences)' },
@@ -167,7 +168,7 @@ export const resumeJsonSchema: Record<string, unknown> = {
           highlights: { type: 'array', items: { type: 'string' }, description: 'Key achievements and responsibilities as bullet points' },
           technologies: { type: 'array', items: { type: 'string' }, description: 'Technologies and tools used in this role' }
         },
-        required: ['company', 'role', 'startDate', 'highlights'],
+        required: ['company', 'role', 'startDate', 'endDate', 'highlights'],
         additionalProperties: false
       }
     },
@@ -201,7 +202,7 @@ export const resumeJsonSchema: Record<string, unknown> = {
       }
     }
   },
-  required: ['personalInfo', 'professionalSummary', 'experience', 'skills', 'education'],
+  required: ['personalInfo', 'professionalSummary', 'experience'],
   additionalProperties: false
 }
 

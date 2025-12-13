@@ -506,13 +506,13 @@ function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): st
 
       // Helper to build a unique selector for an input
       function buildSelector(input) {
-        if (input.id) return '#' + CSS.escape(input.id);
-        if (input.name) return 'input[type="file"][name="' + CSS.escape(input.name) + '"]';
+        if (input.id) return \`#\${CSS.escape(input.id)}\`;
+        if (input.name) return \`input[type="file"][name="\${CSS.escape(input.name)}"]\`;
 
-        // Build an nth-child selector as fallback
+        // Build an nth-of-type selector as fallback
         const allInputs = Array.from(document.querySelectorAll('input[type="file"]'));
         const index = allInputs.indexOf(input);
-        if (index >= 0) return 'input[type="file"]:nth-of-type(' + (index + 1) + ')';
+        if (index >= 0) return \`input[type="file"]:nth-of-type(\${index + 1})\`;
 
         return 'input[type="file"]';
       }
@@ -529,7 +529,7 @@ function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): st
           selector: buildSelector(input),
           matchesTarget,
           matchesOther,
-          text: text.substring(0, 200) // For debugging
+          text: text.length > 200 ? text.substring(0, 200) + '...' : text // For debugging
         };
       });
 
@@ -546,11 +546,12 @@ function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): st
       // (For cover letter: prefer inputs not labeled as resume)
       const notOther = scored.filter(s => !s.matchesOther);
       if (notOther.length > 0) {
-        // For resume, take the first non-cover-letter input
-        // For cover letter, take the second non-resume input if available, else first
+        // For cover letter, take the second non-resume input if available
+        // (assumes resume input typically comes first)
         if (targetType === 'coverLetter' && notOther.length > 1) {
           return notOther[1].selector;
         }
+        // For resume (or cover letter with only one option), take the first
         return notOther[0].selector;
       }
 
@@ -1244,20 +1245,28 @@ ipcMain.handle(
 
       // Set upload callback - this allows the tool executor to trigger uploads
       setUploadCallback(async (selector: string, type: "resume" | "coverLetter", documentUrl: string) => {
-        if (!browserView) {
-          return { success: false, message: "BrowserView not initialized" }
-        }
-
-        logger.info(`[Upload] Agent uploading ${type}: ${documentUrl} to ${selector}`)
-
-        // Download document from API
-        const resolvedPath = await downloadDocument(documentUrl)
-
-        // Use Electron's debugger API to set the file
-        await setFileInputFiles(browserView.webContents, selector, [resolvedPath])
-
         const docTypeLabel = type === "coverLetter" ? "Cover letter" : "Resume"
-        return { success: true, message: `${docTypeLabel} uploaded successfully to ${selector}` }
+
+        try {
+          if (!browserView) {
+            return { success: false, message: "BrowserView not initialized" }
+          }
+
+          logger.info(`[Upload] Agent uploading ${type}: ${documentUrl} to ${selector}`)
+
+          // Download document from API
+          const resolvedPath = await downloadDocument(documentUrl)
+
+          // Use Electron's debugger API to set the file
+          await setFileInputFiles(browserView.webContents, selector, [resolvedPath])
+
+          return { success: true, message: `${docTypeLabel} uploaded successfully to ${selector}` }
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err)
+          const contextMsg = `Failed to upload ${docTypeLabel} to "${selector}": ${errMsg}`
+          logger.error(`[Upload] ${contextMsg}`)
+          return { success: false, message: contextMsg }
+        }
       })
 
       // Set completion callback to kill CLI when done is called

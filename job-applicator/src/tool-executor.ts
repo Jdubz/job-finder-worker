@@ -70,7 +70,15 @@ let currentJobMatchId: string | null = null
 let userProfile: unknown = null
 let jobContext: unknown = null
 let documentUrls: { resumeUrl?: string; coverLetterUrl?: string } = {}
-let uploadCallback: ((selector: string, type: "resume" | "coverLetter", documentUrl: string) => Promise<{ success: boolean; message: string }>) | null = null
+
+/** Callback type for uploading documents to file inputs */
+type UploadCallback = (
+  selector: string,
+  type: "resume" | "coverLetter",
+  documentUrl: string
+) => Promise<{ success: boolean; message: string }>
+
+let uploadCallback: UploadCallback | null = null
 
 /**
  * Set the current job match ID for form filling context
@@ -111,9 +119,7 @@ export function setDocumentUrls(urls: { resumeUrl?: string; coverLetterUrl?: str
  * Set the upload callback for the upload_file tool
  * This callback is provided by main.ts and handles the actual file upload
  */
-export function setUploadCallback(
-  callback: ((selector: string, type: "resume" | "coverLetter", documentUrl: string) => Promise<{ success: boolean; message: string }>) | null
-): void {
+export function setUploadCallback(callback: UploadCallback | null): void {
   uploadCallback = callback
   logger.info(`[ToolExecutor] Upload callback ${callback ? "set" : "cleared"}`)
 }
@@ -1334,7 +1340,7 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
   }
 
   if (!uploadCallback) {
-    return { success: false, error: "Upload functionality not available" }
+    return { success: false, error: "Upload functionality not configured: callback not initialized" }
   }
 
   const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
