@@ -12,6 +12,7 @@ export interface PromptConfig {
   coverLetterGeneration: string
   jobScraping: string
   jobMatching: string
+  formFill: string
 }
 
 // -----------------------------------------------------------

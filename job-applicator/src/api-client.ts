@@ -9,6 +9,7 @@ import type {
   ApiSuccessResponse,
   GetConfigEntryResponse,
   GetApplicatorProfileResponse,
+  GetPromptsResponse,
   ListJobMatchesResponse,
   GetJobMatchResponse,
   ListContentItemsResponse,
@@ -63,6 +64,25 @@ export async function fetchPersonalInfo(): Promise<PersonalInfo> {
 
   const data: ApiSuccessResponse<GetConfigEntryResponse> = await res.json()
   return data.data.config.payload as PersonalInfo
+}
+
+/**
+ * Fetch form fill prompt from prompts API
+ */
+export async function fetchFormFillPrompt(): Promise<string> {
+  const res = await fetchWithRetry(
+    `${getApiUrl()}/prompts`,
+    fetchOptions(),
+    { maxRetries: 2, timeoutMs: 10000 }
+  )
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to fetch prompts: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<GetPromptsResponse> = await res.json()
+  return data.data.prompts.formFill
 }
 
 // ============================================================================
