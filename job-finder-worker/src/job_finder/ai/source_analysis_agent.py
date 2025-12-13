@@ -150,12 +150,11 @@ job discovery system. Your analysis will determine how the source is classified 
 
 Always disable with clear notes explaining WHY:
 - Bot protection detected (403, Cloudflare, etc.)
-- JavaScript-only rendering required
 - Authentication required
 - DNS resolution failure
 - URL is a single job listing
 - URL is an ATS provider's own site
-- No discoverable API/RSS/HTML endpoint for jobs
+- No discoverable API/RSS/HTML/JS-rendered endpoint for jobs
 
 ### Known Aggregator Domains
 
