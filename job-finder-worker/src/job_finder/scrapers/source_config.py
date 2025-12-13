@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+DEFAULT_RENDER_TIMEOUT_MS = 20_000
+
 
 @dataclass
 class SourceConfig:
@@ -86,7 +88,7 @@ class SourceConfig:
     # JS rendering
     requires_js: bool = False
     render_wait_for: str = ""
-    render_timeout_ms: int = 20_000
+    render_timeout_ms: int = DEFAULT_RENDER_TIMEOUT_MS
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
@@ -125,7 +127,7 @@ class SourceConfig:
             company_filter_param=data.get("company_filter_param", ""),
             requires_js=bool(data.get("requires_js", False)),
             render_wait_for=data.get("render_wait_for", ""),
-            render_timeout_ms=int(data.get("render_timeout_ms", 20_000)),
+            render_timeout_ms=int(data.get("render_timeout_ms", DEFAULT_RENDER_TIMEOUT_MS)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -179,7 +181,7 @@ class SourceConfig:
             result["requires_js"] = self.requires_js
         if self.render_wait_for:
             result["render_wait_for"] = self.render_wait_for
-        if self.render_timeout_ms and self.render_timeout_ms != 20_000:
+        if self.render_timeout_ms and self.render_timeout_ms != DEFAULT_RENDER_TIMEOUT_MS:
             result["render_timeout_ms"] = self.render_timeout_ms
 
         return result
