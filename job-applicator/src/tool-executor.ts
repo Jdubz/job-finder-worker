@@ -801,7 +801,6 @@ async function handleSelectCombobox(params: { selector: string; value: string })
 
   try {
     const selectorJson = JSON.stringify(selector)
-    const valueJson = JSON.stringify(value)
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
     // Helper function to find and click the best matching option
