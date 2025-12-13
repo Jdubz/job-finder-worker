@@ -14,6 +14,7 @@ type AgentExecutionResult = {
   model: string | undefined
 }
 
+
 class NoAgentsAvailableError extends Error {
   constructor(message: string, readonly taskType: AgentTaskType, readonly triedAgents: string[]) {
     super(message)
@@ -187,7 +188,12 @@ export class AgentManager {
     return parts.join('|')
   }
 
-  private async runAgent(agent: AgentConfig, agentId: string, prompt: string, model: string | undefined): Promise<string> {
+  private async runAgent(
+    agent: AgentConfig,
+    agentId: string,
+    prompt: string,
+    model: string | undefined
+  ): Promise<string> {
     if (agent.interface !== 'cli') {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }

@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getUrl: () => ipcRenderer.invoke("get-url"),
 
   // Form Fill API (MCP-based)
-  fillForm: (options: { jobMatchId: string; jobContext: string }) =>
+  fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) =>
     ipcRenderer.invoke("fill-form", options),
   stopFillForm: () => ipcRenderer.invoke("stop-fill-form"),
   sendAgentInput: (input: string) => ipcRenderer.invoke("send-agent-input", input),

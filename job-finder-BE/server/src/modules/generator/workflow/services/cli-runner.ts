@@ -83,7 +83,11 @@ function sanitizeCliError(raw?: string): string {
   return text.slice(0, 400).trim()
 }
 
-function buildCommand(provider: CliProvider, prompt: string, model?: string): { cmd: string; args: string[] } {
+function buildCommand(
+  provider: CliProvider,
+  prompt: string,
+  model?: string
+): { cmd: string; args: string[] } {
   if (provider === 'codex') {
     return {
       cmd: getCodexCommand(),

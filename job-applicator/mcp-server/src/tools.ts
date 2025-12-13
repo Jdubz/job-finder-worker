@@ -220,4 +220,27 @@ export const tools: Tool[] = [
       required: ["summary"],
     },
   },
+  {
+    name: "upload_file",
+    description:
+      "Upload a document (resume or cover letter) to a file input on the page. " +
+      "This uploads the user's pre-selected document - it does NOT generate a new document. " +
+      "Use this when you encounter a file upload field for resume or cover letter. " +
+      "You must provide the CSS selector for the file input element.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: {
+          type: "string",
+          description: "CSS selector for the file input element to upload to",
+        },
+        type: {
+          type: "string",
+          enum: ["resume", "coverLetter"],
+          description: "The type of document to upload: 'resume' or 'coverLetter'",
+        },
+      },
+      required: ["selector", "type"],
+    },
+  },
 ]
