@@ -488,11 +488,13 @@ export class GeneratorWorkflowService {
         if (!Array.isArray(skills)) return []
 
         return skills
-          .filter((s): s is { category?: string; items?: unknown[] } => typeof s === 'object' && s !== null)
+          .filter((s) => typeof s === 'object' && s !== null)
           .map((s) => {
-            const category = (s.category || '').toString().trim() || 'Skills'
-            const items = Array.isArray(s.items)
-              ? s.items.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            const category = ((s as { category?: unknown }).category ?? '').toString().trim() || 'Skills'
+            const items = Array.isArray((s as { items?: unknown }).items)
+              ? ((s as { items?: unknown[] }).items || []).filter(
+                  (item): item is string => typeof item === 'string' && item.trim().length > 0
+                )
               : []
             return { category, items }
           })
