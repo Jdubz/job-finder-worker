@@ -217,8 +217,33 @@ class SourceProcessor(BaseProcessor):
                 probe_result = self._probe_config(source_type, source_config)
 
                 if probe_result.status == "error":
-                    should_disable = True
-                    disabled_notes = disabled_notes or probe_result.hint
+                    # One-shot AI repair for common, recoverable errors (404/403/empty body, wrong endpoint)
+                    repair = self._agent_repair_error(
+                        company_name=company_name,
+                        config=source_config,
+                        probe=probe_result,
+                    )
+                    if repair and repair.get("decision") == "update_config":
+                        updated_config = repair.get("config")
+                        if updated_config:
+                            retry = self._probe_config(
+                                updated_config.get("type", source_type), updated_config
+                            )
+                            if retry.status in ("success", "empty"):
+                                source_config = updated_config
+                                probe_result = retry
+                            else:
+                                should_disable = True
+                                disabled_notes = (
+                                    retry.hint or repair.get("reason") or disabled_notes
+                                )
+                        else:
+                            should_disable = True
+                            disabled_notes = repair.get("reason") or disabled_notes
+                    else:
+                        should_disable = True
+                        repair_reason = repair.get("reason") if repair else None
+                        disabled_notes = repair_reason or probe_result.hint or disabled_notes
                 elif probe_result.status == "empty":
                     validation = self._agent_validate_empty(
                         company_name=company_name,
@@ -271,19 +296,21 @@ class SourceProcessor(BaseProcessor):
                     self._handle_existing_source(item, dup, context="preflight")
                     return
 
+                # Enforce invariant: if we have a company, drop aggregator_domain before persistence
+                persistence_aggregator = None if company_id else aggregator_domain
+
                 source_id = self.sources_manager.create_from_discovery(
                     name=source_name,
                     source_type=source_type,
                     config=source_config,
                     company_id=company_id,
-                    aggregator_domain=aggregator_domain,
+                    aggregator_domain=persistence_aggregator,
                     status=initial_status,
                 )
             except DuplicateSourceError:
-                if company_id and aggregator_domain:
-                    existing = self.sources_manager.get_source_by_company_and_aggregator(
-                        company_id, aggregator_domain
-                    )
+                if company_id:
+                    # Aggregator may be stripped; fall back to name lookup for dupe handling
+                    existing = self.sources_manager.get_source_by_name(source_name)
                     if existing:
                         self._handle_existing_source(item, existing, context="race")
                         return
@@ -597,6 +624,42 @@ class SourceProcessor(BaseProcessor):
             return data if isinstance(data, dict) else {"decision": "valid_empty"}
         except Exception:  # noqa: BLE001
             return {"decision": "valid_empty"}
+
+    def _agent_repair_error(
+        self,
+        company_name: Optional[str],
+        config: Dict[str, Any],
+        probe: ProbeResult,
+    ) -> Optional[Dict[str, Any]]:
+        """Ask agent for a single-shot repair when probe errors (404/403/wrong endpoint)."""
+        if not self.agent_manager:
+            return None
+
+        sample = (probe.sample or "")[:1200]
+        prompt = (
+            "You proposed a job board config and the probe errored.\n"
+            f"Company: {company_name or 'Unknown'}\n"
+            f"URL: {config.get('url', '')}\n"
+            f"Type: {config.get('type', '')}\n"
+            f"Status: {probe.status_code or 'n/a'}\n"
+            f"Error hint: {probe.hint or ''}\n"
+            "Sample/truncated response:\n" + sample + "\n"
+            "Decide: update_config (return corrected config) | invalid.\n"
+            'Respond JSON: {"decision": "update_config|invalid", "reason": "short", "config": {..optional..}}.'
+            "If Workday/Lever/Greenhouse/Ashby is detected, return the correct endpoint/slug."
+        )
+
+        try:
+            agent_result = self.agent_manager.execute(
+                task_type="analysis",
+                prompt=prompt,
+                max_tokens=400,
+                temperature=0.0,
+            )
+            data = json.loads(extract_json_from_response(agent_result.text))
+            return data if isinstance(data, dict) else None
+        except Exception:  # noqa: BLE001
+            return None
 
     # ============================================================
     # SOURCE SCRAPING

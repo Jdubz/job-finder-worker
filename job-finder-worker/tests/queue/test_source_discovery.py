@@ -733,7 +733,8 @@ class TestPlaceholderNaming:
 
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["name"] == "Yahoo Jobs (myworkdayjobs.com)"
-        assert create_kwargs["aggregator_domain"] == "myworkdayjobs.com"
+        # Aggregator domain should be stripped when a company is linked
+        assert create_kwargs["aggregator_domain"] is None
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
