@@ -213,23 +213,15 @@ describe("CompaniesPage", () => {
   })
 
   describe("Status badges", () => {
-    it("marks company as Pending when a pending queue item exists", async () => {
-      mockQueueItems = [
-        {
-          id: "queue-1",
-          type: "company",
-          status: "pending",
-          company_id: "company-3",
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
-      ] as any
-
+    it("marks company as Complete only when all fields are present", async () => {
       renderWithProviders()
 
       await waitFor(() => {
-        const row = screen.getByText("StartupXYZ").closest("tr")!
-        expect(within(row).getByText(/pending/i)).toBeInTheDocument()
+        const acmeRow = screen.getByText("Acme Corporation").closest("tr")!
+        expect(within(acmeRow).getByText(/complete/i)).toBeInTheDocument()
+
+        const techRow = screen.getByText("TechCorp").closest("tr")!
+        expect(within(techRow).getByText(/partial/i)).toBeInTheDocument()
       })
     })
   })
