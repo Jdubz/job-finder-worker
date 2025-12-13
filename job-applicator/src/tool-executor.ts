@@ -216,6 +216,9 @@ async function executeToolInternal(
     case "select_combobox":
       return await handleSelectCombobox(params as { selector: string; value: string })
 
+    case "peek_dropdown":
+      return await handlePeekDropdown(params as { selector: string })
+
     case "set_checkbox":
       return await handleSetCheckbox(params as { selector: string; checked: boolean })
 
@@ -647,9 +650,141 @@ async function handleSelectOption(params: { selector: string; value: string }): 
   }
 }
 
+/** Common dropdown option selectors used by UI libraries */
+const DROPDOWN_OPTION_SELECTORS = [
+  // ARIA-compliant dropdowns (most reliable)
+  '[role="listbox"] [role="option"]',
+  '[role="listbox"] li',
+  '[role="menu"] [role="menuitem"]',
+  '[role="menu"] li',
+  // Common class patterns
+  '.dropdown-menu li',
+  '.dropdown-menu a',
+  '.autocomplete-results li',
+  '.autocomplete-results div',
+  '.select-dropdown li',
+  '.suggestions li',
+  '.suggestions div',
+  '[class*="dropdown"] li',
+  '[class*="dropdown"] [class*="option"]',
+  '[class*="menu"] [class*="item"]',
+  '[class*="listbox"] [class*="option"]',
+  'ul[class*="select"] li',
+  'div[class*="select"] div[class*="option"]',
+  // Material UI
+  '[class*="MuiAutocomplete"] [role="option"]',
+  '[class*="MuiMenu"] [role="menuitem"]',
+  // React Select
+  '[class*="react-select"] [class*="option"]',
+  // Custom design systems (Dropbox dig-, Atlassian, etc.)
+  '[class*="dig-"] [class*="option"]',
+  '[class*="dig-"] [class*="item"]',
+  '[class*="Dropdown"] [class*="Item"]',
+  '[class*="Combobox"] [class*="Option"]',
+  '[class*="Typeahead"] [class*="Option"]',
+  '[class*="picker"] [class*="option"]',
+  '[class*="suggestions"] [class*="item"]',
+  // Data attributes
+  '[data-option]',
+  '[data-value]',
+  '[data-testid*="option"]',
+  // Popover/portal-based dropdowns (rendered at root)
+  '[id*="popover"] [role="option"]',
+  '[id*="portal"] [role="option"]',
+  '[id*="dropdown"] li',
+]
+
+/**
+ * Peek at dropdown options without selecting
+ * Opens the dropdown and returns available options for the agent to choose from
+ */
+async function handlePeekDropdown(params: { selector: string }): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const { selector } = params
+  if (!selector) {
+    return { success: false, error: "peek_dropdown requires selector" }
+  }
+
+  logger.info(`[ToolExecutor] peek_dropdown: opening ${selector}`)
+
+  try {
+    const selectorJson = JSON.stringify(selector)
+    const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
+
+    // Step 1: Focus/click to open dropdown
+    await browserView.webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${selectorJson});
+        if (!el) return { success: false, error: 'Element not found' };
+        el.focus();
+        el.click();
+        el.dispatchEvent(new Event('focus', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        return { success: true };
+      })()
+    `)
+
+    // Wait for dropdown to appear
+    await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
+
+    // Step 2: Collect all visible options
+    const result = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const dropdownSelectors = ${selectorsJson};
+        const options = [];
+        const seen = new Set();
+
+        for (const sel of dropdownSelectors) {
+          const els = document.querySelectorAll(sel);
+          for (const opt of els) {
+            const rect = opt.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            const style = window.getComputedStyle(opt);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+            const text = opt.textContent?.trim() || '';
+            if (!text || seen.has(text)) continue;
+            seen.add(text);
+
+            options.push({
+              text: text,
+              value: opt.getAttribute('data-value') || text,
+            });
+          }
+        }
+
+        return { success: true, options: options.slice(0, 30) };
+      })()
+    `)
+
+    logger.info(`[ToolExecutor] peek_dropdown found ${result.options?.length || 0} options`)
+    return {
+      success: true,
+      data: {
+        options: result.options || [],
+        hint: result.options?.length === 0
+          ? "No dropdown options visible. Try typing a few characters first with select_combobox."
+          : "Choose the best matching option and use select_combobox with the EXACT text."
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+}
+
 /**
  * Select from a searchable dropdown (combobox/autocomplete)
- * Types into the input, waits for dropdown, then clicks the matching option
+ *
+ * IMPROVED ALGORITHM:
+ * 1. First, try to open dropdown without typing and look for a match
+ * 2. If no match, type incrementally (first few chars) to filter options
+ * 3. Select the BEST available match, even if not exact
+ * 4. For confirmation fields, match semantic intent (e.g., "yes" -> "I confirm...")
  */
 async function handleSelectCombobox(params: { selector: string; value: string }): Promise<ToolResult> {
   if (!browserView) {
@@ -667,181 +802,185 @@ async function handleSelectCombobox(params: { selector: string; value: string })
   try {
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
+    const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
-    // Step 1: Focus and clear the input, then type the value
-    const typeResult = await browserView.webContents.executeJavaScript(`
-      (() => {
-        const selector = ${selectorJson};
-        const value = ${valueJson};
-        const el = document.querySelector(selector);
-        if (!el) return { success: false, error: 'Element not found: ' + selector };
-        if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
+    // Helper function to find and click the best matching option
+    const findAndSelectOption = async (searchValue: string): Promise<ToolResult> => {
+      const searchJson = JSON.stringify(searchValue.toLowerCase())
 
-        // Focus and clear
-        el.focus();
-        el.value = '';
+      const selectResult = await browserView!.webContents.executeJavaScript(`
+        (() => {
+          const targetValue = ${searchJson};
+          const dropdownSelectors = ${selectorsJson};
 
-        // Use native setter for React compatibility
-        const isInput = el instanceof HTMLInputElement;
-        const isTextarea = el instanceof HTMLTextAreaElement;
-        if (isInput || isTextarea) {
-          const prototype = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-          const nativeSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-          if (nativeSetter) {
-            nativeSetter.call(el, value);
-          } else {
-            el.value = value;
+          // Scoring function for matching options
+          function scoreMatch(text, target) {
+            const lowerText = text.toLowerCase();
+            if (lowerText === target) return 100; // Exact match
+            if (lowerText.startsWith(target)) return 80; // Starts with
+            if (target.startsWith(lowerText)) return 70; // Target starts with option (for short options)
+            if (lowerText.includes(target)) return 60; // Contains
+            if (target.includes(lowerText)) return 50; // Option contained in target
+
+            // Handle confirmation/consent fields: "yes" should match "I confirm and consent..."
+            const confirmPatterns = ['yes', 'agree', 'confirm', 'accept', 'consent'];
+            const isConfirmTarget = confirmPatterns.some(p => target.includes(p));
+            const isConfirmOption = confirmPatterns.some(p => lowerText.includes(p));
+            if (isConfirmTarget && isConfirmOption) return 75;
+
+            // Fuzzy: check if most words match
+            const targetWords = target.split(/\\s+/).filter(w => w.length > 2);
+            const textWords = lowerText.split(/\\s+/).filter(w => w.length > 2);
+            const matchingWords = targetWords.filter(tw => textWords.some(ow => ow.includes(tw) || tw.includes(ow)));
+            if (matchingWords.length > 0 && matchingWords.length >= targetWords.length * 0.5) {
+              return 40 + (matchingWords.length / targetWords.length) * 20;
+            }
+
+            return 0;
           }
-        } else {
-          el.value = value;
-        }
 
-        // Dispatch events to trigger dropdown
-        el.dispatchEvent(new Event('focus', { bubbles: true }));
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+          let bestMatch = null;
+          let bestScore = 0;
+          let allOptions = [];
 
-        return { success: true, typedValue: el.value };
-      })()
-    `)
+          for (const dropdownSelector of dropdownSelectors) {
+            const options = document.querySelectorAll(dropdownSelector);
+            if (options.length === 0) continue;
 
-    if (!typeResult.success) {
-      return typeResult
-    }
+            for (const opt of options) {
+              const rect = opt.getBoundingClientRect();
+              if (rect.width === 0 || rect.height === 0) continue;
+              const style = window.getComputedStyle(opt);
+              if (style.display === 'none' || style.visibility === 'hidden') continue;
 
-    // Step 2: Wait for dropdown to appear
-    await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
+              const text = opt.textContent?.trim() || '';
+              const dataValue = opt.getAttribute('data-value') || '';
+              if (!text && !dataValue) continue;
 
-    // Step 3: Find and click the matching option in the dropdown
-    const selectResult = await browserView.webContents.executeJavaScript(`
-      (() => {
-        const targetValue = ${valueJson}.toLowerCase();
+              allOptions.push(text || dataValue);
 
-        // Common dropdown selectors used by UI libraries
-        const dropdownSelectors = [
-          // ARIA-compliant dropdowns (most reliable)
-          '[role="listbox"] [role="option"]',
-          '[role="listbox"] li',
-          '[role="menu"] [role="menuitem"]',
-          '[role="menu"] li',
-          // Common class patterns
-          '.dropdown-menu li',
-          '.dropdown-menu a',
-          '.autocomplete-results li',
-          '.autocomplete-results div',
-          '.select-dropdown li',
-          '.suggestions li',
-          '.suggestions div',
-          '[class*="dropdown"] li',
-          '[class*="dropdown"] [class*="option"]',
-          '[class*="menu"] [class*="item"]',
-          '[class*="listbox"] [class*="option"]',
-          'ul[class*="select"] li',
-          'div[class*="select"] div[class*="option"]',
-          // Material UI
-          '[class*="MuiAutocomplete"] [role="option"]',
-          '[class*="MuiMenu"] [role="menuitem"]',
-          // React Select
-          '[class*="react-select"] [class*="option"]',
-          // Custom design systems (Dropbox dig-, Atlassian, etc.)
-          '[class*="dig-"] [class*="option"]',
-          '[class*="dig-"] [class*="item"]',
-          '[class*="Dropdown"] [class*="Item"]',
-          '[class*="Combobox"] [class*="Option"]',
-          '[class*="Typeahead"] [class*="Option"]',
-          '[class*="picker"] [class*="option"]',
-          '[class*="suggestions"] [class*="item"]',
-          // Data attributes
-          '[data-option]',
-          '[data-value]',
-          '[data-testid*="option"]',
-          // Popover/portal-based dropdowns (rendered at root)
-          '[id*="popover"] [role="option"]',
-          '[id*="portal"] [role="option"]',
-          '[id*="dropdown"] li',
-        ];
+              const textScore = scoreMatch(text, targetValue);
+              const dataScore = scoreMatch(dataValue, targetValue);
+              const score = Math.max(textScore, dataScore);
 
-        let matchingOption = null;
-        let allOptions = [];
-
-        for (const dropdownSelector of dropdownSelectors) {
-          const options = document.querySelectorAll(dropdownSelector);
-          if (options.length === 0) continue;
-
-          for (const opt of options) {
-            // Skip hidden options
-            const rect = opt.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) continue;
-            const style = window.getComputedStyle(opt);
-            if (style.display === 'none' || style.visibility === 'hidden') continue;
-
-            const text = opt.textContent?.trim().toLowerCase() || '';
-            const dataValue = opt.getAttribute('data-value')?.toLowerCase() || '';
-            allOptions.push(opt.textContent?.trim() || dataValue);
-
-            // Check for match: prefer exact, then startsWith, then includes
-            if (text === targetValue || dataValue === targetValue) {
-              matchingOption = opt;
-              break;
-            }
-            if (!matchingOption && (text.startsWith(targetValue) || dataValue.startsWith(targetValue))) {
-              matchingOption = opt;
-              // Don't break - keep looking for exact match
-            }
-            if (!matchingOption && (text.includes(targetValue) || dataValue.includes(targetValue))) {
-              matchingOption = opt;
-              // Don't break - keep looking for better match
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = opt;
+              }
             }
           }
-          if (matchingOption) break;
-        }
 
-        if (!matchingOption) {
+          // Accept any match with score >= 40 (reasonable match)
+          if (!bestMatch || bestScore < 40) {
+            return {
+              success: false,
+              error: 'No suitable match found (best score: ' + bestScore + ')',
+              searchedFor: targetValue,
+              availableOptions: allOptions.slice(0, 15)
+            };
+          }
+
+          // Click the option
+          bestMatch.scrollIntoView({ block: 'nearest' });
+          bestMatch.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          bestMatch.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          bestMatch.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
           return {
-            success: false,
-            error: 'No matching option found in dropdown',
-            searchedFor: targetValue,
-            availableOptions: allOptions.slice(0, 10).join(', ')
+            success: true,
+            selectedText: bestMatch.textContent?.trim(),
+            selectedValue: bestMatch.getAttribute('data-value') || bestMatch.textContent?.trim(),
+            matchScore: bestScore
           };
-        }
+        })()
+      `)
 
-        // Click the option
-        matchingOption.scrollIntoView({ block: 'nearest' });
-        matchingOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        matchingOption.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-        matchingOption.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-        return {
-          success: true,
-          selectedText: matchingOption.textContent?.trim(),
-          selectedValue: matchingOption.getAttribute('data-value') || matchingOption.textContent?.trim()
-        };
-      })()
-    `)
-
-    if (selectResult.success) {
-      logger.info(`[ToolExecutor] Combobox selected: "${selectResult.selectedText}"`)
       return selectResult
     }
 
-    // Dropdown selection failed, try pressing Enter (some comboboxes accept typed value on Enter)
-    logger.warn(`[ToolExecutor] select_combobox failed: ${selectResult.error}`)
-    logger.info(`[ToolExecutor] Trying Enter key as fallback...`)
-    const fallbackResult = await handleKeypress({ key: "Enter" })
+    // Step 1: Open dropdown by focusing/clicking without typing
+    await browserView.webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${selectorJson});
+        if (!el) return { success: false };
+        el.focus();
+        el.click();
+        el.dispatchEvent(new Event('focus', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        return { success: true };
+      })()
+    `)
 
-    if (fallbackResult && fallbackResult.success) {
-      logger.info(`[ToolExecutor] Enter key fallback succeeded`)
-      return { success: true, data: { selectedText: value, selectedValue: value, note: "Selected via Enter key fallback" } }
+    await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
+
+    // Step 2: Try to find a match in the open dropdown
+    let result = await findAndSelectOption(value) as ToolResult & { selectedText?: string; matchScore?: number; availableOptions?: string[] }
+
+    if (result.success) {
+      logger.info(`[ToolExecutor] Combobox selected (no typing): "${result.selectedText}" (score: ${result.matchScore})`)
+      return result
     }
 
-    // Both attempts failed - aggregate error messages
-    const fallbackError = fallbackResult?.error || "Enter key fallback did not confirm selection"
-    logger.warn(`[ToolExecutor] Both dropdown and Enter fallback failed`)
+    // Step 3: Type incrementally to filter - start with first 3 chars
+    const typeLengths = [3, 5, Math.min(10, value.length), value.length]
+
+    for (const len of typeLengths) {
+      const partialValue = value.slice(0, len)
+      logger.info(`[ToolExecutor] Typing "${partialValue}" to filter dropdown...`)
+
+      // Clear and type partial value
+      await browserView.webContents.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${selectorJson});
+          if (!el) return { success: false };
+
+          el.focus();
+          const isInput = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+          if (isInput) {
+            const prototype = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+            const nativeSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+            if (nativeSetter) {
+              nativeSetter.call(el, ${JSON.stringify(partialValue)});
+            } else {
+              el.value = ${JSON.stringify(partialValue)};
+            }
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return { success: true };
+        })()
+      `)
+
+      await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
+
+      result = await findAndSelectOption(value) as ToolResult & { selectedText?: string; matchScore?: number; availableOptions?: string[] }
+
+      if (result.success) {
+        logger.info(`[ToolExecutor] Combobox selected (after typing "${partialValue}"): "${result.selectedText}" (score: ${result.matchScore})`)
+        return result
+      }
+    }
+
+    // Step 4: Fallback - press Enter to accept typed value
+    logger.warn(`[ToolExecutor] No dropdown match found, trying Enter key...`)
+    const enterResult = await handleKeypress({ key: "Enter" })
+
+    if (enterResult?.success) {
+      logger.info(`[ToolExecutor] Accepted typed value via Enter`)
+      return { success: true, data: { selectedText: value, note: "Accepted via Enter key" } }
+    }
+
+    // Return failure with available options for the agent to try
+    logger.warn(`[ToolExecutor] select_combobox failed completely`)
     return {
       success: false,
-      error: `Dropdown selection failed: ${selectResult.error}; Enter fallback: ${fallbackError}`,
-      data: { searchedFor: value, availableOptions: selectResult.availableOptions }
+      error: `Could not find or select a matching option for "${value}"`,
+      data: {
+        searchedFor: value,
+        availableOptions: result.availableOptions || [],
+        hint: "Try using peek_dropdown to see available options, then call select_combobox with the EXACT option text."
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

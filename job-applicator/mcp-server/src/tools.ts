@@ -122,16 +122,32 @@ export const tools: Tool[] = [
     name: "select_combobox",
     description:
       "Select from a searchable dropdown, autocomplete, or combobox. " +
-      "Use this for text inputs that show a dropdown list when you type. " +
-      "Types the value first to filter, then clicks the matching option. " +
-      "Use for month/year pickers, location autocomplete, or any input with role='combobox'.",
+      "IMPROVED: First opens dropdown without typing, then types incrementally if needed. " +
+      "Selects the BEST available match (not just exact). " +
+      "For confirmation fields, 'yes'/'agree' will match 'I confirm and consent...' options. " +
+      "Use for school/company pickers, month/year pickers, or any searchable dropdown.",
     inputSchema: {
       type: "object",
       properties: {
         selector: { type: "string", description: "CSS selector for the input field" },
-        value: { type: "string", description: "Value to search for and select (e.g., 'March' not '03')" },
+        value: { type: "string", description: "Value to search for - will match best available option" },
       },
       required: ["selector", "value"],
+    },
+  },
+  {
+    name: "peek_dropdown",
+    description:
+      "Open a dropdown and see available options WITHOUT selecting. " +
+      "Use this BEFORE select_combobox when you're unsure what options are available. " +
+      "Returns up to 30 visible options. Then call select_combobox with the EXACT option text. " +
+      "Helpful for confirmation fields, school/company selectors with many options.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the dropdown/combobox field" },
+      },
+      required: ["selector"],
     },
   },
   {
