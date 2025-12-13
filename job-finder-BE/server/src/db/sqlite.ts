@@ -46,11 +46,12 @@ export function getDb(): Database.Database {
   if (!migrationsApplied) {
     try {
       runMigrations(db)
-    } finally {
-      // Even if a migration threw (e.g., during local watch reload), avoid re-entering
-      // nested migrations and causing transaction errors. Next cold start will retry.
+    } catch (err) {
+      logger.error({ err }, 'Database migration failed')
       migrationsApplied = true
+      throw err
     }
+    migrationsApplied = true
   }
 
   return db
