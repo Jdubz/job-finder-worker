@@ -271,19 +271,21 @@ class SourceProcessor(BaseProcessor):
                     self._handle_existing_source(item, dup, context="preflight")
                     return
 
+                # Enforce invariant: if we have a company, drop aggregator_domain before persistence
+                persistence_aggregator = None if company_id else aggregator_domain
+
                 source_id = self.sources_manager.create_from_discovery(
                     name=source_name,
                     source_type=source_type,
                     config=source_config,
                     company_id=company_id,
-                    aggregator_domain=aggregator_domain,
+                    aggregator_domain=persistence_aggregator,
                     status=initial_status,
                 )
             except DuplicateSourceError:
                 if company_id and aggregator_domain:
-                    existing = self.sources_manager.get_source_by_company_and_aggregator(
-                        company_id, aggregator_domain
-                    )
+                    # Aggregator is stripped on persistence, so fallback to name lookup
+                    existing = self.sources_manager.get_source_by_name(source_name)
                     if existing:
                         self._handle_existing_source(item, existing, context="race")
                         return

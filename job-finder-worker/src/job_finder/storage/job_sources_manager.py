@@ -115,15 +115,20 @@ class JobSourcesManager:
                 "or aggregator_domain (job board platform)"
             )
 
+        # Enforce invariant: company-linked sources must NOT retain aggregator_domain
+        if company_id and aggregator_domain:
+            logger.info(
+                "Stripping aggregator_domain '%s' for company-linked source '%s' (company_id=%s)",
+                aggregator_domain,
+                name,
+                company_id,
+            )
+            aggregator_domain = None
+
         # Check for existing source with same name (legacy uniqueness) OR same (company_id, aggregator_domain)
         existing = self.get_source_by_name(name)
         if existing:
             raise DuplicateSourceError(name=name, existing_id=existing["id"])
-
-        if company_id and aggregator_domain:
-            existing_pair = self.get_source_by_company_and_aggregator(company_id, aggregator_domain)
-            if existing_pair:
-                raise DuplicateSourceError(name=name, existing_id=existing_pair["id"])
 
         source_id = str(uuid4())
         now = utcnow_iso()

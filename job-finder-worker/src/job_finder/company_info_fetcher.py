@@ -96,6 +96,8 @@ class CompanyInfoFetcher:
         )
         self.search_client = get_search_client()
         self.wikipedia_client = get_wikipedia_client()
+        # Cache structured facts (e.g., Wikipedia) per company name to reuse across passes
+        self._wiki_cache: Dict[str, Any] = {}
 
     # ============================================================
     # MAIN ENTRY POINT
@@ -178,25 +180,31 @@ class CompanyInfoFetcher:
         }
 
         try:
-            # STEP 0: Try Wikipedia first (fast pass only)
-            wiki_info = None
-            wiki_website = None
-            if mode == "fast":
+            # STEP 0: Try Wikipedia first (cached per company name, both passes)
+            wiki_info = self._wiki_cache.get(search_name.lower())
+            if wiki_info is None:
                 wiki_info = self._try_wikipedia(search_name)
-                wiki_website = wiki_info.get("website") if wiki_info else None
                 if wiki_info:
-                    result = self._merge_company_info(
-                        result, wiki_info, company_name=company_name, preferred_website=wiki_website
-                    )
-                    logger.info(
-                        "Wikipedia found data for %s: about=%d chars",
-                        company_display,
-                        len(result.get("about", "")),
-                    )
+                    self._wiki_cache[search_name.lower()] = wiki_info
+
+            wiki_website = wiki_info.get("website") if wiki_info else None
+            if wiki_info:
+                result = self._merge_company_info(
+                    result, wiki_info, company_name=company_name, preferred_website=wiki_website
+                )
+                logger.info(
+                    "Wikipedia found data for %s: about=%d chars",
+                    company_display,
+                    len(result.get("about", "")),
+                )
 
             # STEP 1: Search for company info (fills gaps Wikipedia doesn't cover)
             search_info = self._search_and_extract(
-                search_name, source_context, wiki_website=wiki_website, mode=mode
+                search_name,
+                source_context,
+                wiki_website=wiki_website,
+                wiki_info=wiki_info,
+                mode=mode,
             )
             if search_info:
                 result = self._merge_company_info(
@@ -286,6 +294,7 @@ class CompanyInfoFetcher:
         company_name: str,
         source_context: Optional[Dict[str, Any]] = None,
         wiki_website: Optional[str] = None,
+        wiki_info: Optional[Dict[str, Any]] = None,
         mode: str = "fast",
     ) -> Optional[Dict[str, Any]]:
         """
@@ -303,7 +312,7 @@ class CompanyInfoFetcher:
         """
         if not self.search_client:
             logger.debug("No search client configured, skipping search")
-            return self._fallback_ai_search(company_name, mode=mode)
+            return self._fallback_ai_search(company_name, wiki_info=wiki_info, mode=mode)
 
         try:
             # Try multiple search queries until one works
@@ -311,10 +320,27 @@ class CompanyInfoFetcher:
 
             if not results:
                 logger.warning("No quality search results for %s", company_name)
-                return self._fallback_ai_search(company_name)
+                return self._fallback_ai_search(company_name, wiki_info=wiki_info, mode=mode)
 
             # Format results for AI extraction
             search_context = self._format_search_results(results)
+
+            # Collect evidence excerpts (official site + LinkedIn) for the agent
+            evidence_blocks: List[str] = []
+            official_url = self._pick_official_candidate(results, company_name)
+            linkedin_url = self._pick_linkedin_candidate(results)
+
+            if official_url:
+                excerpt = self._fetch_page_excerpt(official_url)
+                if excerpt:
+                    evidence_blocks.append(f"Official site excerpt ({official_url}):\n{excerpt}")
+
+            if linkedin_url:
+                excerpt = self._fetch_page_excerpt(linkedin_url)
+                if excerpt:
+                    evidence_blocks.append(f"LinkedIn about excerpt ({linkedin_url}):\n{excerpt}")
+
+            evidence_text = "\n\n".join(evidence_blocks) if evidence_blocks else ""
 
             # AI extracts structured data from search results
             if self.agent_manager:
@@ -323,6 +349,8 @@ class CompanyInfoFetcher:
                     search_context,
                     source_context,
                     wiki_website=wiki_website,
+                    wiki_info=wiki_info,
+                    evidence_text=evidence_text,
                     mode=mode,
                 )
 
@@ -331,7 +359,7 @@ class CompanyInfoFetcher:
 
         except Exception as e:
             logger.warning("Search failed for %s: %s", company_name, e)
-            return self._fallback_ai_search(company_name, mode=mode)
+            return self._fallback_ai_search(company_name, wiki_info=wiki_info, mode=mode)
 
     def _search_with_fallbacks(
         self, company_name: str, source_context: Optional[Dict[str, Any]] = None, mode: str = "fast"
@@ -476,6 +504,8 @@ class CompanyInfoFetcher:
         search_context: str,
         source_context: Optional[Dict[str, Any]] = None,
         wiki_website: Optional[str] = None,
+        wiki_info: Optional[Dict[str, Any]] = None,
+        evidence_text: str = "",
         mode: str = "fast",
     ) -> Optional[Dict[str, Any]]:
         """Use AI to extract structured company data from search results."""
@@ -494,6 +524,15 @@ class CompanyInfoFetcher:
                 else "If Wikipedia lists an official website, prefer that. Brand domains may be shortened or acronyms (e.g., ibm.com)."
             )
 
+            wiki_facts = []
+            if wiki_info:
+                emp = wiki_info.get("employeeCount")
+                if emp:
+                    wiki_facts.append(f"Wikipedia employees: {emp}")
+                if wiki_info.get("headquarters"):
+                    wiki_facts.append(f"Wikipedia HQ: {wiki_info.get('headquarters')}")
+            wiki_facts_text = "\n".join(f"- {fact}" for fact in wiki_facts) if wiki_facts else ""
+
             focus_hint = (
                 "FOCUSED RETRY: You previously lacked culture/tech stack. Prioritize official about/careers pages, engineering blogs, and StackShare evidence. "
                 "If uncertain, leave fields blank.\n"
@@ -501,10 +540,15 @@ class CompanyInfoFetcher:
                 else ""
             )
 
+            evidence_section = f"\n\nEVIDENCE EXCERPTS:\n{evidence_text}" if evidence_text else ""
+            wiki_section = f"\n\nKNOWN FACTS:\n{wiki_facts_text}" if wiki_facts_text else ""
+
             prompt = f"""{focus_hint}Extract company information for "{company_name}" from these search results.
 {disambiguation_hint}
 SEARCH RESULTS:
 {search_context[:6000]}
+{evidence_section}
+{wiki_section}
 
 IMPORTANT INSTRUCTIONS:
 - If "{company_name}" is ambiguous (e.g., "Close" could be multiple companies),
@@ -520,6 +564,9 @@ IMPORTANT INSTRUCTIONS:
 - If multiple candidates appear, pick the one whose homepage/about page text mentions the company name/brand; otherwise choose the Wikipedia site.
 - To fill culture, look for values/mission/culture statements on About/Careers pages.
 - For techStack, look for engineering blogs, stackshare.io, hiring pages mentioning technologies; do NOT invent technologies—leave [] if not stated.
+- For headcount: convert ranges like "51-200 employees", "1,001–5,000 employees", "200+ employees", or LinkedIn about-page counts into a number. Use the upper bound or stated number; if only a "+" is given, use that number. Do not invent numbers if none are stated.
+- Always set both fields consistently: employeeCount (integer or null) AND companySizeCategory using bands: small (<100), medium (100-999), large (1000+). If you don't have a number, leave both blank/null unless the text explicitly says terms like "enterprise"/"Fortune 500" (large) or "startup of ~50" (small).
+- Ignore headcounts that clearly refer to a parent/portfolio company rather than this specific company.
 
 Return a JSON object with these fields:
 - website: official company website URL (NOT greenhouse.io, lever.co, workday, etc.)
@@ -602,7 +649,7 @@ Return ONLY valid JSON, no explanations or markdown formatting."""
         return ""
 
     def _fallback_ai_search(
-        self, company_name: str, mode: str = "fast"
+        self, company_name: str, wiki_info: Optional[Dict[str, Any]] = None, mode: str = "fast"
     ) -> Optional[Dict[str, Any]]:
         """Fallback: Ask AI directly (relies on AI's web search capability if available)."""
         if not self.agent_manager:
@@ -614,13 +661,26 @@ Return ONLY valid JSON, no explanations or markdown formatting."""
                 if mode == "focused"
                 else ""
             )
+            wiki_facts = []
+            if wiki_info:
+                emp = wiki_info.get("employeeCount")
+                if emp:
+                    wiki_facts.append(f"Wikipedia employees: {emp}")
+                if wiki_info.get("headquarters"):
+                    wiki_facts.append(f"Wikipedia HQ: {wiki_info.get('headquarters')}")
+            wiki_facts_text = "\n".join(f"- {fact}" for fact in wiki_facts) if wiki_facts else ""
+
             prompt = f"""{focus_hint}Search the web for factual information about "{company_name}" company.
+{('Known facts:' if wiki_facts_text else '')}
+{wiki_facts_text}
 
 Return JSON with: website, about, culture, mission, industry, founded, headquarters,
 employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, products, techStack.
 
 - Ignore VC/portfolio sites, recruiter sites, and entertainment results (films, songs, etc.).
 - Do not invent tech stacks; only include technologies explicitly mentioned in reliable sources.
+- For headcount: convert ranges like "51-200 employees", "1,001–5,000", or "200+ employees" into a number (use upper bound or stated number). Set employeeCount accordingly.
+- Always set companySizeCategory using: small (<100), medium (100-999), large (1000+). If no numeric clue, leave employeeCount null and companySizeCategory empty unless text clearly states a qualitative size (e.g., "Fortune 500" -> large, "early-stage startup of ~50" -> small).
 
 Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
 
@@ -635,6 +695,45 @@ Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
         except Exception as e:
             logger.warning("Fallback AI search failed: %s", e)
             return None
+
+    # ============================================================ #
+    # Evidence collection helpers                                  #
+    # ============================================================ #
+
+    def _pick_official_candidate(self, results: List[SearchResult], company_name: str) -> Optional[str]:
+        """
+        Pick a likely official site from search results to fetch an excerpt for the agent.
+        Preference: first result whose domain contains the company token and is not a job board/search.
+        """
+        company_lower = company_name.lower()
+        for r in results:
+            domain = self._domain_from_url(r.url)
+            if not domain or self._is_job_board_url(r.url) or self._is_search_engine_url(r.url):
+                continue
+            if self._domain_matches_company(domain, company_lower):
+                return r.url
+        # fallback to first non-job-board/search result
+        for r in results:
+            if not self._is_job_board_url(r.url) and not self._is_search_engine_url(r.url):
+                return r.url
+        return None
+
+    def _pick_linkedin_candidate(self, results: List[SearchResult]) -> Optional[str]:
+        """Return the first LinkedIn company about/profile URL from results."""
+        for r in results:
+            url_lower = r.url.lower()
+            if "linkedin.com/company/" in url_lower:
+                if not url_lower.endswith("/about") and "/about" not in url_lower:
+                    return r.url.rstrip("/") + "/about"
+                return r.url
+        return None
+
+    def _fetch_page_excerpt(self, url: str, max_chars: int = 12000) -> Optional[str]:
+        """Fetch a trimmed excerpt of a page for agent context (reuses existing fetch)."""
+        content = self._fetch_page_content(url)
+        if not content:
+            return None
+        return content[:max_chars]
 
     # ============================================================
     # WEBSITE SCRAPING (Supplementary)
