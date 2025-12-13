@@ -213,7 +213,7 @@ async function createWindow(): Promise<void> {
   })
 
   mainWindow.setBrowserView(browserView)
-  browserView.webContents.session.setUserAgent(CUSTOM_USER_AGENT, "en-US,en")
+  browserView.webContents.session.setUserAgent(CUSTOM_USER_AGENT)
   logger.info(`[BrowserView] User agent set to Chrome UA to avoid bot/WAF blocks`)
 
   // Set BrowserView reference for agent tools

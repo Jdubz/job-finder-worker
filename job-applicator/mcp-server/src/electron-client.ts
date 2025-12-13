@@ -48,6 +48,15 @@ export async function callTool(
 
         if (!response.ok) {
           const text = await response.text()
+          // Retry on 5xx (transient server errors), fail fast on 4xx.
+          if (response.status >= 500 && attempt < attempts) {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[job-applicator-mcp] Tool server HTTP ${response.status} (attempt ${attempt}/${attempts}, url=${url})`
+            )
+            await new Promise((resolve) => setTimeout(resolve, backoffMs))
+            continue
+          }
           return {
             success: false,
             error: `Electron tool server error (${response.status}): ${text}`,
@@ -60,7 +69,6 @@ export async function callTool(
 
         // Handle abort/timeout explicitly
         if (err instanceof Error && err.name === "AbortError") {
-          clearTimeout(timeoutId)
           return {
             success: false,
             error: `Tool '${tool}' timed out after ${TOOL_TIMEOUT_MS / 1000} seconds`,
@@ -78,7 +86,6 @@ export async function callTool(
           console.error(
             `[job-applicator-mcp] Tool server connection failed (attempt ${attempt}/${attempts}, url=${url}): ${message}`
           )
-          clearTimeout(timeoutId)
           if (attempt === attempts && baseUrl === targets[targets.length - 1]) {
             return {
               success: false,
@@ -91,7 +98,6 @@ export async function callTool(
           continue
         }
 
-        clearTimeout(timeoutId)
         return {
           success: false,
           error: `Failed to call tool: ${message}`,

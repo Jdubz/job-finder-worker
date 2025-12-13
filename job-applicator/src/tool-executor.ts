@@ -911,7 +911,7 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
 
         // Block navigation away from the application by disallowing external links
         if (el.tagName === 'A') {
-          const href = (el as HTMLAnchorElement).href || '';
+          const href = el.href || '';
           try {
             const target = new URL(href, window.location.href);
             if (target.origin !== window.location.origin) {
@@ -923,14 +923,14 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
         }
 
         // Scroll element into view if needed
-        (el as HTMLElement).scrollIntoView({ behavior: 'instant', block: 'center' });
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
 
         // Get element text for logging
-        const text = (el as HTMLElement).textContent?.trim()?.slice(0, 50) || (el as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement | HTMLSelectElement).value || '';
+        const text = (el.textContent || '').trim().slice(0, 50) || (el.value || '');
 
         // Focus and click
-        if ((el as HTMLElement).focus) (el as HTMLElement).focus();
-        (el as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        el.focus();
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
 
         return { success: true, selector: selector, text: text };
       })()
