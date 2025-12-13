@@ -106,13 +106,30 @@ export const tools: Tool[] = [
   {
     name: "select_option",
     description:
-      "Select an option in a dropdown/select field by CSS selector. " +
-      "Use the selector from get_form_fields and match against the options array.",
+      "Select an option in a native <select> dropdown. " +
+      "Use the selector from get_form_fields and match against the options array. " +
+      "Only works for fields with type='select-one' or 'select-multiple'.",
     inputSchema: {
       type: "object",
       properties: {
         selector: { type: "string", description: "CSS selector for the select element" },
         value: { type: "string", description: "Option value to select (use 'value' from options, or 'text' if value is empty)" },
+      },
+      required: ["selector", "value"],
+    },
+  },
+  {
+    name: "select_combobox",
+    description:
+      "Select from a searchable dropdown, autocomplete, or combobox. " +
+      "Use this for text inputs that show a dropdown list when you type. " +
+      "Types the value first to filter, then clicks the matching option. " +
+      "Use for month/year pickers, location autocomplete, or any input with role='combobox'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the input field" },
+        value: { type: "string", description: "Value to search for and select (e.g., 'March' not '03')" },
       },
       required: ["selector", "value"],
     },

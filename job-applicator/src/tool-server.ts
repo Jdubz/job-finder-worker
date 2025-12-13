@@ -14,6 +14,7 @@ let PORT = parseInt(process.env.TOOL_SERVER_PORT || "19524", 10)
 const HOST = "127.0.0.1"
 
 let server: http.Server | null = null
+let requestCounter = 0
 
 /**
  * Set the port (used by tests to avoid conflicts)
@@ -58,6 +59,8 @@ function formatToolResult(tool: string, params: Record<string, unknown> | undefi
         return `"${params?.selector || "?"}" = "${String(params?.value || "").slice(0, 30)}"`
       case "select_option":
         return `"${params?.selector || "?"}" = "${params?.value || "?"}"`
+      case "select_combobox":
+        return `"${params?.selector || "?"}" → "${params?.value || "?"}"`
       case "set_checkbox":
         return `"${params?.selector || "?"}" = ${params?.checked}`
       case "click_element":
@@ -98,6 +101,14 @@ export function startToolServer(): http.Server {
   }
 
   server = http.createServer(async (req, res) => {
+    // Track each request for debugging
+    const reqId = ++requestCounter
+    const socket = req.socket
+    const remoteInfo = `${socket.remoteAddress}:${socket.remotePort}`
+    const userAgent = req.headers["user-agent"] || "none"
+    const contentLength = req.headers["content-length"] || "unknown"
+    logger.info(`[ToolServer] #${reqId} ${req.method} ${req.url} from ${remoteInfo} (UA: ${userAgent}, CL: ${contentLength})`)
+
     // CORS headers for local development
     res.setHeader("Access-Control-Allow-Origin", "*")
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -144,8 +155,8 @@ export function startToolServer(): http.Server {
           parsed = JSON.parse(body)
         } catch (parseErr) {
           // Log full details for debugging malformed requests
-          logger.error(`[ToolServer] JSON parse error. Full body: "${body}"`)
-          logger.error(`[ToolServer] Request headers: ${JSON.stringify(req.headers)}`)
+          logger.error(`[ToolServer] #${reqId} JSON parse error. Full body: "${body}"`)
+          logger.error(`[ToolServer] #${reqId} Request from ${remoteInfo}, headers: ${JSON.stringify(req.headers)}`)
           throw parseErr
         }
 
@@ -159,14 +170,14 @@ export function startToolServer(): http.Server {
 
         // Log tool call with parameters for debugging
         const paramsStr = params ? JSON.stringify(params).slice(0, 500) : "{}"
-        logger.info(`[ToolServer] Executing: ${tool}(${paramsStr})`)
+        logger.info(`[ToolServer] #${reqId} Executing: ${tool}(${paramsStr})`)
         sendStatus(`🔧 ${tool}...`)
         const startTime = Date.now()
 
         const result = await executeTool(tool, (params || {}) as Record<string, unknown>)
 
         const duration = Date.now() - startTime
-        logger.info(`[ToolServer] ${tool} completed in ${duration}ms (success=${result.success})`)
+        logger.info(`[ToolServer] #${reqId} ${tool} completed in ${duration}ms (success=${result.success})`)
 
         // Send completion status with result summary
         if (result.success) {

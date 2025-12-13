@@ -73,7 +73,6 @@ import type {
 } from "./types.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
-  resolveDocumentPath,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
   parseCliObjectOutput,
@@ -96,8 +95,48 @@ import {
   getApiUrl,
 } from "./api-client.js"
 
-// Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
-const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
+// Temp directory for downloaded documents
+const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
+
+/**
+ * Download a document from the API to a temporary file
+ * @param documentUrl - API path like "/api/generator/artifacts/2025-12-11/file.pdf"
+ * @returns Local file path to the downloaded document
+ */
+async function downloadDocument(documentUrl: string): Promise<string> {
+  // Ensure temp directory exists
+  if (!fs.existsSync(TEMP_DOC_DIR)) {
+    fs.mkdirSync(TEMP_DOC_DIR, { recursive: true })
+  }
+
+  // Extract filename from URL
+  const filename = path.basename(documentUrl)
+  const tempPath = path.join(TEMP_DOC_DIR, filename)
+
+  // If already downloaded, return cached path
+  if (fs.existsSync(tempPath)) {
+    logger.info(`[Download] Using cached document: ${tempPath}`)
+    return tempPath
+  }
+
+  // Build full URL from API base
+  const apiUrl = getApiUrl()
+  const apiUrlObj = new URL(apiUrl)
+  const fullUrl = `${apiUrlObj.origin}${documentUrl}`
+
+  logger.info(`[Download] Downloading document from: ${fullUrl}`)
+
+  const response = await fetch(fullUrl)
+  if (!response.ok) {
+    throw new Error(`Failed to download document: ${response.status} ${response.statusText}`)
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer())
+  fs.writeFileSync(tempPath, buffer)
+
+  logger.info(`[Download] Saved document to: ${tempPath} (${buffer.length} bytes)`)
+  return tempPath
+}
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
@@ -167,9 +206,52 @@ async function createWindow(): Promise<void> {
   // which would break the form fill flow
   browserView.webContents.setWindowOpenHandler(({ url }) => {
     logger.info(`Intercepted new window request: ${url}`)
-    // Navigate in the same BrowserView instead of opening a new window
+
+    // For about:blank or javascript: URLs, sites often open a blank window
+    // and then redirect via JS. We need to allow these to open so we can
+    // capture the redirect. Return "allow" and handle in did-create-window.
+    if (!url || url === "about:blank" || url.startsWith("javascript:")) {
+      logger.info(`Allowing popup for redirect capture: ${url}`)
+      return { action: "allow" }
+    }
+
+    // For real URLs, navigate in the same BrowserView
     browserView?.webContents.loadURL(url)
     return { action: "deny" }
+  })
+
+  // Capture child windows (popups) and redirect their navigation to main BrowserView
+  browserView.webContents.on("did-create-window", (childWindow) => {
+    logger.info(`Child window created, setting up redirect capture`)
+
+    // When the child window navigates to a real URL, close it and navigate main view
+    childWindow.webContents.on("will-navigate", (_event, url) => {
+      if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
+        logger.info(`Capturing child window navigation: ${url}`)
+        browserView?.webContents.loadURL(url)
+        childWindow.close()
+      }
+    })
+
+    // Also handle did-navigate for cases where will-navigate doesn't fire
+    childWindow.webContents.on("did-navigate", (_event, url) => {
+      if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
+        logger.info(`Capturing child window did-navigate: ${url}`)
+        browserView?.webContents.loadURL(url)
+        childWindow.close()
+      }
+    })
+
+    // Close after a timeout if no navigation happens (cleanup orphaned windows)
+    setTimeout(() => {
+      if (!childWindow.isDestroyed()) {
+        const url = childWindow.webContents.getURL()
+        if (!url || url === "about:blank") {
+          logger.info(`Closing orphaned child window`)
+          childWindow.close()
+        }
+      }
+    }, 5000)
   })
 
   // Notify renderer when URL changes
@@ -358,22 +440,13 @@ ipcMain.handle(
         return { success: false, message: "No file input found on page" }
       }
 
-      // Resolve file path from document URL or fallback to env var
-      if (options?.documentUrl) {
-        logger.info(`[Upload] Using document URL: ${options.documentUrl}`)
-        resolvedPath = resolveDocumentPath(options.documentUrl, ARTIFACTS_DIR)
-      } else {
-        // Fallback to RESUME_PATH environment variable
-        resolvedPath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
+      // Download document from API
+      if (!options?.documentUrl) {
+        return { success: false, message: "No document URL provided" }
       }
 
-      if (!fs.existsSync(resolvedPath)) {
-        return {
-          success: false,
-          message: `File not found at ${resolvedPath}`,
-          filePath: resolvedPath,
-        }
-      }
+      logger.info(`[Upload] Downloading document from API: ${options.documentUrl}`)
+      resolvedPath = await downloadDocument(options.documentUrl)
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
@@ -1036,38 +1109,58 @@ ipcMain.handle(
 CRITICAL RULES:
 1. MUST call get_user_profile FIRST - NEVER invent or guess user data
 2. ALWAYS use get_form_fields to find fields - it returns CSS selectors
-3. ALWAYS use selector-based tools: fill_field, select_option, set_checkbox, click_element
-4. NEVER use click(x,y) or type() unless fill_field fails on a specific field
+3. ALWAYS use selector-based tools: fill_field, select_option, select_combobox, set_checkbox, click_element
+4. NEVER use click(x,y) or type() unless selector tools fail on a specific field
 5. DO NOT click submit/apply buttons - user will submit manually
 6. SKIP file upload fields - user handles documents separately
 
 WORKFLOW:
 1. get_user_profile - Get user data (MANDATORY first step)
 2. get_form_fields - Get ALL fields with their CSS selectors
-3. For EACH field returned, match label to profile data and fill using:
-   - fill_field(selector, value) for type="text", "email", "tel", "textarea", etc.
-   - select_option(selector, value) for type="select-one" (fields with 'options' array)
-   - set_checkbox(selector, true/false) for type="checkbox" or "radio"
+3. For EACH field returned, match label to profile data and fill using the appropriate tool
 4. IMPORTANT: After filling visible fields, scroll(300) and get_form_fields again
    - Many forms have fields below the fold or reveal fields after filling others
    - Keep scrolling and filling until you've checked the ENTIRE page (scroll 3-5 times minimum)
-   - Look for Education, Employment, Skills sections that may need multiple entries
-5. screenshot to verify all fields are filled
-6. Only call done(summary) when ALL fields are complete - list what you filled
+5. MANDATORY: Look for EDUCATION section - most applications require it!
+   - Use get_buttons to find "Add Education" or similar buttons
+   - Fill ALL education entries from the user's profile
+6. screenshot to verify all fields are filled
+7. Only call done(summary) when ALL fields are complete - list what you filled
 
-DROPDOWN FIELDS (type="select-one" or "select-multiple"):
-- Identified by: type contains "select" AND has 'options' array
-- options array has {value, text, selected} for each choice
-- MUST use select_option(selector, value) - pass the 'value' field from options
-- If value is empty string, pass the 'text' field instead
-- Do NOT use fill_field or type() on dropdowns - only select_option works
+FIELD TYPES AND TOOLS:
 
-DYNAMIC FORMS (Education, Employment sections):
-- Use get_buttons to find "Add Another", "Add Education" buttons
-- Use click_element(selector) to add new entry
-- Call get_form_fields to see new sub-form fields
-- Fill sub-form with fill_field/select_option
-- Repeat for each profile entry
+1. TEXT FIELDS (type="text", "email", "tel", "textarea", "number"):
+   → fill_field(selector, value)
+   - For "URL" fields asking for multiple links (LinkedIn, Github, Portfolio):
+     Enter as comma-separated list: "https://linkedin.com/in/user, https://github.com/user"
+
+2. NATIVE DROPDOWNS (type="select-one" or "select-multiple" with 'options' array):
+   → select_option(selector, value)
+   - Has 'options' array with {value, text, selected}
+   - Pass the 'value' field, or 'text' if value is empty
+
+3. SEARCHABLE DROPDOWNS / COMBOBOXES (type="text" but shows dropdown when typing):
+   → select_combobox(selector, value)
+   - Used for: month pickers, year pickers, location autocomplete, degree selectors
+   - Often has role="combobox" or shows suggestions when you type
+   - Use the FULL text value (e.g., "March" not "03", "Bachelor's Degree" not "BS")
+   - DO NOT use fill_field for these - the value won't stick!
+
+4. CHECKBOXES/RADIO (type="checkbox" or "radio"):
+   → set_checkbox(selector, true/false)
+
+EDUCATION SECTION (REQUIRED):
+- Almost every job application has an Education section
+- Look for: "Education", "Academic Background", "Degree", "School"
+- Use get_buttons to find "Add Education", "Add Another Degree" buttons
+- Fill: School name, Degree type, Field of study, Start/End dates
+- For dates: use select_combobox with month names (January, February, etc.)
+- Add ALL education entries from user profile
+
+EMPLOYMENT SECTION:
+- Look for: "Work Experience", "Employment History", "Previous Jobs"
+- Use get_buttons to find "Add Experience", "Add Job" buttons
+- Fill: Company, Title, Start/End dates, Description
 
 YES/NO QUESTIONS - Infer from profile:
 - "X years experience?" → YES if profile work history >= X years
@@ -1076,8 +1169,8 @@ YES/NO QUESTIONS - Infer from profile:
 - "Future openings email?" → YES
 - "Agree to terms?" → YES
 
-FALLBACK (only if selector tools fail):
-- click(x,y) + type(text) for custom UI like date pickers, autocomplete
+FALLBACK (only if selector tools fail repeatedly):
+- click(x,y) + type(text) for truly custom UI
 - Take screenshot first to get coordinates
 
 Start by calling get_user_profile, then get_form_fields.`

@@ -140,7 +140,7 @@ describe("Tool Server", () => {
       const response = await new Promise<{ status: number; headers: http.IncomingHttpHeaders }>((resolve, reject) => {
         const req = http.request({
           hostname: "127.0.0.1",
-          port: 19524,
+          port: TEST_PORT,
           path: "/tool",
           method: "OPTIONS",
         }, (res) => {
@@ -204,7 +204,7 @@ describe("Tool Server", () => {
       const response = await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
         const req = http.request({
           hostname: "127.0.0.1",
-          port: 19524,
+          port: TEST_PORT,
           path: "/tool",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -240,7 +240,7 @@ describe("Tool Server", () => {
       const response = await new Promise<{ headers: http.IncomingHttpHeaders }>((resolve, reject) => {
         const req = http.request({
           hostname: "127.0.0.1",
-          port: 19524,
+          port: TEST_PORT,
           path: "/tool",
           method: "POST",
           headers: { "Content-Type": "application/json" },
