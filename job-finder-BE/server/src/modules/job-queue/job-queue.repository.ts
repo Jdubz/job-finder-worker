@@ -255,6 +255,9 @@ export class JobQueueRepository {
     const resolveNullable = <T>(update: T | undefined | null, existing: T | undefined): T | null =>
       update === undefined ? (existing ?? null) : update
 
+    const inputJson = serializeJson(Object.keys(nextInput).length ? nextInput : {}) ?? '{}'
+    const outputJson = serializeJson(Object.keys(nextOutput).length ? nextOutput : {}) ?? '{}'
+
     this.db
       .prepare(
         `UPDATE job_queue
@@ -269,8 +272,8 @@ export class JobQueueRepository {
         resolveNullable(updates.url, existing.url),
         resolveNullable(updates.tracking_id, existing.tracking_id),
         resolveNullable(updates.parent_item_id, existing.parent_item_id),
-        serializeJson(Object.keys(nextInput).length ? nextInput : null),
-        serializeJson(Object.keys(nextOutput).length ? nextOutput : null),
+        inputJson,
+        outputJson,
         resolveNullable(updates.result_message, existing.result_message),
         resolveNullable(updates.error_details, existing.error_details),
         nextUpdatedAt,
