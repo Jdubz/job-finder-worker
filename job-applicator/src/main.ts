@@ -81,6 +81,7 @@ import {
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
 import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
+import { buildFormFillPrompt, FORM_FILL_SAFETY_RULES } from "./form-fill-safety.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -1381,20 +1382,11 @@ ipcMain.handle(
         })
       })
 
-      // Fetch prompt from API - no fallback, fail loudly if missing
-      const basePrompt = await fetchFormFillPrompt()
-      const safetyTail = `
-
-STRICT FORM-FILL RULES (do NOT ignore):
-- Only fill answers that are clearly present in the provided user profile or job context.
-- Company/job-specific motivation questions ("Why this company/role?" or "How do your skills align?") ARE allowed—answer them concisely using the job description + profile. Avoid fluff.
-- Do NOT answer personal/subjective traps unrelated to the job (school grades, childhood, family, personal philosophies, unrelated medical/political questions); leave those EMPTY.
-- If a value is missing or ambiguous, leave the field EMPTY and call done after all known fields are filled.
-- Do NOT fabricate data, guess, or infer beyond the profile/context. No made-up dates, companies, addresses, IDs, or demographic answers.
-- For multi-choice fields, only select an option that exactly matches provided info; otherwise leave it blank/unselected.
-- If asked for uploads, only use the provided resume/cover letter URLs; never invent files.`
-      const prompt = `${basePrompt.trim()}\n${safetyTail}`
-      logger.info(`[FillForm] Loaded prompt from API (${basePrompt.length} chars) with safety tail (${safetyTail.length} chars)`)
+      // Fetch workflow prompt from API (editable), then combine with hardcoded safety rules
+      // See form-fill-safety.ts for architecture documentation
+      const workflowPrompt = await fetchFormFillPrompt()
+      const prompt = buildFormFillPrompt(workflowPrompt)
+      logger.info(`[FillForm] Loaded workflow prompt (${workflowPrompt.length} chars) + safety rules (${FORM_FILL_SAFETY_RULES.length} chars)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
       logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)

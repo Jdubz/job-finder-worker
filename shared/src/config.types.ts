@@ -7,11 +7,24 @@ export interface JobFinderConfigEntry<TPayload = unknown> {
   updatedBy?: string | null
 }
 
+/**
+ * AI prompt templates stored in the database (editable via UI).
+ *
+ * ARCHITECTURE NOTE - formFill prompt separation:
+ * The `formFill` field contains only the WORKFLOW portion of the form filling prompt.
+ * Hardcoded SAFETY RULES are appended at runtime by the job-applicator.
+ *
+ * - Workflow (this field): HOW to fill forms (tool usage, field detection, workflow steps)
+ * - Safety (hardcoded): WHAT the agent is allowed to fill (guardrails, constraints)
+ *
+ * See: job-applicator/src/form-fill-safety.ts for the safety rules and full documentation.
+ */
 export interface PromptConfig {
   resumeGeneration: string
   coverLetterGeneration: string
   jobScraping: string
   jobMatching: string
+  /** Workflow instructions for form filling. Safety rules are appended at runtime. */
   formFill: string
 }
 
