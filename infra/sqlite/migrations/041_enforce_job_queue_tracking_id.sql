@@ -6,6 +6,9 @@
 PRAGMA foreign_keys=off;
 BEGIN TRANSACTION;
 
+-- Drop dependent view to avoid breakage while we recreate job_queue
+DROP VIEW IF EXISTS view_queue_ready;
+
 -- Backfill existing rows (single pass for efficiency)
 UPDATE job_queue
 SET tracking_id = COALESCE(tracking_id, id),
@@ -36,8 +39,21 @@ INSERT INTO job_queue_new (
     id, type, status, url, tracking_id, parent_item_id, input, output,
     result_message, error_details, created_at, updated_at, processed_at, completed_at, dedupe_key
 )
-SELECT id, type, status, url, tracking_id, parent_item_id, input, output,
-       result_message, error_details, created_at, updated_at, processed_at, completed_at, dedupe_key
+SELECT id,
+       type,
+       status,
+       url,
+       tracking_id,
+       parent_item_id,
+       input,
+       output,
+       result_message,
+       error_details,
+       created_at,
+       updated_at,
+       processed_at,
+       completed_at,
+       NULL AS dedupe_key
 FROM job_queue;
 
 -- Swap tables
@@ -63,6 +79,13 @@ ON job_queue(status, completed_at);
 CREATE UNIQUE INDEX idx_job_queue_dedupe_active
                 ON job_queue(dedupe_key)
                 WHERE dedupe_key IS NOT NULL AND status IN ('pending','processing');
+
+-- Recreate lightweight ready view (kept for compatibility with dev tooling)
+CREATE VIEW IF NOT EXISTS view_queue_ready AS
+SELECT id, url, status
+FROM job_queue
+WHERE status = 'pending'
+ORDER BY created_at ASC;
 
 COMMIT;
 PRAGMA foreign_keys=on;

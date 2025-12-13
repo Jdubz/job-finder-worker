@@ -46,6 +46,10 @@ class SkillTaxonomyRepository:
         self.db_path = db_path
         self._ensure_table()
         self._seed_if_empty()
+        # Always ensure the core parallels/implies set exists (idempotent)
+        # Some historical dev DBs have only placeholder rows; we insert the
+        # curated seed set with INSERT OR IGNORE so local overrides survive.
+        self._ensure_core_seeds()
 
     def _ensure_table(self):
         with sqlite_connection(self.db_path) as conn:
@@ -149,6 +153,48 @@ class SkillTaxonomyRepository:
             ]
             conn.executemany(
                 "INSERT INTO skill_taxonomy (canonical, category, synonyms_csv, implies_csv, parallels_csv, updated_at) VALUES (?,?,?,?,?,?)",
+                seeds,
+            )
+
+    def _ensure_core_seeds(self):
+        """Insert the curated seed set if missing, without overwriting custom rows."""
+        with sqlite_connection(self.db_path) as conn:
+            existing = {row[0] for row in conn.execute("SELECT canonical FROM skill_taxonomy")}
+            # If the core cloud/parallel rows already exist, assume seeding happened.
+            if {"aws", "gcp", "azure"}.issubset(existing):
+                return
+
+            now = utcnow_iso()
+            seeds = [
+                ("react", "frontend", "react,reactjs,react.js", "javascript", "vue,angular,svelte", now),
+                ("nextjs", "frontend", "nextjs,next.js,next", "react,javascript", "", now),
+                ("vue", "frontend", "vue,vuejs,vue.js", "javascript", "react,angular,svelte", now),
+                ("angular", "frontend", "angular,angularjs", "javascript,typescript", "react,vue,svelte", now),
+                ("svelte", "frontend", "svelte,sveltekit", "javascript", "react,vue,angular", now),
+                ("javascript", "language", "javascript,js,ecmascript", "", "", now),
+                ("typescript", "language", "typescript,ts", "javascript", "", now),
+                ("python", "language", "python,py,python3", "", "", now),
+                ("node.js", "backend", "node.js,nodejs,node", "javascript,rest", "", now),
+                ("express", "backend", "express,expressjs,express.js", "node.js,javascript,rest", "fastapi,django,flask", now),
+                ("fastapi", "backend", "fastapi,fast-api", "python,rest", "express,django,flask", now),
+                ("django", "backend", "django", "python,rest", "express,fastapi,flask", now),
+                ("flask", "backend", "flask", "python,rest", "express,fastapi,django", now),
+                ("graphql", "api", "graphql,gql", "", "rest", now),
+                ("rest", "api", "rest,restful,restful api", "", "graphql", now),
+                ("aws", "cloud", "aws,amazon web services,amazon", "", "gcp,azure", now),
+                ("gcp", "cloud", "gcp,google cloud platform,google cloud", "", "aws,azure", now),
+                ("azure", "cloud", "azure,microsoft azure", "", "aws,gcp", now),
+                ("postgres", "database", "postgres,postgresql,psql", "sql", "mysql", now),
+                ("mysql", "database", "mysql,mariadb", "sql", "postgres", now),
+                ("mongodb", "database", "mongodb,mongo", "nosql", "", now),
+                ("redis", "cache", "redis", "", "", now),
+                ("sql", "database", "sql", "", "", now),
+                ("nosql", "database", "nosql", "", "", now),
+                ("docker", "devops", "docker,containers", "", "", now),
+                ("kubernetes", "devops", "kubernetes,k8s", "docker", "", now),
+            ]
+            conn.executemany(
+                "INSERT OR IGNORE INTO skill_taxonomy (canonical, category, synonyms_csv, implies_csv, parallels_csv, updated_at) VALUES (?,?,?,?,?,?)",
                 seeds,
             )
 
