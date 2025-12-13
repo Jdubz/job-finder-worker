@@ -24,6 +24,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+HEADCOUNT_INSTRUCTIONS = (
+    '- For headcount: convert ranges like "51-200 employees", "1,001–5,000", or '
+    '"200+ employees" into a number (use the upper bound or stated number). Do NOT invent '
+    "numbers if none are stated.\n"
+    "- Always set both: employeeCount (integer or null) AND companySizeCategory using bands: "
+    "small (<100), medium (100-999), large (1000+). If no numeric clue, leave both blank/null "
+    'unless text explicitly states size (e.g., "Fortune 500" => large, "startup of ~50" => small).\n'
+    "- Ignore headcounts that clearly refer to a parent/portfolio company rather than this specific company."
+)
+
 # Domains that often appear but rarely represent the company homepage; we down-rank
 # them instead of hard-blocking to avoid brittleness.
 DISCOURAGED_DOMAINS = {
@@ -564,9 +574,7 @@ IMPORTANT INSTRUCTIONS:
 - If multiple candidates appear, pick the one whose homepage/about page text mentions the company name/brand; otherwise choose the Wikipedia site.
 - To fill culture, look for values/mission/culture statements on About/Careers pages.
 - For techStack, look for engineering blogs, stackshare.io, hiring pages mentioning technologies; do NOT invent technologies—leave [] if not stated.
-- For headcount: convert ranges like "51-200 employees", "1,001–5,000 employees", "200+ employees", or LinkedIn about-page counts into a number. Use the upper bound or stated number; if only a "+" is given, use that number. Do not invent numbers if none are stated.
-- Always set both fields consistently: employeeCount (integer or null) AND companySizeCategory using bands: small (<100), medium (100-999), large (1000+). If you don't have a number, leave both blank/null unless the text explicitly says terms like "enterprise"/"Fortune 500" (large) or "startup of ~50" (small).
-- Ignore headcounts that clearly refer to a parent/portfolio company rather than this specific company.
+{HEADCOUNT_INSTRUCTIONS}
 
 Return a JSON object with these fields:
 - website: official company website URL (NOT greenhouse.io, lever.co, workday, etc.)
@@ -679,8 +687,7 @@ employeeCount, companySizeCategory, isRemoteFirst, aiMlFocus, timezoneOffset, pr
 
 - Ignore VC/portfolio sites, recruiter sites, and entertainment results (films, songs, etc.).
 - Do not invent tech stacks; only include technologies explicitly mentioned in reliable sources.
-- For headcount: convert ranges like "51-200 employees", "1,001–5,000", or "200+ employees" into a number (use upper bound or stated number). Set employeeCount accordingly.
-- Always set companySizeCategory using: small (<100), medium (100-999), large (1000+). If no numeric clue, leave employeeCount null and companySizeCategory empty unless text clearly states a qualitative size (e.g., "Fortune 500" -> large, "early-stage startup of ~50" -> small).
+- {HEADCOUNT_INSTRUCTIONS}
 
 Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
 
