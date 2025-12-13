@@ -109,6 +109,7 @@ job discovery system. Your analysis will determine how the source is classified 
 - Can scrape JSON APIs (REST endpoints returning job listings)
 - Can parse RSS/Atom feeds
 - Can scrape static HTML pages with CSS selectors
+- Can render JavaScript-driven pages via Playwright **when `requires_js: true` is set in the source_config**. Keep resource usage light (block images/fonts), and always include a CSS selector for readiness (job list container or first job card).
 - Supports pagination for APIs with offset/page parameters
 - Known ATS patterns (preferred when detected):
   - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
@@ -118,9 +119,8 @@ job discovery system. Your analysis will determine how the source is classified 
   - RSS: if the URL is clearly an RSS feed, use type=rss and map title/link/description/pubDate
 
 ### System Limitations (CRITICAL)
-- **NO JavaScript rendering**: Cannot scrape JS-only pages (React/Vue SPAs without SSR)
-- **NO authentication**: Cannot handle login-required or OAuth-protected sources
-- **NO CAPTCHA solving**: Will fail on bot-protected sites
+- **No authentication**: Cannot handle login-required or OAuth-protected sources
+- **No CAPTCHA solving**: Will fail on bot-protected sites
 - Most major aggregators (Indeed, LinkedIn, Glassdoor, ZipRecruiter) are bot-protected
 
 ### Source Classification Rules
@@ -264,6 +264,8 @@ Respond with a JSON object containing your analysis:
     "url": "the jobs endpoint URL",
     "response_path": "path.to.jobs.array (for APIs)",
     "job_selector": "CSS selector (for HTML)",
+    "requires_js": true|false,
+    "render_wait_for": "CSS selector to wait for when requires_js is true",
     "fields": {
       "title": "path or selector",
       "url": "path or selector"
@@ -277,9 +279,10 @@ If you can determine a working config, include it in `source_config`.
 
 CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - Prefer stable ATS APIs when present (Greenhouse/Lever/Ashby/Workday/SmartRecruiters).
+- If content is JS-rendered but publicly accessible, set `requires_js: true` and provide `job_selector` plus `render_wait_for` (use the job list container). Use HTML `fields` selectors as usual.
 - Make sure `type` is api|rss|html; include response_path for APIs (e.g., jobs or jobPostings).
 - Include pagination hints only when supported (Workday/Greenhouse offset+limit).
-- Do NOT output JS-dependent endpoints, LinkedIn/Indeed/Glassdoor/ZipRecruiter, or single-job URLs.
+- Do NOT output auth-gated or CAPTCHA-protected endpoints (LinkedIn/Indeed/Glassdoor/ZipRecruiter) or single-job URLs.
 - For Workday: use the /wday/cxs/{tenant}/{site}/jobs POST endpoint with limit/offset; fields: title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn.
 - For Greenhouse: https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true, response_path=jobs.
 - For Lever: https://api.lever.co/v0/postings/{slug}?mode=json.
