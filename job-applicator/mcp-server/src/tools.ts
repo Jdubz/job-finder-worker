@@ -243,4 +243,17 @@ export const tools: Tool[] = [
       required: ["selector", "type"],
     },
   },
+  {
+    name: "find_upload_areas",
+    description:
+      "Find all file upload areas on the page, including hidden file inputs and drag-and-drop zones. " +
+      "Returns the file input selector, trigger button selector (for hidden inputs), accepted file types, " +
+      "and detected document type (resume/coverLetter). Use this BEFORE upload_file to find the correct selector. " +
+      "Many modern forms hide the actual <input type='file'> and use a button to trigger it.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
 ]

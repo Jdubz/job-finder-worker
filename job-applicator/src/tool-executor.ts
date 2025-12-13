@@ -25,7 +25,7 @@ export interface ToolResult {
 
 const SCREENSHOT_MAX_WIDTH = 1280 // Max width for screenshots sent to agent
 const TOOL_TIMEOUT_MS = 30000 // 30 second timeout for tool execution
-const COMBOBOX_DROPDOWN_DELAY_MS = 300 // Wait for dropdown to appear after typing
+const COMBOBOX_DROPDOWN_DELAY_MS = 500 // Wait for dropdown to appear after typing (increased for large datasets)
 
 // ============================================================================
 // BrowserView Reference
@@ -253,6 +253,9 @@ async function executeToolInternal(
     case "upload_file":
       return await handleUploadFile(params as { selector: string; type: "resume" | "coverLetter" })
 
+    case "find_upload_areas":
+      return await handleFindUploadAreas()
+
     default:
       logger.warn(`[ToolExecutor] Unknown tool: ${tool}`)
       return { success: false, error: `Unknown tool: ${tool}` }
@@ -378,9 +381,12 @@ async function handleGetFormFields(): Promise<ToolResult> {
         const rect = el.getBoundingClientRect();
         const fieldType = el.type || el.tagName.toLowerCase();
 
-        // Skip hidden and invisible/disabled fields early (but include file inputs)
+        // Skip hidden type fields (but NOT visually hidden file inputs)
         if (fieldType === 'hidden') return null;
-        if (rect.width === 0 || rect.height === 0) return null;
+
+        // For file inputs, include even if visually hidden (they're often triggered by buttons)
+        const isFileInput = fieldType === 'file';
+        if (!isFileInput && (rect.width === 0 || rect.height === 0)) return null;
         if (el.disabled) return null;
 
         // Build a reliable CSS selector
@@ -714,8 +720,12 @@ async function handleSelectCombobox(params: { selector: string; value: string })
 
         // Common dropdown selectors used by UI libraries
         const dropdownSelectors = [
+          // ARIA-compliant dropdowns (most reliable)
           '[role="listbox"] [role="option"]',
           '[role="listbox"] li',
+          '[role="menu"] [role="menuitem"]',
+          '[role="menu"] li',
+          // Common class patterns
           '.dropdown-menu li',
           '.dropdown-menu a',
           '.autocomplete-results li',
@@ -734,8 +744,22 @@ async function handleSelectCombobox(params: { selector: string; value: string })
           '[class*="MuiMenu"] [role="menuitem"]',
           // React Select
           '[class*="react-select"] [class*="option"]',
-          // Generic visible dropdowns
+          // Custom design systems (Dropbox dig-, Atlassian, etc.)
+          '[class*="dig-"] [class*="option"]',
+          '[class*="dig-"] [class*="item"]',
+          '[class*="Dropdown"] [class*="Item"]',
+          '[class*="Combobox"] [class*="Option"]',
+          '[class*="Typeahead"] [class*="Option"]',
+          '[class*="picker"] [class*="option"]',
+          '[class*="suggestions"] [class*="item"]',
+          // Data attributes
+          '[data-option]',
           '[data-value]',
+          '[data-testid*="option"]',
+          // Popover/portal-based dropdowns (rendered at root)
+          '[id*="popover"] [role="option"]',
+          '[id*="portal"] [role="option"]',
+          '[id*="dropdown"] li',
         ];
 
         let matchingOption = null;
@@ -951,6 +975,7 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
 
 /**
  * Get all clickable buttons on the page
+ * Enhanced to detect custom UI frameworks (React, Vue, custom design systems)
  */
 async function handleGetButtons(): Promise<ToolResult> {
   if (!browserView) {
@@ -963,6 +988,12 @@ async function handleGetButtons(): Promise<ToolResult> {
       function buildSelectorPath(el) {
         if (el.id) {
           return '#' + CSS.escape(el.id);
+        }
+        // Try data-testid or data-qa (common in modern apps)
+        const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa') || el.getAttribute('data-cy');
+        if (testId) {
+          const selector = '[data-testid="' + CSS.escape(testId) + '"]';
+          if (document.querySelectorAll(selector).length === 1) return selector;
         }
         if (el.name) {
           const tag = el.tagName.toLowerCase();
@@ -996,35 +1027,78 @@ async function handleGetButtons(): Promise<ToolResult> {
         return path.join(' > ');
       }
 
-      // Find buttons, links that look like buttons, and elements with click handlers
-      const elements = document.querySelectorAll('button, a[role="button"], [type="button"], [type="submit"], a.btn, a.button, [onclick], [data-action]');
+      // Expanded selectors for modern UI frameworks and custom design systems
+      const selectorPatterns = [
+        'button',
+        '[role="button"]',              // ARIA buttons (any element)
+        '[type="button"]',
+        'a.btn', 'a.button',
+        '[onclick]',
+        '[data-action]',
+        '[data-testid*="add"]',         // Test IDs containing "add"
+        '[data-testid*="button"]',
+        '[data-qa*="add"]',
+        '[class*="button"]',            // Classes containing "button"
+        '[class*="btn-"]',
+        '[class*="-btn"]',
+      ].join(', ');
 
-      return Array.from(elements).map((el, idx) => {
+      const elements = document.querySelectorAll(selectorPatterns);
+      const seen = new Set();
+      const results = [];
+
+      // Also find elements by text content for "Add Another" patterns
+      const addPatterns = /add\\s*(another|more|new|education|experience|employment|entry)/i;
+      const allElements = document.querySelectorAll('*');
+
+      for (const el of allElements) {
+        // Skip if already processed
+        const selector = buildSelectorPath(el);
+        if (seen.has(selector)) continue;
+
+        const text = (el.textContent || '').trim();
+        const isClickable = el.matches(selectorPatterns) ||
+                           (el.style.cursor === 'pointer') ||
+                           (window.getComputedStyle(el).cursor === 'pointer');
+        const hasAddText = addPatterns.test(text) && text.length < 50; // Short text with "add"
+
+        // Include if it's clickable OR has "add" text pattern
+        if (!isClickable && !hasAddText) continue;
+
         const rect = el.getBoundingClientRect();
 
-        // Skip invisible or disabled elements
-        if (rect.width === 0 || rect.height === 0) return null;
-        if (el.disabled) return null;
+        // Skip invisible or disabled
+        if (rect.width === 0 || rect.height === 0) continue;
+        if (el.disabled) continue;
+        // Skip elements far outside viewport (likely hidden)
+        if (rect.top < -1000 || rect.top > window.innerHeight + 1000) continue;
 
-        const text = el.textContent?.trim() || el.value || el.getAttribute('aria-label') || '';
+        const displayText = text.slice(0, 100) || el.getAttribute('aria-label') || '';
 
-        // Skip submit/apply buttons (user should click these manually)
-        const lowerText = text.toLowerCase();
-        if (lowerText.includes('submit') || lowerText.includes('apply now') || lowerText === 'apply') return null;
+        // Skip submit/apply buttons
+        const lowerText = displayText.toLowerCase();
+        if (lowerText.includes('submit') || lowerText.includes('apply now') || lowerText === 'apply') continue;
 
-        return {
-          selector: buildSelectorPath(el),
-          text: text.slice(0, 100),
+        // Skip empty text unless it has an aria-label
+        if (!displayText) continue;
+
+        seen.add(selector);
+        results.push({
+          selector: selector,
+          text: displayText,
           type: el.tagName.toLowerCase(),
+          role: el.getAttribute('role') || null,
           x: Math.round(rect.left + rect.width / 2),
           y: Math.round(rect.top + rect.height / 2),
-        };
-      }).filter(b => b !== null && b.text.length > 0);
+        });
+      }
+
+      return results;
     })()
   `)
 
   // Filter to most relevant buttons (add, education, employment, experience)
-  const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more'];
+  const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more', 'entry', 'position', 'degree', 'school', 'job'];
   const relevantButtons = buttons.filter((b: { text: string }) => {
     const lowerText = b.text.toLowerCase();
     return relevantKeywords.some(keyword => lowerText.includes(keyword));
@@ -1035,8 +1109,9 @@ async function handleGetButtons(): Promise<ToolResult> {
   return {
     success: true,
     data: {
-      buttons: relevantButtons.length > 0 ? relevantButtons : buttons.slice(0, 20),
-      totalFound: buttons.length
+      buttons: relevantButtons.length > 0 ? relevantButtons : buttons.slice(0, 30),
+      totalFound: buttons.length,
+      hint: relevantButtons.length === 0 ? "No 'Add' buttons found. Try scrolling or look for icons (+) that add entries." : null
     }
   }
 }
@@ -1381,6 +1456,172 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`[ToolExecutor] Upload error: ${message}`)
     return { success: false, error: message }
+  }
+}
+
+/**
+ * Find file upload areas on the page
+ * Returns file inputs (including hidden ones) and their associated trigger buttons
+ */
+async function handleFindUploadAreas(): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const uploadAreas = await browserView.webContents.executeJavaScript(`
+    (() => {
+      // Helper: Build a unique CSS selector path for an element
+      function buildSelectorPath(el) {
+        if (el.id) return '#' + CSS.escape(el.id);
+        const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa');
+        if (testId) {
+          const selector = '[data-testid="' + CSS.escape(testId) + '"]';
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        }
+        if (el.name) {
+          const tag = el.tagName.toLowerCase();
+          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          if (document.querySelectorAll(nameSelector).length === 1) return nameSelector;
+        }
+        const path = [];
+        let current = el;
+        while (current && current !== document.body) {
+          let segment = current.tagName.toLowerCase();
+          if (current.id) {
+            path.unshift('#' + CSS.escape(current.id));
+            break;
+          }
+          const parent = current.parentElement;
+          if (parent) {
+            const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+            if (siblings.length > 1) {
+              const index = siblings.indexOf(current) + 1;
+              segment += ':nth-of-type(' + index + ')';
+            }
+          }
+          path.unshift(segment);
+          current = current.parentElement;
+        }
+        if (path.length > 0 && !path[0].startsWith('#')) path.unshift('body');
+        return path.join(' > ');
+      }
+
+      const results = [];
+
+      // Find all file inputs (including hidden ones)
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+
+      for (const input of fileInputs) {
+        const rect = input.getBoundingClientRect();
+        const isHidden = rect.width === 0 || rect.height === 0 || input.offsetParent === null;
+
+        // Get accepted file types
+        const accept = input.getAttribute('accept') || '*';
+
+        // Try to find associated label or trigger button
+        let triggerButton = null;
+        let triggerSelector = null;
+        let label = input.getAttribute('aria-label') || '';
+
+        // Check for label[for]
+        if (input.id) {
+          const labelEl = document.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+          if (labelEl) {
+            label = labelEl.textContent?.trim() || label;
+            if (isHidden) {
+              triggerButton = labelEl;
+              triggerSelector = buildSelectorPath(labelEl);
+            }
+          }
+        }
+
+        // Check parent/ancestor for clickable container
+        if (isHidden && !triggerButton) {
+          let parent = input.parentElement;
+          for (let i = 0; i < 5 && parent; i++) {
+            const parentRect = parent.getBoundingClientRect();
+            if (parentRect.width > 0 && parentRect.height > 0) {
+              const text = parent.textContent?.trim()?.slice(0, 100) || '';
+              // Look for upload-related text
+              if (/attach|upload|browse|drag|drop|resume|cv|cover/i.test(text)) {
+                triggerButton = parent;
+                triggerSelector = buildSelectorPath(parent);
+                if (!label) label = text.slice(0, 50);
+                break;
+              }
+            }
+            parent = parent.parentElement;
+          }
+        }
+
+        // Determine if this is for resume or cover letter
+        const contextText = (label + ' ' + (input.name || '') + ' ' + (input.id || '')).toLowerCase();
+        let documentType = 'unknown';
+        if (/resume|cv|curriculum/i.test(contextText)) {
+          documentType = 'resume';
+        } else if (/cover.?letter/i.test(contextText)) {
+          documentType = 'coverLetter';
+        }
+
+        results.push({
+          inputSelector: buildSelectorPath(input),
+          triggerSelector: triggerSelector,
+          label: label || 'File upload',
+          accept: accept,
+          isHidden: isHidden,
+          documentType: documentType,
+          x: isHidden && triggerButton ? Math.round(triggerButton.getBoundingClientRect().left + triggerButton.getBoundingClientRect().width / 2) : Math.round(rect.left + rect.width / 2),
+          y: isHidden && triggerButton ? Math.round(triggerButton.getBoundingClientRect().top + triggerButton.getBoundingClientRect().height / 2) : Math.round(rect.top + rect.height / 2),
+        });
+      }
+
+      // Also look for drag-and-drop zones without file inputs
+      const dropZones = document.querySelectorAll('[class*="drop"], [class*="upload"], [data-testid*="upload"], [data-testid*="drop"]');
+      for (const zone of dropZones) {
+        const rect = zone.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+
+        // Check if there's already a file input result for this area
+        const hasInput = results.some(r => {
+          const inputRect = document.querySelector(r.inputSelector)?.getBoundingClientRect();
+          if (!inputRect) return false;
+          // Check if overlapping
+          return !(inputRect.right < rect.left || inputRect.left > rect.right ||
+                   inputRect.bottom < rect.top || inputRect.top > rect.bottom);
+        });
+
+        if (!hasInput) {
+          const text = zone.textContent?.trim()?.slice(0, 100) || '';
+          if (/drag|drop|upload|attach|browse/i.test(text)) {
+            results.push({
+              inputSelector: null,
+              triggerSelector: buildSelectorPath(zone),
+              label: text.slice(0, 50) || 'Drop zone',
+              accept: '*',
+              isHidden: false,
+              documentType: /resume|cv/i.test(text) ? 'resume' : (/cover/i.test(text) ? 'coverLetter' : 'unknown'),
+              x: Math.round(rect.left + rect.width / 2),
+              y: Math.round(rect.top + rect.height / 2),
+              note: 'Drop zone without direct file input - may need to click to open file dialog'
+            });
+          }
+        }
+      }
+
+      return results;
+    })()
+  `)
+
+  logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas`)
+
+  return {
+    success: true,
+    data: {
+      uploadAreas,
+      hint: uploadAreas.length === 0
+        ? "No file upload areas found. Scroll down to reveal more of the form."
+        : "Use upload_file with the inputSelector. If isHidden=true, the triggerSelector can be clicked to open file dialog."
+    }
   }
 }
 
