@@ -697,9 +697,7 @@ class SourceProcessor(BaseProcessor):
         self._refresh_runtime_config()
 
         # Check item.source_id first (populated from input), then fall back to scraped_data (output)
-        source_id = item.source_id or (
-            item.scraped_data.get("source_id") if item.scraped_data else None
-        )
+        source_id = item.source_id or (item.scraped_data and item.scraped_data.get("source_id"))
         source_url = item.url if item.url else None
 
         logger.info(f"SCRAPE_SOURCE: Processing source {source_id or source_url}")
