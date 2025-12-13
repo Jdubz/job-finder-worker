@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from job_finder.exceptions import DuplicateQueueItemError, StorageError
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.storage.sqlite_client import sqlite_connection
@@ -33,10 +35,14 @@ def _rows_to_items(rows: List[Any]) -> List[JobQueueItem]:
     for row in rows:
         rec = dict(row)
         if not rec.get("tracking_id"):
-            rec["tracking_id"] = rec.get("id") or str(uuid4())
+            if rec.get("id"):
+                rec["tracking_id"] = rec.get("id")
+            else:
+                logger.error("Dropping queue row with missing both 'id' and 'tracking_id': %s", rec)
+                continue
         try:
             items.append(JobQueueItem.from_record(rec))
-        except (ValueError, KeyError, TypeError) as exc:
+        except (ValidationError, ValueError, KeyError, TypeError) as exc:
             logger.error("Dropping malformed queue row %s: %s", rec.get("id"), exc)
     return items
 
@@ -52,7 +58,6 @@ class QueueManager:
         self.db_path = db_path
         self.notifier = notifier
         self._max_string_length = 2000
-        self._tracking_backfill_done = False
         self._ensure_schema()
 
     # ------------------------------------------------------------------ #
@@ -298,10 +303,6 @@ class QueueManager:
 
     def get_pending_items(self, limit: int = 10) -> List[JobQueueItem]:
         with sqlite_connection(self.db_path) as conn:
-            # One-time self-heal for legacy rows missing tracking_id
-            if not self._tracking_backfill_done:
-                conn.execute("UPDATE job_queue SET tracking_id = id WHERE tracking_id IS NULL")
-                self._tracking_backfill_done = True
             rows = conn.execute(
                 """
                 SELECT * FROM job_queue

@@ -13,7 +13,8 @@ DROP VIEW IF EXISTS view_queue_ready;
 UPDATE job_queue
 SET tracking_id = COALESCE(tracking_id, id),
     input = COALESCE(input, '{}'),
-    output = COALESCE(output, '{}');
+    output = COALESCE(output, '{}')
+WHERE tracking_id IS NULL OR input IS NULL OR output IS NULL;
 
 -- Create new table with constraints
 CREATE TABLE job_queue_new (

@@ -157,7 +157,13 @@ class SkillTaxonomyRepository:
             )
 
     def _ensure_core_seeds(self):
-        """Insert the curated seed set if missing, without overwriting custom rows."""
+        """
+        Ensure the curated seed set (with parallels/implies) exists.
+
+        Runs on every initialization and uses INSERT OR IGNORE so it never overwrites
+        local/custom rows. This is important for historical dev DBs that were created
+        with placeholder rows (e.g., only canonical set, empty synonyms/implies/parallels).
+        """
         with sqlite_connection(self.db_path) as conn:
             existing = {row[0] for row in conn.execute("SELECT canonical FROM skill_taxonomy")}
             # If the core cloud/parallel rows already exist, assume seeding happened.
