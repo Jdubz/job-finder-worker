@@ -134,6 +134,9 @@ export class JobQueueRepository {
       ...(data.pipeline_state !== undefined && { pipeline_state: data.pipeline_state })
     }
 
+    const inputJson = serializeJson(Object.keys(inputData).length ? inputData : {}) ?? '{}'
+    const outputJson = serializeJson(Object.keys(outputData).length ? outputData : {}) ?? '{}'
+
     const stmt = this.db.prepare(`
       INSERT INTO job_queue (
         id, type, status, url, tracking_id, parent_item_id,
@@ -149,8 +152,8 @@ export class JobQueueRepository {
       data.url ?? null,
       trackingId,
       data.parent_item_id ?? null,
-      serializeJson(Object.keys(inputData).length ? inputData : null),
-      serializeJson(Object.keys(outputData).length ? outputData : null),
+      inputJson,
+      outputJson,
       data.result_message ?? null,
       data.error_details ?? null,
       createdAt,
