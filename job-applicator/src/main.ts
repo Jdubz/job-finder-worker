@@ -79,7 +79,7 @@ import {
 } from "./utils.js"
 
 // Tool executor and server
-import { startToolServer, stopToolServer, setToolStatusCallback } from "./tool-server.js"
+import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
 import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
 // Typed API client
 import {
@@ -158,12 +158,15 @@ async function downloadDocument(documentUrl: string): Promise<string> {
 // Layout constants
 const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
+const CUSTOM_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
 // CLI timeout and warning thresholds
 // 5 minutes for complex form fills - increased from 2 minutes (120s) to handle large forms
 // Warning intervals help identify if operations are taking unusually long
 const CLI_TIMEOUT_MS = 300000 // 5 minutes
 const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
+const TOOL_SERVER_HEALTH_TIMEOUT_MS = 3000
 
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
@@ -210,6 +213,9 @@ async function createWindow(): Promise<void> {
   })
 
   mainWindow.setBrowserView(browserView)
+  browserView.webContents.setUserAgent(CUSTOM_USER_AGENT)
+  browserView.webContents.session.setUserAgent(CUSTOM_USER_AGENT, "en-US,en")
+  logger.info(`[BrowserView] User agent set to Chrome UA to avoid bot/WAF blocks`)
 
   // Set BrowserView reference for agent tools
   setBrowserView(browserView)
@@ -400,6 +406,27 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 ipcMain.handle("get-url", async (): Promise<string> => {
   if (!browserView) return ""
   return browserView.webContents.getURL()
+})
+
+// Get navigation state (URL + back availability)
+ipcMain.handle("get-navigation-state", async (): Promise<{ url: string; canGoBack: boolean }> => {
+  if (!browserView) return { url: "", canGoBack: false }
+  return {
+    url: browserView.webContents.getURL(),
+    canGoBack: browserView.webContents.canGoBack(),
+  }
+})
+
+// Navigate back if possible
+ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boolean; message?: string }> => {
+  if (!browserView) {
+    return { success: false, canGoBack: false, message: "Browser not initialized" }
+  }
+  if (browserView.webContents.canGoBack()) {
+    await browserView.webContents.goBack()
+    return { success: true, canGoBack: browserView.webContents.canGoBack() }
+  }
+  return { success: false, canGoBack: false, message: "No page to go back to" }
 })
 
 
@@ -966,7 +993,9 @@ function runCliCommon<T>(
   const args = ["--print", "--output-format", "json", "--dangerously-skip-permissions", "-p", "-"]
 
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args)
+    const child = spawn(cmd, args, {
+      windowsHide: true,
+    })
     let stdout = ""
     let stderr = ""
 
@@ -1184,7 +1213,7 @@ function createMcpConfigFile(): string {
         command: "node",
         args: [mcpServerPath],
         env: {
-          JOB_APPLICATOR_URL: `http://127.0.0.1:19524`
+          JOB_APPLICATOR_URL: getToolServerUrl()
         }
       }
     }
@@ -1193,6 +1222,66 @@ function createMcpConfigFile(): string {
   fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2))
   logger.info(`[FillForm] Created MCP config at ${MCP_CONFIG_PATH}`)
   return MCP_CONFIG_PATH
+}
+
+/**
+ * Ensure MCP server build artifacts exist
+ */
+function assertMcpServerBuilt(): void {
+  try {
+    const pathToServer = getMcpServerPath()
+    logger.info(`[Startup] MCP server binary found at: ${pathToServer}`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[Startup] MCP server missing: ${message}`)
+    throw err
+  }
+}
+
+/**
+ * Health-check the tool server endpoint (fast fail for port conflicts/unstarted server)
+ */
+async function ensureToolServerHealthy(): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TOOL_SERVER_HEALTH_TIMEOUT_MS)
+  const url = `${getToolServerUrl()}/tool`
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool: "__healthcheck__", params: {} }),
+      signal: controller.signal,
+    })
+
+    if (!res.ok) {
+      throw new Error(`Tool server responded ${res.status}`)
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Tool server not reachable at ${url}: ${message}`)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Restart tool server if health check fails, then re-validate.
+ */
+async function ensureToolServerReadyWithRestart(): Promise<void> {
+  try {
+    await ensureToolServerHealthy()
+    return
+  } catch (initialErr) {
+    logger.warn(`[ToolServer] Health check failed, restarting: ${initialErr instanceof Error ? initialErr.message : String(initialErr)}`)
+    try {
+      await stopToolServer()
+    } catch {
+      /* ignore */
+    }
+    startToolServer()
+    await ensureToolServerHealthy()
+  }
 }
 
 /**
@@ -1205,6 +1294,15 @@ ipcMain.handle(
     options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
+      // Fast preflight: make sure the tool server is reachable before starting the agent
+      try {
+        await ensureToolServerReadyWithRestart()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] Tool server health check failed: ${message}`)
+        return { success: false, message }
+      }
+
       // Kill any existing process
       if (activeClaudeProcess) {
         killActiveClaudeProcess("starting new fill-form")
@@ -1285,8 +1383,19 @@ ipcMain.handle(
       })
 
       // Fetch prompt from API - no fallback, fail loudly if missing
-      const prompt = await fetchFormFillPrompt()
-      logger.info(`[FillForm] Loaded prompt from API (${prompt.length} chars)`)
+      const basePrompt = await fetchFormFillPrompt()
+      const safetyTail = `
+
+STRICT FORM-FILL RULES (do NOT ignore):
+- Only fill answers that are clearly present in the provided user profile or job context.
+- Company/job-specific motivation questions ("Why this company/role?" or "How do your skills align?") ARE allowed—answer them concisely using the job description + profile. Avoid fluff.
+- Do NOT answer personal/subjective traps unrelated to the job (school grades, childhood, family, personal philosophies, unrelated medical/political questions); leave those EMPTY.
+- If a value is missing or ambiguous, leave the field EMPTY and call done after all known fields are filled.
+- Do NOT fabricate data, guess, or infer beyond the profile/context. No made-up dates, companies, addresses, IDs, or demographic answers.
+- For multi-choice fields, only select an option that exactly matches provided info; otherwise leave it blank/unselected.
+- If asked for uploads, only use the provided resume/cover letter URLs; never invent files.`
+      const prompt = `${basePrompt.trim()}\n${safetyTail}`
+      logger.info(`[FillForm] Loaded prompt from API (${basePrompt.length} chars) with safety tail (${safetyTail.length} chars)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
       logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)
@@ -1312,8 +1421,8 @@ ipcMain.handle(
       // Use detached: true to create a new process group, allowing us to kill the entire tree
       // on termination (electronmon restarts, etc.). stdio: "pipe" is default but explicit here.
       activeClaudeProcess = spawn("claude", spawnArgs, {
-        detached: true,
         stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
       })
 
       // Write prompt to stdin and close it (--print mode needs EOF to start)
@@ -1442,11 +1551,27 @@ ipcMain.handle("pause-agent", async (): Promise<{ success: boolean; message?: st
 })
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Ensure MCP assets exist before the user tries to fill a form
+  try {
+    assertMcpServerBuilt()
+  } catch {
+    // Already logged; keep starting the app so the user can see the error in UI/logs
+  }
+
   // Start the tool server for MCP communication
   startToolServer()
 
-  createWindow()
+  // Verify the tool server is reachable (catches port conflicts/zombie listeners)
+  try {
+    await ensureToolServerReadyWithRestart()
+    logger.info("[Startup] Tool server health check passed")
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[Startup] Tool server health check failed: ${message}`)
+  }
+
+  await createWindow()
 
   // Register global shortcuts for DevTools
   // Use 'detach' mode to open in separate window (works better on Linux)

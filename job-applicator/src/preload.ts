@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   navigate: (url: string): Promise<{ success: boolean; message?: string }> =>
     ipcRenderer.invoke("navigate", url),
   getUrl: () => ipcRenderer.invoke("get-url"),
+  goBack: (): Promise<{ success: boolean; canGoBack: boolean; message?: string }> =>
+    ipcRenderer.invoke("go-back"),
+  getNavigationState: (): Promise<{ url: string; canGoBack: boolean }> =>
+    ipcRenderer.invoke("get-navigation-state"),
 
   // Form Fill API (MCP-based)
   fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) =>

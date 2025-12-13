@@ -54,6 +54,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (data.image && typeof data.image === "string") {
       // Return image as base64
       const imageData = (data.image as string).replace(/^data:image\/\w+;base64,/, "")
+      if (!imageData || imageData.trim().length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "Empty image data from screenshot" }),
+            },
+          ],
+          isError: true,
+        }
+      }
       return {
         content: [
           {

@@ -249,6 +249,8 @@ interface ElectronAPI {
   }
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
+  goBack: () => Promise<{ success: boolean; canGoBack: boolean; message?: string }>
+  getNavigationState: () => Promise<{ url: string; canGoBack: boolean }>
 
   // Form Fill API (MCP-based)
   fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) => Promise<{ success: boolean; message?: string }>
@@ -381,6 +383,7 @@ function getElement<T extends HTMLElement>(id: string): T {
 }
 
 // DOM elements - Toolbar
+const backBtn = getElement<HTMLButtonElement>("backBtn")
 const urlInput = getElement<HTMLInputElement>("urlInput")
 const goBtn = getElement<HTMLButtonElement>("goBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
@@ -428,6 +431,19 @@ function setButtonsEnabled(enabled: boolean) {
   submitJobBtn.disabled = !enabled
   // Upload buttons have their own enable logic based on file input and document selection
   updateUploadButtonsState()
+}
+
+async function refreshNavigationState() {
+  try {
+    const state = await api.getNavigationState()
+    if (state.url) {
+      urlInput.value = state.url
+    }
+    backBtn.disabled = !state.canGoBack
+  } catch (err) {
+    log.warn("Failed to refresh navigation state:", err)
+    backBtn.disabled = true
+  }
 }
 
 // Update workflow progress UI
@@ -949,11 +965,24 @@ async function navigate() {
 
     // Check for file input on the new page (with delay for page to render)
     setTimeout(checkForFileInput, 500)
+    refreshNavigationState()
   } else {
     setStatus(navResult.message || "Navigation failed", "error")
   }
 
   setButtonsEnabled(true)
+}
+
+async function goBack() {
+  const result = await api.goBack()
+  if (!result.success) {
+    setStatus(result.message || "No page to go back to", "error")
+    backBtn.disabled = !result.canGoBack
+    return
+  }
+  setStatus("Navigated back", "success")
+  setTimeout(checkForFileInput, 500)
+  refreshNavigationState()
 }
 
 // ============================================================================
@@ -1054,6 +1083,7 @@ function ensureAgentListeners() {
   if (!unsubscribeBrowserUrlChanged) {
     unsubscribeBrowserUrlChanged = api.onBrowserUrlChanged((data) => {
       urlInput.value = data.url
+      refreshNavigationState()
     })
   }
 }
@@ -1297,6 +1327,7 @@ function escapeAttr(str: string): string {
 // Initialize application when DOM is ready
 function initializeApp() {
   // Event listeners - Toolbar
+  backBtn.addEventListener("click", goBack)
   goBtn.addEventListener("click", navigate)
   urlInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -1353,6 +1384,9 @@ function initializeApp() {
   api.onRefreshJobMatches(() => {
     refreshJobMatches()
   })
+
+  // Initial navigation state
+  refreshNavigationState()
 
   // Run async initialization
   init()
