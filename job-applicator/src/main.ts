@@ -1118,9 +1118,11 @@ WORKFLOW:
 1. get_user_profile - Get user data (MANDATORY first step)
 2. get_form_fields - Get ALL fields with their CSS selectors
 3. For EACH field returned, match label to profile data and fill using the appropriate tool
-4. IMPORTANT: After filling visible fields, scroll(300) and get_form_fields again
+4. IMPORTANT: After filling visible fields, scroll down and get_form_fields again
+   - Use scroll(dy) where dy is pixels to scroll (positive = down, e.g., 200-500 depending on form density)
    - Many forms have fields below the fold or reveal fields after filling others
-   - Keep scrolling and filling until you've checked the ENTIRE page (scroll 3-5 times minimum)
+   - Keep scrolling and filling until you've checked the ENTIRE page
+   - If get_form_fields returns no new fields after scrolling, you've likely reached the bottom
 5. MANDATORY: Look for EDUCATION section - most applications require it!
    - Use get_buttons to find "Add Education" or similar buttons
    - Fill ALL education entries from the user's profile
@@ -1162,12 +1164,13 @@ EMPLOYMENT SECTION:
 - Use get_buttons to find "Add Experience", "Add Job" buttons
 - Fill: Company, Title, Start/End dates, Description
 
-YES/NO QUESTIONS - Infer from profile:
-- "X years experience?" → YES if profile work history >= X years
-- "Authorized to work?" → YES
-- "Require sponsorship?" → NO
-- "Future openings email?" → YES
-- "Agree to terms?" → YES
+YES/NO QUESTIONS - Check profile first, then use defaults:
+- "X years experience?" → Check profile work history duration, calculate total years
+- "Authorized to work in [country]?" → Check profile for work authorization status, default YES if not specified
+- "Require visa sponsorship?" → Check profile for sponsorship needs, default NO if not specified
+- "Contact for future openings?" → Check profile preferences, default YES if not specified
+- "Agree to terms/privacy policy?" → YES (required to proceed)
+- For any yes/no not covered: infer from profile context, or choose the most common/safe answer
 
 FALLBACK (only if selector tools fail repeatedly):
 - click(x,y) + type(text) for truly custom UI

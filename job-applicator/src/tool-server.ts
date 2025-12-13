@@ -45,8 +45,9 @@ function sendStatus(message: string): void {
 
 /**
  * Format tool result for display
+ * Exported for testing
  */
-function formatToolResult(tool: string, params: Record<string, unknown> | undefined, data: unknown): string {
+export function formatToolResult(tool: string, params: Record<string, unknown> | undefined, data: unknown): string {
   try {
     switch (tool) {
       case "get_user_profile":
