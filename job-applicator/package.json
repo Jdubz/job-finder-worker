@@ -11,7 +11,8 @@
       "!dist/preload.cjs",
       "!dist/utils.js",
       "!dist/types.js",
-      "!logs/**"
+      "!logs/**",
+      "!mcp-config.json"
     ]
   },
   "scripts": {

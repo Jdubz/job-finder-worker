@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // File upload
-  uploadResume: (options?: { documentId?: string; type?: "resume" | "coverLetter" }) =>
+  uploadResume: (options?: { documentUrl?: string; type?: "resume" | "coverLetter" }) =>
     ipcRenderer.invoke("upload-resume", options),
 
   // Job submission

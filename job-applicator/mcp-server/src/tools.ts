@@ -11,8 +11,8 @@ export const tools: Tool[] = [
   {
     name: "screenshot",
     description:
-      "Capture a screenshot of the current page. Returns a base64-encoded JPEG image. " +
-      "Call this first to see what's on the page, and after actions to verify they worked.",
+      "Capture a screenshot for VERIFICATION ONLY. Use get_form_fields to find fields, not screenshots. " +
+      "Only use screenshots to verify fills worked or debug issues.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -22,8 +22,8 @@ export const tools: Tool[] = [
   {
     name: "click",
     description:
-      "Click at specific x,y coordinates on the page. Use coordinates from the screenshot. " +
-      "Click on input fields to focus them before typing.",
+      "LAST RESORT: Click at x,y coordinates. Prefer click_element(selector) or fill_field(selector) instead. " +
+      "Only use for custom UI elements that have no selector (date pickers, autocomplete popups).",
     inputSchema: {
       type: "object",
       properties: {
@@ -36,8 +36,8 @@ export const tools: Tool[] = [
   {
     name: "type",
     description:
-      "Type text into the currently focused input field. " +
-      "Make sure to click on the field first to focus it.",
+      "LAST RESORT: Type into focused field. Prefer fill_field(selector, value) instead. " +
+      "Only use after click(x,y) for custom UI that fill_field doesn't work on.",
     inputSchema: {
       type: "object",
       properties: {
@@ -106,13 +106,30 @@ export const tools: Tool[] = [
   {
     name: "select_option",
     description:
-      "Select an option in a dropdown/select field by CSS selector. " +
-      "Use the selector from get_form_fields and match against the options array.",
+      "Select an option in a native <select> dropdown. " +
+      "Use the selector from get_form_fields and match against the options array. " +
+      "Only works for fields with type='select-one' or 'select-multiple'.",
     inputSchema: {
       type: "object",
       properties: {
         selector: { type: "string", description: "CSS selector for the select element" },
         value: { type: "string", description: "Option value to select (use 'value' from options, or 'text' if value is empty)" },
+      },
+      required: ["selector", "value"],
+    },
+  },
+  {
+    name: "select_combobox",
+    description:
+      "Select from a searchable dropdown, autocomplete, or combobox. " +
+      "Use this for text inputs that show a dropdown list when you type. " +
+      "Types the value first to filter, then clicks the matching option. " +
+      "Use for month/year pickers, location autocomplete, or any input with role='combobox'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS selector for the input field" },
+        value: { type: "string", description: "Value to search for and select (e.g., 'March' not '03')" },
       },
       required: ["selector", "value"],
     },

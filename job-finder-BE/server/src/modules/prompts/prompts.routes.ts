@@ -15,6 +15,7 @@ const promptSchema = z.object({
   coverLetterGeneration: z.string().min(1),
   jobScraping: z.string().min(1),
   jobMatching: z.string().min(1),
+  formFill: z.string().min(1),
 })
 
 const updateSchema = z.object({

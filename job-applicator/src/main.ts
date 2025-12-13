@@ -73,14 +73,13 @@ import type {
 } from "./types.js"
 import type { JobMatchWithListing } from "@shared/types"
 import {
-  resolveDocumentPath,
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
   parseCliObjectOutput,
 } from "./utils.js"
 
 // Tool executor and server
-import { startToolServer, stopToolServer } from "./tool-server.js"
+import { startToolServer, stopToolServer, setToolStatusCallback } from "./tool-server.js"
 import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext } from "./tool-executor.js"
 // Typed API client
 import {
@@ -90,15 +89,71 @@ import {
   findJobMatchByUrl,
   updateJobMatchStatus,
   fetchDocuments,
-  fetchGeneratorRequest,
   startGeneration,
   executeGenerationStep,
   submitJobToQueue,
   getApiUrl,
+  fetchFormFillPrompt,
 } from "./api-client.js"
 
-// Artifacts directory - must match backend's GENERATOR_ARTIFACTS_DIR
-const ARTIFACTS_DIR = process.env.GENERATOR_ARTIFACTS_DIR || "/data/artifacts"
+// Temp directory for downloaded documents
+const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
+
+// Timeout for closing orphaned popup windows (5 seconds)
+const POPUP_CLEANUP_TIMEOUT_MS = 5000
+
+/**
+ * Download a document from the API to a temporary file
+ * @param documentUrl - API path like "/api/generator/artifacts/2025-12-11/file.pdf"
+ * @returns Local file path to the downloaded document
+ */
+async function downloadDocument(documentUrl: string): Promise<string> {
+  // Ensure temp directory exists
+  if (!fs.existsSync(TEMP_DOC_DIR)) {
+    fs.mkdirSync(TEMP_DOC_DIR, { recursive: true })
+  }
+
+  // Extract and validate filename from URL (prevent path traversal)
+  const filename = path.basename(documentUrl)
+  if (
+    !/^[a-zA-Z0-9._-]+$/.test(filename) ||
+    filename === "" ||
+    filename === "." ||
+    filename === ".."
+  ) {
+    throw new Error(`Invalid filename extracted from documentUrl: "${filename}"`)
+  }
+  const tempPath = path.join(TEMP_DOC_DIR, filename)
+
+  // If already downloaded, return cached path
+  if (fs.existsSync(tempPath)) {
+    logger.info(`[Download] Using cached document: ${tempPath}`)
+    return tempPath
+  }
+
+  // Validate documentUrl before building full URL (prevent URL manipulation)
+  if (!documentUrl.startsWith("/") || documentUrl.includes("://") || documentUrl.includes("..")) {
+    throw new Error(`Invalid documentUrl format: "${documentUrl}"`)
+  }
+
+  // Build full URL from API base
+  const apiUrl = getApiUrl()
+  const apiUrlObj = new URL(apiUrl)
+  const fullUrl = `${apiUrlObj.origin}${documentUrl}`
+
+  logger.info(`[Download] Downloading document from: ${fullUrl}`)
+
+  const response = await fetch(fullUrl)
+  if (!response.ok) {
+    throw new Error(`Failed to download document: ${response.status} ${response.statusText}`)
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer())
+  fs.writeFileSync(tempPath, buffer)
+
+  logger.info(`[Download] Saved document to: ${tempPath} (${buffer.length} bytes)`)
+  return tempPath
+}
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
@@ -168,9 +223,67 @@ async function createWindow(): Promise<void> {
   // which would break the form fill flow
   browserView.webContents.setWindowOpenHandler(({ url }) => {
     logger.info(`Intercepted new window request: ${url}`)
-    // Navigate in the same BrowserView instead of opening a new window
+
+    // For about:blank or javascript: URLs, sites often open a blank window
+    // and then redirect via JS. We need to allow these to open so we can
+    // capture the redirect. Return "allow" and handle in did-create-window.
+    if (!url || url === "about:blank" || url.startsWith("javascript:")) {
+      logger.info(`Allowing popup for redirect capture: ${url}`)
+      return { action: "allow" }
+    }
+
+    // For real URLs, navigate in the same BrowserView
     browserView?.webContents.loadURL(url)
     return { action: "deny" }
+  })
+
+  // Capture child windows (popups) and redirect their navigation to main BrowserView
+  browserView.webContents.on("did-create-window", (childWindow) => {
+    logger.info(`Child window created, setting up redirect capture`)
+
+    // Track timeout for cleanup
+    let cleanupTimeout: NodeJS.Timeout | null = null
+
+    // Handler for navigation events - close child and redirect to main view
+    const handleNavigation = (_event: Electron.Event, url: string) => {
+      if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
+        logger.info(`Capturing child window navigation: ${url}`)
+        browserView?.webContents.loadURL(url)
+        childWindow.close()
+      }
+    }
+
+    // Cleanup function to remove listeners and clear timeout
+    const cleanup = () => {
+      if (cleanupTimeout) {
+        clearTimeout(cleanupTimeout)
+        cleanupTimeout = null
+      }
+      if (!childWindow.isDestroyed()) {
+        childWindow.webContents.removeListener("will-navigate", handleNavigation)
+        childWindow.webContents.removeListener("did-navigate", handleNavigation)
+      }
+    }
+
+    // When the child window navigates to a real URL, close it and navigate main view
+    childWindow.webContents.on("will-navigate", handleNavigation)
+
+    // Also handle did-navigate for cases where will-navigate doesn't fire
+    childWindow.webContents.on("did-navigate", handleNavigation)
+
+    // Clean up listeners when window is closed
+    childWindow.on("closed", cleanup)
+
+    // Close after a timeout if no navigation happens (cleanup orphaned windows)
+    cleanupTimeout = setTimeout(() => {
+      if (!childWindow.isDestroyed()) {
+        const url = childWindow.webContents.getURL()
+        if (!url || url === "about:blank") {
+          logger.info(`Closing orphaned child window`)
+          childWindow.close()
+        }
+      }
+    }, POPUP_CLEANUP_TIMEOUT_MS)
   })
 
   // Notify renderer when URL changes
@@ -337,7 +450,7 @@ ipcMain.handle(
   "upload-resume",
   async (
     _event: IpcMainInvokeEvent,
-    options?: { documentId?: string; type?: "resume" | "coverLetter" }
+    options?: { documentUrl?: string; type?: "resume" | "coverLetter" }
   ): Promise<{ success: boolean; message: string; filePath?: string }> => {
     let resolvedPath: string | null = null
 
@@ -359,54 +472,23 @@ ipcMain.handle(
         return { success: false, message: "No file input found on page" }
       }
 
-      // Resolve file path from document or fallback to env var
-      if (options?.documentId) {
-        // Validate documentId format - accepts either:
-        // - Backend format: resume-generator-request-{timestamp}-{random}
-        // - UUID v4 format (legacy compatibility)
-        const backendIdPattern = /^resume-generator-request-\d+-[a-z0-9]+$/
-        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-        if (!backendIdPattern.test(options.documentId) && !uuidPattern.test(options.documentId)) {
-          return { success: false, message: "Invalid document ID format" }
-        }
-
-        // Fetch document details from backend using typed API client
-        const doc = await fetchGeneratorRequest(options.documentId)
-
-        // Get the appropriate URL based on type
-        const docType = options.type || "resume"
-        const docUrl = docType === "coverLetter" ? doc.coverLetterUrl : doc.resumeUrl
-
-        if (!docUrl) {
-          return {
-            success: false,
-            message: `No ${docType} file found for this document. Generate one first.`,
-          }
-        }
-
-        resolvedPath = resolveDocumentPath(docUrl, ARTIFACTS_DIR)
-      } else {
-        // Fallback to RESUME_PATH environment variable
-        resolvedPath = process.env.RESUME_PATH || path.join(os.homedir(), "resume.pdf")
+      // Download document from API
+      if (!options?.documentUrl) {
+        return { success: false, message: "No document URL provided" }
       }
 
-      if (!fs.existsSync(resolvedPath)) {
-        return {
-          success: false,
-          message: `File not found at ${resolvedPath}`,
-          filePath: resolvedPath,
-        }
-      }
+      logger.info(`[Upload] Downloading document from API: ${options.documentUrl}`)
+      resolvedPath = await downloadDocument(options.documentUrl)
 
       // Use Electron's debugger API to set the file
-      logger.info(`Uploading file: ${resolvedPath} to ${fileInputSelector}`)
+      logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
       await setFileInputFiles(browserView.webContents, fileInputSelector, [resolvedPath])
 
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
       return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logger.error("Upload error:", message)
+      logger.error("[Upload] Error:", message)
       return {
         success: false,
         message: resolvedPath ? `Upload failed: ${message}. File path: ${resolvedPath}` : message,
@@ -1045,6 +1127,7 @@ ipcMain.handle(
         killActiveClaudeProcess("agent completed")
         clearJobContext()
         setCompletionCallback(null)
+        setToolStatusCallback(null)
         mainWindow?.webContents.send("agent-status", { state: "idle" })
         mainWindow?.webContents.send("agent-output", {
           text: `\n✓ ${summary}\n`,
@@ -1052,48 +1135,9 @@ ipcMain.handle(
         })
       })
 
-      // Build the prompt - data is retrieved via tools to reduce prompt size
-      const prompt = `You are filling a job application form using a hybrid DOM + visual approach.
-
-CRITICAL RULES:
-1. MUST call get_user_profile FIRST - NEVER invent or guess user data
-2. Use selector-based tools (fill_field, select_option, set_checkbox, click_element) for reliability
-3. Use screenshot to verify your work and handle complex UI
-4. DO NOT click submit/apply buttons - user will submit manually
-5. SKIP file upload fields - user handles documents separately
-
-WORKFLOW:
-1. get_user_profile - Get user data (MANDATORY first)
-2. get_form_fields - Analyze DOM, get selectors and dropdown options
-3. For each field, match label to profile data and use:
-   - fill_field(selector, value) for text inputs
-   - select_option(selector, value) for dropdowns - match against options array
-   - set_checkbox(selector, checked) for checkboxes/radios
-   - click_element(selector) for buttons like "Add Another"
-4. screenshot - Verify fields were filled correctly
-5. For any issues or custom UI (date pickers, autocomplete):
-   - Use click(x,y) and type(text) as fallback
-6. scroll down and repeat get_form_fields for more fields
-7. done with summary
-
-DYNAMIC FORMS (Education, Employment, etc.):
-- Call get_buttons to find "Add Another", "Add Education", "Add Employment" buttons
-- Use click_element(selector) to add entries for EACH item in the profile
-- After clicking, call get_form_fields again to see the new sub-form fields
-- Fill the sub-form, then click "Add Another" again for the next item
-- Repeat until all education/employment entries from the profile are added
-
-YES/NO QUESTIONS - Use profile data to infer answers:
-- "Do you have X years of experience?" → YES if profile shows enough work history
-- "Are you authorized to work?" → YES (assume authorized)
-- "Will you require sponsorship?" → NO (assume no sponsorship needed)
-- "Email me about future openings?" → YES
-- "Agree to terms/privacy policy?" → YES
-
-IMPORTANT: The 'options' array in get_form_fields shows available dropdown values.
-Match your selection to one of those values, not arbitrary text.
-
-Start by calling get_user_profile.`
+      // Fetch prompt from API - no fallback, fail loudly if missing
+      const prompt = await fetchFormFillPrompt()
+      logger.info(`[FillForm] Loaded prompt from API (${prompt.length} chars)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
       logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)
@@ -1101,6 +1145,11 @@ Start by calling get_user_profile.`
 
       // Notify renderer that fill is starting
       mainWindow?.webContents.send("agent-status", { state: "working" })
+
+      // Set up tool status callback to forward to renderer
+      setToolStatusCallback((message: string) => {
+        mainWindow?.webContents.send("agent-output", { text: message + "\n", isError: false })
+      })
 
       // Spawn Claude CLI with MCP server configured
       // Use stdin for prompt to avoid command line length limits
@@ -1151,6 +1200,7 @@ Start by calling get_user_profile.`
         activeClaudeProcess = null
         clearJobContext()
         setCompletionCallback(null)
+        setToolStatusCallback(null)
         mainWindow?.webContents.send("agent-status", {
           state: code === 0 ? "idle" : "stopped",
         })
@@ -1161,6 +1211,7 @@ Start by calling get_user_profile.`
         activeClaudeProcess = null
         clearJobContext()
         setCompletionCallback(null)
+        setToolStatusCallback(null)
         mainWindow?.webContents.send("agent-status", { state: "stopped" })
         mainWindow?.webContents.send("agent-output", {
           text: `Error: ${err.message}\n`,
@@ -1185,6 +1236,7 @@ ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
   killActiveClaudeProcess("user stopped")
   clearJobContext()
   setCompletionCallback(null)
+  setToolStatusCallback(null)
   mainWindow?.webContents.send("agent-status", { state: "stopped" })
   return { success: true }
 })

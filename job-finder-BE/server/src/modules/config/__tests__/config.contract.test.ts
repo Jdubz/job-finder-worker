@@ -90,6 +90,7 @@ describe('config contract', () => {
       coverLetterGeneration: 'b',
       jobScraping: 'c',
       jobMatching: 'd',
+      formFill: 'e',
     })
 
     repo.upsert('personal-info', {

@@ -25,6 +25,7 @@ export interface ToolResult {
 
 const SCREENSHOT_MAX_WIDTH = 1280 // Max width for screenshots sent to agent
 const TOOL_TIMEOUT_MS = 30000 // 30 second timeout for tool execution
+const COMBOBOX_DROPDOWN_DELAY_MS = 300 // Wait for dropdown to appear after typing
 
 // ============================================================================
 // BrowserView Reference
@@ -178,6 +179,9 @@ async function executeToolInternal(
 
     case "select_option":
       return await handleSelectOption(params as { selector: string; value: string })
+
+    case "select_combobox":
+      return await handleSelectCombobox(params as { selector: string; value: string })
 
     case "set_checkbox":
       return await handleSetCheckbox(params as { selector: string; checked: boolean })
@@ -383,7 +387,15 @@ async function handleGetFormFields(): Promise<ToolResult> {
     })()
   `)
 
-  logger.info(`[ToolExecutor] Found ${fields.length} form fields`)
+  // Log summary including dropdowns for debugging
+  const dropdowns = fields.filter((f: { type: string; options?: unknown[] }) => f.type === "select-one" || f.type === "select-multiple")
+  logger.info(`[ToolExecutor] Found ${fields.length} form fields (${dropdowns.length} dropdowns)`)
+  if (dropdowns.length > 0) {
+    for (const dd of dropdowns) {
+      const optCount = (dd as { options?: unknown[] }).options?.length || 0
+      logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label: string }).label} (${optCount} options)`)
+    }
+  }
 
   return { success: true, data: { fields } }
 }
@@ -406,6 +418,7 @@ async function handleGetPageInfo(): Promise<ToolResult> {
 
 /**
  * Fill a form field by CSS selector
+ * Uses native value setter to work with React/Vue/Angular controlled inputs
  */
 async function handleFillField(params: { selector: string; value: string }): Promise<ToolResult> {
   if (!browserView) {
@@ -429,18 +442,64 @@ async function handleFillField(params: { selector: string; value: string }): Pro
         if (!el) return { success: false, error: 'Element not found: ' + selector };
         if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
 
-        // Focus and clear existing value
+        // Determine element type for proper native setter
+        const isInput = el instanceof HTMLInputElement;
+        const isTextarea = el instanceof HTMLTextAreaElement;
+
+        if (!isInput && !isTextarea) {
+          // For contenteditable or other elements, try direct approach
+          el.focus();
+          el.textContent = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          // Verify the value stuck for contenteditable
+          const finalValue = el.textContent;
+          if (finalValue !== value) {
+            return {
+              success: false,
+              error: 'Value did not persist after setting contenteditable',
+              attempted: value,
+              actual: finalValue
+            };
+          }
+          return { success: true, selector: selector, value: finalValue };
+        }
+
+        // Get the native value setter - this bypasses React/Vue/Angular's override
+        const prototype = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+        // Focus the element first
         el.focus();
-        el.value = '';
 
-        // Set new value
-        el.value = value;
+        if (!nativeSetter) {
+          // Fallback to direct assignment if native setter not found
+          el.value = value;
+        } else {
+          // Use native setter to bypass framework interception
+          nativeSetter.call(el, value);
+        }
 
-        // Trigger events that frameworks (including React) listen for
-        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
+        // Dispatch input event - React uses this via its synthetic event system
+        // The key is that React listens for 'input' events on the document and
+        // checks the event target's value property (which we set via native setter)
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+
+        // Also dispatch change event for other frameworks and native validation
         el.dispatchEvent(new Event('change', { bubbles: true }));
 
-        return { success: true, selector: selector, value: el.value };
+        // Verify the value stuck
+        const finalValue = el.value;
+        if (finalValue !== value) {
+          return {
+            success: false,
+            error: 'Value did not persist after setting',
+            attempted: value,
+            actual: finalValue
+          };
+        }
+
+        return { success: true, selector: selector, value: finalValue };
       })()
     `)
 
@@ -459,6 +518,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
 
 /**
  * Select an option in a dropdown by CSS selector
+ * Uses native value setter for React/Vue/Angular compatibility
  */
 async function handleSelectOption(params: { selector: string; value: string }): Promise<ToolResult> {
   if (!browserView) {
@@ -470,6 +530,8 @@ async function handleSelectOption(params: { selector: string; value: string }): 
   if (!selector || typeof value !== "string") {
     return { success: false, error: "select_option requires selector and value" }
   }
+
+  logger.info(`[ToolExecutor] select_option: trying to select "${value}" in ${selector}`)
 
   try {
     const selectorJson = JSON.stringify(selector)
@@ -505,8 +567,22 @@ async function handleSelectOption(params: { selector: string; value: string }): 
           return { success: false, error: 'Option not found: ' + targetValue + '. Available: ' + availableOptions };
         }
 
-        el.value = option.value;
+        // Use native value setter for React compatibility
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(el, option.value);
+        } else {
+          el.value = option.value;
+        }
+
+        // Dispatch both input and change events
+        el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Verify selection
+        if (el.value !== option.value) {
+          return { success: false, error: 'Selection did not persist', attempted: option.value, actual: el.value };
+        }
 
         return { success: true, selector: selector, selectedValue: option.value, selectedText: option.textContent?.trim() };
       })()
@@ -519,6 +595,190 @@ async function handleSelectOption(params: { selector: string; value: string }): 
     }
 
     return result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Select from a searchable dropdown (combobox/autocomplete)
+ * Types into the input, waits for dropdown, then clicks the matching option
+ */
+async function handleSelectCombobox(params: { selector: string; value: string }): Promise<ToolResult> {
+  if (!browserView) {
+    return { success: false, error: "BrowserView not initialized" }
+  }
+
+  const { selector, value } = params
+
+  if (!selector || typeof value !== "string") {
+    return { success: false, error: "select_combobox requires selector and value" }
+  }
+
+  logger.info(`[ToolExecutor] select_combobox: selecting "${value}" in ${selector}`)
+
+  try {
+    const selectorJson = JSON.stringify(selector)
+    const valueJson = JSON.stringify(value)
+
+    // Step 1: Focus and clear the input, then type the value
+    const typeResult = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const selector = ${selectorJson};
+        const value = ${valueJson};
+        const el = document.querySelector(selector);
+        if (!el) return { success: false, error: 'Element not found: ' + selector };
+        if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
+
+        // Focus and clear
+        el.focus();
+        el.value = '';
+
+        // Use native setter for React compatibility
+        const isInput = el instanceof HTMLInputElement;
+        const isTextarea = el instanceof HTMLTextAreaElement;
+        if (isInput || isTextarea) {
+          const prototype = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+          const nativeSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+          if (nativeSetter) {
+            nativeSetter.call(el, value);
+          } else {
+            el.value = value;
+          }
+        } else {
+          el.value = value;
+        }
+
+        // Dispatch events to trigger dropdown
+        el.dispatchEvent(new Event('focus', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+
+        return { success: true, typedValue: el.value };
+      })()
+    `)
+
+    if (!typeResult.success) {
+      return typeResult
+    }
+
+    // Step 2: Wait for dropdown to appear
+    await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
+
+    // Step 3: Find and click the matching option in the dropdown
+    const selectResult = await browserView.webContents.executeJavaScript(`
+      (() => {
+        const targetValue = ${valueJson}.toLowerCase();
+
+        // Common dropdown selectors used by UI libraries
+        const dropdownSelectors = [
+          '[role="listbox"] [role="option"]',
+          '[role="listbox"] li',
+          '.dropdown-menu li',
+          '.dropdown-menu a',
+          '.autocomplete-results li',
+          '.autocomplete-results div',
+          '.select-dropdown li',
+          '.suggestions li',
+          '.suggestions div',
+          '[class*="dropdown"] li',
+          '[class*="dropdown"] [class*="option"]',
+          '[class*="menu"] [class*="item"]',
+          '[class*="listbox"] [class*="option"]',
+          'ul[class*="select"] li',
+          'div[class*="select"] div[class*="option"]',
+          // Material UI
+          '[class*="MuiAutocomplete"] [role="option"]',
+          '[class*="MuiMenu"] [role="menuitem"]',
+          // React Select
+          '[class*="react-select"] [class*="option"]',
+          // Generic visible dropdowns
+          '[data-value]',
+        ];
+
+        let matchingOption = null;
+        let allOptions = [];
+
+        for (const dropdownSelector of dropdownSelectors) {
+          const options = document.querySelectorAll(dropdownSelector);
+          if (options.length === 0) continue;
+
+          for (const opt of options) {
+            // Skip hidden options
+            const rect = opt.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            const style = window.getComputedStyle(opt);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+            const text = opt.textContent?.trim().toLowerCase() || '';
+            const dataValue = opt.getAttribute('data-value')?.toLowerCase() || '';
+            allOptions.push(opt.textContent?.trim() || dataValue);
+
+            // Check for match: prefer exact, then startsWith, then includes
+            if (text === targetValue || dataValue === targetValue) {
+              matchingOption = opt;
+              break;
+            }
+            if (!matchingOption && (text.startsWith(targetValue) || dataValue.startsWith(targetValue))) {
+              matchingOption = opt;
+              // Don't break - keep looking for exact match
+            }
+            if (!matchingOption && (text.includes(targetValue) || dataValue.includes(targetValue))) {
+              matchingOption = opt;
+              // Don't break - keep looking for better match
+            }
+          }
+          if (matchingOption) break;
+        }
+
+        if (!matchingOption) {
+          return {
+            success: false,
+            error: 'No matching option found in dropdown',
+            searchedFor: targetValue,
+            availableOptions: allOptions.slice(0, 10).join(', ')
+          };
+        }
+
+        // Click the option
+        matchingOption.scrollIntoView({ block: 'nearest' });
+        matchingOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        matchingOption.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        matchingOption.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        return {
+          success: true,
+          selectedText: matchingOption.textContent?.trim(),
+          selectedValue: matchingOption.getAttribute('data-value') || matchingOption.textContent?.trim()
+        };
+      })()
+    `)
+
+    if (selectResult.success) {
+      logger.info(`[ToolExecutor] Combobox selected: "${selectResult.selectedText}"`)
+      return selectResult
+    }
+
+    // Dropdown selection failed, try pressing Enter (some comboboxes accept typed value on Enter)
+    logger.warn(`[ToolExecutor] select_combobox failed: ${selectResult.error}`)
+    logger.info(`[ToolExecutor] Trying Enter key as fallback...`)
+    const fallbackResult = await handleKeypress({ key: "Enter" })
+
+    if (fallbackResult && fallbackResult.success) {
+      logger.info(`[ToolExecutor] Enter key fallback succeeded`)
+      return { success: true, data: { selectedText: value, selectedValue: value, note: "Selected via Enter key fallback" } }
+    }
+
+    // Both attempts failed - aggregate error messages
+    const fallbackError = fallbackResult?.error || "Enter key fallback did not confirm selection"
+    logger.warn(`[ToolExecutor] Both dropdown and Enter fallback failed`)
+    return {
+      success: false,
+      error: `Dropdown selection failed: ${selectResult.error}; Enter fallback: ${fallbackError}`,
+      data: { searchedFor: value, availableOptions: selectResult.availableOptions }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { success: false, error: message }
