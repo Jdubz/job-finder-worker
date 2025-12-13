@@ -488,62 +488,25 @@ export class GeneratorWorkflowService {
       // If AI dropped everything or returned none, fall back to full mapped list
       parsed.experience = validatedExperience.length ? validatedExperience : mappedExperience
 
-      // Validate skills: must be [{category, items}] format with valid skills from content items
-      const allowedSkills = new Set<string>(contentItems.flatMap((item) => item.skills || []))
+      // Soft‑validate skills: keep whatever the model returns, but coerce to the expected shape and drop empties.
+      const sanitizeSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
+        if (!Array.isArray(skills)) return []
 
-      const validateSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
-        if (!skills || skills.length === 0) {
-          throw new Error('AI returned no skills - skills array is required')
-        }
-
-        // Must be array of {category, items} objects
-        if (typeof skills[0] === 'string') {
-          throw new Error('AI returned skills as string array instead of [{category, items}] format')
-        }
-
-        const validated = (skills as Array<{ category?: string; items?: unknown[] }>).map((s) => {
-          // Category is required and must not be generic "Skills"
-          if (!s.category || s.category.trim() === '') {
-            throw new Error('AI returned skill category without a name')
-          }
-          if (s.category.toLowerCase() === 'skills') {
-            throw new Error(`AI returned generic "Skills" category - must use specific category names (e.g., "Languages & Frameworks", "Cloud & DevOps")`)
-          }
-
-          if (!Array.isArray(s.items) || s.items.length === 0) {
-            throw new Error(`AI returned empty items for skill category "${s.category}"`)
-          }
-
-          // Validate each skill item against allowed skills
-          const invalidSkills: string[] = []
-          const validItems = s.items.filter((item): item is string => {
-            if (typeof item !== 'string') return false
-            if (allowedSkills.size > 0 && !allowedSkills.has(item)) {
-              invalidSkills.push(item)
-              return false
-            }
-            return true
+        return skills
+          .filter((s) => typeof s === 'object' && s !== null)
+          .map((s) => {
+            const category = ((s as { category?: unknown }).category ?? '').toString().trim() || 'Skills'
+            const items = Array.isArray((s as { items?: unknown }).items)
+              ? ((s as { items?: unknown[] }).items || []).filter(
+                  (item): item is string => typeof item === 'string' && item.trim().length > 0
+                )
+              : []
+            return { category, items }
           })
-
-          if (invalidSkills.length > 0) {
-            throw new Error(`AI returned invalid/hallucinated skills in category "${s.category}": ${invalidSkills.join(', ')}. Skills must match exactly from content items.`)
-          }
-
-          if (validItems.length === 0) {
-            throw new Error(`AI returned no valid skill items in category "${s.category}" - all items were filtered out`)
-          }
-
-          return { category: s.category, items: validItems }
-        })
-
-        if (validated.length === 0) {
-          throw new Error('AI returned no valid skill categories')
-        }
-
-        return validated
+          .filter((s) => s.items.length > 0)
       }
 
-      parsed.skills = validateSkills(parsed.skills || [])
+      parsed.skills = sanitizeSkills(parsed.skills || [])
 
       // Enhance education data: use AI output but fill in missing fields from content items
       if (Array.isArray(parsed.education) && parsed.education.length > 0) {

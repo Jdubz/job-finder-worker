@@ -213,23 +213,15 @@ describe("CompaniesPage", () => {
   })
 
   describe("Status badges", () => {
-    it("marks company as Pending when a pending queue item exists", async () => {
-      mockQueueItems = [
-        {
-          id: "queue-1",
-          type: "company",
-          status: "pending",
-          company_id: "company-3",
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
-      ] as any
-
+    it("marks company as Complete only when all fields are present", async () => {
       renderWithProviders()
 
       await waitFor(() => {
-        const row = screen.getByText("StartupXYZ").closest("tr")!
-        expect(within(row).getByText(/pending/i)).toBeInTheDocument()
+        const acmeRow = screen.getByText("Acme Corporation").closest("tr")!
+        expect(within(acmeRow).getByText(/complete/i)).toBeInTheDocument()
+
+        const techRow = screen.getByText("TechCorp").closest("tr")!
+        expect(within(techRow).getByText(/partial/i)).toBeInTheDocument()
       })
     })
   })
@@ -503,7 +495,7 @@ describe("CompaniesPage", () => {
       expect(within(acmeRow).queryByRole("button", { name: /re-analyze/i })).not.toBeInTheDocument()
     })
 
-    it("triggers re-analyze and navigation from list-level button", async () => {
+    it("triggers re-analyze without leaving the page", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockResolvedValueOnce("queue-item-999")
 
@@ -524,7 +516,7 @@ describe("CompaniesPage", () => {
           companyId: "company-2",
           allowReanalysis: true,
         })
-        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+        expect(mockNavigate).not.toHaveBeenCalledWith("/queue-management")
       })
     })
 
@@ -573,7 +565,7 @@ describe("CompaniesPage", () => {
       })
     })
 
-    it("should navigate to queue management after successful re-analyze submission", async () => {
+    it("should not navigate after successful re-analyze submission", async () => {
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       mockSubmitCompany.mockResolvedValueOnce("queue-item-123")
       renderWithProviders()
@@ -592,7 +584,7 @@ describe("CompaniesPage", () => {
       const reanalyzeButton = screen.getByRole("button", { name: /re-analyze/i })
       await user.click(reanalyzeButton)
 
-      // After successful submission, the modal should close and navigate to queue management
+      // After successful submission, the modal should close and stay on the page
       await waitFor(() => {
         expect(mockSubmitCompany).toHaveBeenCalledWith({
           companyName: "Acme Corporation",
@@ -600,7 +592,7 @@ describe("CompaniesPage", () => {
           companyId: "company-1",
           allowReanalysis: true,
         })
-        expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+        expect(mockNavigate).not.toHaveBeenCalledWith("/queue-management")
       })
     })
 

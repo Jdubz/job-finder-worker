@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { ExternalLink, Loader2, Database, Building2, Briefcase, RefreshCw, Trash2 } from "lucide-react"
 import { statusBadgeClass } from "@/lib/status-badge"
 import { formatDate } from "@/lib/formatDate"
+import { QUEUE_MAX_PAGE_LIMIT } from "@/config/constants"
 import type { Company, JobListingRecord } from "@shared/types"
 
 const safeText = (value: unknown, fallback = "—") => {
@@ -63,7 +64,7 @@ export function CompanyDetailsModalContent({ companyId, company: providedCompany
   const { queueItems: pendingQueueItems } = useQueueItems({
     status: "pending",
     type: "company",
-    limit: 200,
+    limit: QUEUE_MAX_PAGE_LIMIT,
   })
 
   const company = providedCompany || fetchedCompany

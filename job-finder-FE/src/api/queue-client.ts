@@ -17,6 +17,7 @@ import type {
   AgentCliHealth
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
+import { QUEUE_MAX_PAGE_LIMIT } from "@/config/constants"
 
 export interface ListQueueParams {
   status?: string | string[]
@@ -33,13 +34,16 @@ export class QueueClient extends BaseApiClient {
 
   async listQueueItems(params: ListQueueParams = {}): Promise<ListQueueItemsResponse> {
     const search = new URLSearchParams()
+    const safeLimit =
+      typeof params.limit === "number" ? Math.min(params.limit, QUEUE_MAX_PAGE_LIMIT) : undefined
+
     if (params.status) {
       const statuses = Array.isArray(params.status) ? params.status : [params.status]
       statuses.forEach((status) => search.append("status", status))
     }
     if (params.type) search.append("type", params.type)
     if (params.source) search.append("source", params.source)
-    if (typeof params.limit === "number") search.append("limit", String(params.limit))
+    if (typeof safeLimit === "number") search.append("limit", String(safeLimit))
     if (typeof params.offset === "number") search.append("offset", String(params.offset))
 
     const query = search.toString()

@@ -308,9 +308,13 @@ export function buildResumePrompt(
 
   // JSON schema and output format instructions (content guidance is in database prompt)
   const jsonSchema = `
-OUTPUT FORMAT:
-You MUST respond with ONLY valid JSON. Do NOT ask questions or include any text outside the JSON object.
-If a field is missing, leave it empty/null but still return the full JSON object.
+OUTPUT FORMAT (STRICT):
+- You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- If you cannot populate a field, still include it and use the correct empty value by type:
+  - string fields: ""
+  - array fields: []
+  - optional/object fields: null
 
 Return the result as a JSON object with this exact structure:
 {
@@ -358,14 +362,28 @@ export function buildCoverLetterPrompt(
   const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
   const dataBlock = buildDataBlock(variables, content, 'AUTHORITATIVE CANDIDATE DATA (use ONLY this information):')
 
-  return (
-    prompt +
-    dataBlock +
-    '\n\nIMPORTANT: You MUST respond with ONLY valid JSON. Do NOT ask questions, request clarification, or include any text outside the JSON object.' +
-    '\nUse the experience, education, projects, and skills provided as your ONLY source of truth.' +
-    '\nDo NOT invent new companies, roles, achievements, technologies, or skills; every claim must come from the input data above.' +
-    '\nSelect the most relevant 2-3 experiences/achievements for THIS specific role and company.' +
-    '\nReturn ONLY a JSON object with keys: greeting, openingParagraph, bodyParagraphs[], closingParagraph, signature.' +
-    '\nThe "signature" field is the closing phrase only (e.g., "Best," or "Cheers," or "Looking forward to it,"). The candidate name is added programmatically below it.'
-  )
+  const jsonSchema = `
+OUTPUT FORMAT (STRICT):
+- You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- If you cannot populate a field, still include it and use the correct empty value by type:
+  - string fields: ""
+  - array fields: []
+  - optional/object fields: null
+
+Content rules:
+- Use ONLY the provided experience, education, projects, and skills. Do NOT invent companies, roles, achievements, technologies, or skills.
+- Pick the most relevant 2-3 experiences/achievements for THIS role/company.
+- The "signature" field is just the closing phrase (e.g., "Best," or "Cheers,"); the candidate name is appended separately.
+
+Return the JSON object with exactly these keys:
+{
+  "greeting": "e.g., Hello Hiring Manager,",
+  "openingParagraph": "1 short paragraph that proves fit and interest",
+  "bodyParagraphs": ["Paragraph 1", "Paragraph 2"],
+  "closingParagraph": "1 short paragraph that closes confidently",
+  "signature": "e.g., Best,"
+}`
+
+  return prompt + dataBlock + jsonSchema
 }
