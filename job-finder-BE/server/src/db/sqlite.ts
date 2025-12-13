@@ -44,8 +44,13 @@ export function getDb(): Database.Database {
   db.pragma('synchronous = NORMAL')
 
   if (!migrationsApplied) {
-    runMigrations(db)
-    migrationsApplied = true
+    try {
+      runMigrations(db)
+    } finally {
+      // Even if a migration threw (e.g., during local watch reload), avoid re-entering
+      // nested migrations and causing transaction errors. Next cold start will retry.
+      migrationsApplied = true
+    }
   }
 
   return db
