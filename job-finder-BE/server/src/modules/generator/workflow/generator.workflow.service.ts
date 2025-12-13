@@ -13,7 +13,7 @@ import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
-import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
+import { validateResumeContent, validateCoverLetterContent, resumeJsonSchema, coverLetterJsonSchema } from './services/ai-output-schema'
 
 export class UserFacingError extends Error {}
 
@@ -383,7 +383,7 @@ export class GeneratorWorkflowService {
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
-    const agentResult = await this.agentManager.execute('document', prompt)
+    const agentResult = await this.agentManager.execute('document', prompt, { jsonSchema: resumeJsonSchema })
 
     this.log.info(
       { outputPreview: agentResult.output.slice(0, 400), agentId: agentResult.agentId, model: agentResult.model },
@@ -550,7 +550,7 @@ export class GeneratorWorkflowService {
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
-    const agentResult = await this.agentManager.execute('document', prompt)
+    const agentResult = await this.agentManager.execute('document', prompt, { jsonSchema: coverLetterJsonSchema })
 
     // Validate and recover AI output using schema validation
     const validation = validateCoverLetterContent(agentResult.output, this.log)

@@ -14,6 +14,12 @@ type AgentExecutionResult = {
   model: string | undefined
 }
 
+interface ExecuteOptions {
+  modelOverride?: string
+  /** JSON Schema to enforce structured output (Claude only) */
+  jsonSchema?: Record<string, unknown>
+}
+
 class NoAgentsAvailableError extends Error {
   constructor(message: string, readonly taskType: AgentTaskType, readonly triedAgents: string[]) {
     super(message)
@@ -65,7 +71,8 @@ export class AgentManager {
     }
   }
 
-  async execute(taskType: AgentTaskType, prompt: string, modelOverride?: string): Promise<AgentExecutionResult> {
+  async execute(taskType: AgentTaskType, prompt: string, options: ExecuteOptions = {}): Promise<AgentExecutionResult> {
+    const { modelOverride, jsonSchema } = options
     const entry = this.configRepo.get<AISettings>('ai-settings')
     if (!entry?.payload) {
       throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
@@ -118,7 +125,7 @@ export class AgentManager {
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const output = await this.runAgent(agent, agentId, prompt, model)
+          const output = await this.runAgent(agent, agentId, prompt, model, jsonSchema)
           agent.dailyUsage += cost
           this.persist(aiSettings)
           return { output, agentId, model }
@@ -187,12 +194,20 @@ export class AgentManager {
     return parts.join('|')
   }
 
-  private async runAgent(agent: AgentConfig, agentId: string, prompt: string, model: string | undefined): Promise<string> {
+  private async runAgent(
+    agent: AgentConfig,
+    agentId: string,
+    prompt: string,
+    model: string | undefined,
+    jsonSchema?: Record<string, unknown>
+  ): Promise<string> {
     if (agent.interface !== 'cli') {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }
     const provider = agent.provider as CliProvider
-    const result = await this.runProvider(prompt, provider, { model })
+    // Only pass jsonSchema for Claude provider (other CLIs don't support it)
+    const options = provider === 'claude' ? { model, jsonSchema } : { model }
+    const result = await this.runProvider(prompt, provider, options)
 
     if (!result.success) {
       const errorMsg = result.error || 'AI generation failed'
@@ -225,4 +240,4 @@ export class AgentManager {
   }
 }
 
-export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult }
+export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult, ExecuteOptions }
