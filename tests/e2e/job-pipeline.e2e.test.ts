@@ -633,6 +633,7 @@ describe("Prompts", () => {
         coverLetterGeneration: existingPrompts.coverLetterGeneration,
         jobScraping: existingPrompts.jobScraping,
         jobMatching: existingPrompts.jobMatching,
+        formFill: existingPrompts.formFill,
       },
       userEmail
     )
