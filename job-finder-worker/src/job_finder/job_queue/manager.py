@@ -36,7 +36,7 @@ def _rows_to_items(rows: List[Any]) -> List[JobQueueItem]:
             rec["tracking_id"] = rec.get("id") or str(uuid4())
         try:
             items.append(JobQueueItem.from_record(rec))
-        except Exception as exc:  # noqa: BLE001
+        except (ValueError, KeyError, TypeError) as exc:
             logger.error("Dropping malformed queue row %s: %s", rec.get("id"), exc)
     return items
 
@@ -52,6 +52,7 @@ class QueueManager:
         self.db_path = db_path
         self.notifier = notifier
         self._max_string_length = 2000
+        self._tracking_backfill_done = False
         self._ensure_schema()
 
     # ------------------------------------------------------------------ #
@@ -297,8 +298,10 @@ class QueueManager:
 
     def get_pending_items(self, limit: int = 10) -> List[JobQueueItem]:
         with sqlite_connection(self.db_path) as conn:
-            # Self-heal legacy/bad rows missing tracking_id to prevent worker crash
-            conn.execute("UPDATE job_queue SET tracking_id = id WHERE tracking_id IS NULL")
+            # One-time self-heal for legacy rows missing tracking_id
+            if not self._tracking_backfill_done:
+                conn.execute("UPDATE job_queue SET tracking_id = id WHERE tracking_id IS NULL")
+                self._tracking_backfill_done = True
             rows = conn.execute(
                 """
                 SELECT * FROM job_queue

@@ -6,11 +6,10 @@
 PRAGMA foreign_keys=off;
 BEGIN TRANSACTION;
 
--- Backfill existing rows
+-- Backfill existing rows (single pass for efficiency)
 UPDATE job_queue
-SET tracking_id = COALESCE(tracking_id, id);
-UPDATE job_queue
-SET input = COALESCE(input, '{}'),
+SET tracking_id = COALESCE(tracking_id, id),
+    input = COALESCE(input, '{}'),
     output = COALESCE(output, '{}');
 
 -- Create new table with constraints
