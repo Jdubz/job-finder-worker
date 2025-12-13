@@ -244,8 +244,10 @@ class SourceProcessor(BaseProcessor):
                             disabled_notes = repair.get("reason") or disabled_notes
                     else:
                         should_disable = True
-                        disabled_notes = disabled_notes or repair.get("reason") if repair else (
-                            probe_result.hint or disabled_notes
+                        disabled_notes = (
+                            disabled_notes or repair.get("reason")
+                            if repair
+                            else (probe_result.hint or disabled_notes)
                         )
                 elif probe_result.status == "empty":
                     validation = self._agent_validate_empty(
