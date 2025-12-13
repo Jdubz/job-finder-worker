@@ -5,13 +5,19 @@ import type { Logger } from 'pino'
 import type { AISettings, AgentConfig, AgentId, AgentScope, AgentTaskType } from '@shared/types'
 import { ConfigRepository } from '../../config/config.repository'
 import { logger } from '../../../logger'
-import { runCliProvider, type CliProvider, type CliErrorType } from '../workflow/services/cli-runner'
+import { runCliProvider, type CliProvider, type CliErrorType, type CliRunOptions } from '../workflow/services/cli-runner'
 import { UserFacingError } from '../workflow/generator.workflow.service'
 
 type AgentExecutionResult = {
   output: string
   agentId: string
   model: string | undefined
+}
+
+interface ExecuteOptions {
+  modelOverride?: string
+  /** JSON Schema to enforce structured output (Claude only) */
+  jsonSchema?: Record<string, unknown>
 }
 
 class NoAgentsAvailableError extends Error {
@@ -65,7 +71,8 @@ export class AgentManager {
     }
   }
 
-  async execute(taskType: AgentTaskType, prompt: string, modelOverride?: string): Promise<AgentExecutionResult> {
+  async execute(taskType: AgentTaskType, prompt: string, options: ExecuteOptions = {}): Promise<AgentExecutionResult> {
+    const { modelOverride, jsonSchema } = options
     const entry = this.configRepo.get<AISettings>('ai-settings')
     if (!entry?.payload) {
       throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
@@ -118,7 +125,7 @@ export class AgentManager {
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const output = await this.runAgent(agent, agentId, prompt, model)
+          const output = await this.runAgent(agent, agentId, prompt, model, jsonSchema)
           agent.dailyUsage += cost
           this.persist(aiSettings)
           return { output, agentId, model }
@@ -187,12 +194,23 @@ export class AgentManager {
     return parts.join('|')
   }
 
-  private async runAgent(agent: AgentConfig, agentId: string, prompt: string, model: string | undefined): Promise<string> {
+  private async runAgent(
+    agent: AgentConfig,
+    agentId: string,
+    prompt: string,
+    model: string | undefined,
+    jsonSchema?: Record<string, unknown>
+  ): Promise<string> {
     if (agent.interface !== 'cli') {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }
     const provider = agent.provider as CliProvider
-    const result = await this.runProvider(prompt, provider, { model })
+    const options: CliRunOptions = { model }
+    // Only pass jsonSchema for Claude provider (other CLIs don't support it)
+    if (jsonSchema && provider === 'claude') {
+      options.jsonSchema = jsonSchema
+    }
+    const result = await this.runProvider(prompt, provider, options)
 
     if (!result.success) {
       const errorMsg = result.error || 'AI generation failed'
@@ -225,4 +243,4 @@ export class AgentManager {
   }
 }
 
-export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult }
+export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult, ExecuteOptions }

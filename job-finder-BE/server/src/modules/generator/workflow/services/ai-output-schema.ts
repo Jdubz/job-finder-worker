@@ -96,6 +96,106 @@ export type ValidatedResumeContent = z.infer<typeof resumeContentSchema>
 export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchema>
 
 // =============================================================================
+// JSON Schemas for Claude CLI --json-schema flag
+// These enforce structured output during generation (not just validation after)
+// =============================================================================
+
+/**
+ * JSON Schema for cover letter generation.
+ * Used with Claude CLI's --json-schema flag to enforce structured output.
+ */
+export const coverLetterJsonSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    greeting: { type: 'string', description: 'Opening greeting (e.g., "Hello," or "Dear Hiring Manager,")' },
+    openingParagraph: { type: 'string', description: 'Opening paragraph introducing yourself and interest' },
+    bodyParagraphs: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Main body paragraphs highlighting relevant experience'
+    },
+    closingParagraph: { type: 'string', description: 'Closing paragraph with call to action' },
+    signature: { type: 'string', description: 'Sign-off (e.g., "Best," or "Sincerely,")' }
+  },
+  required: ['greeting', 'openingParagraph', 'bodyParagraphs', 'closingParagraph', 'signature'],
+  additionalProperties: false
+}
+
+/**
+ * JSON Schema for resume generation.
+ * Used with Claude CLI's --json-schema flag to enforce structured output.
+ */
+export const resumeJsonSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    personalInfo: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        title: { type: 'string' },
+        summary: { type: 'string' },
+        contact: {
+          type: 'object',
+          properties: {
+            email: { type: 'string' },
+            location: { type: 'string' },
+            website: { type: 'string' },
+            linkedin: { type: 'string' },
+            github: { type: 'string' }
+          },
+          required: ['email']
+        }
+      },
+      required: ['title', 'summary', 'contact']
+    },
+    professionalSummary: { type: 'string' },
+    experience: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          company: { type: 'string' },
+          role: { type: 'string' },
+          location: { type: 'string' },
+          startDate: { type: 'string' },
+          endDate: { type: ['string', 'null'] },
+          highlights: { type: 'array', items: { type: 'string' } },
+          technologies: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['company', 'role', 'highlights']
+      }
+    },
+    skills: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          category: { type: 'string' },
+          items: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['category', 'items']
+      }
+    },
+    education: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          institution: { type: 'string' },
+          degree: { type: 'string' },
+          field: { type: 'string' },
+          startDate: { type: 'string' },
+          endDate: { type: 'string' }
+        },
+        required: ['institution']
+      }
+    }
+  },
+  required: ['personalInfo', 'professionalSummary', 'experience', 'skills', 'education'],
+  additionalProperties: false
+}
+
+// =============================================================================
 // Recovery Functions
 // =============================================================================
 
