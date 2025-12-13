@@ -314,7 +314,7 @@ export async function fetchDocuments(jobMatchId: string): Promise<GeneratorDocum
  */
 export async function fetchGeneratorRequest(requestId: string): Promise<GeneratorDocument> {
   const url = `${getApiUrl()}/generator/requests/${requestId}`
-  console.log(`[API] Fetching document from: ${url}`)
+  logger.info(`[API] Fetching document from: ${url}`)
 
   const res = await fetchWithRetry(
     url,
@@ -324,7 +324,7 @@ export async function fetchGeneratorRequest(requestId: string): Promise<Generato
 
   if (!res.ok) {
     const errorMsg = await parseApiError(res)
-    console.error(`[API] Failed to fetch document (${res.status}): ${errorMsg}`)
+    logger.error(`[API] Failed to fetch document (${res.status}): ${errorMsg}`)
     throw new Error(`Failed to fetch document: ${errorMsg}`)
   }
 

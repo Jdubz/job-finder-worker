@@ -99,6 +99,9 @@ import {
 // Temp directory for downloaded documents
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
+// Timeout for closing orphaned popup windows (5 seconds)
+const POPUP_CLEANUP_TIMEOUT_MS = 5000
+
 /**
  * Download a document from the API to a temporary file
  * @param documentUrl - API path like "/api/generator/artifacts/2025-12-11/file.pdf"
@@ -110,8 +113,16 @@ async function downloadDocument(documentUrl: string): Promise<string> {
     fs.mkdirSync(TEMP_DOC_DIR, { recursive: true })
   }
 
-  // Extract filename from URL
+  // Extract and validate filename from URL (prevent path traversal)
   const filename = path.basename(documentUrl)
+  if (
+    !/^[a-zA-Z0-9._-]+$/.test(filename) ||
+    filename === "" ||
+    filename === "." ||
+    filename === ".."
+  ) {
+    throw new Error(`Invalid filename extracted from documentUrl: "${filename}"`)
+  }
   const tempPath = path.join(TEMP_DOC_DIR, filename)
 
   // If already downloaded, return cached path
@@ -225,26 +236,41 @@ async function createWindow(): Promise<void> {
   browserView.webContents.on("did-create-window", (childWindow) => {
     logger.info(`Child window created, setting up redirect capture`)
 
-    // When the child window navigates to a real URL, close it and navigate main view
-    childWindow.webContents.on("will-navigate", (_event, url) => {
+    // Track timeout for cleanup
+    let cleanupTimeout: NodeJS.Timeout | null = null
+
+    // Handler for navigation events - close child and redirect to main view
+    const handleNavigation = (_event: Electron.Event, url: string) => {
       if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
         logger.info(`Capturing child window navigation: ${url}`)
         browserView?.webContents.loadURL(url)
         childWindow.close()
       }
-    })
+    }
+
+    // Cleanup function to remove listeners and clear timeout
+    const cleanup = () => {
+      if (cleanupTimeout) {
+        clearTimeout(cleanupTimeout)
+        cleanupTimeout = null
+      }
+      if (!childWindow.isDestroyed()) {
+        childWindow.webContents.removeListener("will-navigate", handleNavigation)
+        childWindow.webContents.removeListener("did-navigate", handleNavigation)
+      }
+    }
+
+    // When the child window navigates to a real URL, close it and navigate main view
+    childWindow.webContents.on("will-navigate", handleNavigation)
 
     // Also handle did-navigate for cases where will-navigate doesn't fire
-    childWindow.webContents.on("did-navigate", (_event, url) => {
-      if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
-        logger.info(`Capturing child window did-navigate: ${url}`)
-        browserView?.webContents.loadURL(url)
-        childWindow.close()
-      }
-    })
+    childWindow.webContents.on("did-navigate", handleNavigation)
+
+    // Clean up listeners when window is closed
+    childWindow.on("closed", cleanup)
 
     // Close after a timeout if no navigation happens (cleanup orphaned windows)
-    setTimeout(() => {
+    cleanupTimeout = setTimeout(() => {
       if (!childWindow.isDestroyed()) {
         const url = childWindow.webContents.getURL()
         if (!url || url === "about:blank") {
@@ -252,7 +278,7 @@ async function createWindow(): Promise<void> {
           childWindow.close()
         }
       }
-    }, 5000)
+    }, POPUP_CLEANUP_TIMEOUT_MS)
   })
 
   // Notify renderer when URL changes

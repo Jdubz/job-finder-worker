@@ -25,6 +25,7 @@ export interface ToolResult {
 
 const SCREENSHOT_MAX_WIDTH = 1280 // Max width for screenshots sent to agent
 const TOOL_TIMEOUT_MS = 30000 // 30 second timeout for tool execution
+const COMBOBOX_DROPDOWN_DELAY_MS = 300 // Wait for dropdown to appear after typing
 
 // ============================================================================
 // BrowserView Reference
@@ -451,7 +452,17 @@ async function handleFillField(params: { selector: string; value: string }): Pro
           el.textContent = value;
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
-          return { success: true, selector: selector, value: value };
+          // Verify the value stuck for contenteditable
+          const finalValue = el.textContent;
+          if (finalValue !== value) {
+            return {
+              success: false,
+              error: 'Value did not persist after setting contenteditable',
+              attempted: value,
+              actual: finalValue
+            };
+          }
+          return { success: true, selector: selector, value: finalValue };
         }
 
         // Get the native value setter - this bypasses React/Vue/Angular's override
@@ -654,7 +665,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     }
 
     // Step 2: Wait for dropdown to appear
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
     // Step 3: Find and click the matching option in the dropdown
     const selectResult = await browserView.webContents.executeJavaScript(`
@@ -705,11 +716,18 @@ async function handleSelectCombobox(params: { selector: string; value: string })
             const dataValue = opt.getAttribute('data-value')?.toLowerCase() || '';
             allOptions.push(opt.textContent?.trim() || dataValue);
 
-            // Check for match
-            if (text === targetValue || dataValue === targetValue ||
-                text.includes(targetValue) || targetValue.includes(text)) {
+            // Check for match: prefer exact, then startsWith, then includes
+            if (text === targetValue || dataValue === targetValue) {
               matchingOption = opt;
               break;
+            }
+            if (!matchingOption && (text.startsWith(targetValue) || dataValue.startsWith(targetValue))) {
+              matchingOption = opt;
+              // Don't break - keep looking for exact match
+            }
+            if (!matchingOption && (text.includes(targetValue) || dataValue.includes(targetValue))) {
+              matchingOption = opt;
+              // Don't break - keep looking for better match
             }
           }
           if (matchingOption) break;
@@ -740,14 +758,27 @@ async function handleSelectCombobox(params: { selector: string; value: string })
 
     if (selectResult.success) {
       logger.info(`[ToolExecutor] Combobox selected: "${selectResult.selectedText}"`)
-    } else {
-      logger.warn(`[ToolExecutor] select_combobox failed: ${selectResult.error}`)
-      // If dropdown selection failed, try pressing Enter (some comboboxes accept typed value on Enter)
-      logger.info(`[ToolExecutor] Trying Enter key as fallback...`)
-      await handleKeypress({ key: "Enter" })
+      return selectResult
     }
 
-    return selectResult
+    // Dropdown selection failed, try pressing Enter (some comboboxes accept typed value on Enter)
+    logger.warn(`[ToolExecutor] select_combobox failed: ${selectResult.error}`)
+    logger.info(`[ToolExecutor] Trying Enter key as fallback...`)
+    const fallbackResult = await handleKeypress({ key: "Enter" })
+
+    if (fallbackResult && fallbackResult.success) {
+      logger.info(`[ToolExecutor] Enter key fallback succeeded`)
+      return { success: true, data: { selectedText: value, selectedValue: value, note: "Selected via Enter key fallback" } }
+    }
+
+    // Both attempts failed - aggregate error messages
+    const fallbackError = fallbackResult?.error || "Enter key fallback did not confirm selection"
+    logger.warn(`[ToolExecutor] Both dropdown and Enter fallback failed`)
+    return {
+      success: false,
+      error: `Dropdown selection failed: ${selectResult.error}; Enter fallback: ${fallbackError}`,
+      data: { searchedFor: value, availableOptions: selectResult.availableOptions }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { success: false, error: message }

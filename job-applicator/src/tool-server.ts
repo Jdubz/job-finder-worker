@@ -87,7 +87,8 @@ export function formatToolResult(tool: string, params: Record<string, unknown> |
       default:
         return "done"
     }
-  } catch {
+  } catch (err) {
+    logger.error(`[formatToolResult] Error formatting result for tool "${tool}": ${err instanceof Error ? err.message : String(err)}`)
     return "done"
   }
 }
@@ -155,9 +156,9 @@ export function startToolServer(): http.Server {
         try {
           parsed = JSON.parse(body)
         } catch (parseErr) {
-          // Log full details for debugging malformed requests
-          logger.error(`[ToolServer] #${reqId} JSON parse error. Full body: "${body}"`)
-          logger.error(`[ToolServer] #${reqId} Request from ${remoteInfo}, headers: ${JSON.stringify(req.headers)}`)
+          // Log truncated body for debugging (limit to 500 chars for security)
+          logger.error(`[ToolServer] #${reqId} JSON parse error. Body (first 500 chars): "${body.slice(0, 500)}"`)
+          logger.error(`[ToolServer] #${reqId} Request from ${remoteInfo}`)
           throw parseErr
         }
 
@@ -169,10 +170,15 @@ export function startToolServer(): http.Server {
           return
         }
 
-        // Log tool call with parameters for debugging
-        const paramsStr = params ? JSON.stringify(params).slice(0, 500) : "{}"
+        // Log tool call with parameters for debugging (safely handle circular refs)
+        let paramsStr = "{}"
+        try {
+          paramsStr = params ? JSON.stringify(params).slice(0, 500) : "{}"
+        } catch {
+          paramsStr = "[unserializable params]"
+        }
         logger.info(`[ToolServer] #${reqId} Executing: ${tool}(${paramsStr})`)
-        sendStatus(`🔧 ${tool}...`)
+        try { sendStatus(`🔧 ${tool}...`) } catch { /* ignore callback errors */ }
         const startTime = Date.now()
 
         const result = await executeTool(tool, (params || {}) as Record<string, unknown>)
@@ -180,13 +186,15 @@ export function startToolServer(): http.Server {
         const duration = Date.now() - startTime
         logger.info(`[ToolServer] #${reqId} ${tool} completed in ${duration}ms (success=${result.success})`)
 
-        // Send completion status with result summary
-        if (result.success) {
-          const summary = formatToolResult(tool, params as Record<string, unknown>, result.data)
-          sendStatus(`✓ ${tool}: ${summary}`)
-        } else {
-          sendStatus(`✗ ${tool}: ${result.error || "failed"}`)
-        }
+        // Send completion status with result summary (ignore callback errors)
+        try {
+          if (result.success) {
+            const summary = formatToolResult(tool, params as Record<string, unknown>, result.data)
+            sendStatus(`✓ ${tool}: ${summary}`)
+          } else {
+            sendStatus(`✗ ${tool}: ${result.error || "failed"}`)
+          }
+        } catch { /* ignore callback errors */ }
 
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify(result))
