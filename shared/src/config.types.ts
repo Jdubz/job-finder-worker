@@ -17,7 +17,7 @@ export interface JobFinderConfigEntry<TPayload = unknown> {
  * - Workflow (this field): HOW to fill forms (tool usage, field detection, workflow steps)
  * - Safety (hardcoded): WHAT the agent is allowed to fill (guardrails, constraints)
  *
- * See: job-applicator/src/form-fill-safety.ts for the safety rules and full documentation.
+ * See: shared/src/form-fill-safety.ts for the safety rules and full documentation.
  */
 export interface PromptConfig {
   resumeGeneration: string
