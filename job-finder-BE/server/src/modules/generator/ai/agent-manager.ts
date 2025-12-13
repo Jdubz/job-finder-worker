@@ -14,11 +14,6 @@ type AgentExecutionResult = {
   model: string | undefined
 }
 
-interface ExecuteOptions {
-  modelOverride?: string
-  /** JSON Schema to enforce structured output (Claude only) */
-  jsonSchema?: Record<string, unknown>
-}
 
 class NoAgentsAvailableError extends Error {
   constructor(message: string, readonly taskType: AgentTaskType, readonly triedAgents: string[]) {
@@ -71,8 +66,7 @@ export class AgentManager {
     }
   }
 
-  async execute(taskType: AgentTaskType, prompt: string, options: ExecuteOptions = {}): Promise<AgentExecutionResult> {
-    const { modelOverride, jsonSchema } = options
+  async execute(taskType: AgentTaskType, prompt: string, modelOverride?: string): Promise<AgentExecutionResult> {
     const entry = this.configRepo.get<AISettings>('ai-settings')
     if (!entry?.payload) {
       throw new UserFacingError('AI settings not configured. Please configure ai-settings in the database.')
@@ -125,7 +119,7 @@ export class AgentManager {
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const output = await this.runAgent(agent, agentId, prompt, model, jsonSchema)
+          const output = await this.runAgent(agent, agentId, prompt, model)
           agent.dailyUsage += cost
           this.persist(aiSettings)
           return { output, agentId, model }
@@ -198,16 +192,13 @@ export class AgentManager {
     agent: AgentConfig,
     agentId: string,
     prompt: string,
-    model: string | undefined,
-    jsonSchema?: Record<string, unknown>
+    model: string | undefined
   ): Promise<string> {
     if (agent.interface !== 'cli') {
       throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
     }
     const provider = agent.provider as CliProvider
-    // Only pass jsonSchema for Claude provider (other CLIs don't support it)
-    const options = provider === 'claude' ? { model, jsonSchema } : { model }
-    const result = await this.runProvider(prompt, provider, options)
+    const result = await this.runProvider(prompt, provider, { model })
 
     if (!result.success) {
       const errorMsg = result.error || 'AI generation failed'
@@ -240,4 +231,4 @@ export class AgentManager {
   }
 }
 
-export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult, ExecuteOptions }
+export { NoAgentsAvailableError, QuotaExhaustedError, AgentExecutionError, AgentExecutionResult }

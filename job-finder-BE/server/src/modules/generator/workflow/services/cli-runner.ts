@@ -33,8 +33,6 @@ export interface CliRunOptions {
   model?: string
   /** Timeout in milliseconds (default: 120000 = 2 minutes) */
   timeoutMs?: number
-  /** JSON Schema to enforce structured output (Claude only) */
-  jsonSchema?: Record<string, unknown>
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000 // 2 minutes
@@ -56,8 +54,7 @@ const CLI_FLAGS = {
   // Claude-specific
   CLAUDE_OUTPUT_FORMAT: '--output-format',
   CLAUDE_OUTPUT_JSON: 'json',
-  CLAUDE_SKIP_PERMISSIONS: '--dangerously-skip-permissions',
-  CLAUDE_JSON_SCHEMA: '--json-schema'
+  CLAUDE_SKIP_PERMISSIONS: '--dangerously-skip-permissions'
   // Note: Claude CLI uses positional prompt argument, not a flag
 } as const
 
@@ -89,8 +86,7 @@ function sanitizeCliError(raw?: string): string {
 function buildCommand(
   provider: CliProvider,
   prompt: string,
-  model?: string,
-  jsonSchema?: Record<string, unknown>
+  model?: string
 ): { cmd: string; args: string[] } {
   if (provider === 'codex') {
     return {
@@ -123,9 +119,6 @@ function buildCommand(
     if (model) {
       args.push(CLI_FLAGS.MODEL, model)
     }
-    if (jsonSchema) {
-      args.push(CLI_FLAGS.CLAUDE_JSON_SCHEMA, JSON.stringify(jsonSchema))
-    }
     if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
       args.push(CLI_FLAGS.CLAUDE_SKIP_PERMISSIONS)
     }
@@ -153,18 +146,17 @@ export async function runCliProvider(
   provider: CliProvider,
   options: CliRunOptions = {}
 ): Promise<CliResult> {
-  return executeCommand(provider, prompt, options.model, options.timeoutMs, options.jsonSchema)
+  return executeCommand(provider, prompt, options.model, options.timeoutMs)
 }
 
 async function executeCommand(
   provider: CliProvider,
   prompt: string,
   model?: string,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS,
-  jsonSchema?: Record<string, unknown>
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<CliResult> {
   return new Promise((resolve) => {
-    const command = buildCommand(provider, prompt, model, jsonSchema)
+    const command = buildCommand(provider, prompt, model)
 
     logger.info({ provider, cmd: command.cmd, timeoutMs }, 'Executing AI generation command')
 
