@@ -568,3 +568,75 @@ class TestFetchDelaySettings:
 
         delay = settings.get_fetch_delay_seconds()
         assert delay == 0.0
+
+
+class TestEnrichStaleListings:
+    """Tests for graceful handling of 404/410 errors on stale job listings."""
+
+    @pytest.fixture
+    def scraper(self):
+        """Create a scraper with follow_detail enabled."""
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "html",
+                "url": "https://example.com/jobs",
+                "job_selector": ".job",
+                "fields": {"title": "h2", "url": "a@href"},
+                "follow_detail": True,
+            }
+        )
+        return GenericScraper(cfg)
+
+    @pytest.mark.parametrize("status_code", [404, 410])
+    def test_enrich_returns_job_unmodified_on_stale_listing(
+        self, monkeypatch, scraper, status_code
+    ):
+        """Job should be returned unmodified when detail page returns 404 or 410."""
+        sleep_calls = []
+
+        def fake_get(url, headers=None, timeout=None):
+            return SimpleNamespace(status_code=status_code, text="Not Found")
+
+        def fake_sleep(seconds):
+            sleep_calls.append(seconds)
+
+        monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+        monkeypatch.setattr(
+            "job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0.5
+        )
+        monkeypatch.setattr("job_finder.scrapers.generic_scraper.time.sleep", fake_sleep)
+
+        original_job = {
+            "title": "Software Engineer",
+            "url": "https://example.com/job/123",
+            "company": "Acme Corp",
+        }
+        job = original_job.copy()
+
+        result = scraper._enrich_from_detail(job)
+
+        # Job should be returned unmodified
+        assert result == original_job
+        # Rate limit delay should still be applied
+        assert sleep_calls == [0.5]
+
+    def test_enrich_still_raises_on_other_errors(self, monkeypatch, scraper):
+        """Other HTTP errors (e.g., 500) should still propagate."""
+        import requests
+
+        def fake_get(url, headers=None, timeout=None):
+            resp = SimpleNamespace(status_code=500, text="Internal Server Error")
+            resp.raise_for_status = lambda: (_ for _ in ()).throw(
+                requests.HTTPError("500 Server Error")
+            )
+            return resp
+
+        monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+        monkeypatch.setattr(
+            "job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0
+        )
+
+        job = {"title": "Engineer", "url": "https://example.com/job/456"}
+
+        with pytest.raises(requests.HTTPError):
+            scraper._enrich_from_detail(job)
