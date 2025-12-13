@@ -311,7 +311,10 @@ export function buildResumePrompt(
 OUTPUT FORMAT (STRICT):
 - You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
 - Your very first character must be '{' and your very last character must be '}'.
-- If you cannot populate a field, return it as an empty string or null, but still include the field.
+- If you cannot populate a field, still include it and use the correct empty value by type:
+  - string fields: ""
+  - array fields: []
+  - optional/object fields: null
 
 Return the result as a JSON object with this exact structure:
 {
