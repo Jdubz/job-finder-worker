@@ -365,11 +365,28 @@ class JobSourcesManager:
                 ),
             )
 
-    def record_scraping_failure(self, source_id: str, error: str) -> None:
+    def record_scraping_failure(
+        self,
+        source_id: str,
+        error: Optional[str] = None,
+        error_message: Optional[str] = None,
+        **extra: Any,
+    ) -> None:
+        """Mark a source as failed without crashing on unexpected kwargs.
+
+        Older callers pass ``error_message``; newer ones pass ``error``. Accept
+        both to avoid the worker raising a TypeError during failure handling.
+        """
+
+        if extra:
+            logger.debug("record_scraping_failure received unused kwargs: %s", list(extra.keys()))
+
+        error_text = error or error_message or "unknown_error"
+
         self.update_scrape_status(
             source_id,
             status=SourceStatus.FAILED.value,
-            error=error,
+            error=error_text,
         )
 
     def record_scraping_success(self, source_id: str) -> None:

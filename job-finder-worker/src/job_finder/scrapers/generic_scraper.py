@@ -192,10 +192,11 @@ class GenericScraper:
         Decide whether to follow the detail page/API for enrichment.
 
         Rules:
-        - Always if config.follow_detail is set
-        - Always if description is missing/empty
-        - Always if posted_date is missing (legacy behavior)
+        - For API sources: only if config.follow_detail is True (avoid thousands of detail hits)
+        - For HTML/RSS: if config.follow_detail OR description is missing OR posted_date is missing
         """
+        if self.config.type == "api":
+            return self.config.follow_detail
         return (
             self.config.follow_detail
             or not (job.get("description") or "").strip()

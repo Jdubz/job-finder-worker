@@ -49,3 +49,15 @@ def test_health_updates_on_failure_then_success(tmp_path):
     mgr.record_scraping_success("s1")
     src = mgr.get_source_by_id("s1")
     assert src["status"] == SourceStatus.ACTIVE.value
+
+
+def test_record_scraping_failure_accepts_error_message_kwarg(tmp_path):
+    db = tmp_path / "sources_health_kwargs.db"
+    _bootstrap_db(db)
+    mgr = JobSourcesManager(str(db))
+
+    # Simulate caller passing deprecated error_message kwarg
+    mgr.record_scraping_failure("s1", error_message="Legacy error kwarg")
+
+    src = mgr.get_source_by_id("s1")
+    assert src["status"] == SourceStatus.FAILED.value

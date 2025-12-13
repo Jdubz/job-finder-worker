@@ -1108,9 +1108,17 @@ class JobProcessor(BaseProcessor):
 
             scrape_config = ScrapeConfig()
 
-        logger.info(f"Starting scrape with config: {scrape_config.model_dump()}")
-
         try:
+            logger.info(f"Starting scrape with config: {scrape_config.model_dump()}")
+
+            # Only mark as processing once we're committed to run (after config ready)
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.PROCESSING,
+                "Scrape started",
+                pipeline_state={"pipeline_stage": "scrape_start"},
+            )
+
             stats = self.scrape_runner.run_scrape(
                 target_matches=scrape_config.target_matches,
                 max_sources=scrape_config.max_sources,

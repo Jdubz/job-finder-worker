@@ -859,10 +859,19 @@ class SourceProcessor(BaseProcessor):
             except Exception as scrape_error:
                 # Scrape failed - record failure and mark as failed
                 logger.error(f"Error scraping source {source_name}: {scrape_error}")
-                self.sources_manager.record_scraping_failure(
-                    source_id=source.get("id"),
-                    error=str(scrape_error),
-                )
+                try:
+                    self.sources_manager.record_scraping_failure(
+                        source_id=source.get("id"),
+                        error=str(scrape_error),
+                    )
+                except Exception as record_err:
+                    # Don't allow bookkeeping failures to crash the worker
+                    logger.error(
+                        "Failed to record scrape failure for %s: %s",
+                        source_name,
+                        record_err,
+                        exc_info=True,
+                    )
                 self._update_item_status(
                     item.id,
                     QueueStatus.FAILED,
