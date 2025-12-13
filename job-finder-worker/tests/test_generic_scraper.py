@@ -6,6 +6,7 @@ import sqlite3
 
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.rendering.playwright_renderer import RenderResult
 
 
 @pytest.fixture(autouse=True)
@@ -153,6 +154,30 @@ class TestSourceConfig:
             job_selector="",
         )
         with pytest.raises(ValueError, match="job_selector is required"):
+            config.validate()
+
+    def test_validate_requires_js_only_for_html(self):
+        """requires_js should only be allowed on HTML sources."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "name", "url": "link"},
+            requires_js=True,
+        )
+        with pytest.raises(ValueError, match="requires_js is only supported"):
+            config.validate()
+
+    def test_validate_render_timeout_floor(self):
+        """render_timeout_ms must not be too low."""
+        config = SourceConfig(
+            type="html",
+            url="https://example.com",
+            fields={"title": ".title", "url": "a@href"},
+            job_selector=".job",
+            requires_js=True,
+            render_timeout_ms=500,
+        )
+        with pytest.raises(ValueError, match="at least 1000 ms"):
             config.validate()
 
 
@@ -705,6 +730,49 @@ class TestGenericScraperHTML:
         assert len(jobs) == 1
         assert jobs[0]["title"] == "Engineer"
         assert jobs[0]["url"] == "/jobs/1"
+
+    @patch("job_finder.scrapers.generic_scraper.get_renderer")
+    def test_scrape_html_with_js_renderer(self, mock_get_renderer):
+        """JS-required sources should delegate HTML fetch to Playwright renderer."""
+        renderer = Mock()
+        renderer.render.return_value = RenderResult(
+            final_url="https://example.com/careers",
+            status="ok",
+            html="""
+            <html>
+              <body>
+                <div class="job">
+                  <span class="title">JS Job</span>
+                  <a class="apply" href="/js-job">Apply</a>
+                </div>
+              </body>
+            </html>
+            """,
+            duration_ms=100,
+            request_count=3,
+            console_logs=[],
+            errors=[],
+        )
+        mock_get_renderer.return_value = renderer
+
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/careers",
+            job_selector=".job",
+            fields={
+                "title": ".title",
+                "url": "a.apply@href",
+            },
+            requires_js=True,
+            render_wait_for=".job",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        renderer.render.assert_called_once()
+        assert len(jobs) == 1
+        assert jobs[0]["title"] == "JS Job"
+        assert jobs[0]["url"] == "/js-job"
 
 
 class TestGenericScraperEdgeCases:
