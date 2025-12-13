@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from playwright.sync_api import Browser, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
+    from playwright.sync_api import (
+        Browser,
+        Page,
+        TimeoutError as PlaywrightTimeoutError,
+        sync_playwright,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -110,9 +115,11 @@ class PlaywrightRenderer:
                 if req.block_resources:
                     page.route(
                         "**/*",
-                        lambda route: route.abort()
-                        if route.request.resource_type in BLOCKED_RESOURCE_TYPES
-                        else route.continue_(),
+                        lambda route: (
+                            route.abort()
+                            if route.request.resource_type in BLOCKED_RESOURCE_TYPES
+                            else route.continue_()
+                        ),
                     )
 
                 page.on("request", on_request)
@@ -148,7 +155,9 @@ class PlaywrightRenderer:
         )
 
         if status != "ok":
-            raise RuntimeError(f"Render failed ({status}): {errors[0] if errors else 'unknown error'}")
+            raise RuntimeError(
+                f"Render failed ({status}): {errors[0] if errors else 'unknown error'}"
+            )
 
         return RenderResult(
             final_url=final_url,
