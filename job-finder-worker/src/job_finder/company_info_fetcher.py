@@ -700,7 +700,9 @@ Be factual. Use empty string/null/false if unknown. Return ONLY valid JSON."""
     # Evidence collection helpers                                  #
     # ============================================================ #
 
-    def _pick_official_candidate(self, results: List[SearchResult], company_name: str) -> Optional[str]:
+    def _pick_official_candidate(
+        self, results: List[SearchResult], company_name: str
+    ) -> Optional[str]:
         """
         Pick a likely official site from search results to fetch an excerpt for the agent.
         Preference: first result whose domain contains the company token and is not a job board/search.
