@@ -297,10 +297,16 @@ class SourceProcessor(BaseProcessor):
                     return
 
                 # Enforce invariant: a source is either company-specific OR an aggregator, not both
-                # If it's on an aggregator domain, it's an aggregator source (no company_id)
-                company_id, aggregator_domain = (
-                    (None, aggregator_domain) if aggregator_domain else (company_id, None)
-                )
+                # If company_id exists, this is a company-specific source (drop aggregator_domain)
+                # and add company_filter to config so it only scrapes jobs for that company
+                if company_id and aggregator_domain:
+                    source_config = dict(source_config) if source_config else {}
+                    if company_name and not source_config.get("company_filter"):
+                        source_config["company_filter"] = company_name
+                    aggregator_domain = None
+                elif not company_id:
+                    # Pure aggregator source - no company_id needed
+                    pass
 
                 source_id = self.sources_manager.create_from_discovery(
                     name=source_name,
@@ -311,7 +317,7 @@ class SourceProcessor(BaseProcessor):
                     status=initial_status,
                 )
             except DuplicateSourceError:
-                if company_id or aggregator_domain:
+                if company_id:
                     # Aggregator may be stripped; fall back to name lookup for dupe handling
                     existing = self.sources_manager.get_source_by_name(source_name)
                     if existing:

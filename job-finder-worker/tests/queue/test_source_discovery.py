@@ -703,7 +703,7 @@ class TestPlaceholderNaming:
         source_processor,
         mock_dependencies,
     ):
-        """When discovery has both company_name and aggregator, use both in name but persist as aggregator source."""
+        """When discovery has both company_name and aggregator, create company-specific source with filter."""
         # Mock fetch failure
         mock_requests_get.side_effect = Exception("Connection failed")
         mock_search_client.return_value = None
@@ -734,9 +734,10 @@ class TestPlaceholderNaming:
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         assert create_kwargs["name"] == "Yahoo Jobs (myworkdayjobs.com)"
         # Invariant: a source is either company-specific OR an aggregator, not both
-        # When aggregator_domain is present, company_id should be None
-        assert create_kwargs["company_id"] is None
-        assert create_kwargs["aggregator_domain"] == "myworkdayjobs.com"
+        # When company_id exists, aggregator_domain should be None and company_filter added
+        assert create_kwargs["company_id"] == "company-123"  # from make_discovery_item default
+        assert create_kwargs["aggregator_domain"] is None
+        assert create_kwargs["config"].get("company_filter") == "Yahoo"
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
