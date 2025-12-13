@@ -69,6 +69,8 @@ export function getBrowserView(): BrowserView | null {
 let currentJobMatchId: string | null = null
 let userProfile: unknown = null
 let jobContext: unknown = null
+let documentUrls: { resumeUrl?: string; coverLetterUrl?: string } = {}
+let uploadCallback: ((selector: string, type: "resume" | "coverLetter", documentUrl: string) => Promise<{ success: boolean; message: string }>) | null = null
 
 /**
  * Set the current job match ID for form filling context
@@ -92,7 +94,28 @@ export function clearJobContext(): void {
   currentJobMatchId = null
   userProfile = null
   jobContext = null
+  documentUrls = {}
+  uploadCallback = null
   logger.info("[ToolExecutor] Job context cleared")
+}
+
+/**
+ * Set the document URLs for the upload_file tool
+ */
+export function setDocumentUrls(urls: { resumeUrl?: string; coverLetterUrl?: string }): void {
+  documentUrls = urls
+  logger.info(`[ToolExecutor] Document URLs set: resume=${!!urls.resumeUrl}, coverLetter=${!!urls.coverLetterUrl}`)
+}
+
+/**
+ * Set the upload callback for the upload_file tool
+ * This callback is provided by main.ts and handles the actual file upload
+ */
+export function setUploadCallback(
+  callback: ((selector: string, type: "resume" | "coverLetter", documentUrl: string) => Promise<{ success: boolean; message: string }>) | null
+): void {
+  uploadCallback = callback
+  logger.info(`[ToolExecutor] Upload callback ${callback ? "set" : "cleared"}`)
 }
 
 /**
@@ -217,6 +240,9 @@ async function executeToolInternal(
     case "get_job_context":
       return handleGetJobContext()
 
+    case "upload_file":
+      return await handleUploadFile(params as { selector: string; type: "resume" | "coverLetter" })
+
     default:
       logger.warn(`[ToolExecutor] Unknown tool: ${tool}`)
       return { success: false, error: `Unknown tool: ${tool}` }
@@ -338,8 +364,8 @@ async function handleGetFormFields(): Promise<ToolResult> {
         const rect = el.getBoundingClientRect();
         const fieldType = el.type || el.tagName.toLowerCase();
 
-        // Skip hidden, file inputs, and invisible/disabled fields early
-        if (fieldType === 'hidden' || fieldType === 'file') return null;
+        // Skip hidden and invisible/disabled fields early (but include file inputs)
+        if (fieldType === 'hidden') return null;
         if (rect.width === 0 || rect.height === 0) return null;
         if (el.disabled) return null;
 
@@ -1280,5 +1306,54 @@ function handleGetJobContext(): ToolResult {
 
   logger.info("[ToolExecutor] Returning job context")
   return { success: true, data: jobContext }
+}
+
+/**
+ * Upload a document (resume or cover letter) to a file input on the page
+ */
+async function handleUploadFile(params: { selector: string; type: "resume" | "coverLetter" }): Promise<ToolResult> {
+  const { selector, type } = params
+
+  if (!selector) {
+    return { success: false, error: "upload_file requires a selector for the file input element" }
+  }
+
+  if (!type || (type !== "resume" && type !== "coverLetter")) {
+    return { success: false, error: "upload_file requires type: 'resume' or 'coverLetter'" }
+  }
+
+  // Get the document URL for the requested type
+  const documentUrl = type === "resume" ? documentUrls.resumeUrl : documentUrls.coverLetterUrl
+
+  if (!documentUrl) {
+    const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
+    return {
+      success: false,
+      error: `No ${typeLabel} selected. The user must select a ${typeLabel} before starting form fill.`,
+    }
+  }
+
+  if (!uploadCallback) {
+    return { success: false, error: "Upload functionality not available" }
+  }
+
+  const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
+  logger.info(`[ToolExecutor] Uploading ${typeLabel} to ${selector}: ${documentUrl}`)
+
+  try {
+    const result = await uploadCallback(selector, type, documentUrl)
+
+    if (result.success) {
+      logger.info(`[ToolExecutor] Upload successful: ${result.message}`)
+      return { success: true, data: { message: result.message, type, selector } }
+    } else {
+      logger.warn(`[ToolExecutor] Upload failed: ${result.message}`)
+      return { success: false, error: result.message }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[ToolExecutor] Upload error: ${message}`)
+    return { success: false, error: message }
+  }
 }
 

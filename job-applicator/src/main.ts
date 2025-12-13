@@ -80,7 +80,7 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback } from "./tool-server.js"
-import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext } from "./tool-executor.js"
+import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -445,6 +445,125 @@ async function setFileInputFiles(webContents: WebContents, selector: string, fil
   }
 }
 
+// Helper function to find the appropriate file input based on document type
+// Analyzes labels, attributes, and nearby text to identify resume vs cover letter inputs
+function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): string {
+  return `
+    (() => {
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      if (fileInputs.length === 0) return null;
+
+      // Keywords to identify each document type
+      const resumeKeywords = ['resume', 'cv', 'curriculum'];
+      const coverLetterKeywords = ['cover', 'letter', 'coverletter', 'cover-letter', 'cover_letter'];
+      const targetType = '${targetType}';
+      const targetKeywords = targetType === 'coverLetter' ? coverLetterKeywords : resumeKeywords;
+      const otherKeywords = targetType === 'coverLetter' ? resumeKeywords : coverLetterKeywords;
+
+      // Helper to check if text contains any keywords
+      function containsKeyword(text, keywords) {
+        if (!text) return false;
+        const lower = text.toLowerCase();
+        return keywords.some(kw => lower.includes(kw));
+      }
+
+      // Helper to get associated text for a file input
+      function getAssociatedText(input) {
+        const texts = [];
+
+        // Check id and name attributes
+        if (input.id) texts.push(input.id);
+        if (input.name) texts.push(input.name);
+        if (input.getAttribute('aria-label')) texts.push(input.getAttribute('aria-label'));
+        if (input.getAttribute('placeholder')) texts.push(input.getAttribute('placeholder'));
+        if (input.getAttribute('data-testid')) texts.push(input.getAttribute('data-testid'));
+
+        // Check for associated label
+        if (input.id) {
+          const label = document.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+          if (label) texts.push(label.textContent);
+        }
+
+        // Check for parent label
+        const parentLabel = input.closest('label');
+        if (parentLabel) texts.push(parentLabel.textContent);
+
+        // Check nearby text (parent containers, siblings)
+        let parent = input.parentElement;
+        for (let i = 0; i < 4 && parent; i++) {
+          // Get direct text content or nearby labels/spans
+          const nearbyLabels = parent.querySelectorAll('label, span, p, div, h1, h2, h3, h4, h5, h6');
+          nearbyLabels.forEach(el => {
+            if (el.textContent && el.textContent.length < 100) {
+              texts.push(el.textContent);
+            }
+          });
+          parent = parent.parentElement;
+        }
+
+        return texts.join(' ');
+      }
+
+      // Helper to build a unique selector for an input
+      function buildSelector(input) {
+        if (input.id) return '#' + CSS.escape(input.id);
+        if (input.name) return 'input[type="file"][name="' + CSS.escape(input.name) + '"]';
+
+        // Build an nth-child selector as fallback
+        const allInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+        const index = allInputs.indexOf(input);
+        if (index >= 0) return 'input[type="file"]:nth-of-type(' + (index + 1) + ')';
+
+        return 'input[type="file"]';
+      }
+
+      // Score each input for both document types
+      const scored = Array.from(fileInputs).map((input, index) => {
+        const text = getAssociatedText(input);
+        const matchesTarget = containsKeyword(text, targetKeywords);
+        const matchesOther = containsKeyword(text, otherKeywords);
+
+        return {
+          input,
+          index,
+          selector: buildSelector(input),
+          matchesTarget,
+          matchesOther,
+          text: text.substring(0, 200) // For debugging
+        };
+      });
+
+      // Priority 1: Find an input that matches target and NOT other type
+      let match = scored.find(s => s.matchesTarget && !s.matchesOther);
+      if (match) return match.selector;
+
+      // Priority 2: Find an input that matches target (even if ambiguous)
+      match = scored.find(s => s.matchesTarget);
+      if (match) return match.selector;
+
+      // Priority 3: Find an input that doesn't match the other type
+      // (For resume: prefer inputs not labeled as cover letter)
+      // (For cover letter: prefer inputs not labeled as resume)
+      const notOther = scored.filter(s => !s.matchesOther);
+      if (notOther.length > 0) {
+        // For resume, take the first non-cover-letter input
+        // For cover letter, take the second non-resume input if available, else first
+        if (targetType === 'coverLetter' && notOther.length > 1) {
+          return notOther[1].selector;
+        }
+        return notOther[0].selector;
+      }
+
+      // Priority 4: Fallback based on position
+      // Resume is typically first, cover letter second
+      if (targetType === 'coverLetter' && scored.length > 1) {
+        return scored[1].selector;
+      }
+      return scored[0].selector;
+    })()
+  `
+}
+
 // Upload resume/document to form using Electron's debugger API (CDP)
 ipcMain.handle(
   "upload-resume",
@@ -457,20 +576,17 @@ ipcMain.handle(
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
-      // Find file input selector
-      const fileInputSelector = await browserView.webContents.executeJavaScript(`
-      (() => {
-        const fileInput = document.querySelector('input[type="file"]');
-        if (!fileInput) return null;
-        if (fileInput.id) return '#' + CSS.escape(fileInput.id);
-        if (fileInput.name) return 'input[type="file"][name="' + CSS.escape(fileInput.name) + '"]';
-        return 'input[type="file"]';
-      })()
-    `)
+      // Find file input selector based on document type
+      const targetType = options?.type || "resume"
+      const fileInputSelector = await browserView.webContents.executeJavaScript(
+        buildFileInputDetectionScript(targetType)
+      )
 
       if (!fileInputSelector) {
         return { success: false, message: "No file input found on page" }
       }
+
+      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector}`)
 
       // Download document from API
       if (!options?.documentUrl) {
@@ -1085,7 +1201,7 @@ ipcMain.handle(
   "fill-form",
   async (
     _event: IpcMainInvokeEvent,
-    options: { jobMatchId: string; jobContext: string }
+    options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }
   ): Promise<{ success: boolean; message?: string }> => {
     try {
       // Kill any existing process
@@ -1119,6 +1235,30 @@ ipcMain.handle(
       setCurrentJobMatchId(options.jobMatchId)
       setUserProfile(profileText)
       setJobContext(options.jobContext)
+
+      // Set document URLs for the upload_file tool
+      setDocumentUrls({
+        resumeUrl: options.resumeUrl,
+        coverLetterUrl: options.coverLetterUrl,
+      })
+
+      // Set upload callback - this allows the tool executor to trigger uploads
+      setUploadCallback(async (selector: string, type: "resume" | "coverLetter", documentUrl: string) => {
+        if (!browserView) {
+          return { success: false, message: "BrowserView not initialized" }
+        }
+
+        logger.info(`[Upload] Agent uploading ${type}: ${documentUrl} to ${selector}`)
+
+        // Download document from API
+        const resolvedPath = await downloadDocument(documentUrl)
+
+        // Use Electron's debugger API to set the file
+        await setFileInputFiles(browserView.webContents, selector, [resolvedPath])
+
+        const docTypeLabel = type === "coverLetter" ? "Cover letter" : "Resume"
+        return { success: true, message: `${docTypeLabel} uploaded successfully to ${selector}` }
+      })
 
       // Set completion callback to kill CLI when done is called
       logger.info(`[FillForm] Setting completion callback`)

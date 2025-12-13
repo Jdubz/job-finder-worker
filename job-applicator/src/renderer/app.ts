@@ -251,7 +251,7 @@ interface ElectronAPI {
   getUrl: () => Promise<string>
 
   // Form Fill API (MCP-based)
-  fillForm: (options: { jobMatchId: string; jobContext: string }) => Promise<{ success: boolean; message?: string }>
+  fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) => Promise<{ success: boolean; message?: string }>
   stopFillForm: () => Promise<{ success: boolean }>
   sendAgentInput: (input: string) => Promise<{ success: boolean; message?: string }>
   pauseAgent: () => Promise<{ success: boolean; message?: string }>
@@ -1089,10 +1089,16 @@ async function fillFormWithAgent() {
   agentOutputParser.reset()
   agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
 
+  // Get selected document URLs for the agent to upload
+  const resumeDoc = getSelectedResume()
+  const coverLetterDoc = getSelectedCoverLetter()
+
   log.info("Calling api.fillForm for job:", selectedJobMatchId)
   const result = await api.fillForm({
     jobMatchId: selectedJobMatchId,
     jobContext,
+    resumeUrl: resumeDoc?.resumeUrl,
+    coverLetterUrl: coverLetterDoc?.coverLetterUrl,
   })
   log.info("api.fillForm returned:", result)
 
