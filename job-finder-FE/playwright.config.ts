@@ -6,7 +6,9 @@ const apiBaseUrl = `${apiOrigin}/api`
 // Use dev-admin-token which is recognized by the backend in test mode
 const authToken = process.env.JF_E2E_AUTH_TOKEN || "dev-admin-token"
 const ownerEmail = process.env.JF_E2E_OWNER_EMAIL || "dev-admin@jobfinder.dev"
-const frontendBaseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173"
+const frontendPort = process.env.PLAYWRIGHT_FRONTEND_PORT || "5173"
+const frontendBaseUrl =
+  process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${frontendPort}`
 
 process.env.JF_E2E_API_BASE = process.env.JF_E2E_API_BASE || apiBaseUrl
 process.env.JF_E2E_AUTH_TOKEN = authToken
@@ -99,7 +101,7 @@ export default defineConfig({
       ].join(" && "),
       url: `${apiOrigin}/healthz`,
       reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      timeout: 180 * 1000,
       stdout: "pipe",
       stderr: "pipe",
     },
@@ -121,12 +123,12 @@ export default defineConfig({
           `VITE_FIREBASE_MESSAGING_SENDER_ID=999999999`,
           `VITE_FIREBASE_APP_ID=test-app-id`,
           `VITE_RECAPTCHA_SITE_KEY=test-recaptcha`,
-          "npm run dev --workspace job-finder-FE",
+          `npm run dev --workspace job-finder-FE -- --host 127.0.0.1 --port ${frontendPort} --strictPort --clearScreen false`,
         ].join(" "),
       ].join(" && "),
       url: frontendBaseUrl,
       reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      timeout: 180 * 1000,
       stdout: "pipe",
       stderr: "pipe",
     },
