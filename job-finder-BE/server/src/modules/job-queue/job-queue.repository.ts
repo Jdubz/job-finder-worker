@@ -134,6 +134,9 @@ export class JobQueueRepository {
       ...(data.pipeline_state !== undefined && { pipeline_state: data.pipeline_state })
     }
 
+    const inputJson = serializeJson(Object.keys(inputData).length ? inputData : {})
+    const outputJson = serializeJson(Object.keys(outputData).length ? outputData : {})
+
     const stmt = this.db.prepare(`
       INSERT INTO job_queue (
         id, type, status, url, tracking_id, parent_item_id,
@@ -149,8 +152,8 @@ export class JobQueueRepository {
       data.url ?? null,
       trackingId,
       data.parent_item_id ?? null,
-      serializeJson(Object.keys(inputData).length ? inputData : null),
-      serializeJson(Object.keys(outputData).length ? outputData : null),
+      inputJson,
+      outputJson,
       data.result_message ?? null,
       data.error_details ?? null,
       createdAt,
@@ -252,6 +255,9 @@ export class JobQueueRepository {
     const resolveNullable = <T>(update: T | undefined | null, existing: T | undefined): T | null =>
       update === undefined ? (existing ?? null) : update
 
+    const inputJson = serializeJson(Object.keys(nextInput).length ? nextInput : {}) ?? '{}'
+    const outputJson = serializeJson(Object.keys(nextOutput).length ? nextOutput : {}) ?? '{}'
+
     this.db
       .prepare(
         `UPDATE job_queue
@@ -266,8 +272,8 @@ export class JobQueueRepository {
         resolveNullable(updates.url, existing.url),
         resolveNullable(updates.tracking_id, existing.tracking_id),
         resolveNullable(updates.parent_item_id, existing.parent_item_id),
-        serializeJson(Object.keys(nextInput).length ? nextInput : null),
-        serializeJson(Object.keys(nextOutput).length ? nextOutput : null),
+        inputJson,
+        outputJson,
         resolveNullable(updates.result_message, existing.result_message),
         resolveNullable(updates.error_details, existing.error_details),
         nextUpdatedAt,

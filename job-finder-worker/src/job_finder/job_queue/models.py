@@ -319,6 +319,10 @@ class JobQueueItem(BaseModel):
     def to_record(self) -> Dict[str, Any]:
         input_payload = self._build_input()
         output_payload = self._build_output()
+        if input_payload is None:
+            input_payload = {}
+        if output_payload is None:
+            output_payload = {}
 
         return {
             "id": self.id,
@@ -328,8 +332,8 @@ class JobQueueItem(BaseModel):
             "tracking_id": self.tracking_id,
             "parent_item_id": self.parent_item_id,
             "dedupe_key": self.dedupe_key,
-            "input": json.dumps(input_payload) if input_payload else None,
-            "output": json.dumps(output_payload) if output_payload else None,
+            "input": json.dumps(input_payload),
+            "output": json.dumps(output_payload),
             "result_message": self.result_message,
             "error_details": self.error_details,
             "created_at": self._dt(self.created_at),

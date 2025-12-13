@@ -62,6 +62,7 @@ def test_merge_company_info_keeps_longer_primary():
     primary = {
         "about": "This is a very long and detailed description of the company with lots of information.",
         "culture": "",
+        "website": "https://current.com",
     }
 
     secondary = {
@@ -75,6 +76,24 @@ def test_merge_company_info_keeps_longer_primary():
     assert "very long and detailed" in result["about"]
     # Culture was empty, should be filled
     assert result["culture"] == "Team culture."
+
+
+def test_merge_company_info_prefers_human_hint_over_current_and_candidate():
+    """Preferred website hint should win over current, which wins over candidate."""
+    fetcher = CompanyInfoFetcher()
+
+    primary = {
+        "website": "https://current.com",
+    }
+    secondary = {
+        "website": "https://candidate.com",
+    }
+
+    result = fetcher._merge_company_info(
+        primary, secondary, preferred_website="https://hint.com", company_name="HintCo"
+    )
+
+    assert result["website"] == "https://hint.com"
 
 
 def test_normalize_url_adds_scheme_and_trims():

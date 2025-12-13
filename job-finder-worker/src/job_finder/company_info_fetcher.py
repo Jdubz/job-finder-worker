@@ -1194,12 +1194,14 @@ Be factual. Return ONLY valid JSON."""
                     and not self._is_search_engine_url(preferred_normalized)
                 )
 
-                # Selection priority: candidate (if valid) > preferred (if valid) > current
-                if candidate_valid:
-                    merged["website"] = candidate
-                elif preferred_valid:
+                # Selection priority: preferred (human hint) > current (if valid) > candidate (if valid)
+                if preferred_valid:
                     merged["website"] = preferred_normalized
-                elif not current_valid:
+                elif current_valid:
+                    merged["website"] = current
+                elif candidate_valid:
+                    merged["website"] = candidate
+                else:
                     merged["website"] = current or candidate
             elif key == "sources":
                 merged["sources"] = val or merged.get("sources") or []

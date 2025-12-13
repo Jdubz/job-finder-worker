@@ -44,7 +44,13 @@ export function getDb(): Database.Database {
   db.pragma('synchronous = NORMAL')
 
   if (!migrationsApplied) {
-    runMigrations(db)
+    try {
+      runMigrations(db)
+    } catch (err) {
+      logger.error({ err }, 'Database migration failed')
+      migrationsApplied = true
+      throw err
+    }
     migrationsApplied = true
   }
 
