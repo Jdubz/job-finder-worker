@@ -3,7 +3,7 @@
 This module replaces fragile pattern matching with an AI agent that understands
 the entire source ecosystem and makes intelligent decisions about:
 - Whether a URL is a job aggregator or company-specific source
-- Whether a source can be scraped (or is JS-only/bot-protected)
+- Whether a source can be scraped (including JS-rendered pages) or is bot-protected
 - The best classification and reasoning
 - Meaningful disable notes when a source cannot be used
 
@@ -42,7 +42,6 @@ class DisableReason(str, Enum):
     """Standard reasons for disabling a source."""
 
     BOT_PROTECTION = "bot_protection"
-    JS_ONLY = "js_only"  # Requires JavaScript rendering
     AUTH_REQUIRED = "auth_required"
     DNS_ERROR = "dns_error"
     SINGLE_JOB = "single_job"  # URL is a single listing, not a board
@@ -109,7 +108,7 @@ job discovery system. Your analysis will determine how the source is classified 
 - Can scrape JSON APIs (REST endpoints returning job listings)
 - Can parse RSS/Atom feeds
 - Can scrape static HTML pages with CSS selectors
-- Can render JavaScript-driven pages via Playwright **when `requires_js: true` is set in the source_config**. Keep resource usage light (block images/fonts), and always include a CSS selector for readiness (job list container or first job card).
+- Can render JavaScript-driven pages via Playwright **when `requires_js: true` is set in the source_config**. Always include a CSS selector for readiness (job list container or first job card).
 - Supports pagination for APIs with offset/page parameters
 - Known ATS patterns (preferred when detected):
   - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
@@ -253,23 +252,24 @@ Respond with a JSON object containing your analysis:
   "aggregator_domain": "domain.com or null",
   "company_name": "Company Name or null",
   "should_disable": true/false,
-  "disable_reason": "bot_protection|js_only|auth_required|dns_error|single_job|ats_provider|invalid_url|no_jobs_endpoint|discovery_failed or null",
+  "disable_reason": "bot_protection|auth_required|dns_error|single_job|ats_provider|invalid_url|no_jobs_endpoint|discovery_failed or null",
   "disable_notes": "Human-readable explanation of why this source cannot be used",
   "confidence": 0.0-1.0,
   "reasoning": "Your detailed reasoning for this classification",
   "suggested_actions": ["List of suggested next steps"],
   "source_config": {
-    "type": "api|rss|html",
-    "url": "the jobs endpoint URL",
-    "response_path": "path.to.jobs.array (for APIs)",
-    "job_selector": "CSS selector (for HTML)",
-    "requires_js": true|false,
-    "render_wait_for": "CSS selector to wait for when requires_js is true",
-    "fields": {
-      "title": "path or selector",
-      "url": "path or selector"
-    }
+  "type": "api|rss|html",
+  "url": "the jobs endpoint URL",
+  "response_path": "path.to.jobs.array (for APIs)",
+  "job_selector": "CSS selector (for HTML)",
+  "requires_js": true|false,
+  // "render_wait_for" is required only when "requires_js" is true
+  "render_wait_for": "CSS selector for the job list container or first job card to wait for when requires_js is true",
+  "fields": {
+    "title": "path or selector",
+    "url": "path or selector"
   }
+}
 }
 ```
 
@@ -278,7 +278,7 @@ If you can determine a working config, include it in `source_config`.
 
 CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - Prefer stable ATS APIs when present (Greenhouse/Lever/Ashby/Workday/SmartRecruiters).
-- If content is JS-rendered but publicly accessible, set `requires_js: true` and provide `job_selector` plus `render_wait_for` (use the job list container). Use HTML `fields` selectors as usual.
+- If content is JS-rendered but publicly accessible, set `requires_js: true`, provide `job_selector`, and `render_wait_for` (job list container or first job card). For `fields`, keep using CSS selectors as in normal HTML scraping.
 - Make sure `type` is api|rss|html; include response_path for APIs (e.g., jobs or jobPostings).
 - Include pagination hints only when supported (Workday/Greenhouse offset+limit).
 - Do NOT output auth-gated or CAPTCHA-protected endpoints (LinkedIn/Indeed/Glassdoor/ZipRecruiter) or single-job URLs.

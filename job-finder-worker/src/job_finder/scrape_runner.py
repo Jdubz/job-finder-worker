@@ -14,6 +14,8 @@ out obviously unsuitable jobs BEFORE they enter the queue.
 """
 
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Any, Dict, List, Optional
 
 from job_finder.exceptions import ConfigurationError, ScrapeBlockedError
@@ -36,6 +38,7 @@ from job_finder.storage.job_listing_storage import JobListingStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 
 logger = logging.getLogger(__name__)
+SOURCE_SCRAPE_TIMEOUT_SEC = 90  # watchdog per source to avoid hangs (JS render, huge APIs)
 
 
 class ScrapeRunner:
@@ -298,6 +301,12 @@ class ScrapeRunner:
         if "fields" not in expanded_config:
             raise ConfigurationError(f"Source {source_name} missing 'fields' in config")
 
+        if expanded_config.get("requires_js") and not expanded_config.get("render_wait_for"):
+            logger.warning(
+                "JS-rendered source %s missing render_wait_for selector; rendering may hang or miss jobs",
+                source_name,
+            )
+
         # Apply company filter for aggregator sources with a company_id
         if company_filter:
             expanded_config["company_filter"] = company_filter
@@ -308,12 +317,30 @@ class ScrapeRunner:
         except Exception as e:
             raise ConfigurationError(f"Invalid config for source {source_name}: {e}")
 
-        # Scrape using GenericScraper
+        # Scrape using GenericScraper with a per-source watchdog to avoid hangs
+        if source_config.requires_js:
+            logger.info(
+                "  Rendering with JS enabled (wait for: %s)",
+                getattr(source_config, "render_wait_for", None),
+            )
+
         scraper = GenericScraper(source_config)
-        jobs = scraper.scrape()
+
+        def _run_scrape() -> List[Any]:
+            return scraper.scrape()
+
+        start = time.monotonic()
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                jobs = pool.submit(_run_scrape).result(timeout=SOURCE_SCRAPE_TIMEOUT_SEC)
+        except TimeoutError:
+            elapsed = int(time.monotonic() - start)
+            raise ConfigurationError(
+                f"Source {source_name} timed out after {elapsed}s (possible render hang or slow API)"
+            )
 
         stats["jobs_found"] = len(jobs)
-        logger.info(f"  Found {len(jobs)} jobs")
+        logger.info("  Found %s jobs (elapsed=%ss)", len(jobs), int(time.monotonic() - start))
 
         if not jobs:
             return stats
