@@ -14,15 +14,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from playwright.sync_api import (
-        Browser,
-        Page,
-        TimeoutError as PlaywrightTimeoutError,
-        sync_playwright,
-    )
+from typing import Dict, List, Optional
 
 
 logger = logging.getLogger(__name__)
