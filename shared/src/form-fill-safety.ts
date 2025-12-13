@@ -41,7 +41,16 @@ export const FORM_FILL_SAFETY_RULES = `STRICT FORM-FILL SAFETY RULES (NON-NEGOTI
  * Combines the editable workflow prompt with hardcoded safety rules.
  * This is the ONLY way to construct a form fill prompt.
  * Adds visual separation (newlines) between workflow and safety sections.
+ *
+ * @param workflowPrompt - The editable workflow instructions from the database
+ * @returns Combined prompt with workflow + safety rules
  */
 export function buildFormFillPrompt(workflowPrompt: string): string {
+  if (!workflowPrompt || workflowPrompt.trim().length === 0) {
+    console.warn(
+      "[buildFormFillPrompt] WARNING: workflowPrompt is empty. " +
+        "The resulting prompt will contain only safety rules."
+    )
+  }
   return `${workflowPrompt.trim()}\n\n\n${FORM_FILL_SAFETY_RULES}`
 }

@@ -26,6 +26,8 @@ export interface ToolResult {
 const SCREENSHOT_MAX_WIDTH = 1280 // Max width for screenshots sent to agent
 const TOOL_TIMEOUT_MS = 30000 // 30 second timeout for tool execution
 const COMBOBOX_DROPDOWN_DELAY_MS = 500 // Wait for dropdown to appear after typing (increased for large datasets)
+const MAX_DROPDOWN_OPTIONS_TO_RETURN = 30 // Max options to return from peek_dropdown (prevents overwhelming agent)
+const MIN_MATCH_SCORE_THRESHOLD = 40 // Minimum score to accept a dropdown match (0-100 scale)
 
 // ============================================================================
 // BrowserView Reference
@@ -801,6 +803,7 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
     const result = await browserView.webContents.executeJavaScript(`
       (() => {
         const dropdownSelectors = ${selectorsJson};
+        const maxOptions = ${MAX_DROPDOWN_OPTIONS_TO_RETURN};
         const options = [];
         const seen = new Set();
 
@@ -823,7 +826,7 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
           }
         }
 
-        return { success: true, options: options.slice(0, 30) };
+        return { success: true, options: options.slice(0, maxOptions) };
       })()
     `)
 
@@ -877,6 +880,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
         (() => {
           const targetValue = ${searchJson};
           const dropdownSelectors = ${selectorsJson};
+          const minMatchScore = ${MIN_MATCH_SCORE_THRESHOLD};
 
           // Scoring function for matching options
           function scoreMatch(text, target) {
@@ -935,8 +939,8 @@ async function handleSelectCombobox(params: { selector: string; value: string })
             }
           }
 
-          // Accept any match with score >= 40 (reasonable match)
-          if (!bestMatch || bestScore < 40) {
+          // Accept any match with score >= minMatchScore (reasonable match)
+          if (!bestMatch || bestScore < minMatchScore) {
             return {
               success: false,
               error: 'No suitable match found (best score: ' + bestScore + ')',
@@ -987,10 +991,10 @@ async function handleSelectCombobox(params: { selector: string; value: string })
       return result
     }
 
-    // Step 3: Type incrementally to filter - start with first 3 chars
-    const typeLengths = [3, 5, Math.min(10, value.length), value.length]
+    // Step 3: Type incrementally to filter - start with first 3 chars, then 5, 10, full
+    const incrementalTypeLengths = [3, 5, Math.min(10, value.length), value.length]
 
-    for (const len of typeLengths) {
+    for (const len of incrementalTypeLengths) {
       const partialValue = value.slice(0, len)
       logger.info(`[ToolExecutor] Typing "${partialValue}" to filter dropdown...`)
 
@@ -1313,7 +1317,7 @@ async function handleGetButtons(): Promise<ToolResult> {
   return {
     success: true,
     data: {
-      buttons: relevantButtons.length > 0 ? relevantButtons : buttons.slice(0, 30),
+      buttons: relevantButtons.length > 0 ? relevantButtons : buttons.slice(0, MAX_DROPDOWN_OPTIONS_TO_RETURN),
       totalFound: buttons.length,
       hint: relevantButtons.length === 0 ? "No 'Add' buttons found. Try scrolling or look for icons (+) that add entries." : null
     }
