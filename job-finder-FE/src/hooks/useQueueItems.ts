@@ -150,8 +150,11 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
       if (cancelled) return
       appendEventLog(eventName, data ?? null)
       if (eventName === "snapshot" && data?.items) {
-        // Snapshot is already filtered/limited server-side; just normalize.
-        const items = (data.items ?? []).map(normalizeQueueItem)
+        // Snapshot from SSE may be unfiltered; enforce current filters and limit.
+        const items = (data.items ?? [])
+          .map(normalizeQueueItem)
+          .filter((item) => matchesFilters(item))
+          .slice(0, limit)
         setQueueItems(items)
         setLoading(false)
         return

@@ -80,13 +80,10 @@ const hasValue = (value: unknown) => {
 
 /**
  * Derive company status using a single, simple rule-set:
- * - Pending: an enrichment job is currently queued
  * - Complete: all tracked company properties have values
  * - Partial: anything else
  */
-function getDataStatus(company: Company, isPending: boolean): { label: string; color: string } {
-  if (isPending) return { label: "Pending", color: "bg-blue-100 text-blue-800" }
-
+function getDataStatus(company: Company): { label: string; color: string } {
   const isComplete = completenessFields.every((field) => hasValue(company[field]))
   if (isComplete) return { label: "Complete", color: "bg-green-100 text-green-800" }
 
@@ -94,16 +91,8 @@ function getDataStatus(company: Company, isPending: boolean): { label: string; c
 }
 
 /** Badge component showing company data completeness status */
-function CompanyStatusBadge({
-  company,
-  isPending,
-  status,
-}: {
-  company: Company
-  isPending: boolean
-  status?: { label: string; color: string }
-}) {
-  const computed = status ?? getDataStatus(company, isPending)
+function CompanyStatusBadge({ company, status }: { company: Company; status?: { label: string; color: string } }) {
+  const computed = status ?? getDataStatus(company)
   return <Badge className={computed.color}>{computed.label}</Badge>
 }
 
@@ -111,9 +100,7 @@ export function CompaniesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { companies, loading, deleteCompany, setFilters } = useCompanies({ limit: 100 })
-  const { submitCompany, queueItems: pendingQueueItems } = useQueueItems({
-    status: "pending",
-    type: "company",
+  const { submitCompany } = useQueueItems({
     // Backend caps queue list at 100; keep in sync to avoid 500s from validation.
     limit: 100,
   })
@@ -229,17 +216,6 @@ export function CompaniesPage() {
   }
 
   const getTime = (value: unknown) => normalizeDateValue(value)?.getTime() ?? 0
-
-  // Filter companies locally for search and apply sort (memoized)
-  const pendingCompanyIds = useMemo(
-    () =>
-      new Set(
-        pendingQueueItems
-          .filter((item) => item.type === "company" && item.company_id)
-          .map((item) => item.company_id as string)
-      ),
-    [pendingQueueItems]
-  )
 
   const filteredCompanies = useMemo(() => {
     const filtered = companies.filter((company) => {
@@ -480,8 +456,7 @@ export function CompaniesPage() {
               </TableHeader>
               <TableBody>
                 {filteredCompanies.map((company: Company) => {
-                  const isPending = company.id ? pendingCompanyIds.has(company.id) : false
-                  const status = getDataStatus(company, isPending)
+                  const status = getDataStatus(company)
                   return (
                     <TableRow
                       key={company.id}
@@ -508,7 +483,7 @@ export function CompaniesPage() {
                       {safeText(company.industry)}
                     </TableCell>
                     <TableCell>
-                      <CompanyStatusBadge company={company} isPending={isPending} status={status} />
+                      <CompanyStatusBadge company={company} status={status} />
                     </TableCell>
                     <TableCell className="text-right">
                       {status.label !== "Complete" && (
