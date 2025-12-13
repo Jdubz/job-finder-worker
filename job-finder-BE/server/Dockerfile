@@ -3,8 +3,7 @@
 FROM node:20-bullseye AS shared-build
 WORKDIR /shared
 COPY shared/ .
-RUN npm install
-RUN npm run build
+RUN npm install --ignore-scripts && npm run build
 
 FROM node:20-bullseye AS base
 WORKDIR /app
