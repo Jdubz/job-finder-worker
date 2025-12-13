@@ -8,6 +8,7 @@ const mockPrompts = {
   coverLetterGeneration: "Write a cover letter for {{jobTitle}} at {{companyName}}",
   jobScraping: "Extract job details from {{url}}",
   jobMatching: "Match {{candidateSkills}} to {{jobRequirements}}",
+  formFill: "Fill form fields for job application",
 }
 
 vi.mock("@/contexts/AuthContext", () => ({
