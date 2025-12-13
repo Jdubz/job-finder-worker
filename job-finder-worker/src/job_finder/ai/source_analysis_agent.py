@@ -283,10 +283,10 @@ CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - Make sure `type` is api|rss|html; include response_path for APIs (e.g., jobs or jobPostings).
 - Include pagination hints only when supported (Workday/Greenhouse offset+limit).
 - Do NOT output auth-gated or CAPTCHA-protected endpoints (LinkedIn/Indeed/Glassdoor/ZipRecruiter) or single-job URLs.
-- For Workday: use the /wday/cxs/{tenant}/{site}/jobs POST endpoint with limit/offset; fields: title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn.
-- For Greenhouse: https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true, response_path=jobs.
-- For Lever: https://api.lever.co/v0/postings/{slug}?mode=json.
-- For Ashby: https://api.ashbyhq.com/posting-api/job-board/{slug}, response_path=jobs.
+- For Workday: use the /wday/cxs/{{tenant}}/{{site}}/jobs POST endpoint with limit/offset; fields: title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn.
+- For Greenhouse: https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs.
+- For Lever: https://api.lever.co/v0/postings/{{slug}}?mode=json.
+- For Ashby: https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs.
 
 IMPORTANT: Your response must be valid JSON only. No additional text.
 """
