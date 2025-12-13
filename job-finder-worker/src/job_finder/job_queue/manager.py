@@ -29,7 +29,16 @@ def _iso(dt: datetime) -> str:
 
 
 def _rows_to_items(rows: List[Any]) -> List[JobQueueItem]:
-    return [JobQueueItem.from_record(dict(row)) for row in rows]
+    items: List[JobQueueItem] = []
+    for row in rows:
+        rec = dict(row)
+        if not rec.get("tracking_id"):
+            rec["tracking_id"] = rec.get("id") or str(uuid4())
+        try:
+            items.append(JobQueueItem.from_record(rec))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Dropping malformed queue row %s: %s", rec.get("id"), exc)
+    return items
 
 
 class QueueManager:
@@ -288,6 +297,8 @@ class QueueManager:
 
     def get_pending_items(self, limit: int = 10) -> List[JobQueueItem]:
         with sqlite_connection(self.db_path) as conn:
+            # Self-heal legacy/bad rows missing tracking_id to prevent worker crash
+            conn.execute("UPDATE job_queue SET tracking_id = id WHERE tracking_id IS NULL")
             rows = conn.execute(
                 """
                 SELECT * FROM job_queue
