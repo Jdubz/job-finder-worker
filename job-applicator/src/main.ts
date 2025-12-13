@@ -213,7 +213,6 @@ async function createWindow(): Promise<void> {
   })
 
   mainWindow.setBrowserView(browserView)
-  browserView.webContents.setUserAgent(CUSTOM_USER_AGENT)
   browserView.webContents.session.setUserAgent(CUSTOM_USER_AGENT, "en-US,en")
   logger.info(`[BrowserView] User agent set to Chrome UA to avoid bot/WAF blocks`)
 
@@ -1421,6 +1420,7 @@ STRICT FORM-FILL RULES (do NOT ignore):
       // Use detached: true to create a new process group, allowing us to kill the entire tree
       // on termination (electronmon restarts, etc.). stdio: "pipe" is default but explicit here.
       activeClaudeProcess = spawn("claude", spawnArgs, {
+        detached: true,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       })
