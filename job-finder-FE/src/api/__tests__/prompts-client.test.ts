@@ -14,6 +14,8 @@ const testPrompts: PromptConfig = {
   formFill: "test form fill prompt",
 }
 
+const testSafetyRules = "test safety rules"
+
 describe("PromptsClient", () => {
   const baseUrl = "https://api.example.com"
   let client: PromptsClient
@@ -26,7 +28,13 @@ describe("PromptsClient", () => {
   it("returns prompts from API", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true, data: { prompts: { ...testPrompts, resumeGeneration: "test" } } }),
+      json: async () => ({
+        success: true,
+        data: {
+          prompts: { ...testPrompts, resumeGeneration: "test" },
+          formFillSafetyRules: testSafetyRules,
+        },
+      }),
       headers: { get: () => "application/json" },
     } as unknown as Response)
 
@@ -37,6 +45,25 @@ describe("PromptsClient", () => {
       expect.objectContaining({ method: "GET", credentials: "include" })
     )
     expect(prompts.resumeGeneration).toBe("test")
+  })
+
+  it("returns prompts with safety rules", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          prompts: testPrompts,
+          formFillSafetyRules: testSafetyRules,
+        },
+      }),
+      headers: { get: () => "application/json" },
+    } as unknown as Response)
+
+    const result = await client.getPromptsWithSafety()
+
+    expect(result.prompts).toEqual(testPrompts)
+    expect(result.formFillSafetyRules).toBe(testSafetyRules)
   })
 
   it("surfaces errors when request fails", async () => {
