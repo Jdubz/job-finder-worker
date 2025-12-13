@@ -131,6 +131,11 @@ async function downloadDocument(documentUrl: string): Promise<string> {
     return tempPath
   }
 
+  // Validate documentUrl before building full URL (prevent URL manipulation)
+  if (!documentUrl.startsWith("/") || documentUrl.includes("://") || documentUrl.includes("..")) {
+    throw new Error(`Invalid documentUrl format: "${documentUrl}"`)
+  }
+
   // Build full URL from API base
   const apiUrl = getApiUrl()
   const apiUrlObj = new URL(apiUrl)
