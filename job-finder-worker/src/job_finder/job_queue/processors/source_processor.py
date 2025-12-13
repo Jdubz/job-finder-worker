@@ -852,7 +852,7 @@ class SourceProcessor(BaseProcessor):
                 logger.error(f"Error scraping source {source_name}: {scrape_error}")
                 self.sources_manager.record_scraping_failure(
                     source_id=source.get("id"),
-                    error_message=str(scrape_error),
+                    error=str(scrape_error),
                 )
                 self._update_item_status(
                     item.id,
