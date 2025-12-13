@@ -112,10 +112,10 @@ job discovery system. Your analysis will determine how the source is classified 
 - Can render JavaScript-driven pages via Playwright **when `requires_js: true` is set in the source_config**. Keep resource usage light (block images/fonts), and always include a CSS selector for readiness (job list container or first job card).
 - Supports pagination for APIs with offset/page parameters
 - Known ATS patterns (preferred when detected):
-  - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
-  - Lever: GET https://api.lever.co/v0/postings/{slug}?mode=json, fields.title=text, url=hostedUrl, location=categories.location, description=descriptionPlain, posted_date=createdAt
-  - Ashby: GET https://api.ashbyhq.com/posting-api/job-board/{slug}, response_path=jobs, fields.title=title, url=jobUrl, description=descriptionHtml, location=location
-  - Workday: POST https://{tenant}.wd{N}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs with body {\"limit\":20,\"offset\":0}, response_path=jobPostings, fields.title=title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn
+  - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
+  - Lever: GET https://api.lever.co/v0/postings/{{slug}}?mode=json, fields.title=text, url=hostedUrl, location=categories.location, description=descriptionPlain, posted_date=createdAt
+  - Ashby: GET https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs, fields.title=title, url=jobUrl, description=descriptionHtml, location=location
+  - Workday: POST https://{{tenant}}.wd{{N}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{site}}/jobs with body {\"limit\":20,\"offset\":0}, response_path=jobPostings, fields.title=title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn
   - RSS: if the URL is clearly an RSS feed, use type=rss and map title/link/description/pubDate
 
 ### System Limitations (CRITICAL)
