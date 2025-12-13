@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+DEFAULT_RENDER_TIMEOUT_MS = 20_000
+
 
 @dataclass
 class SourceConfig:
@@ -26,6 +28,9 @@ class SourceConfig:
         auth_param: Header name or query param name for auth (e.g., "X-API-Key", "api_key")
         salary_min_field: Path to minimum salary field in response
         salary_max_field: Path to maximum salary field in response
+        requires_js: If True, fetch page via Playwright renderer
+        render_wait_for: Optional CSS selector to wait for after JS load
+        render_timeout_ms: Custom timeout for JS rendering
     """
 
     type: str  # "api" | "rss" | "html"
@@ -80,6 +85,11 @@ class SourceConfig:
     # When set along with company_filter, appends ?{param}={company} to the URL
     company_filter_param: str = ""
 
+    # JS rendering
+    requires_js: bool = False
+    render_wait_for: str = ""
+    render_timeout_ms: int = DEFAULT_RENDER_TIMEOUT_MS
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any], company_name: Optional[str] = None) -> "SourceConfig":
         """
@@ -115,6 +125,9 @@ class SourceConfig:
             is_remote_source=bool(data.get("is_remote_source", False)),
             company_filter=data.get("company_filter", ""),
             company_filter_param=data.get("company_filter_param", ""),
+            requires_js=bool(data.get("requires_js", False)),
+            render_wait_for=data.get("render_wait_for", ""),
+            render_timeout_ms=int(data.get("render_timeout_ms", DEFAULT_RENDER_TIMEOUT_MS)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -164,6 +177,12 @@ class SourceConfig:
             result["company_filter"] = self.company_filter
         if self.company_filter_param:
             result["company_filter_param"] = self.company_filter_param
+        if self.requires_js:
+            result["requires_js"] = self.requires_js
+        if self.render_wait_for:
+            result["render_wait_for"] = self.render_wait_for
+        if self.render_timeout_ms and self.render_timeout_ms != DEFAULT_RENDER_TIMEOUT_MS:
+            result["render_timeout_ms"] = self.render_timeout_ms
 
         return result
 
@@ -205,3 +224,9 @@ class SourceConfig:
 
         if self.auth_type == "query" and not self.auth_param:
             raise ValueError("auth_param is required when auth_type is 'query'")
+
+        if self.requires_js and self.type != "html":
+            raise ValueError("requires_js is only supported for HTML sources")
+
+        if self.render_timeout_ms and self.render_timeout_ms < 1_000:
+            raise ValueError("render_timeout_ms must be at least 1000 ms")

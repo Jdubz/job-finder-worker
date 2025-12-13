@@ -14,6 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from job_finder.exceptions import ScrapeBlockedError
+from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.scrapers.text_sanitizer import (
     sanitize_company_name,
@@ -383,15 +384,31 @@ class GenericScraper:
         """
         url = self._get_effective_url()
         headers = {**DEFAULT_HEADERS, **self.config.headers}
-        response = requests.get(url, headers=headers, timeout=30)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as e:
-            raise ScrapeBlockedError(
-                self.config.url, f"HTTP {response.status_code}: {response.reason}"
-            ) from e
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        if self.config.requires_js:
+            try:
+                result = get_renderer().render(
+                    RenderRequest(
+                        url=url,
+                        wait_for_selector=self.config.render_wait_for or self.config.job_selector,
+                        wait_timeout_ms=self.config.render_timeout_ms,
+                        block_resources=True,
+                        headers=headers,
+                    )
+                )
+                soup = BeautifulSoup(result.html, "html.parser")
+            except RuntimeError as exc:
+                raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}") from exc
+        else:
+            response = requests.get(url, headers=headers, timeout=30)
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as e:
+                raise ScrapeBlockedError(
+                    self.config.url, f"HTTP {response.status_code}: {response.reason}"
+                ) from e
+
+            soup = BeautifulSoup(response.text, "html.parser")
 
         if not self.config.job_selector:
             logger.error("job_selector is required for HTML sources")
