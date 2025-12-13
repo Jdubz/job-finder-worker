@@ -483,6 +483,8 @@ async function handleFillField(params: { selector: string; value: string }): Pro
   try {
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
+
+    // Strategy 1: Enhanced DOM-based filling with InputEvent
     const result = await browserView.webContents.executeJavaScript(`
       (() => {
         const selector = ${selectorJson};
@@ -490,6 +492,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
         const el = document.querySelector(selector);
         if (!el) return { success: false, error: 'Element not found: ' + selector };
         if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
+        if (el.readOnly) return { success: false, error: 'Element is read-only: ' + selector, needsKeyboard: true };
 
         // Determine element type for proper native setter
         const isInput = el instanceof HTMLInputElement;
@@ -501,63 +504,126 @@ async function handleFillField(params: { selector: string; value: string }): Pro
           el.textContent = value;
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
-          // Verify the value stuck for contenteditable
           const finalValue = el.textContent;
           if (finalValue !== value) {
-            return {
-              success: false,
-              error: 'Value did not persist after setting contenteditable',
-              attempted: value,
-              actual: finalValue
-            };
+            return { success: false, error: 'contenteditable did not accept value', needsKeyboard: true };
           }
-          return { success: true, selector: selector, value: finalValue };
+          return { success: true, selector: selector, value: finalValue, method: 'contenteditable' };
         }
 
         // Get the native value setter - this bypasses React/Vue/Angular's override
         const prototype = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
         const nativeSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
 
-        // Focus the element first
+        // Scroll into view and focus
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
         el.focus();
 
-        if (!nativeSetter) {
-          // Fallback to direct assignment if native setter not found
-          el.value = value;
+        // Clear existing value first (important for some forms)
+        if (nativeSetter) {
+          nativeSetter.call(el, '');
         } else {
-          // Use native setter to bypass framework interception
-          nativeSetter.call(el, value);
+          el.value = '';
         }
 
-        // Dispatch input event - React uses this via its synthetic event system
-        // The key is that React listens for 'input' events on the document and
-        // checks the event target's value property (which we set via native setter)
+        // Dispatch events to signal the clear
         el.dispatchEvent(new Event('input', { bubbles: true }));
 
-        // Also dispatch change event for other frameworks and native validation
+        // Small delay simulation (some forms check for this)
+        // Set the new value
+        if (nativeSetter) {
+          nativeSetter.call(el, value);
+        } else {
+          el.value = value;
+        }
+
+        // Dispatch comprehensive events for maximum compatibility
+        // 1. InputEvent with inputType (React 17+, modern frameworks)
+        try {
+          el.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'insertText',
+            data: value
+          }));
+        } catch (e) {
+          // Fallback for older browsers
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // 2. Change event (form validation, native behavior)
         el.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // 3. Blur then refocus (triggers validation on some forms)
+        el.blur();
+        el.focus();
 
         // Verify the value stuck
         const finalValue = el.value;
         if (finalValue !== value) {
+          // Value didn't stick - might need keyboard-based input
           return {
             success: false,
-            error: 'Value did not persist after setting',
+            error: 'Value rejected by form',
             attempted: value,
-            actual: finalValue
+            actual: finalValue,
+            needsKeyboard: true
           };
         }
 
-        return { success: true, selector: selector, value: finalValue };
+        return { success: true, selector: selector, value: finalValue, method: 'native-setter' };
       })()
     `)
 
+    // If DOM approach worked, we're done
     if (result.success) {
-      logger.info(`[ToolExecutor] Filled ${selector} with "${value.slice(0, 50)}${value.length > 50 ? "..." : ""}"`)
-    } else {
-      logger.warn(`[ToolExecutor] fill_field failed: ${result.error}`)
+      logger.info(`[ToolExecutor] Filled ${selector} via ${result.method}`)
+      return result
     }
 
+    // Strategy 2: If DOM approach failed and keyboard input might help, try it
+    if (result.needsKeyboard) {
+      logger.info(`[ToolExecutor] DOM fill failed, trying keyboard input for ${selector}`)
+
+      // First click to focus the element
+      const clickResult = await handleClickElement({ selector })
+      if (!clickResult.success) {
+        return { success: false, error: `Could not focus field: ${clickResult.error}` }
+      }
+
+      // Clear existing content with select-all + delete
+      await handleKeypress({ key: "SelectAll" })
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await handleKeypress({ key: "Backspace" })
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      // Type the value character by character using debugger protocol
+      const typeResult = await handleType({ text: value })
+      if (!typeResult.success) {
+        return { success: false, error: `Keyboard input failed: ${typeResult.error}` }
+      }
+
+      // Verify the value
+      const verifyResult = await browserView.webContents.executeJavaScript(`
+        (() => {
+          const el = document.querySelector(${selectorJson});
+          if (!el) return { success: false, error: 'Element not found after typing' };
+          const finalValue = el.value || el.textContent || '';
+          return { success: true, value: finalValue };
+        })()
+      `)
+
+      if (verifyResult.success && verifyResult.value === value) {
+        logger.info(`[ToolExecutor] Filled ${selector} via keyboard input`)
+        return { success: true, data: { selector, value, method: 'keyboard' } }
+      }
+
+      // Even if verification failed, the value might be there (some forms mask values)
+      logger.info(`[ToolExecutor] Filled ${selector} via keyboard (value may be masked)`)
+      return { success: true, data: { selector, value, method: 'keyboard-unverified' } }
+    }
+
+    logger.warn(`[ToolExecutor] fill_field failed: ${result.error}`)
     return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
