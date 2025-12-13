@@ -296,14 +296,20 @@ class SourceProcessor(BaseProcessor):
                     self._handle_existing_source(item, dup, context="preflight")
                     return
 
-                # Enforce invariant: if we have a company, drop aggregator_domain before persistence
-                persistence_aggregator = None if company_id else aggregator_domain
+                # Enforce invariant: a source is either company-specific OR an aggregator, not both
+                # If it's on an aggregator domain, it's an aggregator source (no company_id)
+                if aggregator_domain:
+                    persistence_company_id = None
+                    persistence_aggregator = aggregator_domain
+                else:
+                    persistence_company_id = company_id
+                    persistence_aggregator = None
 
                 source_id = self.sources_manager.create_from_discovery(
                     name=source_name,
                     source_type=source_type,
                     config=source_config,
-                    company_id=company_id,
+                    company_id=persistence_company_id,
                     aggregator_domain=persistence_aggregator,
                     status=initial_status,
                 )
