@@ -213,7 +213,6 @@ class SourceProcessor(BaseProcessor):
             )
 
             probe_result = None
-            repair_attempted = False
             if not should_disable:
                 probe_result = self._probe_config(source_type, source_config)
 
@@ -227,7 +226,6 @@ class SourceProcessor(BaseProcessor):
                     if repair and repair.get("decision") == "update_config":
                         updated_config = repair.get("config")
                         if updated_config:
-                            repair_attempted = True
                             retry = self._probe_config(
                                 updated_config.get("type", source_type), updated_config
                             )
