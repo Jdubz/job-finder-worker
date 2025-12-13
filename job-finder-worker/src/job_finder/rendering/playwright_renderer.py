@@ -14,7 +14,10 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from playwright.sync_api import Playwright, Browser
 
 
 logger = logging.getLogger(__name__)
@@ -50,8 +53,8 @@ class PlaywrightRenderer:
         self._sem = threading.Semaphore(max_concurrent)
         self._default_timeout = default_timeout_ms
         self._browser_lock = threading.Lock()
-        self._playwright = None
-        self._browser = None
+        self._playwright: Optional["Playwright"] = None
+        self._browser: Optional["Browser"] = None
         self._ensure_browser()
 
     def _ensure_browser(self) -> None:
@@ -64,8 +67,9 @@ class PlaywrightRenderer:
                 return
             from playwright.sync_api import sync_playwright
 
-            self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch(
+            pw = sync_playwright().start()
+            self._playwright = pw
+            self._browser = pw.chromium.launch(
                 headless=True,
                 args=[
                     "--disable-dev-shm-usage",
