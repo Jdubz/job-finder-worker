@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from job_finder.exceptions import DuplicateQueueItemError, StorageError
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.storage.sqlite_client import sqlite_connection
@@ -29,7 +31,20 @@ def _iso(dt: datetime) -> str:
 
 
 def _rows_to_items(rows: List[Any]) -> List[JobQueueItem]:
-    return [JobQueueItem.from_record(dict(row)) for row in rows]
+    items: List[JobQueueItem] = []
+    for row in rows:
+        rec = dict(row)
+        if not rec.get("tracking_id"):
+            if rec.get("id"):
+                rec["tracking_id"] = rec.get("id")
+            else:
+                logger.error("Dropping queue row with missing both 'id' and 'tracking_id': %s", rec)
+                continue
+        try:
+            items.append(JobQueueItem.from_record(rec))
+        except (ValidationError, ValueError, KeyError, TypeError) as exc:
+            logger.error("Dropping malformed queue row %s: %s", rec.get("id"), exc)
+    return items
 
 
 class QueueManager:

@@ -54,18 +54,35 @@ export function runMigrations(db: Database.Database, migrationsDir: string = def
 
   const appliedNow: string[] = []
 
-  // Apply all migrations atomically - if one fails, none are committed
-  const applyAll = db.transaction(() => {
-    for (const file of pending) {
-      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
-      db.exec(sql)
-      db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
-      appliedNow.push(file)
-      logger.info({ migration: file }, '[migrations] applied migration')
-    }
-  })
+  // Some historical migrations include their own BEGIN/COMMIT blocks. Wrapping them in an
+  // outer transaction triggers "cannot start a transaction within a transaction" on sqlite.
+  // Execute sequentially; each script is responsible for its own atomicity.
+  const hasExplicitTransaction = (sql: string): boolean => {
+    const normalized = sql.replace(/--.*$/gm, '').replace(/\s+/g, ' ').toUpperCase()
+    return normalized.includes('BEGIN') && normalized.includes('COMMIT')
+  }
 
-  applyAll()
+  for (const file of pending) {
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
+
+    if (hasExplicitTransaction(sql)) {
+      db.exec(sql)
+    } else {
+      try {
+        db.exec('BEGIN')
+        db.exec(sql)
+        db.exec('COMMIT')
+      } catch (err) {
+        db.exec('ROLLBACK')
+        logger.error({ migration: file, error: err }, '[migrations] migration failed and was rolled back')
+        throw err
+      }
+    }
+
+    db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file)
+    appliedNow.push(file)
+    logger.info({ migration: file }, '[migrations] applied migration')
+  }
 
   logger.info({ count: appliedNow.length }, '[migrations] completed applying migrations')
   return appliedNow
