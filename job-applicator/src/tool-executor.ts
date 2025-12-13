@@ -197,6 +197,10 @@ async function executeToolInternal(
   params: Record<string, unknown>
 ): Promise<ToolResult> {
   switch (tool) {
+    // Internal/health-only tool - not exposed to agent prompts
+    case "__healthcheck__":
+      return { success: true, data: { browserReady: !!browserView } }
+
     case "screenshot":
       return await handleScreenshot()
 
@@ -288,6 +292,10 @@ async function handleScreenshot(): Promise<ToolResult> {
   }
 
   const jpeg = finalImage.toJPEG(60)
+  if (!jpeg || jpeg.length === 0) {
+    logger.error("[ToolExecutor] Screenshot capture returned empty buffer")
+    return { success: false, error: "Failed to capture screenshot (empty image)" }
+  }
   const base64 = jpeg.toString("base64")
   const hash = crypto.createHash("sha1").update(jpeg).digest("hex").slice(0, 8)
 
@@ -901,14 +909,27 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
         const el = document.querySelector(selector);
         if (!el) return { success: false, error: 'Element not found: ' + selector };
 
+        // Block navigation away from the application by disallowing external links
+        if (el.tagName === 'A') {
+          const href = el.href || '';
+          try {
+            const target = new URL(href, window.location.href);
+            if (target.origin !== window.location.origin) {
+              return { success: false, error: 'Navigation blocked: link points outside current site' };
+            }
+          } catch {
+            return { success: false, error: 'Navigation blocked: invalid link href' };
+          }
+        }
+
         // Scroll element into view if needed
         el.scrollIntoView({ behavior: 'instant', block: 'center' });
 
         // Get element text for logging
-        const text = el.textContent?.trim()?.slice(0, 50) || el.value || '';
+        const text = (el.textContent || '').trim().slice(0, 50) || (el.value || '');
 
         // Focus and click
-        if (el.focus) el.focus();
+        el.focus();
         el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
 
         return { success: true, selector: selector, text: text };

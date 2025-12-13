@@ -81,6 +81,16 @@ button:disabled {
   color: #eee;
 }
 
+.btn-nav {
+  width: 36px;
+  background: #0f3460;
+  color: #eee;
+}
+
+.btn-nav:hover:not(:disabled) {
+  background: #1a4a7a;
+}
+
 .btn-go:hover:not(:disabled) {
   background: #1a4a7a;
 }

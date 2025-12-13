@@ -12,9 +12,18 @@ import { logger } from "./logger.js"
 // Port can be overridden for testing to avoid conflicts with running app
 let PORT = parseInt(process.env.TOOL_SERVER_PORT || "19524", 10)
 const HOST = "127.0.0.1"
+const PROTOCOL = "http"
 
 let server: http.Server | null = null
 let requestCounter = 0
+
+/**
+ * Expose the effective tool server URL (after any port overrides).
+ * This is used for health checks and MCP config generation.
+ */
+export function getToolServerUrl(): string {
+  return `${PROTOCOL}://${HOST}:${PORT}`
+}
 
 /**
  * Set the port (used by tests to avoid conflicts)
@@ -216,7 +225,7 @@ export function startToolServer(): http.Server {
   })
 
   server.listen(PORT, HOST, () => {
-    logger.info(`[ToolServer] Listening on http://${HOST}:${PORT}`)
+    logger.info(`[ToolServer] Listening on ${getToolServerUrl()}`)
   })
 
   return server
