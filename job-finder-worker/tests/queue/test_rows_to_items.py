@@ -1,7 +1,4 @@
 import datetime
-from types import SimpleNamespace
-
-import pytest
 
 from job_finder.job_queue.manager import _rows_to_items
 
