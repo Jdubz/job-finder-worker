@@ -36,6 +36,7 @@ from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.rendering.playwright_renderer import get_renderer, RenderRequest
 
 from .base_processor import BaseProcessor
 
@@ -579,10 +580,24 @@ class SourceProcessor(BaseProcessor):
                 )
 
             if sc.type == "html":
-                resp = requests.get(sc.url, headers=headers, timeout=25)
-                status_code = resp.status_code
-                resp.raise_for_status()
-                html = resp.text
+                if sc.requires_js:
+                    # Use Playwright for JS-rendered sources
+                    result = get_renderer().render(
+                        RenderRequest(
+                            url=sc.url,
+                            wait_for_selector=sc.render_wait_for or sc.job_selector,
+                            wait_timeout_ms=sc.render_timeout_ms,
+                            block_resources=True,
+                            headers=headers,
+                        )
+                    )
+                    html = result.html
+                    status_code = 200  # Playwright doesn't expose status code
+                else:
+                    resp = requests.get(sc.url, headers=headers, timeout=25)
+                    status_code = resp.status_code
+                    resp.raise_for_status()
+                    html = resp.text
                 soup = BeautifulSoup(html, "html.parser")
                 items = soup.select(getattr(sc, "job_selector", ""))
                 job_count = len(items)
