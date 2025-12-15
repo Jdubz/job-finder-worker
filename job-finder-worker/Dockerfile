@@ -15,12 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies + Playwright browser
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Install Playwright Chromium browser (downloads to /root/.cache/ms-playwright)
-RUN /root/.local/bin/playwright install chromium
+RUN pip install --no-cache-dir --user -r requirements.txt && \
+    /root/.local/bin/playwright install chromium
 
 # Production stage
 FROM python:3.12-slim
@@ -28,30 +26,29 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies (procps for pgrep, curl for healthcheck, gosu for privilege dropping, sqlite3 for agent review)
-# Also install Chromium dependencies for Playwright JS rendering
+# Install runtime dependencies (sorted alphabetically for maintainability)
+# Includes Chromium dependencies for Playwright JS rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    procps \
-    curl \
     ca-certificates \
+    curl \
     gosu \
-    sqlite3 \
-    # Playwright Chromium dependencies (subset of what 'playwright install-deps chromium' installs)
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
+    libasound2 \
     libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
+    libatk1.0-0 \
     libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libnspr4 \
+    libnss3 \
     libxcomposite1 \
     libxdamage1 \
     libxfixes3 \
+    libxkbcommon0 \
     libxrandr2 \
-    libgbm1 \
-    libasound2 \
+    procps \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user matching API container (node user, uid 1000)
@@ -104,8 +101,7 @@ RUN chmod +x /app/entrypoint.sh && \
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH
-# PYTHONPATH must include user site-packages for pip --user installed packages
-ENV PYTHONPATH=/app/src:/app:/home/node/.local/lib/python3.12/site-packages
+# PYTHONPATH is set dynamically in entrypoint.sh to avoid hardcoding Python version
 # Tell Playwright where to find browsers (installed during build)
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
 

@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Set PYTHONPATH dynamically to include node user's site-packages (avoids hardcoding Python version)
+# Use gosu to get the correct path for the node user who will run the Python processes
+export PYTHONPATH="/app/src:/app:$(gosu node python3 -m site --user-site)"
+
 echo "========================================="
 echo "Job Finder Worker Container Starting"
 echo "========================================="

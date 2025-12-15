@@ -16,32 +16,31 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies and development tools (sqlite3 for agent review)
-# Also install Chromium dependencies for Playwright JS rendering
+# Install runtime dependencies and development tools (sorted alphabetically)
+# Includes Chromium dependencies for Playwright JS rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    gcc \
-    procps \
     curl \
-    vim \
-    sqlite3 \
+    gcc \
     gosu \
-    # Playwright Chromium dependencies
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
+    libasound2 \
     libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
+    libatk1.0-0 \
     libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libnspr4 \
+    libnss3 \
     libxcomposite1 \
     libxdamage1 \
     libxfixes3 \
+    libxkbcommon0 \
     libxrandr2 \
-    libgbm1 \
-    libasound2 \
+    procps \
+    sqlite3 \
+    vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user matching API container (node user, uid 1000)
@@ -71,15 +70,11 @@ RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claud
 RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
     && chown -R node:node /home/node/.codex /home/node/.gemini /data
 
-# Copy and install Python dependencies first (for layer caching)
+# Copy and install Python dependencies + Playwright browser + watchdog
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright Chromium browser for JS rendering
-RUN playwright install chromium
-
-# Install watchdog for hot reload
-RUN pip install --no-cache-dir watchdog[watchmedo]
+RUN pip install --no-cache-dir -r requirements.txt && \
+    playwright install chromium && \
+    pip install --no-cache-dir watchdog[watchmedo]
 
 # Copy application code (will be overridden by volume mounts in docker-compose)
 COPY . .
