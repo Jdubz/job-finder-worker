@@ -596,7 +596,8 @@ class SourceProcessor(BaseProcessor):
                         )
                     )
                     html = result.html
-                    status_code = 200  # Playwright doesn't expose status code
+                    # Use status code from renderer if available, default to 200
+                    status_code = getattr(result, "status_code", 200)
                 else:
                     resp = requests.get(sc.url, headers=headers, timeout=25)
                     status_code = resp.status_code
@@ -1098,13 +1099,15 @@ class SourceProcessor(BaseProcessor):
                     )
                 )
                 return result.html[:CONTENT_SAMPLE_FETCH_LIMIT]
-            except Exception as e:
-                logger.warning(f"Playwright render failed for {url}, falling back to static: {e}")
+            except Exception as playwright_error:
+                logger.warning(
+                    f"Playwright render failed for {url}, falling back to static: {playwright_error}"
+                )
                 try:
                     resp = requests.get(url, headers={"User-Agent": "JobFinderBot/1.0"}, timeout=25)
                     return resp.text[:CONTENT_SAMPLE_FETCH_LIMIT]
-                except Exception as e2:
-                    return f"[Fetch failed: {e2}]"
+                except Exception as fallback_error:
+                    return f"[Fetch failed: {fallback_error}]"
         elif source_type == "api":
             try:
                 resp = requests.get(
@@ -1187,7 +1190,7 @@ Return ONLY valid JSON matching the source type (no markdown, no explanation).
                 return None
             if source_type == "html" and data.get("job_selector") and data.get("fields"):
                 return data
-            if source_type == "api" and data.get("fields"):
+            if source_type == "api" and data.get("fields") and data.get("response_path"):
                 return data
             return None
         except Exception as e:
