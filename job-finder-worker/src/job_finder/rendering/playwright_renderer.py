@@ -109,8 +109,8 @@ class PlaywrightRenderer:
 
             def log_console(msg):
                 # Limit console noise to short messages
-                # msg.text is a property in newer Playwright versions
-                text = msg.text if isinstance(msg.text, str) else msg.text()
+                # msg.text is a method in older Playwright, property in newer versions
+                text = msg.text() if callable(msg.text) else msg.text
                 if text:
                     console_logs.append(text[:500])
 
