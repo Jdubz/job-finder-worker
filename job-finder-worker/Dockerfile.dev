@@ -21,6 +21,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    fonts-liberation \
     gcc \
     gosu \
     libasound2 \
@@ -38,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxfixes3 \
     libxkbcommon0 \
     libxrandr2 \
+    libxshmfence1 \
     procps \
     sqlite3 \
     vim \
@@ -87,9 +89,9 @@ RUN mkdir -p /app/data /app/logs /app/dev /data/sqlite \
     && chown -R node:node /app /data
 
 # Set Python environment variables for development
+# PYTHONPATH is set dynamically in entrypoint.dev.sh to avoid hardcoding Python version
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/src:/app \
     FLASK_ENV=development \
     LOG_LEVEL=DEBUG \
     PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright

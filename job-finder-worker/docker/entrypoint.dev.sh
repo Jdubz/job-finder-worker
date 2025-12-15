@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Set PYTHONPATH dynamically to include node user's site-packages (consistent with production)
+export PYTHONPATH="/app/src:/app:$(gosu node python3 -m site --user-site)"
+
 echo "========================================="
 echo "Job Finder Worker - DEVELOPMENT MODE"
 echo "========================================="

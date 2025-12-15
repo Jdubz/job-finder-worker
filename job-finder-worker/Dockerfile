@@ -31,6 +31,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    fonts-liberation \
     gosu \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -47,6 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxfixes3 \
     libxkbcommon0 \
     libxrandr2 \
+    libxshmfence1 \
     procps \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
