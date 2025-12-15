@@ -1080,7 +1080,7 @@ class SourceProcessor(BaseProcessor):
                 self.sources_manager.update_source_status(source_id, SourceStatus.ACTIVE)
                 self.queue_manager.update_status(
                     item.id,
-                    QueueStatus.COMPLETED,
+                    QueueStatus.SUCCESS,
                     f"Recovered {source_name}: found {probe.job_count} jobs",
                 )
                 logger.info(
