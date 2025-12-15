@@ -4,7 +4,7 @@
 FROM node:20-slim AS cli-builder
 RUN npm install -g @openai/codex@0.58.0 @google/gemini-cli@0.18.4 @anthropic-ai/claude-code@2.0.52
 
-# Stage 1: build Python deps
+# Stage 1: build Python deps and install Playwright browsers
 FROM python:3.12-slim as builder
 
 # Set working directory
@@ -15,9 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies + Playwright browser
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt && \
+    /root/.local/bin/playwright install chromium
 
 # Production stage
 FROM python:3.12-slim
@@ -25,12 +26,30 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies (procps for pgrep, curl for healthcheck, gosu for privilege dropping, sqlite3 for agent review)
+# Install runtime dependencies (sorted alphabetically for maintainability)
+# Includes Chromium dependencies for Playwright JS rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    procps \
-    curl \
     ca-certificates \
+    curl \
+    fonts-liberation \
     gosu \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libnspr4 \
+    libnss3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxshmfence1 \
+    procps \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -45,6 +64,9 @@ ENV GEMINI_HOME=/home/node/.gemini
 
 # Copy Python packages from builder to node user's home
 COPY --from=builder /root/.local /home/node/.local
+
+# Copy Playwright browser cache from builder (Chromium installed via 'playwright install chromium')
+COPY --from=builder /root/.cache/ms-playwright /home/node/.cache/ms-playwright
 
 # Copy Codex CLI + minimal node runtime (no npm in final image)
 COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
@@ -61,8 +83,8 @@ COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /u
 RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories for AI CLIs and data with proper ownership
-RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.local /data
+RUN mkdir -p /home/node/.codex /home/node/.gemini /home/node/.cache /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.local /home/node/.cache /data
 
 # Copy application code
 COPY src/ ./src/
@@ -81,7 +103,9 @@ RUN chmod +x /app/entrypoint.sh && \
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH
-ENV PYTHONPATH=/app/src:/app
+# PYTHONPATH is set dynamically in entrypoint.sh to avoid hardcoding Python version
+# Tell Playwright where to find browsers (installed during build)
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
 
 # Create data and logs directories with proper ownership
 RUN mkdir -p /app/data /app/logs \

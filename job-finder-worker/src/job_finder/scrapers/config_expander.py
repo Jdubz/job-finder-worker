@@ -304,13 +304,18 @@ def _expand_html(config: Dict[str, Any]) -> Dict[str, Any]:
         url = config.get("url", "")
         if not url:
             raise ValueError("HTML source missing url in config")
-        return {
+        expanded = {
             "type": "html",
             "url": url,
             "job_selector": config.get("job_selector", ""),
             "fields": config.get("fields", {}),
             "company_name": config.get("company_name", ""),
         }
+        # Preserve JS rendering settings for Playwright
+        for key in ("requires_js", "render_wait_for", "render_timeout_ms"):
+            if key in config:
+                expanded[key] = config[key]
+        return expanded
 
     # Unknown format - try to infer
     raise ValueError(f"Cannot expand company-page config: {config}")

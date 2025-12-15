@@ -203,3 +203,53 @@ class TestTypeFieldRemoval:
         result = expand_config("rss", config)
 
         assert result["type"] == "rss"
+
+
+class TestJSRenderingSettings:
+    """Tests for JS rendering settings preservation."""
+
+    def test_requires_js_preserved_in_html_config(self):
+        """JS rendering settings are preserved in HTML config expansion."""
+        config = {
+            "type": "html",
+            "url": "https://example.com/careers",
+            "job_selector": ".job-card",
+            "fields": {"title": ".title", "url": "a@href"},
+            "requires_js": True,
+            "render_wait_for": ".job-list",
+            "render_timeout_ms": 30000,
+        }
+        result = expand_config("html", config)
+
+        assert result["type"] == "html"
+        assert result["requires_js"] is True
+        assert result["render_wait_for"] == ".job-list"
+        assert result["render_timeout_ms"] == 30000
+
+    def test_requires_js_not_added_when_missing(self):
+        """requires_js is not added when not in original config."""
+        config = {
+            "url": "https://example.com/careers",
+            "job_selector": ".job-card",
+            "fields": {"title": ".title"},
+        }
+        result = expand_config("html", config)
+
+        assert "requires_js" not in result
+
+    def test_js_settings_preserved_with_company_page_type(self):
+        """JS rendering settings work with company-page source type."""
+        config = {
+            "type": "html",
+            "url": "https://example.com/careers",
+            "job_selector": ".job-listing",
+            "fields": {"title": ".title", "url": "a@href"},
+            "requires_js": True,
+            "render_wait_for": ".jobs-container",
+            "render_timeout_ms": 25000,
+        }
+        result = expand_config("company-page", config)
+
+        assert result["requires_js"] is True
+        assert result["render_wait_for"] == ".jobs-container"
+        assert result["render_timeout_ms"] == 25000
