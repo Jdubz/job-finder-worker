@@ -85,6 +85,8 @@ class QueueItemProcessor:
                 self.source_processor.process_source_discovery(item)
             elif item.type == QueueItemType.SCRAPE_SOURCE:
                 self.source_processor.process_scrape_source(item)
+            elif item.type == QueueItemType.SOURCE_RECOVER:
+                self.source_processor.process_source_recover(item)
             else:
                 raise QueueProcessingError(f"Unknown item type: {item.type}")
 
