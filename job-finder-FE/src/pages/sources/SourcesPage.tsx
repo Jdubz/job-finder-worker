@@ -76,7 +76,7 @@ export function SourcesPage() {
   const navigate = useNavigate()
   const { openModal } = useEntityModal()
   const { sources, loading, updateSource, deleteSource, refetch, setFilters } = useJobSources({ limit: 100 })
-  const { submitSourceDiscovery } = useQueueItems()
+  const { submitSourceDiscovery, submitSourceRecover } = useQueueItems()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -136,6 +136,14 @@ export function SourcesPage() {
       await updateSource(source.id, { status: newStatus })
     } catch (err) {
       console.error("Failed to update source status:", err)
+    }
+  }
+
+  const handleRecover = async (sourceId: string) => {
+    try {
+      await submitSourceRecover(sourceId)
+    } catch (err) {
+      console.error("Failed to submit source recovery:", err)
     }
   }
 
@@ -418,6 +426,7 @@ export function SourcesPage() {
                         source,
                         onToggleStatus: handleToggleStatus,
                         onDelete: (id) => handleDelete(id, source.name),
+                        onRecover: handleRecover,
                       })
                     }
                   >

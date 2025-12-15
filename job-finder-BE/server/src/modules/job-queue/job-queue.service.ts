@@ -37,6 +37,10 @@ export type SubmitSourceDiscoveryInput = {
   typeHint?: 'auto' | 'greenhouse' | 'ashby' | 'workday' | 'rss' | 'generic'
 }
 
+export type SubmitSourceRecoverInput = {
+  sourceId: string
+}
+
 type ListQueueOptions = {
   status?: QueueStatus | QueueStatus[]
   type?: QueueItem['type']
@@ -156,6 +160,24 @@ export class JobQueueService {
         company_id: input.companyId ?? null,
         company_name: input.companyName ?? null
       }
+    }
+
+    return this.repo.enqueue(item)
+  }
+
+  submitSourceRecover(input: SubmitSourceRecoverInput): QueueItem {
+    const now = new Date()
+    const item: NewQueueItem = {
+      type: 'source_recover',
+      status: 'pending',
+      url: '',
+      company_name: '',
+      company_id: null,
+      source: 'user_request',
+      submitted_by: null,
+      created_at: now,
+      updated_at: now,
+      source_id: input.sourceId
     }
 
     return this.repo.enqueue(item)

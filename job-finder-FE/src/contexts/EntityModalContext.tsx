@@ -31,6 +31,7 @@ export type EntityModalDescriptor =
       sourceId?: string | null
       onToggleStatus?: (source: JobSource) => void | Promise<void>
       onDelete?: (id: string) => void | Promise<void>
+      onRecover?: (id: string) => void | Promise<void>
     }
   | {
       type: "jobQueueItem"
