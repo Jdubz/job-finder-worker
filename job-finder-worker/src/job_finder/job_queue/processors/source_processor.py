@@ -1188,10 +1188,17 @@ Return ONLY valid JSON matching the source type (no markdown, no explanation).
             # Validate based on source type
             if not isinstance(data, dict):
                 return None
+            # Merge required fields from current_config (url, type) into agent response
             if source_type == "html" and data.get("job_selector") and data.get("fields"):
-                return data
+                merged = dict(data)
+                merged["url"] = current_config.get("url")
+                merged["type"] = current_config.get("type", "html")
+                return merged
             if source_type == "api" and data.get("fields") and data.get("response_path"):
-                return data
+                merged = dict(data)
+                merged["url"] = current_config.get("url")
+                merged["type"] = current_config.get("type", "api")
+                return merged
             return None
         except Exception as e:
             logger.warning(f"Agent recovery failed for {source_name}: {e}")

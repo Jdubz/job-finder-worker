@@ -377,13 +377,16 @@ class TestAgentRecoverSource:
         result = source_processor._agent_recover_source(
             source_name="Test",
             url="https://example.com",
-            current_config={"type": "html"},
+            current_config={"type": "html", "url": "https://example.com"},
             disabled_notes="",
             content_sample="<html></html>",
         )
 
         assert result is not None
         assert result["job_selector"] == ".new-selector"
+        # Verify required fields are merged from current_config
+        assert result["url"] == "https://example.com"
+        assert result["type"] == "html"
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_returns_valid_api_config(self, mock_extract_json, source_processor):
@@ -397,13 +400,16 @@ class TestAgentRecoverSource:
         result = source_processor._agent_recover_source(
             source_name="Test",
             url="https://api.example.com",
-            current_config={"type": "api"},
+            current_config={"type": "api", "url": "https://api.example.com"},
             disabled_notes="",
             content_sample='{"jobs": []}',
         )
 
         assert result is not None
         assert result["fields"]["title"] == "title"
+        # Verify required fields are merged from current_config
+        assert result["url"] == "https://api.example.com"
+        assert result["type"] == "api"
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_returns_none_for_invalid_html_config(self, mock_extract_json, source_processor):
