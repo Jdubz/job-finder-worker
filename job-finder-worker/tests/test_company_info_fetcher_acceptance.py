@@ -39,6 +39,42 @@ def test_is_acceptable_false_when_required_missing(fetcher, missing_field):
     assert fetcher._is_acceptable(info) is False
 
 
+def test_is_acceptable_headquarters_as_list(fetcher):
+    """Test that headquarters can be a list (AI sometimes returns this)."""
+    info = {
+        "about": "A" * 150,
+        "culture": "We value impact and kindness" + "!" * 30,
+        "headquarters": ["San Francisco, CA", "New York, NY"],
+        "website": "https://example.com",
+        "techStack": ["Python", "Postgres"],
+    }
+    assert fetcher._is_acceptable(info) is True
+
+
+def test_is_acceptable_headquarters_as_empty_list(fetcher):
+    """Test that empty list headquarters is treated as missing."""
+    info = {
+        "about": "A" * 150,
+        "culture": "We value impact and kindness" + "!" * 30,
+        "headquarters": [],
+        "website": "https://example.com",
+        "techStack": ["Python", "Postgres"],
+    }
+    assert fetcher._is_acceptable(info) is False
+
+
+def test_is_acceptable_headquartersLocation_as_list(fetcher):
+    """Test fallback field headquartersLocation also handles lists."""
+    info = {
+        "about": "A" * 150,
+        "culture": "We value impact and kindness" + "!" * 30,
+        "headquartersLocation": ["Remote", "Austin, TX"],
+        "website": "https://example.com",
+        "techStack": ["Python", "Postgres"],
+    }
+    assert fetcher._is_acceptable(info) is True
+
+
 def test_score_completeness_weights(fetcher):
     base = {
         "about": "A" * 250,  # 2 points (capped to 3 overall for about)
