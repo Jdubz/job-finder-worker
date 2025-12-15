@@ -246,8 +246,10 @@ class TestJSRenderingSettings:
             "fields": {"title": ".title", "url": "a@href"},
             "requires_js": True,
             "render_wait_for": ".jobs-container",
+            "render_timeout_ms": 25000,
         }
         result = expand_config("company-page", config)
 
         assert result["requires_js"] is True
         assert result["render_wait_for"] == ".jobs-container"
+        assert result["render_timeout_ms"] == 25000

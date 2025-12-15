@@ -67,14 +67,17 @@ COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /u
 RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories for AI CLIs with proper ownership
-RUN mkdir -p /home/node/.codex /home/node/.gemini /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /data
+RUN mkdir -p /home/node/.codex /home/node/.gemini /home/node/.cache /data/sqlite \
+    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.cache /data
 
 # Copy and install Python dependencies + Playwright browser + watchdog
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     playwright install chromium && \
-    pip install --no-cache-dir watchdog[watchmedo]
+    pip install --no-cache-dir watchdog[watchmedo] && \
+    # Move Playwright browser cache to node user's home and fix permissions
+    mv /root/.cache/ms-playwright /home/node/.cache/ms-playwright && \
+    chown -R node:node /home/node/.cache/ms-playwright
 
 # Copy application code (will be overridden by volume mounts in docker-compose)
 COPY . .
@@ -88,7 +91,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/src:/app \
     FLASK_ENV=development \
-    LOG_LEVEL=DEBUG
+    LOG_LEVEL=DEBUG \
+    PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
 
 # Copy entrypoint script for hot reload
 COPY docker/entrypoint.dev.sh /app/entrypoint.dev.sh
