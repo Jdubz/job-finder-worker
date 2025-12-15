@@ -1025,7 +1025,10 @@ Be factual. Return ONLY valid JSON."""
             return False
         about_ok = len(info.get("about", "") or "") >= 120
         culture_ok = len(info.get("culture", "") or "") >= 50
-        hq_ok = bool((info.get("headquarters") or info.get("headquartersLocation") or "").strip())
+        hq_val = info.get("headquarters") or info.get("headquartersLocation") or ""
+        if isinstance(hq_val, list):
+            hq_val = hq_val[0] if hq_val else ""
+        hq_ok = bool(str(hq_val).strip())
         website_ok = bool((info.get("website") or "").strip()) and not self._is_job_board_url(
             info.get("website")
         )
