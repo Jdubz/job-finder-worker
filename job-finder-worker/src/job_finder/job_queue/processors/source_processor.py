@@ -611,7 +611,7 @@ class SourceProcessor(BaseProcessor):
             return ProbeResult(status="error", hint=f"Unknown source type {sc.type}")
 
         except Exception as exc:  # noqa: BLE001
-            status_code = resp.status_code if resp is not None else None
+            status_code = getattr(resp, "status_code", None) if resp is not None else None
             return ProbeResult(status="error", status_code=status_code, hint=str(exc))
 
     def _agent_validate_empty(
@@ -1011,34 +1011,48 @@ class SourceProcessor(BaseProcessor):
             # Get error history from config
             disabled_notes = config.get("disabled_notes", "")
 
-            # Fetch content - use Playwright for HTML sources (especially JS)
-            html_sample = ""
+            # Fetch content - always use Playwright for HTML to see actual rendered DOM
+            # This helps diagnose both JS and non-JS sources correctly
+            content_sample = ""
             if source_type == "html":
-                requires_js = config.get("requires_js", False)
-                if requires_js:
-                    try:
-                        result = get_renderer().render(
-                            RenderRequest(
-                                url=url,
-                                wait_for_selector=config.get("render_wait_for")
-                                or config.get("job_selector")
-                                or "body",
-                                wait_timeout_ms=config.get("render_timeout_ms", 20000),
-                                block_resources=True,
-                                headers={"User-Agent": "JobFinderBot/1.0"},
-                            )
+                try:
+                    result = get_renderer().render(
+                        RenderRequest(
+                            url=url,
+                            wait_for_selector=config.get("render_wait_for")
+                            or config.get("job_selector")
+                            or "body",
+                            wait_timeout_ms=config.get("render_timeout_ms", 25000),
+                            block_resources=True,
+                            headers={"User-Agent": "JobFinderBot/1.0"},
                         )
-                        html_sample = result.html[:8000]
-                    except Exception as e:
-                        html_sample = f"[Playwright render failed: {e}]"
-                else:
+                    )
+                    content_sample = result.html[:8000]
+                except Exception as e:
+                    # Fall back to static fetch if Playwright fails
+                    logger.warning(
+                        f"Playwright render failed for {url}, falling back to static: {e}"
+                    )
                     try:
                         resp = requests.get(
                             url, headers={"User-Agent": "JobFinderBot/1.0"}, timeout=25
                         )
-                        html_sample = resp.text[:8000]
-                    except Exception as e:
-                        html_sample = f"[Fetch failed: {e}]"
+                        content_sample = resp.text[:8000]
+                    except Exception as e2:
+                        content_sample = f"[Fetch failed: {e2}]"
+            elif source_type == "api":
+                # Fetch API response for diagnosis
+                try:
+                    resp = requests.get(
+                        url,
+                        headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
+                        timeout=25,
+                    )
+                    content_sample = (
+                        f"[API Response - Status {resp.status_code}]\n{resp.text[:7000]}"
+                    )
+                except Exception as e:
+                    content_sample = f"[API fetch failed: {e}]"
 
             # Ask agent to diagnose and propose fix
             fixed_config = self._agent_recover_source(
@@ -1046,7 +1060,7 @@ class SourceProcessor(BaseProcessor):
                 url=url,
                 current_config=config,
                 disabled_notes=disabled_notes,
-                html_sample=html_sample,
+                content_sample=content_sample,
             )
 
             if not fixed_config:
@@ -1062,13 +1076,8 @@ class SourceProcessor(BaseProcessor):
             probe = self._probe_config(source_type, fixed_config)
             if probe.status == "success" and probe.job_count > 0:
                 # Update source with fixed config and mark active
-                self.sources_manager.update_source(
-                    source_id,
-                    {
-                        "config": fixed_config,
-                        "status": SourceStatus.ACTIVE.value,
-                    },
-                )
+                self.sources_manager.update_config(source_id, fixed_config)
+                self.sources_manager.update_source_status(source_id, SourceStatus.ACTIVE)
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.COMPLETED,
@@ -1101,16 +1110,19 @@ class SourceProcessor(BaseProcessor):
         url: str,
         current_config: Dict[str, Any],
         disabled_notes: str,
-        html_sample: str,
+        content_sample: str,
     ) -> Optional[Dict[str, Any]]:
         """Ask agent to diagnose and propose a fixed config for a broken source."""
         if not self.agent_manager:
             return None
 
+        source_type = current_config.get("type", "html")
+
         prompt = f"""You are diagnosing a broken job source. Analyze the issue and propose a fixed configuration.
 
 ## Source: {source_name}
 URL: {url}
+Type: {source_type}
 
 ## Current Configuration (BROKEN)
 ```json
@@ -1120,24 +1132,29 @@ URL: {url}
 ## Error History
 {disabled_notes or "No error history available"}
 
-## Page Content (rendered HTML sample)
-```html
-{html_sample[:6000]}
+## Content Sample
+```
+{content_sample[:6000]}
 ```
 
 ## Your Task
-1. Identify why the current config fails (wrong selectors, missing fields, etc.)
-2. Analyze the HTML to find the correct CSS selectors for job listings
+1. Identify why the current config fails
+2. Analyze the content to determine correct configuration
 3. Propose a fixed configuration
 
-For HTML sources, you need:
+For HTML sources:
 - job_selector: CSS selector matching each job card/row container
 - fields.title: CSS selector for job title within each card
-- fields.url: CSS selector or attribute for job link (e.g., "a@href" for href attribute)
-- If the page requires JavaScript rendering, set requires_js: true and render_wait_for to a selector that appears after JS loads
+- fields.url: CSS selector or attribute for job link (e.g., "a@href")
+- requires_js: true if page needs JavaScript rendering
+- render_wait_for: CSS selector to wait for if requires_js is true
 
-Return ONLY valid JSON (no markdown, no explanation):
-{{"type": "html", "url": "{url}", "job_selector": "...", "fields": {{"title": "...", "url": "..."}}, "requires_js": true/false, "render_wait_for": "..."}}
+For API sources:
+- response_path: JSON path to the jobs array (e.g., "jobs" or "data.results")
+- fields.title: JSON key for job title
+- fields.url: JSON key for job URL (e.g., "absolute_url" or "link")
+
+Return ONLY valid JSON matching the source type (no markdown, no explanation).
 """
 
         try:
@@ -1148,7 +1165,12 @@ Return ONLY valid JSON (no markdown, no explanation):
                 temperature=0.0,
             )
             data = json.loads(extract_json_from_response(result.text))
-            if isinstance(data, dict) and data.get("job_selector") and data.get("fields"):
+            # Validate based on source type
+            if not isinstance(data, dict):
+                return None
+            if source_type == "html" and data.get("job_selector") and data.get("fields"):
+                return data
+            if source_type == "api" and data.get("fields"):
                 return data
             return None
         except Exception as e:
