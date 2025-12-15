@@ -949,3 +949,208 @@ class SourceProcessor(BaseProcessor):
         except Exception as e:
             logger.warning("Self-heal failed for %s: %s", url, e)
             return None
+
+    # ============================================================
+    # SOURCE RECOVERY
+    # ============================================================
+
+    def process_source_recover(self, item: JobQueueItem) -> None:
+        """
+        Process SOURCE_RECOVER queue item.
+
+        Agent-powered investigation and repair of disabled sources.
+        Uses Playwright to render JS pages so the agent can see the actual DOM.
+
+        Flow:
+        1. Load source from DB
+        2. For HTML/JS sources, render with Playwright to get actual DOM
+        3. Send rendered HTML + error history to AI agent
+        4. Agent proposes fixed config
+        5. Test proposed config with probe
+        6. If jobs found, update source and mark active
+
+        Args:
+            item: Queue item with source_id
+        """
+        if not item.id:
+            logger.error("Cannot process SOURCE_RECOVER without ID")
+            return
+
+        source_id = item.source_id or (item.scraped_data and item.scraped_data.get("source_id"))
+        if not source_id:
+            self.queue_manager.update_status(
+                item.id, QueueStatus.FAILED, "SOURCE_RECOVER requires source_id"
+            )
+            return
+
+        self.queue_manager.update_status(
+            item.id, QueueStatus.PROCESSING, f"Recovering source {source_id}"
+        )
+
+        try:
+            source = self.sources_manager.get_source_by_id(source_id)
+            if not source:
+                self.queue_manager.update_status(
+                    item.id, QueueStatus.FAILED, f"Source not found: {source_id}"
+                )
+                return
+
+            source_name = source.get("name", "Unknown")
+            config = source.get("config", {})
+            url = config.get("url", "")
+            source_type = config.get("type", "html")
+
+            if not url:
+                self.queue_manager.update_status(
+                    item.id, QueueStatus.FAILED, f"Source {source_name} has no URL"
+                )
+                return
+
+            logger.info(f"SOURCE_RECOVER: Attempting recovery for {source_name} ({url})")
+
+            # Get error history from config
+            disabled_notes = config.get("disabled_notes", "")
+
+            # Fetch content - use Playwright for HTML sources (especially JS)
+            html_sample = ""
+            if source_type == "html":
+                requires_js = config.get("requires_js", False)
+                if requires_js:
+                    try:
+                        result = get_renderer().render(
+                            RenderRequest(
+                                url=url,
+                                wait_for_selector=config.get("render_wait_for")
+                                or config.get("job_selector")
+                                or "body",
+                                wait_timeout_ms=config.get("render_timeout_ms", 20000),
+                                block_resources=True,
+                                headers={"User-Agent": "JobFinderBot/1.0"},
+                            )
+                        )
+                        html_sample = result.html[:8000]
+                    except Exception as e:
+                        html_sample = f"[Playwright render failed: {e}]"
+                else:
+                    try:
+                        resp = requests.get(
+                            url, headers={"User-Agent": "JobFinderBot/1.0"}, timeout=25
+                        )
+                        html_sample = resp.text[:8000]
+                    except Exception as e:
+                        html_sample = f"[Fetch failed: {e}]"
+
+            # Ask agent to diagnose and propose fix
+            fixed_config = self._agent_recover_source(
+                source_name=source_name,
+                url=url,
+                current_config=config,
+                disabled_notes=disabled_notes,
+                html_sample=html_sample,
+            )
+
+            if not fixed_config:
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Agent could not propose a fix for {source_name}",
+                    error_details=f"Current config: {json.dumps(config, indent=2)}",
+                )
+                return
+
+            # Test the proposed config
+            probe = self._probe_config(source_type, fixed_config)
+            if probe.status == "success" and probe.job_count > 0:
+                # Update source with fixed config and mark active
+                self.sources_manager.update_source(
+                    source_id,
+                    {
+                        "config": fixed_config,
+                        "status": SourceStatus.ACTIVE.value,
+                    },
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.COMPLETED,
+                    f"Recovered {source_name}: found {probe.job_count} jobs",
+                )
+                logger.info(
+                    f"SOURCE_RECOVER: Successfully recovered {source_name} with {probe.job_count} jobs"
+                )
+            else:
+                # Keep disabled but log what we tried
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Proposed config for {source_name} found 0 jobs",
+                    error_details=f"Probe status: {probe.status}\nProposed config: {json.dumps(fixed_config, indent=2)}\nSample: {probe.sample[:1000] if probe.sample else 'none'}",
+                )
+
+        except Exception as e:
+            logger.error(f"SOURCE_RECOVER failed for {source_id}: {e}")
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.FAILED,
+                f"Recovery failed: {e}",
+                error_details=traceback.format_exc(),
+            )
+
+    def _agent_recover_source(
+        self,
+        source_name: str,
+        url: str,
+        current_config: Dict[str, Any],
+        disabled_notes: str,
+        html_sample: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Ask agent to diagnose and propose a fixed config for a broken source."""
+        if not self.agent_manager:
+            return None
+
+        prompt = f"""You are diagnosing a broken job source. Analyze the issue and propose a fixed configuration.
+
+## Source: {source_name}
+URL: {url}
+
+## Current Configuration (BROKEN)
+```json
+{json.dumps(current_config, indent=2)}
+```
+
+## Error History
+{disabled_notes or "No error history available"}
+
+## Page Content (rendered HTML sample)
+```html
+{html_sample[:6000]}
+```
+
+## Your Task
+1. Identify why the current config fails (wrong selectors, missing fields, etc.)
+2. Analyze the HTML to find the correct CSS selectors for job listings
+3. Propose a fixed configuration
+
+For HTML sources, you need:
+- job_selector: CSS selector matching each job card/row container
+- fields.title: CSS selector for job title within each card
+- fields.url: CSS selector or attribute for job link (e.g., "a@href" for href attribute)
+- If the page requires JavaScript rendering, set requires_js: true and render_wait_for to a selector that appears after JS loads
+
+Return ONLY valid JSON (no markdown, no explanation):
+{{"type": "html", "url": "{url}", "job_selector": "...", "fields": {{"title": "...", "url": "..."}}, "requires_js": true/false, "render_wait_for": "..."}}
+"""
+
+        try:
+            result = self.agent_manager.execute(
+                task_type="analysis",
+                prompt=prompt,
+                max_tokens=800,
+                temperature=0.0,
+            )
+            data = json.loads(extract_json_from_response(result.text))
+            if isinstance(data, dict) and data.get("job_selector") and data.get("fields"):
+                return data
+            return None
+        except Exception as e:
+            logger.warning(f"Agent recovery failed for {source_name}: {e}")
+            return None
