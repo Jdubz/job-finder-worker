@@ -42,6 +42,10 @@ from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
+# Content sample size limits for source recovery
+CONTENT_SAMPLE_FETCH_LIMIT = 8000  # Max chars to fetch from page
+CONTENT_SAMPLE_PROMPT_LIMIT = 6000  # Max chars to include in agent prompt
+
 
 @dataclass
 class ProbeResult:
@@ -1011,48 +1015,8 @@ class SourceProcessor(BaseProcessor):
             # Get error history from config
             disabled_notes = config.get("disabled_notes", "")
 
-            # Fetch content - always use Playwright for HTML to see actual rendered DOM
-            # This helps diagnose both JS and non-JS sources correctly
-            content_sample = ""
-            if source_type == "html":
-                try:
-                    result = get_renderer().render(
-                        RenderRequest(
-                            url=url,
-                            wait_for_selector=config.get("render_wait_for")
-                            or config.get("job_selector")
-                            or "body",
-                            wait_timeout_ms=config.get("render_timeout_ms", 25000),
-                            block_resources=True,
-                            headers={"User-Agent": "JobFinderBot/1.0"},
-                        )
-                    )
-                    content_sample = result.html[:8000]
-                except Exception as e:
-                    # Fall back to static fetch if Playwright fails
-                    logger.warning(
-                        f"Playwright render failed for {url}, falling back to static: {e}"
-                    )
-                    try:
-                        resp = requests.get(
-                            url, headers={"User-Agent": "JobFinderBot/1.0"}, timeout=25
-                        )
-                        content_sample = resp.text[:8000]
-                    except Exception as e2:
-                        content_sample = f"[Fetch failed: {e2}]"
-            elif source_type == "api":
-                # Fetch API response for diagnosis
-                try:
-                    resp = requests.get(
-                        url,
-                        headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
-                        timeout=25,
-                    )
-                    content_sample = (
-                        f"[API Response - Status {resp.status_code}]\n{resp.text[:7000]}"
-                    )
-                except Exception as e:
-                    content_sample = f"[API fetch failed: {e}]"
+            # Fetch content sample for agent diagnosis
+            content_sample = self._fetch_content_sample(url, source_type, config)
 
             # Ask agent to diagnose and propose fix
             fixed_config = self._agent_recover_source(
@@ -1104,6 +1068,59 @@ class SourceProcessor(BaseProcessor):
                 error_details=traceback.format_exc(),
             )
 
+    def _fetch_content_sample(self, url: str, source_type: str, config: Dict[str, Any]) -> str:
+        """
+        Fetch content sample for agent diagnosis.
+
+        For HTML sources, always uses Playwright to see actual rendered DOM.
+        Falls back to static fetch if Playwright fails.
+        For API sources, fetches JSON response with status code.
+
+        Args:
+            url: Source URL to fetch
+            source_type: "html" or "api"
+            config: Source config with render settings
+
+        Returns:
+            Content sample string (HTML, JSON, or error message)
+        """
+        if source_type == "html":
+            try:
+                result = get_renderer().render(
+                    RenderRequest(
+                        url=url,
+                        wait_for_selector=config.get("render_wait_for")
+                        or config.get("job_selector")
+                        or "body",
+                        wait_timeout_ms=config.get("render_timeout_ms", 25000),
+                        block_resources=True,
+                        headers={"User-Agent": "JobFinderBot/1.0"},
+                    )
+                )
+                return result.html[:CONTENT_SAMPLE_FETCH_LIMIT]
+            except Exception as e:
+                logger.warning(f"Playwright render failed for {url}, falling back to static: {e}")
+                try:
+                    resp = requests.get(url, headers={"User-Agent": "JobFinderBot/1.0"}, timeout=25)
+                    return resp.text[:CONTENT_SAMPLE_FETCH_LIMIT]
+                except Exception as e2:
+                    return f"[Fetch failed: {e2}]"
+        elif source_type == "api":
+            try:
+                resp = requests.get(
+                    url,
+                    headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
+                    timeout=25,
+                )
+                # Leave room for status prefix in the sample
+                api_content_limit = CONTENT_SAMPLE_FETCH_LIMIT - 1000
+                return (
+                    f"[API Response - Status {resp.status_code}]\n{resp.text[:api_content_limit]}"
+                )
+            except Exception as e:
+                return f"[API fetch failed: {e}]"
+        return "[Unknown source type]"
+
     def _agent_recover_source(
         self,
         source_name: str,
@@ -1134,7 +1151,7 @@ Type: {source_type}
 
 ## Content Sample
 ```
-{content_sample[:6000]}
+{content_sample[:CONTENT_SAMPLE_PROMPT_LIMIT]}
 ```
 
 ## Your Task
