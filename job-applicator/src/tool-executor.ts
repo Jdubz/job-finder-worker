@@ -332,8 +332,8 @@ async function handleGetFormFields(): Promise<ToolResult> {
     (() => {
       // Helper: Build a unique CSS selector path for an element
       function buildSelectorPath(el) {
-        // First try ID
-        if (el.id) {
+        // First try ID (must be a non-empty string without "[object" - malformed DOM)
+        if (el.id && typeof el.id === 'string' && !el.id.includes('[object')) {
           return '#' + CSS.escape(el.id);
         }
 
@@ -353,7 +353,8 @@ async function handleGetFormFields(): Promise<ToolResult> {
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
 
-          if (current.id) {
+          // Check for valid ID (must be a non-empty string without "[object")
+          if (current.id && typeof current.id === 'string' && !current.id.includes('[object')) {
             // Found an ancestor with ID - start path from here
             path.unshift('#' + CSS.escape(current.id));
             break;
@@ -1194,7 +1195,8 @@ async function handleGetButtons(): Promise<ToolResult> {
     (() => {
       // Helper: Build a unique CSS selector path for an element
       function buildSelectorPath(el) {
-        if (el.id) {
+        // Check for valid ID (must be a non-empty string without "[object")
+        if (el.id && typeof el.id === 'string' && !el.id.includes('[object')) {
           return '#' + CSS.escape(el.id);
         }
         // Try data-testid or data-qa (common in modern apps)
@@ -1214,7 +1216,8 @@ async function handleGetButtons(): Promise<ToolResult> {
         let current = el;
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
-          if (current.id) {
+          // Check for valid ID (must be a non-empty string without "[object")
+          if (current.id && typeof current.id === 'string' && !current.id.includes('[object')) {
             path.unshift('#' + CSS.escape(current.id));
             break;
           }
@@ -1680,7 +1683,8 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
     (() => {
       // Helper: Build a unique CSS selector path for an element
       function buildSelectorPath(el) {
-        if (el.id) return '#' + CSS.escape(el.id);
+        // Check for valid ID (must be a non-empty string without "[object")
+        if (el.id && typeof el.id === 'string' && !el.id.includes('[object')) return '#' + CSS.escape(el.id);
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa');
         if (testId) {
           const selector = '[data-testid="' + CSS.escape(testId) + '"]';
@@ -1695,7 +1699,8 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         let current = el;
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
-          if (current.id) {
+          // Check for valid ID (must be a non-empty string without "[object")
+          if (current.id && typeof current.id === 'string' && !current.id.includes('[object')) {
             path.unshift('#' + CSS.escape(current.id));
             break;
           }
