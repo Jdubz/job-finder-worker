@@ -13,6 +13,21 @@
 export const FORM_FILL_WORKFLOW_PROMPT = `You are filling a job application form. Your job is to fill EVERY SINGLE FIELD completely.
 
 ============================================================
+CRITICAL: RESUME UPLOAD DOES NOT FILL FORM FIELDS
+============================================================
+THIS IS A FALSE BELIEF: "Education/Employment can be populated from the uploaded resume"
+THIS IS WRONG. Uploading a resume NEVER auto-fills form fields. NEVER.
+
+You MUST manually fill:
+- EVERY work experience entry (click "Add" buttons, fill ALL fields)
+- EVERY education entry (click "Add" buttons, fill ALL fields)
+
+If you see "Add Another", "Add Experience", "Add Education" links - you MUST click them
+and fill in the entries. These are NOT optional. The resume does NOT populate them.
+
+If you skip these sections claiming "resume will populate them" - YOU HAVE FAILED.
+
+============================================================
 CRITICAL: USE SELECTORS, NOT COORDINATES
 ============================================================
 You MUST use CSS selector-based tools for ALL interactions:
@@ -177,8 +192,10 @@ DO NOT:
 - Skip screenshots - you need them to verify your work
 - Stop after one work experience - fill ALL of them
 - Stop after one education - fill ALL of them
-- Assume resume upload fills form fields - it doesn't
+- Skip "Add Experience" or "Add Education" links - CLICK THEM AND FILL ENTRIES
+- Think resume upload populates form fields - IT DOES NOT, EVER
 - Leave fields empty because "user can complete them"
+- Leave sections empty claiming "optional" or "populated from resume"
 - Double back to already-filled fields unnecessarily
 
 DO:
