@@ -121,10 +121,15 @@ ADDING MULTIPLE ENTRIES (Work/Education):
 - Fill the new entry completely
 - Repeat for EVERY entry in the profile
 
-FALLBACKS:
-- If selector fails, try click(x, y) + type(text)
+COORDINATE-BASED FALLBACKS (last resort):
+- click(x, y) - Click at specific coordinates (use only if selectors fail)
+- type(text) - Type text into the currently focused field (use after click)
+- press_key(key) - Press special keys: Tab, Enter, Escape, ArrowDown, etc.
+- These are less reliable than selector-based tools - prefer fill_field, select_option, etc.
+
+DEBUGGING:
+- Take screenshot to see current page state
 - For stubborn dropdowns: type value + press_key("Enter")
-- Take screenshot to debug if stuck
 
 ============================================================
 HANDLING MULTI-ENTRY SECTIONS

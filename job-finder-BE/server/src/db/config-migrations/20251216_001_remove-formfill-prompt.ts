@@ -62,7 +62,9 @@ export function down(db: Database.Database): void {
   }
 
   // Add back the formFill field with a placeholder value
-  // Note: The actual prompt content would need to be restored from backup if needed
+  // WARNING: Rolling back this migration alone does NOT restore form-fill functionality.
+  // The job-applicator code changes must also be reverted, as the Electron app no longer
+  // fetches the prompt from the API. This placeholder is for database schema consistency only.
   const restored: PromptConfigWithFormFill = {
     ...parsed,
     formFill: '-- PLACEHOLDER: Restore from backup if needed --',
