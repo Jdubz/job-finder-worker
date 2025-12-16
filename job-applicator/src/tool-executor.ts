@@ -1259,6 +1259,8 @@ async function handleGetButtons(): Promise<ToolResult> {
         '[role="button"]',              // ARIA buttons (any element)
         '[type="button"]',
         'a.btn', 'a.button',
+        'a[tabindex]',                  // Clickable links with tabindex (like "Add Another")
+        'a[class*="add"]',              // Links with "add" in class name
         '[onclick]',
         '[data-action]',
         '[data-testid*="add"]',         // Test IDs containing "add"
@@ -1267,6 +1269,7 @@ async function handleGetButtons(): Promise<ToolResult> {
         '[class*="button"]',            // Classes containing "button"
         '[class*="btn-"]',
         '[class*="-btn"]',
+        '[class*="multifield__add"]',   // Common pattern for "Add Another" links
       ].join(', ');
 
       const elements = document.querySelectorAll(selectorPatterns);
@@ -1296,8 +1299,10 @@ async function handleGetButtons(): Promise<ToolResult> {
         // Skip invisible or disabled
         if (rect.width === 0 || rect.height === 0) continue;
         if (el.disabled) continue;
-        // Skip elements far outside viewport (likely hidden)
-        if (rect.top < -1000 || rect.top > window.innerHeight + 1000) continue;
+        // Skip elements far outside viewport - BUT keep "Add" buttons even if far below
+        // (they're critical for form completion and user may need to scroll)
+        const isFarOutsideViewport = rect.top < -1000 || rect.top > window.innerHeight + 2000;
+        if (isFarOutsideViewport && !hasAddText) continue;
 
         const displayText = text.slice(0, 100) || el.getAttribute('aria-label') || '';
 
