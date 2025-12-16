@@ -473,12 +473,14 @@ export function SourcesPage() {
                         <Badge className={statusColors[source.status]}>
                           {source.status}
                         </Badge>
-                        {source.configJson?.disabled_tags && source.configJson.disabled_tags.length > 0 && (
-                          <AlertTriangle
-                            className="h-3.5 w-3.5 text-destructive"
-                            title="Non-recoverable issues"
-                          />
-                        )}
+                        {(() => {
+                          const disabledTags = source.configJson?.disabled_tags as Array<string> | undefined
+                          return disabledTags && disabledTags.length > 0 ? (
+                            <span title="Non-recoverable issues">
+                              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                            </span>
+                          ) : null
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">

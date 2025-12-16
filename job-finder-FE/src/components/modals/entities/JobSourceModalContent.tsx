@@ -214,24 +214,27 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
         )}
       </div>
 
-      {source.configJson?.disabled_tags && source.configJson.disabled_tags.length > 0 && (
-        <div>
-          <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3 text-destructive" />
-            Non-Recoverable Issues
-          </Label>
-          <div className="flex flex-wrap gap-1 mt-1">
-            {source.configJson.disabled_tags.map((tag) => (
-              <Badge key={tag} variant="destructive" className="text-xs">
-                {disabledTagLabels[tag] || tag}
-              </Badge>
-            ))}
+      {(() => {
+        const disabledTags = source.configJson?.disabled_tags as Array<"anti_bot" | "auth_required" | "protected_api"> | undefined
+        return disabledTags && disabledTags.length > 0 ? (
+          <div>
+            <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3 text-destructive" />
+              Non-Recoverable Issues
+            </Label>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {disabledTags.map((tag) => (
+                <Badge key={tag} variant="destructive" className="text-xs">
+                  {disabledTagLabels[tag] || tag}
+                </Badge>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              These issues cannot be fixed through automated recovery
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            These issues cannot be fixed through automated recovery
-          </p>
-        </div>
-      )}
+        ) : null
+      })()}
 
       <div>
         <Label className="text-muted-foreground text-xs uppercase tracking-wide">Config</Label>
@@ -267,22 +270,22 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
             )}
           </Button>
         )}
-        {handlers?.onRecover && source.status === "disabled" && (
-          <Button
-            variant="secondary"
-            onClick={() => source.id && handlers.onRecover?.(source.id)}
-            className="w-full sm:w-auto"
-            disabled={!!(source.configJson?.disabled_tags && source.configJson.disabled_tags.length > 0)}
-            title={
-              source.configJson?.disabled_tags?.length
-                ? "Recovery not possible - source has non-recoverable issues"
-                : undefined
-            }
-          >
-            <Wrench className="mr-2 h-4 w-4" />
-            Recover
-          </Button>
-        )}
+        {handlers?.onRecover && source.status === "disabled" && (() => {
+          const disabledTags = source.configJson?.disabled_tags as Array<string> | undefined
+          const hasDisabledTags = !!(disabledTags && disabledTags.length > 0)
+          return (
+            <Button
+              variant="secondary"
+              onClick={() => source.id && handlers.onRecover?.(source.id)}
+              className="w-full sm:w-auto"
+              disabled={hasDisabledTags}
+              title={hasDisabledTags ? "Recovery not possible - source has non-recoverable issues" : undefined}
+            >
+              <Wrench className="mr-2 h-4 w-4" />
+              Recover
+            </Button>
+          )
+        })()}
         {handlers?.onDelete && (
           <Button variant="destructive" onClick={() => source.id && handlers.onDelete?.(source.id)} className="w-full sm:w-auto">
             <Trash2 className="mr-2 h-4 w-4" />
