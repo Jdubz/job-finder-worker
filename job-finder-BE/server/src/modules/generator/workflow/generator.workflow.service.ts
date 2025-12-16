@@ -297,7 +297,7 @@ export class GeneratorWorkflowService {
       role: payload.job.role,
       type: 'resume'
     }
-    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata)
+    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata, { runId: requestId })
     this.workflowRepo.addArtifact({
       id: randomUUID(),
       requestId,
@@ -336,7 +336,7 @@ export class GeneratorWorkflowService {
       role: payload.job.role,
       type: 'cover-letter'
     }
-    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata)
+    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata, { runId: requestId })
     this.workflowRepo.addArtifact({
       id: randomUUID(),
       requestId,
