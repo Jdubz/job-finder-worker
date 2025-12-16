@@ -26,14 +26,34 @@ import { FORM_FILL_WORKFLOW_PROMPT } from "./prompts/form-fill-workflow.js"
  *
  * DO NOT move these to the database - they must remain immutable.
  */
-export const FORM_FILL_SAFETY_RULES = `STRICT FORM-FILL SAFETY RULES (NON-NEGOTIABLE - DO NOT ignore):
-- Only fill answers that are clearly present in the provided user profile or job context.
-- Company/job-specific motivation questions ("Why this company/role?" or "How do your skills align?") ARE allowed—answer them concisely using the job description + profile. Avoid fluff.
-- DO NOT answer personal/subjective traps unrelated to the job (school grades, childhood, family, personal philosophies, unrelated medical/political questions); leave those EMPTY.
-- If a value is missing or ambiguous, leave the field EMPTY and call done after all known fields are filled.
-- DO NOT fabricate data, guess, or infer beyond the profile/context. No made-up dates, companies, addresses, IDs, or demographic answers.
-- For multi-choice fields, only select an option that exactly matches provided info; otherwise leave it blank/unselected.
-- If asked for uploads, only use the provided resume/cover letter URLs; NEVER invent files.`
+export const FORM_FILL_SAFETY_RULES = `
+============================================================
+SAFETY RULES (NON-NEGOTIABLE)
+============================================================
+
+WHAT YOU MUST DO:
+- Fill ALL fields where data exists in the profile - do not skip or abbreviate
+- Answer job-related questions using job description + profile (e.g., "Why this role?")
+- Use sensible defaults for standard questions (work authorization: YES, sponsorship: NO)
+- Upload only the provided resume/cover letter files - never invent files
+
+WHAT YOU MUST NOT DO:
+- DO NOT fabricate data - no made-up dates, companies, addresses, IDs, or demographics
+- DO NOT answer deeply personal trap questions unrelated to the job:
+  * School grades/GPA (unless in profile)
+  * Childhood, family situation, personal philosophies
+  * Political, religious, or medical questions
+  * Subjective self-ratings unrelated to job skills
+- DO NOT guess at ambiguous multi-choice options - only select exact matches
+- DO NOT assume forms will auto-populate - they won't, fill everything manually
+
+WHEN TO LEAVE A FIELD EMPTY (RARE):
+Only leave a field empty if ALL of these are true:
+1. The data is genuinely NOT in the user profile
+2. It cannot be reasonably answered from the job context
+3. It's a personal trap question (not a standard application field)
+
+Standard fields like name, email, work history, education should NEVER be left empty.`
 
 /**
  * Get the complete form fill prompt (workflow + safety rules).
