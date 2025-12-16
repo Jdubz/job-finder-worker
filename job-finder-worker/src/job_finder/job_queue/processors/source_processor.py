@@ -1057,12 +1057,11 @@ class SourceProcessor(BaseProcessor):
                 )
             else:
                 # Keep disabled but log what we tried
-                hint_msg = f"\nError: {probe.hint}" if probe.hint else ""
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
                     f"Proposed config for {source_name} failed: {probe.hint or 'found 0 jobs'}",
-                    error_details=f"Probe status: {probe.status}{hint_msg}\nProposed config: {json.dumps(fixed_config, indent=2)}\nSample: {probe.sample[:1000] if probe.sample else 'none'}",
+                    error_details=f"Probe status: {probe.status}\nProposed config: {json.dumps(fixed_config, indent=2)}\nSample: {probe.sample[:1000] if probe.sample else 'none'}",
                 )
 
         except Exception as e:
@@ -1191,11 +1190,13 @@ Return ONLY valid JSON matching the source type (no markdown, no explanation).
             )
             data = json.loads(extract_json_from_response(result.text))
 
-            # Log agent's raw response for debugging
+            # Log agent's raw response for debugging (compact JSON to avoid truncation issues)
+            response_json = json.dumps(data)
             logger.info(
-                "SOURCE_RECOVER agent response for %s: %s",
+                "SOURCE_RECOVER agent response for %s: %s%s",
                 source_name,
-                json.dumps(data, indent=2)[:1000],
+                response_json[:1500],
+                "..." if len(response_json) > 1500 else "",
             )
 
             # Validate based on source type
