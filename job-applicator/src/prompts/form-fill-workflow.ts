@@ -102,6 +102,8 @@ FAILURE CONDITIONS:
 ❌ You claimed sections are "optional" or "populated from resume" when they're empty
 ❌ You gave up claiming "technical difficulties" without trying multiple approaches
 ❌ You said fields were "disabled" or "non-interactive" without attempting workarounds
+❌ You claimed "no experience/education sections" without calling get_buttons first
+❌ You said form "handles experience via resume" - THIS IS NEVER TRUE
 
 Resume upload DOES NOT fill these sections. You must fill them manually IF EMPTY.
 
@@ -156,10 +158,12 @@ STEP 2: INITIAL SCREENSHOT
 - Take a screenshot to see the form layout
 - Identify major sections (contact, experience, education, etc.)
 
-STEP 3: DISCOVER FIELDS AND CHECK EXISTING VALUES
-- Call get_form_fields to get CSS selectors for all visible fields
-- Each field includes: selector, label, type, current value
-- IMPORTANT: Note which fields already have values - you will SKIP those
+STEP 3: DISCOVER FIELDS AND BUTTONS
+- Call get_form_fields to get CSS selectors for all visible INPUT fields
+- Call get_buttons to find ALL clickable buttons including "Add" buttons
+- IMPORTANT: get_form_fields only returns input/select/textarea elements
+- IMPORTANT: get_buttons finds buttons like "Add Another", "Add Experience", "Add Education"
+- Note which fields already have values - you will SKIP those
 
 STEP 4: FILL CONTACT INFORMATION (EMPTY FIELDS ONLY)
 - Check each field's "value" property from get_form_fields
@@ -170,32 +174,40 @@ STEP 4: FILL CONTACT INFORMATION (EMPTY FIELDS ONLY)
 - Take screenshot to verify
 
 STEP 5: FILL WORK EXPERIENCE (IF NEEDED)
-First, assess what already exists:
-  - Look for fields with company names, job titles already filled
-  - Count how many experience entries are already present
-  - Compare to user profile - how many jobs need to be added?
+CRITICAL: You MUST call get_buttons to find "Add" buttons for this section!
+get_form_fields does NOT return buttons - only input fields.
 
-If entries are missing:
-  a. Click "Add" button with click_element(selector)
-  b. Call get_form_fields to discover the new entry's fields
-  c. Fill the EMPTY fields for this entry
-  d. Take screenshot to verify
-  e. Repeat for any additional missing entries
+a. Call get_buttons - look for buttons with text like:
+   - "Add Another" near "Employment" or "Experience"
+   - "Add Experience" / "Add Work Experience" / "Add Employment"
+   - "+" icons near experience headers
+b. Take a screenshot to see the Employment/Experience section
+c. Check get_form_fields for existing experience entries (company, title fields)
+d. If experience fields are empty or missing:
+   - Click the "Add" button using click_element(selector from get_buttons)
+   - Call get_form_fields AGAIN to see the new fields that appeared
+   - Fill the new fields with profile data
+   - Take screenshot to verify
+   - Repeat for each job in the profile
 
 If all entries exist: verify and move on - do NOT duplicate
 
 STEP 6: FILL EDUCATION (IF NEEDED)
-First, assess what already exists:
-  - Look for fields with school names, degrees already filled
-  - Count how many education entries are already present
-  - Compare to user profile - how many need to be added?
+CRITICAL: You MUST call get_buttons to find "Add" buttons for this section!
+get_form_fields does NOT return buttons - only input fields.
 
-If entries are missing:
-  a. Click "Add" button with click_element(selector)
-  b. Call get_form_fields to discover the new entry's fields
-  c. Fill the EMPTY fields for this entry
-  d. Take screenshot to verify
-  e. Repeat for any additional missing entries
+a. Call get_buttons - look for buttons with text like:
+   - "Add Another" near "Education"
+   - "Add Education" / "Add School" / "Add Degree"
+   - "+" icons near education headers
+b. Take a screenshot to see the Education section
+c. Check get_form_fields for existing education entries (school, degree fields)
+d. If education fields are empty or missing:
+   - Click the "Add" button using click_element(selector from get_buttons)
+   - Call get_form_fields AGAIN to see the new fields that appeared
+   - Fill the new fields with profile data
+   - Take screenshot to verify
+   - Repeat for each education entry in the profile
 
 If all entries exist: verify and move on - do NOT duplicate
 
