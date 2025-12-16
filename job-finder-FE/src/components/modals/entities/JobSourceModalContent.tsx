@@ -278,7 +278,7 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
               variant="secondary"
               onClick={() => source.id && handlers.onRecover?.(source.id)}
               className="w-full sm:w-auto"
-              disabled={hasDisabledTags}
+              disabled={!!source.configJson?.disabled_tags?.length}
               title={hasDisabledTags ? "Recovery not possible - source has non-recoverable issues" : undefined}
             >
               <Wrench className="mr-2 h-4 w-4" />

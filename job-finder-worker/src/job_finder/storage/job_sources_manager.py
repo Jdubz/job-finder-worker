@@ -520,10 +520,17 @@ class JobSourcesManager:
                 raise StorageError(f"Source {source_id} not found")
 
             current_status = SourceStatus(row["status"])
-            self._validate_transition(current_status, SourceStatus.DISABLED)
+            # Only validate transition if not already DISABLED
+            if current_status != SourceStatus.DISABLED:
+                self._validate_transition(current_status, SourceStatus.DISABLED)
 
             config = json.loads(row["config_json"]) if row["config_json"] else {}
-            config["disabled_notes"] = note
+            # Append to existing notes to preserve history
+            existing_notes = config.get("disabled_notes", "")
+            if existing_notes:
+                config["disabled_notes"] = f"{existing_notes}\n{note}"
+            else:
+                config["disabled_notes"] = note
 
             # Merge tags (additive, no duplicates)
             if tags:

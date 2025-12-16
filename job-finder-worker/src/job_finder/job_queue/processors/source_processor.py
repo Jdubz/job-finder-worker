@@ -590,6 +590,9 @@ class SourceProcessor(BaseProcessor):
 
             # Allow API subdomains of same root domain
             # e.g., example.com -> api.example.com
+            # Note: This simple approach doesn't handle ccSLDs like .co.uk correctly.
+            # For example, api.company.co.uk would incorrectly match other.co.uk.
+            # Using tldextract would fix this but adds a dependency for an edge case.
             original_parts = original_domain.split(".")
             proposed_parts = proposed_domain.split(".")
             if len(original_parts) >= 2 and len(proposed_parts) >= 2:

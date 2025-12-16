@@ -154,3 +154,41 @@ def test_disable_source_with_tags_merges_existing(tmp_path):
     stored = mgr.get_source_by_id(source_id)
     # Should have both tags, sorted, no duplicates
     assert stored["disabledTags"] == ["anti_bot", "auth_required"]
+
+
+def test_disable_source_with_tags_appends_notes(tmp_path):
+    """Test that calling disable_source_with_tags twice appends notes."""
+    db = tmp_path / "sources.db"
+    _bootstrap_db(db)
+
+    mgr = JobSourcesManager(str(db))
+    source_id = mgr.create_from_discovery(
+        name="Multi-Disable Source",
+        source_type="html",
+        config={"url": "https://example.com/careers"},
+        aggregator_domain="example.com",
+    )
+
+    # First disable
+    mgr.disable_source_with_tags(
+        source_id,
+        "Bot protection detected",
+        tags=["anti_bot"],
+    )
+
+    stored = mgr.get_source_by_id(source_id)
+    assert "Bot protection detected" in stored["disabledNotes"]
+
+    # Second disable (DISABLED -> DISABLED transition)
+    mgr.disable_source_with_tags(
+        source_id,
+        "Also requires authentication",
+        tags=["auth_required"],
+    )
+
+    stored = mgr.get_source_by_id(source_id)
+    # Notes should contain both reasons
+    assert "Bot protection detected" in stored["disabledNotes"]
+    assert "Also requires authentication" in stored["disabledNotes"]
+    # Tags should be merged
+    assert stored["disabledTags"] == ["anti_bot", "auth_required"]
