@@ -243,6 +243,9 @@ export function buildJobQueueRouter() {
     })
   )
 
+  // Source recovery endpoint - queues an agent-powered repair task for a disabled source.
+  // Note: Source existence and status validation is handled by the worker at processing time.
+  // This allows recovery attempts even if the source is temporarily inaccessible from the API server.
   router.post(
     '/sources/recover',
     asyncHandler((req, res) => {
