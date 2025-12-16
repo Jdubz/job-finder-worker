@@ -796,7 +796,7 @@ class SourceProcessor(BaseProcessor):
                             headers=headers,
                         )
                     )
-                    html = result.html
+                    html = result.html or ""
                     text_sample = html[:4000]  # Capture for exception handler
                     # Use status code from renderer if available, default to 200
                     status_code = getattr(result, "status_code", 200)
@@ -805,7 +805,7 @@ class SourceProcessor(BaseProcessor):
                     status_code = resp.status_code
                     text_sample = (resp.text or "")[:4000]  # Capture before raise
                     resp.raise_for_status()
-                    html = resp.text
+                    html = resp.text or ""
                 soup = BeautifulSoup(html, "html.parser")
                 items = soup.select(getattr(sc, "job_selector", ""))
                 job_count = len(items)
@@ -822,7 +822,7 @@ class SourceProcessor(BaseProcessor):
             status_code = getattr(resp, "status_code", None) if resp is not None else None
             # Include captured sample so _is_protected_error can detect patterns
             return ProbeResult(
-                status="error", status_code=status_code, hint=str(exc), sample=text_sample
+                status="error", status_code=status_code, hint=str(exc), sample=text_sample or ""
             )
 
     def _agent_validate_empty(
