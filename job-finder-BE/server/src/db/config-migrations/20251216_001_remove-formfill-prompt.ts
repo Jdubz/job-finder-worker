@@ -31,10 +31,10 @@ export function up(db: Database.Database): void {
     return
   }
 
-  const parsed = JSON.parse(row.payload_json) as PromptConfigWithFormFill
+  const parsed = JSON.parse(row.payload_json)
 
-  if (!('formFill' in parsed)) {
-    // Already migrated, nothing to do
+  if (typeof parsed !== 'object' || parsed === null || !('formFill' in parsed)) {
+    // Already migrated or payload is not an object, nothing to do
     return
   }
 
@@ -54,10 +54,10 @@ export function down(db: Database.Database): void {
 
   if (!row) return
 
-  const parsed = JSON.parse(row.payload_json) as PromptConfigWithFormFill
+  const parsed = JSON.parse(row.payload_json)
 
-  if ('formFill' in parsed) {
-    // Already has formFill field, nothing to rollback
+  if (typeof parsed !== 'object' || parsed === null || 'formFill' in parsed) {
+    // Already has formFill field or payload is not an object, nothing to rollback
     return
   }
 
