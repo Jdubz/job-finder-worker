@@ -580,8 +580,7 @@ export function isPromptConfig(value: unknown): value is PromptConfig {
     typeof v.resumeGeneration === "string" &&
     typeof v.coverLetterGeneration === "string" &&
     typeof v.jobScraping === "string" &&
-    typeof v.jobMatching === "string" &&
-    typeof v.formFill === "string"
+    typeof v.jobMatching === "string"
   )
 }
 

@@ -3,14 +3,12 @@ import { z } from "zod"
 /**
  * Schema for editable AI prompt templates.
  *
- * NOTE: formFill contains only the WORKFLOW portion. Safety rules are
- * hardcoded and appended at runtime. See: shared/src/form-fill-safety.ts
+ * NOTE: The formFill prompt has been moved to the job-applicator Electron app.
+ * It is no longer stored in the database. See: job-applicator/src/prompts/form-fill-workflow.ts
  */
 export const promptConfigSchema = z.object({
   resumeGeneration: z.string(),
   coverLetterGeneration: z.string(),
   jobScraping: z.string(),
   jobMatching: z.string(),
-  /** Workflow instructions only - safety rules appended at runtime */
-  formFill: z.string(),
 })

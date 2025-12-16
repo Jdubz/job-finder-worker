@@ -1,32 +1,15 @@
 /**
- * Form Fill Safety Rules
+ * @deprecated Form fill functionality has been moved to the job-applicator Electron app.
  *
- * ARCHITECTURE: Form fill prompts have two distinct parts:
+ * The form fill prompt (workflow + safety rules) is now self-contained in:
+ * - job-applicator/src/prompts/form-fill-workflow.ts (workflow instructions)
+ * - job-applicator/src/form-fill-safety.ts (safety rules + assembly)
  *
- * 1. WORKFLOW (editable via database):
- *    - Stored in job_finder_config table under 'ai-prompts' -> formFill
- *    - Contains instructions for HOW to fill forms (tool usage, field detection, workflow steps)
- *    - Editable by admins through the UI to tune agent behavior
- *
- * 2. SAFETY (hardcoded, non-editable):
- *    - Defined in this file as FORM_FILL_SAFETY_RULES
- *    - Contains guardrails for WHAT the agent is allowed to fill
- *    - Automatically appended to every form fill prompt at runtime
- *    - NOT editable to ensure safety constraints cannot be bypassed
- *
- * The final prompt sent to Claude is: workflow + safety
- *
- * WHY THIS SEPARATION:
- * - Workflow changes are low-risk and benefit from iteration
- * - Safety rules are high-risk and should never be accidentally removed
- * - Clear ownership: product owns workflow, security owns safety
+ * This file is kept for backwards compatibility but should not be used for new code.
  */
 
 /**
- * Hardcoded safety rules appended to every form fill prompt.
- * These rules are NON-NEGOTIABLE and cannot be edited via the UI.
- *
- * DO NOT move these to the database - they must remain immutable.
+ * @deprecated Safety rules are now defined in job-applicator/src/form-fill-safety.ts
  */
 export const FORM_FILL_SAFETY_RULES = `STRICT FORM-FILL SAFETY RULES (NON-NEGOTIABLE - DO NOT ignore):
 - Only fill answers that are clearly present in the provided user profile or job context.
@@ -38,12 +21,7 @@ export const FORM_FILL_SAFETY_RULES = `STRICT FORM-FILL SAFETY RULES (NON-NEGOTI
 - If asked for uploads, only use the provided resume/cover letter URLs; NEVER invent files.`
 
 /**
- * Combines the editable workflow prompt with hardcoded safety rules.
- * This is the ONLY way to construct a form fill prompt.
- * Adds visual separation (newlines) between workflow and safety sections.
- *
- * @param workflowPrompt - The editable workflow instructions from the database
- * @returns Combined prompt with workflow + safety rules
+ * @deprecated Use job-applicator/src/form-fill-safety.ts getFormFillPrompt() instead.
  */
 export function buildFormFillPrompt(workflowPrompt: string): string {
   if (!workflowPrompt || workflowPrompt.trim().length === 0) {

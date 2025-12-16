@@ -1,7 +1,7 @@
 import express from 'express'
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { promptConfigSchema, FORM_FILL_SAFETY_RULES } from '@shared/types'
+import { promptConfigSchema } from '@shared/types'
 import { ConfigRepository } from '../../config/config.repository'
 import { buildPromptsRouter } from '../prompts.routes'
 
@@ -12,7 +12,6 @@ const createApp = () => {
     coverLetterGeneration: 'cover letter template',
     jobScraping: 'job scraping template',
     jobMatching: 'job matching template',
-    formFill: 'form fill template',
   })
 
   const app = express()
@@ -32,11 +31,5 @@ describe('prompts contract', () => {
       console.error(parsed.error.format())
     }
     expect(parsed.success).toBe(true)
-  })
-
-  it('includes hardcoded safety rules as read-only field', async () => {
-    const res = await request(app).get('/prompts')
-    expect(res.status).toBe(200)
-    expect(res.body.data.formFillSafetyRules).toBe(FORM_FILL_SAFETY_RULES)
   })
 })

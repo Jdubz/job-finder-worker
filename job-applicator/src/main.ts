@@ -81,7 +81,7 @@ import {
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
 import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
-import { buildFormFillPrompt, FORM_FILL_SAFETY_RULES } from "./form-fill-safety.js"
+import { getFormFillPrompt } from "./form-fill-safety.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -94,7 +94,6 @@ import {
   executeGenerationStep,
   submitJobToQueue,
   getApiUrl,
-  fetchFormFillPrompt,
 } from "./api-client.js"
 
 // Temp directory for downloaded documents
@@ -1382,11 +1381,10 @@ ipcMain.handle(
         })
       })
 
-      // Fetch workflow prompt from API (editable), then combine with hardcoded safety rules
-      // See form-fill-safety.ts for architecture documentation
-      const workflowPrompt = await fetchFormFillPrompt()
-      const prompt = buildFormFillPrompt(workflowPrompt)
-      logger.info(`[FillForm] Loaded workflow prompt (${workflowPrompt.length} chars) + safety rules (${FORM_FILL_SAFETY_RULES.length} chars)`)
+      // Get complete form fill prompt (workflow + safety rules)
+      // The prompt is now hardcoded in the Electron app - see form-fill-safety.ts
+      const prompt = getFormFillPrompt()
+      logger.info(`[FillForm] Loaded prompt (${prompt.length} chars total)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
       logger.info(`[FillForm] MCP config path: ${mcpConfigPath}`)
