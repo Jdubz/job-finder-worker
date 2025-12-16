@@ -10,6 +10,8 @@ import type {
   SubmitScrapeResponse,
   SubmitSourceDiscoveryRequest,
   SubmitSourceDiscoveryResponse,
+  SubmitSourceRecoverRequest,
+  SubmitSourceRecoverResponse,
   GetQueueStatsResponse,
   GetQueueItemResponse,
   ListQueueItemsResponse,
@@ -79,6 +81,10 @@ const submitSourceDiscoverySchema = z.object({
   companyName: z.string().optional(),
   companyId: z.string().nullable().optional(),
   typeHint: z.enum(sourceTypeHints).optional()
+})
+
+const submitSourceRecoverSchema = z.object({
+  sourceId: z.string().min(1)
 })
 
 const listQueueSchema = z.object({
@@ -229,6 +235,25 @@ export function buildJobQueueRouter() {
       const response: SubmitSourceDiscoveryResponse = {
         status: 'success',
         message: 'Source discovery queued',
+        queueItemId: item.id,
+        queueItem: item
+      }
+      broadcastQueueEvent('item.created', { queueItem: item })
+      res.status(201).json(success(response))
+    })
+  )
+
+  // Source recovery endpoint - queues an agent-powered repair task for a disabled source.
+  // Note: Source existence and status validation is handled by the worker at processing time.
+  // This allows recovery attempts even if the source is temporarily inaccessible from the API server.
+  router.post(
+    '/sources/recover',
+    asyncHandler((req, res) => {
+      const payload = submitSourceRecoverSchema.parse(req.body) as SubmitSourceRecoverRequest
+      const item = service.submitSourceRecover(payload)
+      const response: SubmitSourceRecoverResponse = {
+        status: 'success',
+        message: 'Source recovery queued',
         queueItemId: item.id,
         queueItem: item
       }

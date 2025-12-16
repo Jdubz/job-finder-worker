@@ -4,7 +4,7 @@ import { useSource } from "@/hooks/useSource"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { ExternalLink, Pause, Play, Trash2, Building2, AlertCircle, Loader2 } from "lucide-react"
+import { ExternalLink, Pause, Play, Trash2, Building2, AlertCircle, Loader2, Wrench } from "lucide-react"
 import { statusBadgeClass } from "@/lib/status-badge"
 import type { JobSource } from "@shared/types"
 
@@ -78,6 +78,7 @@ interface JobSourceModalContentProps {
   handlers?: {
     onToggleStatus?: (source: JobSource) => void | Promise<void>
     onDelete?: (id: string) => void | Promise<void>
+    onRecover?: (id: string) => void | Promise<void>
   }
 }
 
@@ -239,6 +240,12 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
                 Activate
               </>
             )}
+          </Button>
+        )}
+        {handlers?.onRecover && source.status === "disabled" && (
+          <Button variant="secondary" onClick={() => source.id && handlers.onRecover?.(source.id)} className="w-full sm:w-auto">
+            <Wrench className="mr-2 h-4 w-4" />
+            Recover
           </Button>
         )}
         {handlers?.onDelete && (

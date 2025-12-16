@@ -14,6 +14,7 @@ vi.mock("@/api", () => ({
     updateQueueItem: vi.fn(),
     deleteQueueItem: vi.fn(),
     submitSourceDiscovery: vi.fn(),
+    submitSourceRecover: vi.fn(),
   },
 }))
 
@@ -256,6 +257,65 @@ describe("useQueueItems", () => {
       })
 
       expect(returnedId).toBe("queue-company-1")
+    })
+  })
+
+  describe("submitSourceRecover", () => {
+    const mockRecoverQueueItem = {
+      id: "queue-recover-1",
+      type: "source_recover",
+      status: "pending",
+      url: "",
+      company_name: "",
+      company_id: null,
+      source_id: "source-123",
+      source: "user_request",
+      created_at: "2025-01-01T00:00:00.000Z",
+      updated_at: "2025-01-01T00:00:00.000Z",
+    }
+
+    beforeEach(() => {
+      vi.mocked(queueClient.submitSourceRecover).mockResolvedValue(mockRecoverQueueItem as any)
+    })
+
+    it("submits source recovery with sourceId", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      await act(async () => {
+        await result.current.submitSourceRecover("source-123")
+      })
+
+      expect(queueClient.submitSourceRecover).toHaveBeenCalledWith({
+        sourceId: "source-123",
+      })
+    })
+
+    it("adds submitted recovery to queue items", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      const initialLength = result.current.queueItems.length
+
+      await act(async () => {
+        await result.current.submitSourceRecover("source-123")
+      })
+
+      expect(result.current.queueItems.length).toBe(initialLength + 1)
+      expect(result.current.queueItems[0].id).toBe("queue-recover-1")
+    })
+
+    it("returns the queue item id", async () => {
+      const { result } = renderHook(() => useQueueItems())
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      let returnedId: string | undefined
+
+      await act(async () => {
+        returnedId = await result.current.submitSourceRecover("source-123")
+      })
+
+      expect(returnedId).toBe("queue-recover-1")
     })
   })
 })

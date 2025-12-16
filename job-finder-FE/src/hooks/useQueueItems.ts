@@ -49,6 +49,7 @@ interface UseQueueItemsResult {
   submitJob: (request: SubmitJobRequest) => Promise<string>
   submitCompany: (params: SubmitCompanyParams) => Promise<string>
   submitSourceDiscovery: (params: SubmitSourceDiscoveryParams) => Promise<string>
+  submitSourceRecover: (sourceId: string) => Promise<string>
   updateQueueItem: (id: string, data: Partial<QueueItem>) => Promise<void>
   deleteQueueItem: (id: string) => Promise<void>
   refetch: () => Promise<void>
@@ -371,6 +372,24 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     [normalizeQueueItem, matchesFilters]
   )
 
+  const submitSourceRecover = useCallback(
+    async (sourceId: string): Promise<string> => {
+      const queueItem = await queueClient.submitSourceRecover({ sourceId })
+
+      const normalized = normalizeQueueItem(queueItem)
+      setQueueItems((prev) => {
+        if (!matchesFilters(normalized)) return prev
+        return [normalized, ...prev]
+      })
+      const id = normalized.id ?? queueItem.id
+      if (!id) {
+        throw new Error('Queue item ID not returned from server')
+      }
+      return id
+    },
+    [normalizeQueueItem, matchesFilters]
+  )
+
   const updateQueueItem = useCallback(
     async (id: string, data: Partial<QueueItem>) => {
       const updated = await queueClient.updateQueueItem(id, data)
@@ -419,6 +438,7 @@ export function useQueueItems(options: UseQueueItemsOptions = {}): UseQueueItems
     submitJob,
     submitCompany,
     submitSourceDiscovery,
+    submitSourceRecover,
     updateQueueItem,
     deleteQueueItem,
     refetch,

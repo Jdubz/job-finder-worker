@@ -10,6 +10,8 @@ import type {
   SubmitScrapeResponse,
   SubmitSourceDiscoveryRequest,
   SubmitSourceDiscoveryResponse,
+  SubmitSourceRecoverRequest,
+  SubmitSourceRecoverResponse,
   GetQueueStatsResponse,
   GetQueueItemResponse,
   UpdateJobStatusResponse,
@@ -91,6 +93,17 @@ export class QueueClient extends BaseApiClient {
   async submitSourceDiscovery(request: SubmitSourceDiscoveryRequest): Promise<QueueItem> {
     const response = await this.post<ApiSuccessResponse<SubmitSourceDiscoveryResponse>>(
       `/queue/sources/discover`,
+      request
+    )
+    if (!response.data.queueItem) {
+      throw new Error('Queue item not returned from server')
+    }
+    return response.data.queueItem
+  }
+
+  async submitSourceRecover(request: SubmitSourceRecoverRequest): Promise<QueueItem> {
+    const response = await this.post<ApiSuccessResponse<SubmitSourceRecoverResponse>>(
+      `/queue/sources/recover`,
       request
     )
     if (!response.data.queueItem) {

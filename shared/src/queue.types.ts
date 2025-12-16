@@ -274,6 +274,24 @@ export interface SubmitSourceDiscoveryResponse {
   queueItem?: QueueItem
 }
 
+/**
+ * Source recovery submission request (API)
+ * Triggers agent-powered repair of a disabled source
+ */
+export interface SubmitSourceRecoverRequest {
+  sourceId: string
+}
+
+/**
+ * Source recovery submission response (API)
+ */
+export interface SubmitSourceRecoverResponse {
+  status: "success" | "error"
+  message: string
+  queueItemId?: string
+  queueItem?: QueueItem
+}
+
 // Type guard helpers
 export function isQueueStatus(status: string): status is QueueStatus {
   return (QUEUE_STATUSES as readonly string[]).includes(status)

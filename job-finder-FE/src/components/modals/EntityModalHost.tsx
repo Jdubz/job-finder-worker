@@ -40,7 +40,7 @@ export function EntityModalHost() {
           <JobSourceModalContent
             source={modal.source}
             sourceId={modal.sourceId}
-            handlers={{ onToggleStatus: modal.onToggleStatus, onDelete: modal.onDelete }}
+            handlers={{ onToggleStatus: modal.onToggleStatus, onDelete: modal.onDelete, onRecover: modal.onRecover }}
           />
         )
       case "jobQueueItem":
