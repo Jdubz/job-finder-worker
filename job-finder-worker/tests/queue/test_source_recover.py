@@ -782,3 +782,152 @@ class TestBodyNormalization:
         assert "post_body" in result
         assert result["post_body"] == {"limit": 20}
         assert "body" not in result  # Should be removed after normalization
+
+
+class TestDisabledTagsRecovery:
+    """Test disabled_tags behavior during source recovery."""
+
+    def test_skips_recovery_when_disabled_tags_present(self, source_processor, mock_dependencies):
+        """Test that recovery is skipped for sources with disabled_tags."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "Protected Source",
+            "config": {
+                "type": "api",
+                "url": "https://api.example.com/jobs",
+                "disabled_tags": ["protected_api"],
+                "disabled_notes": "API requires authentication",
+            },
+        }
+
+        item = make_recover_item()
+        source_processor.process_source_recover(item)
+
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        final_call = calls[-1]
+        assert final_call[0][1] == QueueStatus.FAILED
+        assert "non-recoverable" in final_call[0][2].lower()
+        assert "protected API" in final_call[0][2]
+
+    def test_skips_recovery_with_anti_bot_tag(self, source_processor, mock_dependencies):
+        """Test that recovery is skipped for sources with anti_bot tag."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "Bot Protected Source",
+            "config": {
+                "type": "html",
+                "url": "https://protected.example.com/careers",
+                "disabled_tags": ["anti_bot"],
+                "disabled_notes": "Cloudflare protection detected",
+            },
+        }
+
+        item = make_recover_item()
+        source_processor.process_source_recover(item)
+
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        final_call = calls[-1]
+        assert final_call[0][1] == QueueStatus.FAILED
+        assert "bot protection" in final_call[0][2].lower()
+
+    def test_skips_recovery_with_auth_required_tag(self, source_processor, mock_dependencies):
+        """Test that recovery is skipped for sources with auth_required tag."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "Login Required Source",
+            "config": {
+                "type": "html",
+                "url": "https://login.example.com/careers",
+                "disabled_tags": ["auth_required"],
+                "disabled_notes": "Login page detected",
+            },
+        }
+
+        item = make_recover_item()
+        source_processor.process_source_recover(item)
+
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        final_call = calls[-1]
+        assert final_call[0][1] == QueueStatus.FAILED
+        assert "authentication required" in final_call[0][2].lower()
+
+    def test_proceeds_with_recovery_without_disabled_tags(
+        self, source_processor, mock_dependencies
+    ):
+        """Test that recovery proceeds normally when no disabled_tags present."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "Normal Source",
+            "config": {
+                "type": "html",
+                "url": "https://example.com/careers",
+                "job_selector": ".job",
+                "fields": {"title": ".title"},
+                "disabled_notes": "Selector changed",
+            },
+        }
+
+        # Mock the content fetch and agent to prevent actual execution
+        with (
+            patch.object(
+                source_processor, "_fetch_content_sample", return_value="<html>jobs</html>"
+            ),
+            patch.object(source_processor, "_agent_recover_source", return_value=None),
+        ):
+            item = make_recover_item()
+            source_processor.process_source_recover(item)
+
+        # Should not have failed due to disabled_tags
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        # Check that PROCESSING status was set (meaning it got past the tag check)
+        processing_calls = [c for c in calls if c[0][1] == QueueStatus.PROCESSING]
+        assert len(processing_calls) > 0, "Should have set PROCESSING status"
+
+    @patch("job_finder.job_queue.processors.source_processor.get_renderer")
+    def test_sets_protected_api_tag_on_recovery_failure(
+        self, mock_get_renderer, source_processor, mock_dependencies
+    ):
+        """Test that protected_api tag is set when recovery detects 401/403/422."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "API Source",
+            "config": {
+                "type": "api",
+                "url": "https://api.example.com/jobs",
+                "response_path": "jobs",
+                "fields": {"title": "title", "url": "url"},
+            },
+        }
+
+        # Mock probe to return protected API error
+        with (
+            patch.object(
+                source_processor,
+                "_fetch_content_sample",
+                return_value='{"error": "Unauthorized"}',
+            ),
+            patch.object(
+                source_processor,
+                "_agent_recover_source",
+                return_value={
+                    "type": "api",
+                    "url": "https://api.example.com/v2/jobs",
+                    "response_path": "jobs",
+                    "fields": {"title": "title", "url": "url"},
+                },
+            ),
+            patch.object(
+                source_processor,
+                "_probe_config",
+                return_value=ProbeResult(status="error", status_code=401, hint="Unauthorized"),
+            ),
+        ):
+            item = make_recover_item()
+            source_processor.process_source_recover(item)
+
+        # Should have called disable_source_with_tags with protected_api
+        mock_dependencies["sources_manager"].disable_source_with_tags.assert_called_once_with(
+            "source-123",
+            "API endpoint is protected (HTTP 401)",
+            tags=["protected_api"],
+        )

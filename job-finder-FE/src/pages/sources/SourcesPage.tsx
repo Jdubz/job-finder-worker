@@ -47,7 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { AlertCircle, Loader2, Plus, Rss, Search, Building2 } from "lucide-react"
+import { AlertCircle, AlertTriangle, Loader2, Plus, Rss, Search, Building2 } from "lucide-react"
 import type { JobSource, JobSourceStatus } from "@shared/types"
 
 const statusColors: Record<JobSourceStatus, string> = {
@@ -469,9 +469,17 @@ export function SourcesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge className={statusColors[source.status]}>
-                        {source.status}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={statusColors[source.status]}>
+                          {source.status}
+                        </Badge>
+                        {source.configJson?.disabled_tags && source.configJson.disabled_tags.length > 0 && (
+                          <AlertTriangle
+                            className="h-3.5 w-3.5 text-destructive"
+                            title="Non-recoverable issues"
+                          />
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       {source.aggregatorDomain ? (

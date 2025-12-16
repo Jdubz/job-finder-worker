@@ -155,6 +155,18 @@ Always disable with clear notes explaining WHY:
 - URL is an ATS provider's own site
 - No discoverable API/RSS/HTML/JS-rendered endpoint for jobs
 
+### Non-Recoverable Issues (disabled_tags)
+
+When you detect issues that cannot be fixed through automated recovery, use these
+disable_reason values which will mark the source as non-recoverable:
+
+- **bot_protection** -> "anti_bot" tag: Cloudflare, CAPTCHA, WAF blocking detected
+- **auth_required** -> "auth_required" tag: Login page, OAuth redirect, session cookie required
+
+Sources with these tags will be marked as permanently non-recoverable, and users
+will be informed that automated recovery cannot help. Only set these reasons when
+you are confident the issue is systemic and unfixable without manual intervention.
+
 ### Known Aggregator Domains
 
 These domains are known job platforms. If a URL contains one of these, it's likely

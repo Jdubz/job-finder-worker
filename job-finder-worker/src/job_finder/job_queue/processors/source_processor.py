@@ -20,7 +20,11 @@ from bs4 import BeautifulSoup
 
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.search_client import get_search_client
-from job_finder.ai.source_analysis_agent import SourceAnalysisAgent, SourceClassification
+from job_finder.ai.source_analysis_agent import (
+    DisableReason,
+    SourceAnalysisAgent,
+    SourceClassification,
+)
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
@@ -50,6 +54,13 @@ CONTENT_SAMPLE_PROMPT_LIMIT = 12000  # Max chars to include in agent prompt
 # Probe timeout - must match normal render timeout to avoid false negatives
 # JS-heavy sites (Google, Meta, etc.) often need 15-20 seconds to render
 PROBE_RENDER_TIMEOUT_MS = 20_000
+
+# Mapping from DisableReason to disabled_tags for non-recoverable issues
+# Only truly unrecoverable reasons are mapped - others are discovery mistakes
+DISABLE_REASON_TO_TAG = {
+    DisableReason.BOT_PROTECTION: "anti_bot",
+    DisableReason.AUTH_REQUIRED: "auth_required",
+}
 
 
 @dataclass
@@ -292,6 +303,12 @@ class SourceProcessor(BaseProcessor):
 
             if disabled_notes and not source_config.get("disabled_notes"):
                 source_config["disabled_notes"] = disabled_notes
+
+            # Set disabled_tags for non-recoverable issues
+            if should_disable and analysis.disable_reason:
+                tag = DISABLE_REASON_TO_TAG.get(analysis.disable_reason)
+                if tag:
+                    source_config["disabled_tags"] = [tag]
 
             initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
 
@@ -1077,6 +1094,31 @@ class SourceProcessor(BaseProcessor):
             url = config.get("url", "")
             source_type = config.get("type", "html")
 
+            # Check for non-recoverable tags - skip recovery if present
+            disabled_tags = config.get("disabled_tags", [])
+            if disabled_tags:
+                tag_labels = {
+                    "anti_bot": "bot protection",
+                    "auth_required": "authentication required",
+                    "protected_api": "protected API",
+                }
+                tag_descriptions = [tag_labels.get(t, t) for t in disabled_tags]
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"{source_name} has non-recoverable issues: {', '.join(tag_descriptions)}. "
+                    f"Recovery is not possible for sources with these tags.",
+                    error_details="Non-recoverable tags indicate systemic issues "
+                    "(bot protection, authentication requirements, protected APIs) "
+                    "that cannot be fixed through automated recovery.",
+                )
+                logger.info(
+                    "SOURCE_RECOVER skipped for %s: non-recoverable tags %s",
+                    source_id,
+                    disabled_tags,
+                )
+                return
+
             if not url:
                 self.queue_manager.update_status(
                     item.id, QueueStatus.FAILED, f"Source {source_name} has no URL"
@@ -1124,7 +1166,12 @@ class SourceProcessor(BaseProcessor):
                     f"SOURCE_RECOVER: Successfully recovered {source_name} with {probe.job_count} jobs"
                 )
             elif self._is_protected_api_error(probe, fixed_config):
-                # API returned 401/403/422 - likely protected, keep disabled with clear message
+                # API returned 401/403/422 - mark with protected_api tag
+                self.sources_manager.disable_source_with_tags(
+                    source_id,
+                    f"API endpoint is protected (HTTP {probe.status_code})",
+                    tags=["protected_api"],
+                )
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
