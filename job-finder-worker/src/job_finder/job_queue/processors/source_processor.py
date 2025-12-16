@@ -1234,8 +1234,8 @@ Return ONLY valid JSON (no markdown, no explanation, no placeholders).
             # Allow agent to change source type and URL if it proposes them
             if proposed_type == "html" and data.get("job_selector") and data.get("fields"):
                 merged = dict(data)
-                # Use agent's URL if provided and different type, otherwise keep original
-                if not data.get("url") or (proposed_type == source_type):
+                # Use agent's URL if provided, otherwise keep original
+                if not data.get("url"):
                     merged["url"] = current_config.get("url")
                 merged["type"] = "html"
                 return merged

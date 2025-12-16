@@ -21,6 +21,14 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from playwright.sync_api import Playwright, Browser
 
+# Import PlaywrightTimeoutError at module level with fallback for when playwright
+# is not installed (allows module to be imported without playwright)
+try:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+except ImportError:
+    # Define a placeholder exception class for when playwright is not installed
+    PlaywrightTimeoutError = type("PlaywrightTimeoutError", (Exception,), {})  # type: ignore[misc]
+
 
 logger = logging.getLogger(__name__)
 
@@ -105,14 +113,6 @@ class PlaywrightRenderer:
                 logger.info("playwright_browser_restarted after consecutive failures")
 
     def render(self, req: RenderRequest) -> RenderResult:
-        try:
-            from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-        except ImportError as exc:  # pragma: no cover - import guard
-            raise RuntimeError(
-                "Playwright is not installed. Install with `pip install playwright` and "
-                "run `playwright install chromium` in the worker image."
-            ) from exc
-
         if not req.url.startswith(("http://", "https://")):
             raise ValueError(f"Invalid URL scheme for rendering: {req.url}")
 
@@ -135,9 +135,12 @@ class PlaywrightRenderer:
         )
         hard_timeout_sec = hard_timeout_ms / 1000
 
+        # Track context for cleanup on hard timeout
+        render_context: Dict[str, Optional[object]] = {"context": None}
+
         # Run the actual render in a thread with hard timeout
         def _do_render():
-            return self._render_internal(req, timeout, PlaywrightTimeoutError)
+            return self._render_internal(req, timeout, render_context)
 
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
@@ -150,6 +153,9 @@ class PlaywrightRenderer:
 
         except FuturesTimeoutError:
             # Hard timeout exceeded - browser likely hung
+            # Try to clean up the abandoned context
+            self._cleanup_abandoned_context(render_context)
+
             duration_ms = int((time.monotonic() - start) * 1000)
             url_hash = hashlib.sha256(req.url.encode()).hexdigest()[:10]
             logger.error(
@@ -161,16 +167,36 @@ class PlaywrightRenderer:
             self._consecutive_failures += 1
             raise RuntimeError(
                 f"Render failed (hard_timeout): Exceeded {hard_timeout_sec}s hard limit"
-            )
+            ) from None  # Suppress exception chaining
+
         except RuntimeError:
-            # Normal render failure - track it
+            # Normal render failure from _render_internal - track it
             self._consecutive_failures += 1
             raise
 
+    def _cleanup_abandoned_context(self, render_context: Dict[str, Optional[object]]) -> None:
+        """Attempt to close an abandoned browser context after hard timeout."""
+        context = render_context.get("context")
+        if context is not None:
+            try:
+                context.close()  # type: ignore[union-attr]
+                logger.info("playwright_cleanup: closed abandoned context after hard timeout")
+            except Exception as e:
+                logger.warning("playwright_cleanup: failed to close abandoned context: %s", e)
+
     def _render_internal(
-        self, req: RenderRequest, timeout: int, PlaywrightTimeoutError
+        self,
+        req: RenderRequest,
+        timeout: int,
+        render_context: Dict[str, Optional[object]],
     ) -> RenderResult:
-        """Internal render implementation - runs in thread with hard timeout."""
+        """Internal render implementation - runs in thread with hard timeout.
+
+        Args:
+            req: The render request with URL and options
+            timeout: Timeout in milliseconds for page load and selector wait
+            render_context: Mutable dict to store context reference for cleanup on hard timeout
+        """
         start = time.monotonic()
         request_count = 0
         console_logs: List[str] = []
@@ -187,6 +213,8 @@ class PlaywrightRenderer:
                 viewport={"width": 1280, "height": 2000},
                 extra_http_headers=headers if headers else None,
             )
+            # Store context reference for cleanup on hard timeout
+            render_context["context"] = context
             page = context.new_page()
 
             def log_console(msg):
@@ -233,6 +261,8 @@ class PlaywrightRenderer:
                     context.close()
                 except Exception:
                     pass  # Context close can fail if browser crashed
+                # Clear context reference since it's now closed
+                render_context["context"] = None
 
         duration_ms = int((time.monotonic() - start) * 1000)
         url_hash = hashlib.sha256(req.url.encode()).hexdigest()[:10]

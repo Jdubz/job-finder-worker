@@ -686,7 +686,29 @@ class TestTypeJsonNormalization:
 
 
 class TestAgentURLChange:
-    """Test that agent can propose different URLs when type changes."""
+    """Test that agent can propose different URLs."""
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_uses_agent_url_for_html_type(self, mock_extract_json, source_processor):
+        """Test that agent's proposed URL is used for HTML sources (e.g., URL redirects)."""
+        source_processor.agent_manager = Mock()
+        new_url = "https://example.com/careers/all-jobs"
+        source_processor.agent_manager.execute.return_value = Mock(
+            text=f'{{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}'
+        )
+        mock_extract_json.return_value = f'{{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}'
+
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url="https://example.com/careers",  # Original URL (redirects to new one)
+            current_config={"type": "html", "url": "https://example.com/careers"},
+            disabled_notes="",
+            content_sample="<div class='job'></div>",
+        )
+
+        assert result is not None
+        assert result["type"] == "html"
+        assert result["url"] == new_url  # Should use agent's URL, not original
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_uses_agent_url_for_api_type(self, mock_extract_json, source_processor):
