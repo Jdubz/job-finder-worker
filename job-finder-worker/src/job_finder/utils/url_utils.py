@@ -6,6 +6,37 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 logger = logging.getLogger(__name__)
 
+# Optional import: more accurate public-suffix parsing if available
+try:  # pragma: no cover - optional dependency
+    import tldextract
+except Exception:  # noqa: BLE001
+    tldextract = None
+
+
+def get_root_domain(host: str) -> str:
+    """
+    Return the registrable root domain for a host.
+
+    Uses tldextract when available to handle multi-part TLDs (e.g., co.uk).
+    Falls back to a simple last-two-labels join if tldextract is not installed.
+    """
+    if not host:
+        return host
+
+    host = host.strip().lower()
+
+    # Prefer robust parsing when the library is present
+    if tldextract:
+        ext = tldextract.extract(host)
+        if ext.domain and ext.suffix:
+            return f"{ext.domain}.{ext.suffix}"
+        return host
+
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return ".".join(parts[-2:])
+    return host
+
 
 def normalize_url(url: str) -> str:
     """

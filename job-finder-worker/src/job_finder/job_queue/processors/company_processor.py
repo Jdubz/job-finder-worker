@@ -28,10 +28,13 @@ from job_finder.job_queue.models import (
     SourceDiscoveryConfig,
     SourceTypeHint,
 )
+from job_finder.utils.url_utils import get_root_domain
 
 from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
+
+MAX_CAREER_SEARCH_QUERIES = 8  # cap to avoid long sequential search latency
 
 
 class CompanyProcessor(BaseProcessor):
@@ -498,9 +501,6 @@ class CompanyProcessor(BaseProcessor):
             return heuristic_choice
         except Exception as exc:  # noqa: BLE001
             logger.warning("Career page agent selection failed for %s: %s", company_name, exc)
-
-            return heuristic_choice
-
         return heuristic_choice
 
     def _find_career_page_if_needed(
@@ -570,10 +570,8 @@ class CompanyProcessor(BaseProcessor):
             try:
                 parsed = urlparse(website if "//" in website else f"https://{website}")
                 host = parsed.netloc or parsed.path
-                parts = host.split(".")
-                if len(parts) >= 2:
-                    root_domain = ".".join(parts[-2:])
-            except Exception:
+                root_domain = get_root_domain(host)
+            except Exception:  # noqa: BLE001
                 root_domain = None
 
         if root_domain:
@@ -588,14 +586,7 @@ class CompanyProcessor(BaseProcessor):
             )
 
         # Deduplicate while preserving order
-        seen_queries: set[str] = set()
-        deduped: List[str] = []
-        for q in queries:
-            if q in seen_queries:
-                continue
-            seen_queries.add(q)
-            deduped.append(q)
-        queries = deduped
+        queries = [q for q in dict.fromkeys(queries)][:MAX_CAREER_SEARCH_QUERIES]
 
         try:
             aggregated: List[SearchResult] = []

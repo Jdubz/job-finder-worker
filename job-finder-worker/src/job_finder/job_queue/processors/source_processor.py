@@ -41,6 +41,7 @@ from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.rendering.playwright_renderer import get_renderer, RenderRequest
+from job_finder.utils.url_utils import get_root_domain
 
 from .base_processor import BaseProcessor
 
@@ -54,6 +55,7 @@ CONTENT_SAMPLE_PROMPT_LIMIT = 12000  # Max chars to include in agent prompt
 # Probe timeout - must match normal render timeout to avoid false negatives
 # JS-heavy sites (Google, Meta, etc.) often need 15-20 seconds to render
 PROBE_RENDER_TIMEOUT_MS = 20_000
+SEARCH_QUERY_LIMIT = 8  # cap queries to avoid long sequential search latency
 
 # Mapping from DisableReason to disabled_tags for non-recoverable issues
 # Only truly unrecoverable reasons are mapped - others are discovery mistakes
@@ -427,13 +429,6 @@ class SourceProcessor(BaseProcessor):
                 "error_message": str(e),
             }
 
-    def _get_root_domain(self, domain: str) -> str:
-        """Return best-effort registrable domain without extra deps."""
-        parts = domain.split(".")
-        if len(parts) >= 2:
-            return ".".join(parts[-2:])
-        return domain
-
     def _gather_search_context(
         self, url: str, company_name: Optional[str] = None
     ) -> Optional[List[Dict[str, str]]]:
@@ -449,45 +444,51 @@ class SourceProcessor(BaseProcessor):
         if not search_client:
             return None
 
-        target = url or company_name or ""
-        if not target:
+        if not (url or company_name):
             return None
 
-        parsed = urlparse(target if "//" in target else f"https://{target}")
-        domain = parsed.netloc or target
-        root_domain = self._get_root_domain(domain)
+        parsed = urlparse(url or "")
+        domain = parsed.netloc if parsed.netloc else ""
+        root_domain = get_root_domain(domain) if domain else None
 
         # Compose diverse, de-duplicated queries
         queries: List[str] = []
-        candidate_queries = [
-            f"{root_domain} jobs",
-            f"{root_domain} careers",
-            f"{root_domain} job board",
-            f"site:{root_domain} jobs",
-            f"{root_domain} jobs api",
-        ]
+        candidate_queries: List[str] = []
+        if root_domain:
+            candidate_queries.extend(
+                [
+                    f"{root_domain} jobs",
+                    f"{root_domain} careers",
+                    f"{root_domain} job board",
+                    f"site:{root_domain} jobs",
+                    f"{root_domain} jobs api",
+                ]
+            )
 
         if company_name:
             candidate_queries.extend(
                 [
                     f"{company_name} jobs",
                     f"{company_name} careers",
-                    f"{company_name} careers {root_domain}",
-                    f"{company_name} jobs site:{root_domain}",
+                    f"{company_name} careers {root_domain or ''}".strip(),
+                    f"{company_name} jobs site:{root_domain}" if root_domain else "",
                 ]
             )
 
-        seen = set()
-        for q in candidate_queries:
-            if q and q not in seen:
-                queries.append(q)
-                seen.add(q)
+        queries = [q for q in dict.fromkeys(q for q in candidate_queries if q.strip())][
+            :SEARCH_QUERY_LIMIT
+        ]
 
         results = []
+        seen_urls = set()
         for query in queries:
             try:
                 search_results = search_client.search(query, max_results=3)
                 for r in search_results:
+                    url_lower = (r.url or "").lower()
+                    if not url_lower or url_lower in seen_urls:
+                        continue
+                    seen_urls.add(url_lower)
                     results.append(
                         {
                             "query": query,
@@ -1253,7 +1254,10 @@ class SourceProcessor(BaseProcessor):
                 try:
                     company_record = self.companies_manager.get_company_by_id(company_id)
                     company_name = company_record.get("name") if company_record else None
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Failed to retrieve company name for company_id=%s: %s", company_id, exc
+                    )
                     company_name = None
 
             # Check for non-recoverable tags - skip recovery if present
