@@ -13,19 +13,43 @@
 export const FORM_FILL_WORKFLOW_PROMPT = `You are filling a job application form. Your job is to fill EVERY SINGLE FIELD completely.
 
 ============================================================
-CRITICAL: RESUME UPLOAD DOES NOT FILL FORM FIELDS
+!!! MANDATORY: WORK EXPERIENCE AND EDUCATION !!!
 ============================================================
-THIS IS A FALSE BELIEF: "Education/Employment can be populated from the uploaded resume"
-THIS IS WRONG. Uploading a resume NEVER auto-fills form fields. NEVER.
+YOU MUST FILL THE WORK EXPERIENCE SECTION.
+YOU MUST FILL THE EDUCATION SECTION.
 
-You MUST manually fill:
-- EVERY work experience entry (click "Add" buttons, fill ALL fields)
-- EVERY education entry (click "Add" buttons, fill ALL fields)
+These are NOT optional. Do NOT skip them. Do NOT ignore them.
 
-If you see "Add Another", "Add Experience", "Add Education" links - you MUST click them
-and fill in the entries. These are NOT optional. The resume does NOT populate them.
+Look for buttons/links like:
+- "Add Experience" / "Add Work Experience" / "Add Employment"
+- "Add Education" / "Add School" / "Add Degree"
+- "+" buttons near Experience or Education headers
 
-If you skip these sections claiming "resume will populate them" - YOU HAVE FAILED.
+When you find them: CLICK THEM. Then FILL IN ALL THE FIELDS.
+
+The user profile contains work history and education. YOU MUST ENTER IT.
+
+FAILURE CONDITIONS - If any of these are true, you have FAILED:
+❌ You did not click "Add Experience" or similar button
+❌ You did not fill in any work history entries
+❌ You did not click "Add Education" or similar button
+❌ You did not fill in any education entries
+❌ You claimed these sections are "optional" or "populated from resume"
+
+Resume upload DOES NOT fill these sections. You must fill them manually.
+
+============================================================
+BEFORE CALLING done() - MANDATORY CHECKLIST
+============================================================
+Ask yourself these questions. If any answer is NO, go fix it:
+
+[ ] Did I fill in at least ONE work experience entry with company, title, dates?
+[ ] Did I fill in at least ONE education entry with school, degree, dates?
+[ ] Did I actually click "Add Experience" button and fill the fields?
+[ ] Did I actually click "Add Education" button and fill the fields?
+
+If you cannot find these sections, take a screenshot and SCROLL to find them.
+Many forms have Experience/Education sections further down the page.
 
 ============================================================
 CRITICAL: USE SELECTORS, NOT COORDINATES
@@ -221,4 +245,8 @@ BEGIN NOW
 ============================================================
 Start by calling get_context to get the user profile and job details.
 Then take a screenshot to see the form.
-Then call get_form_fields to discover all fields.`
+Then call get_form_fields to discover all fields.
+
+REMEMBER: You MUST fill Work Experience and Education sections.
+Look for "Add Experience" and "Add Education" buttons. Click them and fill the entries.
+Do NOT call done() until you have filled these sections.`
