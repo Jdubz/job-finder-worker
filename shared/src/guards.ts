@@ -338,16 +338,6 @@ export function isScoringConfig(value: unknown): value is ScoringConfig {
     return false
   }
 
-  // Check skills (keyword bonus config)
-  if (!isObject(v.skills)) return false
-  const skills = v.skills as any
-  if (
-    typeof skills.bonusPerSkill !== "number" ||
-    typeof skills.maxSkillBonus !== "number"
-  ) {
-    return false
-  }
-
   // Check salary
   if (!isObject(v.salary)) return false
   const salary = v.salary as any

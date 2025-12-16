@@ -222,10 +222,6 @@ export const baseMatchPolicy: MatchPolicy = {
     maxBonus: 25,
     maxPenalty: -15,
   },
-  skills: {
-    bonusPerSkill: 2,
-    maxSkillBonus: 15,
-  },
   salary: {
     minimum: 100000,
     target: 170000,

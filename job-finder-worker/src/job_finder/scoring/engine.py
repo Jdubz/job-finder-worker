@@ -91,11 +91,13 @@ class ScoringEngine:
 
     The engine evaluates jobs based on:
     - Seniority alignment
-    - Location/remote preferences
+    - Location/remote/timezone preferences
     - Skill/technology overlap with experience weighting
     - Salary requirements
-    - Experience level fit
-    - Skill keyword matching
+    - Skill keyword matching (deduplicated against extracted technologies)
+    - Job freshness
+    - Role fit
+    - Company signals
 
     All scoring is transparent and config-driven with no AI involved.
     """
@@ -126,9 +128,7 @@ class ScoringEngine:
         self.seniority_config = config["seniority"]
         self.location_config = config["location"]
         self.skill_match_config = config["skillMatch"]
-        self.skills_config = config["skills"]
         self.salary_config = config["salary"]
-        self.experience_config = config.get("experience", {})  # Optional - scoring disabled
         self.freshness_config = config["freshness"]
         self.role_fit_config = config["roleFit"]
         self.company_config = config["company"]
@@ -150,7 +150,6 @@ class ScoringEngine:
             existing = self.canonical_skill_years.get(canonical, 0.0)
             self.canonical_skill_years[canonical] = max(existing, years)
 
-        self.user_skills: Set[str] = {s.lower().strip() for s in self.skill_years.keys()}
         self.canonical_user_skills: Set[str] = set(self.canonical_skill_years.keys())
 
         # Build "implied skills" for each user skill
@@ -276,25 +275,12 @@ class ScoringEngine:
                 rejection_reason=f"Salary below minimum: ${extraction.salary_max or extraction.salary_min}",
             )
 
-        # 5. Experience scoring
-        exp_result = self._score_experience(extraction.experience_min, extraction.experience_max)
-        score += exp_result["points"]
-        adjustments.extend(exp_result.get("adjustments", []))
-
-        # Track technologies already scored to avoid double-counting in keyword scan
-        scored_tech_set = {t.lower() for t in extraction.technologies}
-
-        # 6. Skill match scoring (from description text matching)
-        skill_result = self._score_skills(job_description, scored_tech_set)
-        score += skill_result["points"]
-        adjustments.extend(skill_result.get("adjustments", []))
-
-        # 7. Freshness scoring (from extracted days_old)
+        # 5. Freshness scoring (from extracted days_old)
         freshness_result = self._score_freshness(extraction)
         score += freshness_result["points"]
         adjustments.extend(freshness_result.get("adjustments", []))
 
-        # 8. Role fit scoring (from extracted role signals)
+        # 6. Role fit scoring (from extracted role signals)
         role_fit_result = self._score_role_fit(extraction)
         score += role_fit_result["points"]
         adjustments.extend(role_fit_result.get("adjustments", []))
@@ -311,7 +297,7 @@ class ScoringEngine:
                 ),
             )
 
-        # 9. Company signals scoring (from company data)
+        # 7. Company signals scoring (from company data)
         if company_data:
             company_result = self._score_company_signals(company_data)
             score += company_result["points"]
@@ -428,18 +414,26 @@ class ScoringEngine:
                     "hard_reject": True,
                     "rejection_reason": "Remote work not allowed per config",
                 }
-            # Remote is allowed - bonus from config
+            # Remote is allowed - apply remote bonus AND timezone scoring
+            # Remote jobs in distant timezones should still incur timezone penalties
             remote_score = self.location_config["remoteScore"]
-            return {
-                "points": remote_score,
-                "adjustments": [
-                    ScoreAdjustment(
-                        category="location",
-                        reason="Remote position",
-                        points=remote_score,
-                    )
-                ],
-            }
+            remote_adjustments = [
+                ScoreAdjustment(
+                    category="location",
+                    reason="Remote position",
+                    points=remote_score,
+                )
+            ]
+            total_points = remote_score
+
+            # Apply timezone scoring for remote jobs (same logic as hybrid/onsite)
+            tz_result = self._score_timezone_for_remote(extraction)
+            if tz_result.get("hard_reject"):
+                return tz_result
+            total_points += tz_result.get("points", 0)
+            remote_adjustments.extend(tz_result.get("adjustments", []))
+
+            return {"points": total_points, "adjustments": remote_adjustments}
 
         if work_arrangement == "hybrid":
             if not allow_hybrid:
@@ -585,8 +579,53 @@ class ScoringEngine:
             }
         return {"points": 0, "adjustments": []}
 
+    def _score_timezone_for_remote(self, extraction: JobExtractionResult) -> Dict[str, Any]:
+        """Score based on timezone difference for remote jobs.
+
+        Remote jobs apply timezone penalties but skip city/relocation logic since
+        the user doesn't need to be physically present. All scores from config.
+        """
+        job_tz = extraction.timezone
+        user_tz = self.location_config["userTimezone"]
+        max_diff = self.location_config["maxTimezoneDiffHours"]
+        per_hour_score = self.location_config["perHourScore"]
+
+        # If no timezone info, no penalty (remote jobs are more flexible)
+        if job_tz is None or not isinstance(job_tz, (int, float)):
+            return {"points": 0, "adjustments": []}
+
+        tz_diff = abs(job_tz - user_tz)
+
+        # Check if within acceptable range (hard reject if too far)
+        if tz_diff > max_diff:
+            return {
+                "points": 0,
+                "hard_reject": True,
+                "rejection_reason": f"Remote job timezone difference {tz_diff}h exceeds max {max_diff}h",
+            }
+
+        # Apply per-hour score adjustment (should be negative)
+        if tz_diff == 0:
+            return {"points": 0, "adjustments": []}
+
+        tz_adjustment = int(tz_diff * per_hour_score)
+        return {
+            "points": tz_adjustment,
+            "adjustments": [
+                ScoreAdjustment(
+                    category="location",
+                    reason=f"Remote timezone diff {tz_diff}h",
+                    points=tz_adjustment,
+                )
+            ],
+        }
+
     def _score_skill_match(self, job_technologies: List[str]) -> Dict[str, Any]:
-        """Experience-weighted skill matching with analog support."""
+        """Experience-weighted skill matching with analog support.
+
+        Deduplicates technologies before scoring to prevent double-counting when
+        the same skill appears multiple times in the extraction (e.g., "ml" twice).
+        """
         if not job_technologies:
             return {"points": 0, "adjustments": []}
 
@@ -596,7 +635,15 @@ class ScoringEngine:
             taxon = self.taxonomy_lookup.get(key)
             return taxon.canonical.lower() if taxon else key
 
-        mapped_terms = [map_term(t) for t in job_technologies]
+        # Deduplicate: map all terms and keep unique canonical forms
+        # Preserves first occurrence for display purposes
+        seen_canonical: Set[str] = set()
+        unique_mapped: List[str] = []
+        for t in job_technologies:
+            canonical = map_term(t)
+            if canonical not in seen_canonical:
+                seen_canonical.add(canonical)
+                unique_mapped.append(canonical)
 
         base_score = self.skill_match_config["baseMatchScore"]
         years_mult = self.skill_match_config["yearsMultiplier"]
@@ -614,7 +661,7 @@ class ScoringEngine:
         total_bonus = 0.0
         total_implied_bonus = 0.0
 
-        for _, mapped in zip(job_technologies, mapped_terms):
+        for mapped in unique_mapped:
             skill_lower = mapped.lower()
 
             # 1. Direct match: user has the exact skill (canonical form)
@@ -804,64 +851,6 @@ class ScoringEngine:
 
         return {"points": points, "adjustments": adjustments}
 
-    def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int]) -> Dict[str, Any]:
-        """
-        Experience scoring is DISABLED - always returns neutral (0 points).
-
-        Year-based qualification comparisons (underqualified, overqualified, match bonuses)
-        have been removed entirely. They are fragile and misleading:
-        - A "5 years required" posting will often hire someone with 3 years of strong experience
-        - Someone with 15 years isn't necessarily "overqualified" for a senior role
-        - Experience requirements in job postings are notoriously inaccurate
-
-        If you need experience-based filtering, use the prefilter stage instead.
-        """
-        # Experience scoring disabled - return neutral for all inputs
-        return {"points": 0, "adjustments": []}
-
-    def _score_skills(
-        self, description: str, scored_technologies: Optional[Set[str]] = None
-    ) -> Dict[str, Any]:
-        """Score based on skill keywords in description using word-boundary matching.
-
-        Technologies already counted in skill matching are excluded to avoid double-counting.
-        All scores from config (no defaults).
-        """
-        if not self.user_skills or not description:
-            return {"points": 0, "adjustments": []}
-
-        desc_lower = description.lower()
-
-        skills_to_check = set(self.user_skills)
-        if scored_technologies:
-            skills_to_check -= scored_technologies
-
-        # Use word boundary matching to avoid false positives
-        # e.g., "go" shouldn't match "going", "good", etc.
-        matched_skills = [
-            skill for skill in skills_to_check if re.search(rf"\b{re.escape(skill)}\b", desc_lower)
-        ]
-
-        if not matched_skills:
-            return {"points": 0, "adjustments": []}
-
-        # All values from config directly - no defaults allowed
-        bonus_per_skill = self.skills_config["bonusPerSkill"]
-        max_skill_bonus = self.skills_config["maxSkillBonus"]
-        match_count = len(matched_skills)
-        bonus = min(match_count * bonus_per_skill, max_skill_bonus)
-
-        return {
-            "points": bonus,
-            "adjustments": [
-                ScoreAdjustment(
-                    category="skills",
-                    reason=f"Matched {match_count} user skills",
-                    points=bonus,
-                )
-            ],
-        }
-
     def _score_freshness(self, extraction: JobExtractionResult) -> Dict[str, Any]:
         """
         Score based on job freshness (days since posting).
@@ -1020,25 +1009,24 @@ class ScoringEngine:
         points = 0
         adjustments: List[ScoreAdjustment] = []
 
-        # Extract relevant company fields
-        description = (company_data.get("description") or "").lower()
-        headquarters = (company_data.get("headquarters") or "").lower()
-        locations = company_data.get("locations") or []
-        tech_stack = company_data.get("tech_stack") or []
-        employee_count = company_data.get("employee_count")
-        is_remote_first = company_data.get("is_remote_first", False)
-
-        # Normalize locations to lowercase strings
-        locations_lower = [str(loc).lower() for loc in locations if loc]
+        # Extract relevant company fields (camelCase from companies_manager)
+        description = (company_data.get("about") or "").lower()
+        headquarters = (company_data.get("headquartersLocation") or "").lower()
+        tech_stack = company_data.get("techStack") or []
+        employee_count = company_data.get("employeeCount")
+        is_remote_first = company_data.get("isRemoteFirst", False)
+        ai_ml_focus = company_data.get("aiMlFocus", False)
+        has_portland_office = company_data.get("hasPortlandOffice", False)
 
         # 1. Preferred city office score (required field)
         preferred_city_score = self.company_config["preferredCityScore"]
         preferred_city = self.company_config.get("preferredCity", "").lower()
         if preferred_city_score and preferred_city:
-            has_preferred_city = (
-                any(preferred_city in loc for loc in locations_lower)
-                or preferred_city in headquarters
-            )
+            # Check headquarters location for preferred city
+            has_preferred_city = preferred_city in headquarters
+            # Also check hasPortlandOffice flag if preferred city is Portland
+            if preferred_city == "portland" and has_portland_office:
+                has_preferred_city = True
             if has_preferred_city:
                 points += preferred_city_score
                 adjustments.append(
@@ -1064,6 +1052,9 @@ class ScoringEngine:
         # 3. AI/ML focus score (required field)
         ai_ml_score = self.company_config["aiMlFocusScore"]
         if ai_ml_score:
+            # Use the aiMlFocus field from company data (set during enrichment)
+            # Also check description and tech stack for AI/ML indicators
+            # Use word boundaries to avoid false positives (e.g., 'llm' in 'small')
             ai_keywords = [
                 "machine learning",
                 "artificial intelligence",
@@ -1073,9 +1064,20 @@ class ScoringEngine:
                 "llm",
                 "generative ai",
             ]
-            has_ai_focus = any(kw in description for kw in ai_keywords) or any(
-                any(kw in str(t).lower() for kw in ["pytorch", "tensorflow", "ml", "ai"])
-                for t in tech_stack
+            tech_keywords = ["pytorch", "tensorflow", "ml", "ai"]
+            has_ai_focus = (
+                ai_ml_focus
+                or any(
+                    re.search(rf"\b{re.escape(kw)}\b", description, re.IGNORECASE)
+                    for kw in ai_keywords
+                )
+                or any(
+                    any(
+                        re.search(rf"\b{re.escape(kw)}\b", str(t), re.IGNORECASE)
+                        for kw in tech_keywords
+                    )
+                    for t in tech_stack
+                )
             )
             if has_ai_focus:
                 points += ai_ml_score

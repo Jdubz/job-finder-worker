@@ -42,10 +42,6 @@ def default_config():
             "maxBonus": 25,
             "maxPenalty": -15,
         },
-        "skills": {
-            "bonusPerSkill": 2,
-            "maxSkillBonus": 15,
-        },
         "salary": {
             "minimum": 150000,
             "target": 200000,
@@ -214,28 +210,6 @@ class TestScoringEngine:
         assert isinstance(result.adjustments, list)
         assert isinstance(result.passed, bool)
         assert 0 <= result.final_score <= 100
-
-    def test_skill_match_does_not_double_count_keywords(self, default_config, profile):
-        """Skills already matched should not double count in keyword scoring."""
-        engine = ScoringEngine(
-            default_config,
-            skill_years={"python": 3, "typescript": 2},
-            user_experience_years=profile["total_years"],
-        )
-
-        extraction = JobExtractionResult(
-            seniority="senior",
-            technologies=["python"],
-            role_types=[],
-        )
-
-        description = "We use Python heavily for backend services."
-        result = engine.score(
-            extraction, job_title="Fullstack Engineer", job_description=description
-        )
-
-        skill_adjustments = [a for a in result.adjustments if a.category == "skills"]
-        assert len(skill_adjustments) == 1
 
     def test_parallel_skill_prevents_penalty(self, default_config, profile):
         """Parallel skills from taxonomy prevent missing penalty but don't give bonus.
@@ -564,3 +538,214 @@ class TestScoringEngine:
         # Since express is parallel to flask/django/fastapi (but REST is only parallel to graphql), user should get penalty
         missing_adjustments = [a for a in result.adjustments if "Missing" in a.reason]
         assert missing_adjustments, "Expected missing skill adjustment for express"
+
+    def test_remote_job_gets_timezone_penalty(self, default_config):
+        """Remote jobs should get timezone penalty when in different timezone.
+
+        Fix for: Remote jobs were returning early with remote bonus but skipping
+        timezone scoring entirely. A remote job in NYC (UTC-5) for a Portland user
+        (UTC-8) should still incur a timezone penalty.
+        """
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userTimezone": -8,  # Portland (PST)
+                "perHourScore": -3,
+                "maxTimezoneDiffHours": 5,
+                "remoteScore": 5,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            timezone=-5,  # NYC (EST) = 3 hour diff from PST
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Remote position")
+
+        # Should have BOTH remote bonus AND timezone penalty
+        remote_adj = next((a for a in result.adjustments if "Remote" in a.reason), None)
+        tz_adj = next((a for a in result.adjustments if "timezone" in a.reason.lower()), None)
+
+        assert remote_adj is not None, "Expected remote position bonus"
+        assert remote_adj.points == 5, "Remote bonus should be 5"
+        assert tz_adj is not None, "Expected timezone penalty for remote job"
+        assert tz_adj.points == -9, "3h diff * -3 per hour = -9"
+
+    def test_remote_job_no_timezone_penalty_when_same_timezone(self, default_config):
+        """Remote jobs in same timezone should not get timezone penalty."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userTimezone": -8,
+                "perHourScore": -3,
+                "remoteScore": 5,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            timezone=-8,  # Same timezone as user
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Remote position")
+
+        # Should have remote bonus but NO timezone penalty
+        remote_adj = next((a for a in result.adjustments if "Remote" in a.reason), None)
+        tz_adj = next((a for a in result.adjustments if "timezone" in a.reason.lower()), None)
+
+        assert remote_adj is not None
+        assert tz_adj is None, "No timezone penalty when same timezone"
+
+    def test_remote_job_hard_reject_when_timezone_exceeds_max(self, default_config):
+        """Remote jobs should be hard rejected when timezone diff exceeds max."""
+        config = {
+            **default_config,
+            "location": {
+                **default_config["location"],
+                "userTimezone": -8,  # PST
+                "maxTimezoneDiffHours": 4,
+            },
+        }
+        engine = ScoringEngine(config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            timezone=3,  # Central Europe = 11 hour diff from PST
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "Senior Engineer", "Remote position in Europe")
+
+        assert result.passed is False
+        assert "timezone" in result.rejection_reason.lower()
+
+    def test_duplicate_skills_not_double_counted(self, default_config):
+        """Duplicate skills in extraction should not be counted twice.
+
+        Fix for: If AI extraction returns ["ml", "ml"], both would be processed
+        separately, resulting in double penalty for "ml" being missing.
+        """
+        engine = ScoringEngine(
+            default_config,
+            skill_years={"python": 3},  # User has python but not ml
+        )
+        extraction = JobExtractionResult(
+            technologies=["ml", "ml", "ML", "python"],  # ml appears 3 times (with variants)
+            seniority="senior",
+        )
+
+        result = engine.score(extraction, "ML Engineer", "Machine learning role")
+
+        # Parse the missing skills list to check for duplicates
+        # Use startswith to avoid substring false positives (e.g., 'ml' in 'html')
+        missing_adjustments = [a for a in result.adjustments if a.reason.startswith("Missing: ")]
+        if missing_adjustments:
+            assert (
+                len(missing_adjustments) == 1
+            ), "Expected only one adjustment for all missing skills"
+            missing_reason = missing_adjustments[0].reason
+            missing_skills_str = missing_reason.replace("Missing: ", "")
+            missing_skills = [s.strip() for s in missing_skills_str.split(",")]
+            ml_count = missing_skills.count("ml")
+            assert (
+                ml_count == 1
+            ), f"'ml' should be missing exactly once, but was found {ml_count} times in {missing_skills}"
+
+    def test_company_size_large_company_bonus(self, default_config):
+        """Large companies should get bonus based on employee count threshold."""
+        engine = ScoringEngine(default_config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            seniority="senior",
+        )
+        # Company data with camelCase fields (as returned by companies_manager)
+        company_data = {
+            "id": "test-123",
+            "name": "Big Corp",
+            "employeeCount": 15000,  # Above largeCompanyThreshold (10000)
+            "isRemoteFirst": False,
+            "aiMlFocus": False,
+            "hasPortlandOffice": False,
+            "headquartersLocation": "San Francisco, CA",
+            "about": "Enterprise software company",
+            "techStack": [],
+        }
+
+        result = engine.score(extraction, "Senior Engineer", "Job at Big Corp", company_data)
+
+        # Should have large company bonus
+        company_adjustments = [a for a in result.adjustments if a.category == "company"]
+        large_co_adj = next((a for a in company_adjustments if "Large company" in a.reason), None)
+        assert (
+            large_co_adj is not None
+        ), f"Expected Large company adjustment, got: {company_adjustments}"
+        assert large_co_adj.points == default_config["company"]["largeCompanyScore"]
+
+    def test_company_size_small_company_penalty(self, default_config):
+        """Small companies should get penalty based on employee count threshold."""
+        engine = ScoringEngine(default_config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            seniority="senior",
+        )
+        company_data = {
+            "employeeCount": 50,  # Below smallCompanyThreshold (100)
+            "isRemoteFirst": False,
+            "aiMlFocus": False,
+        }
+
+        result = engine.score(extraction, "Senior Engineer", "Job at Startup", company_data)
+
+        # Should have small company/startup adjustment
+        company_adjustments = [a for a in result.adjustments if a.category == "company"]
+        size_adj = next(
+            (a for a in company_adjustments if "Small" in a.reason or "Startup" in a.reason), None
+        )
+        # startupScore is 0 in default config, so smallCompanyScore (-5) should be used
+        assert size_adj is not None, f"Expected size adjustment, got: {company_adjustments}"
+
+    def test_company_ai_ml_focus_bonus(self, default_config):
+        """Companies with AI/ML focus should get bonus."""
+        engine = ScoringEngine(default_config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            seniority="senior",
+        )
+        company_data = {
+            "employeeCount": 500,
+            "isRemoteFirst": False,
+            "aiMlFocus": True,  # Set by company enrichment
+        }
+
+        result = engine.score(extraction, "ML Engineer", "Job at AI company", company_data)
+
+        company_adjustments = [a for a in result.adjustments if a.category == "company"]
+        ai_adj = next((a for a in company_adjustments if "AI/ML" in a.reason), None)
+        assert ai_adj is not None, f"Expected AI/ML focus adjustment, got: {company_adjustments}"
+        assert ai_adj.points == default_config["company"]["aiMlFocusScore"]
+
+    def test_company_remote_first_bonus(self, default_config):
+        """Remote-first companies should get bonus."""
+        engine = ScoringEngine(default_config)
+        extraction = JobExtractionResult(
+            work_arrangement="remote",
+            seniority="senior",
+        )
+        company_data = {
+            "employeeCount": 500,
+            "isRemoteFirst": True,
+            "aiMlFocus": False,
+        }
+
+        result = engine.score(extraction, "Senior Engineer", "Job at remote company", company_data)
+
+        company_adjustments = [a for a in result.adjustments if a.category == "company"]
+        remote_adj = next((a for a in company_adjustments if "Remote-first" in a.reason), None)
+        assert (
+            remote_adj is not None
+        ), f"Expected Remote-first adjustment, got: {company_adjustments}"
+        assert remote_adj.points == default_config["company"]["remoteFirstScore"]

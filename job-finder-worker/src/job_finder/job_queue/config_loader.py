@@ -112,12 +112,12 @@ class ConfigLoader:
 
         # Validate all required top-level sections exist
         # Note: "experience" removed - experience scoring is disabled
+        # Note: "skills" removed - consolidated into skillMatch (single skill scoring pipeline)
         required_sections = [
             "minScore",
             "seniority",
             "location",
             "skillMatch",
-            "skills",
             "salary",
             "freshness",
             "roleFit",
@@ -146,8 +146,6 @@ class ConfigLoader:
                 "missingIgnore",
             ],
         )
-
-        _validate_section(config, "skills", ["bonusPerSkill", "maxSkillBonus"])
 
         _validate_section(
             config,
