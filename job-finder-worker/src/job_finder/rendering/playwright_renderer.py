@@ -26,8 +26,11 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 try:
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 except ImportError:
-    # Define a placeholder exception class for when playwright is not installed
-    PlaywrightTimeoutError = type("PlaywrightTimeoutError", (Exception,), {})  # type: ignore[misc]
+
+    class PlaywrightTimeoutError(Exception):  # type: ignore[no-redef]
+        """Placeholder exception for when playwright is not installed."""
+
+        pass
 
 
 logger = logging.getLogger(__name__)
