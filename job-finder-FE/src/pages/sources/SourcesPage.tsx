@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
@@ -77,6 +78,7 @@ export function SourcesPage() {
   const { openModal } = useEntityModal()
   const { sources, loading, updateSource, deleteSource, refetch, setFilters } = useJobSources({ limit: 100 })
   const { submitSourceDiscovery, submitSourceRecover } = useQueueItems()
+  const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -142,8 +144,17 @@ export function SourcesPage() {
   const handleRecover = async (sourceId: string) => {
     try {
       await submitSourceRecover(sourceId)
+      toast({
+        title: "Recovery queued",
+        description: "Source recovery has been submitted to the queue.",
+      })
     } catch (err) {
       console.error("Failed to submit source recovery:", err)
+      toast({
+        variant: "destructive",
+        title: "Recovery failed",
+        description: err instanceof Error ? err.message : "Failed to submit recovery. Please try again.",
+      })
     }
   }
 
