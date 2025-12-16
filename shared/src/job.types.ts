@@ -529,6 +529,8 @@ export interface SourceConfigJson {
   validation_policy?: "fail_on_empty" | "allow_empty"
   /** Notes explaining why source is disabled */
   disabled_notes?: string
+  /** Non-recoverable disable tags - recovery attempts are futile */
+  disabled_tags?: Array<"anti_bot" | "auth_required" | "protected_api">
   /** Company extraction strategy - "from_title" | "from_description" */
   company_extraction?: "from_title" | "from_description"
   /** Whether to fetch each job's detail page to enrich fields */

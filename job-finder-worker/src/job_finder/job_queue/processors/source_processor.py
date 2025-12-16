@@ -20,7 +20,11 @@ from bs4 import BeautifulSoup
 
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.search_client import get_search_client
-from job_finder.ai.source_analysis_agent import SourceAnalysisAgent, SourceClassification
+from job_finder.ai.source_analysis_agent import (
+    DisableReason,
+    SourceAnalysisAgent,
+    SourceClassification,
+)
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
 from job_finder.filters.prefilter import PreFilter
@@ -50,6 +54,13 @@ CONTENT_SAMPLE_PROMPT_LIMIT = 12000  # Max chars to include in agent prompt
 # Probe timeout - must match normal render timeout to avoid false negatives
 # JS-heavy sites (Google, Meta, etc.) often need 15-20 seconds to render
 PROBE_RENDER_TIMEOUT_MS = 20_000
+
+# Mapping from DisableReason to disabled_tags for non-recoverable issues
+# Only truly unrecoverable reasons are mapped - others are discovery mistakes
+DISABLE_REASON_TO_TAG = {
+    DisableReason.BOT_PROTECTION: "anti_bot",
+    DisableReason.AUTH_REQUIRED: "auth_required",
+}
 
 
 @dataclass
@@ -293,6 +304,12 @@ class SourceProcessor(BaseProcessor):
             if disabled_notes and not source_config.get("disabled_notes"):
                 source_config["disabled_notes"] = disabled_notes
 
+            # Set disabled_tags for non-recoverable issues
+            if should_disable and analysis.disable_reason:
+                tag = DISABLE_REASON_TO_TAG.get(analysis.disable_reason)
+                if tag:
+                    source_config["disabled_tags"] = [tag]
+
             initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
 
             try:
@@ -533,9 +550,78 @@ class SourceProcessor(BaseProcessor):
         except Exception:
             return url
 
+    # Known job board API domains that are allowed even if different from original
+    KNOWN_JOB_API_DOMAINS = {
+        "api.greenhouse.io",
+        "boards-api.greenhouse.io",
+        "api.lever.co",
+        "api.smartrecruiters.com",
+        "api.ashbyhq.com",
+        "api.recruitee.com",
+        "api.workable.com",
+    }
+
+    def _is_valid_url_change(self, original_url: str, proposed_url: str) -> bool:
+        """Check if a proposed URL change is valid.
+
+        Valid changes:
+        - Same domain (e.g., example.com/page -> example.com/api)
+        - Same parent domain for Workday (e.g., company.wd5.myworkdayjobs.com)
+        - Known job board API domains (Greenhouse, Lever, etc.)
+        """
+        try:
+            original_parsed = urlparse(original_url)
+            proposed_parsed = urlparse(proposed_url)
+
+            original_domain = original_parsed.netloc.lower()
+            proposed_domain = proposed_parsed.netloc.lower()
+
+            # Same domain is always valid
+            if original_domain == proposed_domain:
+                return True
+
+            # Check if proposed is a known job API domain
+            if proposed_domain in self.KNOWN_JOB_API_DOMAINS:
+                return True
+
+            # Allow Workday subdomains (company.wd*.myworkdayjobs.com)
+            if "myworkdayjobs.com" in original_domain and "myworkdayjobs.com" in proposed_domain:
+                return True
+
+            # Allow API subdomains of same root domain
+            # e.g., example.com -> api.example.com
+            # Note: This simple approach doesn't handle ccSLDs like .co.uk correctly.
+            # For example, api.company.co.uk would incorrectly match other.co.uk.
+            # Using tldextract would fix this but adds a dependency for an edge case.
+            original_parts = original_domain.split(".")
+            proposed_parts = proposed_domain.split(".")
+            if len(original_parts) >= 2 and len(proposed_parts) >= 2:
+                original_root = ".".join(original_parts[-2:])
+                proposed_root = ".".join(proposed_parts[-2:])
+                if original_root == proposed_root:
+                    return True
+
+            return False
+        except Exception:
+            return False
+
     # ============================================================
     # PROBE + VALIDATION HELPERS
     # ============================================================
+
+    def _is_protected_api_error(self, probe: ProbeResult, config: Dict[str, Any]) -> bool:
+        """Check if probe failure indicates a protected API endpoint.
+
+        Returns True if:
+        - Config is API type AND
+        - Probe returned 401 (Unauthorized), 403 (Forbidden), or 422 (Unprocessable)
+
+        These errors typically indicate the API requires authentication, cookies,
+        or has bot protection that we can't easily bypass.
+        """
+        if config.get("type") != "api":
+            return False
+        return probe.status_code in (401, 403, 422)
 
     def _probe_config(self, source_type: str, config: Dict[str, Any]) -> ProbeResult:
         """Lightweight probe: one request + count jobs, with a hint/sample."""
@@ -1011,6 +1097,31 @@ class SourceProcessor(BaseProcessor):
             url = config.get("url", "")
             source_type = config.get("type", "html")
 
+            # Check for non-recoverable tags - skip recovery if present
+            disabled_tags = config.get("disabled_tags", [])
+            if disabled_tags:
+                tag_labels = {
+                    "anti_bot": "bot protection",
+                    "auth_required": "authentication required",
+                    "protected_api": "protected API",
+                }
+                tag_descriptions = [tag_labels.get(t, t) for t in disabled_tags]
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"{source_name} has non-recoverable issues: {', '.join(tag_descriptions)}. "
+                    f"Recovery is not possible for sources with these tags.",
+                    error_details="Non-recoverable tags indicate systemic issues "
+                    "(bot protection, authentication requirements, protected APIs) "
+                    "that cannot be fixed through automated recovery.",
+                )
+                logger.info(
+                    "SOURCE_RECOVER skipped for %s: non-recoverable tags %s",
+                    source_id,
+                    disabled_tags,
+                )
+                return
+
             if not url:
                 self.queue_manager.update_status(
                     item.id, QueueStatus.FAILED, f"Source {source_name} has no URL"
@@ -1044,7 +1155,7 @@ class SourceProcessor(BaseProcessor):
                 return
 
             # Test the proposed config
-            probe = self._probe_config(source_type, fixed_config)
+            probe = self._probe_config(fixed_config.get("type", source_type), fixed_config)
             if probe.status == "success" and probe.job_count > 0:
                 # Update source with fixed config and mark active
                 self.sources_manager.update_config(source_id, fixed_config)
@@ -1056,6 +1167,23 @@ class SourceProcessor(BaseProcessor):
                 )
                 logger.info(
                     f"SOURCE_RECOVER: Successfully recovered {source_name} with {probe.job_count} jobs"
+                )
+            elif self._is_protected_api_error(probe, fixed_config):
+                # API returned 401/403/422 - mark with protected_api tag
+                self.sources_manager.disable_source_with_tags(
+                    source_id,
+                    f"API endpoint is protected (HTTP {probe.status_code})",
+                    tags=["protected_api"],
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"{source_name}: API endpoint is protected (HTTP {probe.status_code}). "
+                    f"Source requires authentication or has bot protection.",
+                    error_details=f"The API endpoint appears to require authentication or cookies. "
+                    f"Consider scraping from a different URL or using browser automation.\n"
+                    f"Proposed URL: {fixed_config.get('url')}\n"
+                    f"Status code: {probe.status_code}",
                 )
             else:
                 # Keep disabled but log what we tried
@@ -1167,12 +1295,24 @@ Type: {source_type}
 1. ONLY use type "html" or "api" - NEVER use "json" (use "api" for JSON endpoints)
 2. NEVER output placeholder text like "TODO" or example selectors - analyze the ACTUAL content above
 3. All CSS selectors must be REAL selectors found in the content sample
-4. If changing from html to api type, you MUST provide the actual API endpoint URL
+4. NEVER invent or guess API URLs - only use URLs you can see in the content sample
+5. Keep the URL on the SAME DOMAIN unless you see an actual API URL in the content
+6. If the content shows a JavaScript-rendered page, prefer type "html" with requires_js=true
 
 ## Your Task
 1. Analyze the content sample to find job listings
 2. Identify correct selectors/paths based on the ACTUAL HTML/JSON structure
 3. Propose a fixed configuration
+
+## When to use HTML vs API:
+- Use type "html" with requires_js=true if:
+  - The content shows rendered job listings in HTML
+  - You can find CSS selectors for job cards in the content
+  - The page uses JavaScript frameworks (React, Vue, etc.)
+- Use type "api" ONLY if:
+  - The content sample IS JSON (starts with {{ or [)
+  - You can see an actual API endpoint URL in the content (e.g., in a script tag)
+  - You know the exact API pattern for this job board platform
 
 ## For HTML sources (type: "html"):
 - job_selector: CSS selector matching each job card/row (find real elements in content above)
@@ -1182,7 +1322,7 @@ Type: {source_type}
 - render_wait_for: CSS selector to wait for (must exist in the rendered DOM)
 
 ## For API sources (type: "api"):
-- url: The ACTUAL API endpoint URL (often different from the HTML page URL!)
+- url: The ACTUAL API endpoint URL - MUST be visible in the content sample or a known pattern
 - method: "GET" or "POST"
 - post_body: Request body for POST requests (e.g., {{"limit": 20, "offset": 0}})
 - response_path: JSON path to jobs array (e.g., "jobs", "data.results", "jobPostings")
@@ -1229,6 +1369,19 @@ Return ONLY valid JSON (no markdown, no explanation, no placeholders).
             if proposed_type == "json":
                 proposed_type = "api"
                 data["type"] = "api"
+
+            # Validate proposed URL domain - must be same domain or known job API
+            original_url = current_config.get("url", "")
+            proposed_url = data.get("url")
+            if proposed_url and not self._is_valid_url_change(original_url, proposed_url):
+                logger.warning(
+                    "Agent proposed URL on different domain for %s: %s -> %s",
+                    source_name,
+                    original_url,
+                    proposed_url,
+                )
+                # Fall back to original URL instead of rejecting entirely
+                data["url"] = original_url
 
             # Merge required fields into agent response
             # Allow agent to change source type and URL if it proposes them

@@ -73,6 +73,7 @@ class JobSourcesManager:
             "createdAt": row.get("created_at"),
             "updatedAt": row.get("updated_at"),
             "disabledNotes": config.get("disabled_notes"),
+            "disabledTags": config.get("disabled_tags", []),
         }
 
     # ------------------------------------------------------------------ #
@@ -489,6 +490,64 @@ class JobSourcesManager:
             )
 
         logger.info("Disabled source %s: %s", source_id, reason)
+
+    def disable_source_with_tags(
+        self,
+        source_id: str,
+        reason: str,
+        tags: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Disable a source with both disabled_notes and disabled_tags.
+
+        Tags are additive - new tags are merged with existing ones (no duplicates).
+        This allows multiple recovery attempts to accumulate evidence of non-recoverable issues.
+
+        Args:
+            source_id: The source ID to disable
+            reason: Human-readable reason for disabling
+            tags: List of non-recoverable tags (anti_bot, auth_required, protected_api)
+        """
+        now = utcnow_iso()
+        note = f"[{now}] {reason}"
+
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT status, config_json FROM job_sources WHERE id = ?",
+                (source_id,),
+            ).fetchone()
+            if not row:
+                raise StorageError(f"Source {source_id} not found")
+
+            current_status = SourceStatus(row["status"])
+            # Only validate transition if not already DISABLED
+            if current_status != SourceStatus.DISABLED:
+                self._validate_transition(current_status, SourceStatus.DISABLED)
+
+            config = json.loads(row["config_json"]) if row["config_json"] else {}
+            # Append to existing notes to preserve history
+            existing_notes = config.get("disabled_notes", "")
+            if existing_notes:
+                config["disabled_notes"] = f"{existing_notes}\n{note}"
+            else:
+                config["disabled_notes"] = note
+
+            # Merge tags (additive, no duplicates)
+            if tags:
+                existing_tags = set(config.get("disabled_tags", []))
+                existing_tags.update(tags)
+                config["disabled_tags"] = sorted(list(existing_tags))
+
+            conn.execute(
+                """
+                UPDATE job_sources
+                SET status = ?, config_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (SourceStatus.DISABLED.value, json.dumps(config), now, source_id),
+            )
+
+        logger.info("Disabled source %s: %s (tags=%s)", source_id, reason, tags)
 
     def update_config(self, source_id: str, config: Dict[str, Any]) -> None:
         """Persist a new config for an existing source."""

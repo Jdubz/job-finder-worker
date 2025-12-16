@@ -4,7 +4,7 @@ import { useSource } from "@/hooks/useSource"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { ExternalLink, Pause, Play, Trash2, Building2, AlertCircle, Loader2, Wrench } from "lucide-react"
+import { ExternalLink, Pause, Play, Trash2, Building2, AlertCircle, AlertTriangle, Loader2, Wrench } from "lucide-react"
 import { statusBadgeClass } from "@/lib/status-badge"
 import type { JobSource } from "@shared/types"
 
@@ -15,6 +15,12 @@ const sourceTypeLabels: Record<string, string> = {
   greenhouse: "Greenhouse",
   workday: "Workday",
   lever: "Lever",
+}
+
+const disabledTagLabels: Record<string, string> = {
+  anti_bot: "Bot Protection",
+  auth_required: "Login Required",
+  protected_api: "Protected API",
 }
 
 function formatDate(date: unknown): string {
@@ -208,6 +214,28 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
         )}
       </div>
 
+      {(() => {
+        const disabledTags = source.configJson?.disabled_tags as Array<"anti_bot" | "auth_required" | "protected_api"> | undefined
+        return disabledTags && disabledTags.length > 0 ? (
+          <div>
+            <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3 text-destructive" />
+              Non-Recoverable Issues
+            </Label>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {disabledTags.map((tag) => (
+                <Badge key={tag} variant="destructive" className="text-xs">
+                  {disabledTagLabels[tag] || tag}
+                </Badge>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              These issues cannot be fixed through automated recovery
+            </p>
+          </div>
+        ) : null
+      })()}
+
       <div>
         <Label className="text-muted-foreground text-xs uppercase tracking-wide">Config</Label>
         <pre className="mt-1 text-xs bg-muted p-2 rounded overflow-auto max-h-[160px] break-all whitespace-pre-wrap">
@@ -242,12 +270,22 @@ export function JobSourceModalContent({ source: providedSource, sourceId, handle
             )}
           </Button>
         )}
-        {handlers?.onRecover && source.status === "disabled" && (
-          <Button variant="secondary" onClick={() => source.id && handlers.onRecover?.(source.id)} className="w-full sm:w-auto">
-            <Wrench className="mr-2 h-4 w-4" />
-            Recover
-          </Button>
-        )}
+        {handlers?.onRecover && source.status === "disabled" && (() => {
+          const disabledTags = source.configJson?.disabled_tags as Array<string> | undefined
+          const hasDisabledTags = !!(disabledTags && disabledTags.length > 0)
+          return (
+            <Button
+              variant="secondary"
+              onClick={() => source.id && handlers.onRecover?.(source.id)}
+              className="w-full sm:w-auto"
+              disabled={!!source.configJson?.disabled_tags?.length}
+              title={hasDisabledTags ? "Recovery not possible - source has non-recoverable issues" : undefined}
+            >
+              <Wrench className="mr-2 h-4 w-4" />
+              Recover
+            </Button>
+          )
+        })()}
         {handlers?.onDelete && (
           <Button variant="destructive" onClick={() => source.id && handlers.onDelete?.(source.id)} className="w-full sm:w-auto">
             <Trash2 className="mr-2 h-4 w-4" />
