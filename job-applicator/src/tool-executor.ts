@@ -341,9 +341,11 @@ async function handleGetFormFields(): Promise<ToolResult> {
         }
 
         // Try name attribute (common for form fields)
-        if (el.name) {
+        // Use getAttribute to avoid DOM Clobbering
+        const elName = el.getAttribute('name');
+        if (elName) {
           const tag = el.tagName.toLowerCase();
-          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          const nameSelector = tag + '[name="' + CSS.escape(elName) + '"]';
           // Check if this selector is unique
           if (document.querySelectorAll(nameSelector).length === 1) {
             return nameSelector;
@@ -403,8 +405,9 @@ async function handleGetFormFields(): Promise<ToolResult> {
         const selector = buildSelectorPath(el);
 
         // Get label text from multiple sources
-        // Use getAttribute('id') to avoid DOM Clobbering
+        // Use getAttribute to avoid DOM Clobbering
         const fieldId = el.getAttribute('id');
+        const fieldName = el.getAttribute('name');
         let labelEl = null;
         if (fieldId) {
           labelEl = document.querySelector('label[for="' + CSS.escape(fieldId) + '"]');
@@ -415,7 +418,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
         // Also check for preceding label sibling or parent text
         const prevSibling = el.previousElementSibling;
         const prevLabel = prevSibling?.tagName === 'LABEL' ? prevSibling.textContent?.trim() : null;
-        const label = labelEl?.textContent?.trim() || ariaLabel || placeholder || closestLabel || prevLabel || el.name || 'field_' + idx;
+        const label = labelEl?.textContent?.trim() || ariaLabel || placeholder || closestLabel || prevLabel || fieldName || 'field_' + idx;
 
         // Get options for select elements
         let options = null;
@@ -431,7 +434,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
           index: idx,
           selector: selector,
           type: fieldType,
-          name: el.name || null,
+          name: fieldName || null,
           id: fieldId || null,
           label: label,
           value: el.value || '',
@@ -1214,9 +1217,11 @@ async function handleGetButtons(): Promise<ToolResult> {
           const selector = '[data-testid="' + CSS.escape(testId) + '"]';
           if (document.querySelectorAll(selector).length === 1) return selector;
         }
-        if (el.name) {
+        // Use getAttribute to avoid DOM Clobbering
+        const elName = el.getAttribute('name');
+        if (elName) {
           const tag = el.tagName.toLowerCase();
-          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          const nameSelector = tag + '[name="' + CSS.escape(elName) + '"]';
           if (document.querySelectorAll(nameSelector).length === 1) {
             return nameSelector;
           }
@@ -1703,9 +1708,11 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
           const selector = '[data-testid="' + CSS.escape(testId) + '"]';
           if (document.querySelectorAll(selector).length === 1) return selector;
         }
-        if (el.name) {
+        // Use getAttribute to avoid DOM Clobbering
+        const elName = el.getAttribute('name');
+        if (elName) {
           const tag = el.tagName.toLowerCase();
-          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          const nameSelector = tag + '[name="' + CSS.escape(elName) + '"]';
           if (document.querySelectorAll(nameSelector).length === 1) return nameSelector;
         }
         const path = [];
@@ -1783,8 +1790,9 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         }
 
         // Determine if this is for resume or cover letter
-        // Use inputId (already fetched via getAttribute) to avoid DOM Clobbering
-        const contextText = (label + ' ' + (input.name || '') + ' ' + (inputId || '')).toLowerCase();
+        // Use getAttribute to avoid DOM Clobbering
+        const inputName = input.getAttribute('name');
+        const contextText = (label + ' ' + (inputName || '') + ' ' + (inputId || '')).toLowerCase();
         let documentType = 'unknown';
         if (/resume|cv|curriculum/i.test(contextText)) {
           documentType = 'resume';

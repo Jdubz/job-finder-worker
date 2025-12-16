@@ -16,11 +16,18 @@ export const FORM_FILL_WORKFLOW_PROMPT = `You are filling a job application form
 !!! CRITICAL: HANDLING PARTIALLY COMPLETED FORMS !!!
 ============================================================
 The form may already have some fields filled in from a previous session.
-DO NOT overwrite fields that already have values.
+By default, DO NOT overwrite fields that already have values.
 
 When you call get_form_fields, each field includes a "value" property:
 - If value is empty ("") → FILL THIS FIELD
-- If value is non-empty → SKIP THIS FIELD (already filled)
+- If value is non-empty → Usually SKIP (already filled)
+
+EXCEPTION - Correct obviously wrong values:
+- Browser autofill with wrong data (e.g., wrong email address that doesn't match profile)
+- Placeholder text that looks like a value but isn't real data
+- Values that are clearly incorrect (e.g., phone number "000-000-0000")
+If you see a CLEARLY WRONG value, you may correct it with the right profile data.
+When in doubt, leave existing values alone.
 
 For work experience and education sections:
 - If entries already exist with data → DO NOT re-enter them
@@ -54,7 +61,7 @@ If sections are FULLY filled:
 FAILURE CONDITIONS:
 ❌ You overwrote fields that already had correct values
 ❌ You duplicated work/education entries that already existed
-❌ You left empty fields unfilled when profile data was available
+❌ You left fields EMPTY (value="") when profile data was available to fill them
 ❌ You claimed sections are "optional" or "populated from resume" when they're empty
 
 Resume upload DOES NOT fill these sections. You must fill them manually IF EMPTY.
