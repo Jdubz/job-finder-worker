@@ -331,10 +331,13 @@ async function handleGetFormFields(): Promise<ToolResult> {
   const fields = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
+      // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
+      // Forms with <input name="id"> will have their .id property return the input element.
       function buildSelectorPath(el) {
-        // First try ID (must be a non-empty string without "[object" - malformed DOM)
-        if (el.id && typeof el.id === 'string' && !el.id.includes('[object')) {
-          return '#' + CSS.escape(el.id);
+        // First try ID - use getAttribute to avoid DOM Clobbering
+        const elId = el.getAttribute('id');
+        if (elId) {
+          return '#' + CSS.escape(elId);
         }
 
         // Try name attribute (common for form fields)
@@ -353,10 +356,11 @@ async function handleGetFormFields(): Promise<ToolResult> {
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
 
-          // Check for valid ID (must be a non-empty string without "[object")
-          if (current.id && typeof current.id === 'string' && !current.id.includes('[object')) {
+          // Use getAttribute to avoid DOM Clobbering
+          const currentId = current.getAttribute('id');
+          if (currentId) {
             // Found an ancestor with ID - start path from here
-            path.unshift('#' + CSS.escape(current.id));
+            path.unshift('#' + CSS.escape(currentId));
             break;
           }
 
@@ -398,10 +402,12 @@ async function handleGetFormFields(): Promise<ToolResult> {
         // Build a reliable CSS selector
         const selector = buildSelectorPath(el);
 
-        // Get label text from multiple sources (skip label[for] query if no id)
+        // Get label text from multiple sources
+        // Use getAttribute('id') to avoid DOM Clobbering
+        const fieldId = el.getAttribute('id');
         let labelEl = null;
-        if (el.id) {
-          labelEl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+        if (fieldId) {
+          labelEl = document.querySelector('label[for="' + CSS.escape(fieldId) + '"]');
         }
         const ariaLabel = el.getAttribute('aria-label');
         const placeholder = el.getAttribute('placeholder');
@@ -426,7 +432,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
           selector: selector,
           type: fieldType,
           name: el.name || null,
-          id: el.id || null,
+          id: fieldId || null,
           label: label,
           value: el.value || '',
           options: options,
@@ -1194,10 +1200,13 @@ async function handleGetButtons(): Promise<ToolResult> {
   const buttons = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
+      // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
+      // Forms with <input name="id"> will have their .id property return the input element.
       function buildSelectorPath(el) {
-        // Check for valid ID (must be a non-empty string without "[object")
-        if (el.id && typeof el.id === 'string' && !el.id.includes('[object')) {
-          return '#' + CSS.escape(el.id);
+        // Use getAttribute to avoid DOM Clobbering
+        const elId = el.getAttribute('id');
+        if (elId) {
+          return '#' + CSS.escape(elId);
         }
         // Try data-testid or data-qa (common in modern apps)
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa') || el.getAttribute('data-cy');
@@ -1216,9 +1225,10 @@ async function handleGetButtons(): Promise<ToolResult> {
         let current = el;
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
-          // Check for valid ID (must be a non-empty string without "[object")
-          if (current.id && typeof current.id === 'string' && !current.id.includes('[object')) {
-            path.unshift('#' + CSS.escape(current.id));
+          // Use getAttribute to avoid DOM Clobbering
+          const currentId = current.getAttribute('id');
+          if (currentId) {
+            path.unshift('#' + CSS.escape(currentId));
             break;
           }
           const parent = current.parentElement;
@@ -1682,9 +1692,12 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
   const uploadAreas = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
+      // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
+      // Forms with <input name="id"> will have their .id property return the input element.
       function buildSelectorPath(el) {
-        // Check for valid ID (must be a non-empty string without "[object")
-        if (el.id && typeof el.id === 'string' && !el.id.includes('[object')) return '#' + CSS.escape(el.id);
+        // Use getAttribute to avoid DOM Clobbering
+        const elId = el.getAttribute('id');
+        if (elId) return '#' + CSS.escape(elId);
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa');
         if (testId) {
           const selector = '[data-testid="' + CSS.escape(testId) + '"]';
@@ -1699,9 +1712,10 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         let current = el;
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
-          // Check for valid ID (must be a non-empty string without "[object")
-          if (current.id && typeof current.id === 'string' && !current.id.includes('[object')) {
-            path.unshift('#' + CSS.escape(current.id));
+          // Use getAttribute to avoid DOM Clobbering
+          const currentId = current.getAttribute('id');
+          if (currentId) {
+            path.unshift('#' + CSS.escape(currentId));
             break;
           }
           const parent = current.parentElement;
@@ -1736,9 +1750,10 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         let triggerSelector = null;
         let label = input.getAttribute('aria-label') || '';
 
-        // Check for label[for]
-        if (input.id) {
-          const labelEl = document.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+        // Check for label[for] - use getAttribute to avoid DOM Clobbering
+        const inputId = input.getAttribute('id');
+        if (inputId) {
+          const labelEl = document.querySelector('label[for="' + CSS.escape(inputId) + '"]');
           if (labelEl) {
             label = labelEl.textContent?.trim() || label;
             if (isHidden) {
@@ -1768,7 +1783,8 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         }
 
         // Determine if this is for resume or cover letter
-        const contextText = (label + ' ' + (input.name || '') + ' ' + (input.id || '')).toLowerCase();
+        // Use inputId (already fetched via getAttribute) to avoid DOM Clobbering
+        const contextText = (label + ' ' + (input.name || '') + ' ' + (inputId || '')).toLowerCase();
         let documentType = 'unknown';
         if (/resume|cv|curriculum/i.test(contextText)) {
           documentType = 'resume';
