@@ -23,16 +23,26 @@ const defaultArtifactsDir = path.resolve('/data/artifacts')
 const artifactsRoot = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : defaultArtifactsDir
 const publicBasePath = env.GENERATOR_ARTIFACTS_PUBLIC_BASE ?? '/api/generator/artifacts'
 
+const MAX_FILENAME_LENGTH = 55
+const INITIAL_NAME_MAX_LENGTH = 28
+const INITIAL_ROLE_MAX_LENGTH = 32
+const MIN_ROLE_LENGTH = 8
+const MIN_NAME_LENGTH = 6
+const UNDERSCORE_TRUNCATION_SLOP = 10 // allow shaving a short tail after the last underscore
+
 async function ensureDir(dirPath: string) {
   await fs.mkdir(dirPath, { recursive: true })
 }
 
-function sanitize(value: string): string {
-  return value
+function sanitize(value: string, maxLength = 40): string {
+  const cleaned = value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 50)
+
+  if (!cleaned) return 'unknown'
+
+  return cleaned.slice(0, maxLength)
 }
 
 function generateSecureToken(): string {
@@ -40,19 +50,60 @@ function generateSecureToken(): string {
   return randomBytes(6).toString('hex')
 }
 
-function buildHumanReadablePath(metadata: ArtifactMetadata): { folder: string; filename: string } {
+function buildFilename(metadata: ArtifactMetadata): string {
+  const extension = '.pdf'
+  const maxBaseLength = MAX_FILENAME_LENGTH - extension.length
+
+  // Keep the final label short for forms that reject long filenames
+  const typeLabel = metadata.type === 'cover-letter' ? 'letter' : metadata.type
+
+  // Company is intentionally omitted from the filename to keep it short for form uploads
+  let name = sanitize(metadata.name, INITIAL_NAME_MAX_LENGTH)
+  let role = sanitize(metadata.role, INITIAL_ROLE_MAX_LENGTH)
+
+  let base = `${name}_${role}_${typeLabel}`
+
+  // If the base is too long, trim the role first, then the name, keeping underscores and type intact.
+  if (base.length > maxBaseLength) {
+    const maxRole = Math.max(MIN_ROLE_LENGTH, maxBaseLength - (name.length + typeLabel.length + 2))
+    if (role.length > maxRole) {
+      role = role.slice(0, maxRole)
+      base = `${name}_${role}_${typeLabel}`
+    }
+  }
+
+  if (base.length > maxBaseLength) {
+    const maxName = Math.max(MIN_NAME_LENGTH, maxBaseLength - (role.length + typeLabel.length + 2))
+    if (name.length > maxName) {
+      name = name.slice(0, maxName)
+      base = `${name}_${role}_${typeLabel}`
+    }
+  }
+
+  if (base.length > maxBaseLength) {
+    // Prefer to truncate at the last underscore if it keeps the cut near the end, for readability
+    const truncated = base.slice(0, maxBaseLength)
+    const lastUnderscore = truncated.lastIndexOf('_')
+    if (lastUnderscore > 0 && maxBaseLength - lastUnderscore <= UNDERSCORE_TRUNCATION_SLOP) {
+      base = truncated.slice(0, lastUnderscore)
+    } else {
+      base = truncated
+    }
+  }
+
+  return `${base}${extension}`
+}
+
+function buildHumanReadablePath(
+  metadata: ArtifactMetadata,
+  options?: { runId?: string }
+): { folder: string; filename: string } {
   const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD in UTC
-  const company = sanitize(metadata.company)
-  const role = sanitize(metadata.role)
-  const name = sanitize(metadata.name)
-  const type = metadata.type
-  const token = generateSecureToken()
+  const runFolder = sanitize(options?.runId ?? `run-${generateSecureToken()}`, 32)
+  const filename = buildFilename(metadata)
 
-  // Folder: {date}/ (flat per-day bucket to avoid deep nesting)
-  const folder = date
-
-  // Filename: {name}_{company}_{role}_{type}_{token}.pdf (token keeps paths non-guessable)
-  const filename = `${name}_${company}_${role}_${type}_${token}.pdf`
+  // Folder structure: {date}/{run}/ to avoid filename collisions across runs
+  const folder = path.posix.join(date, runFolder)
 
   return { folder, filename }
 }
@@ -72,11 +123,15 @@ export class LocalStorageService {
 
   /**
    * Save artifact with human-readable folder structure and filename
-   * Path: {date}/{company}_{role}/{name}_{company}_{role}_{type}.pdf
+   * Path: {date}/{run}/{name}_{role}_{type}.pdf (<= 55 chars filename)
    */
-  async saveArtifactWithMetadata(buffer: Buffer, metadata: ArtifactMetadata): Promise<UploadResult> {
-    const { folder, filename } = buildHumanReadablePath(metadata)
-    const relativePath = path.join(folder, filename)
+  async saveArtifactWithMetadata(
+    buffer: Buffer,
+    metadata: ArtifactMetadata,
+    options?: { runId?: string }
+  ): Promise<UploadResult> {
+    const { folder, filename } = buildHumanReadablePath(metadata, options)
+    const relativePath = path.posix.join(folder, filename)
     const absolutePath = path.join(this.rootDir, relativePath)
     await ensureDir(path.dirname(absolutePath))
     await fs.writeFile(absolutePath, buffer)

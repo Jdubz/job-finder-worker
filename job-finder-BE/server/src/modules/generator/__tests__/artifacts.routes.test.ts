@@ -7,9 +7,9 @@
  * - Security: path traversal prevention
  * - File serving behavior
  *
- * CRITICAL: The storage service creates paths with 2 segments: {date}/{filename}
- * The route handler MUST match this structure. This test prevents regression
- * of the bug where the route expected 3 segments but storage created 2.
+ * CRITICAL: The storage service creates paths with 3 segments: {date}/{run}/{filename}
+ * The route handler MUST match this structure. This test prevents regressions
+ * when storage and routing disagree on the segment count.
  */
 
 import path from 'node:path'
@@ -45,8 +45,8 @@ describe('Generator artifacts routes', () => {
      * CRITICAL TEST: Storage service path format must match route handler
      *
      * This test caught the bug where:
-     * - Storage created: /2025-12-04/filename.pdf (2 segments)
-     * - Route expected: /:date/:folder/:filename (3 segments)
+     * - Storage created: /2025-12-04/run-abc/filename.pdf (3 segments)
+     * - Route expected: /:date/:run/:filename
      *
      * The route MUST accept the exact path format that storage produces.
      */
@@ -63,11 +63,12 @@ describe('Generator artifacts routes', () => {
 
       const saved = await storageService.saveArtifactWithMetadata(testContent, metadata)
 
-      // Verify storage path has exactly 2 segments: date/filename
+      // Verify storage path has exactly 3 segments: date/run/filename
       const pathSegments = saved.storagePath.split('/')
-      expect(pathSegments).toHaveLength(2)
+      expect(pathSegments).toHaveLength(3)
       expect(pathSegments[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/) // YYYY-MM-DD
-      expect(pathSegments[1]).toMatch(/\.pdf$/) // ends with .pdf
+      expect(pathSegments[1]).toMatch(/^run-[a-f0-9]{12}$/) // run folder
+      expect(pathSegments[2]).toMatch(/\.pdf$/) // ends with .pdf
 
       // Create the public URL and verify it can be served
       const publicUrl = storageService.createPublicUrl(saved.storagePath)
@@ -106,7 +107,7 @@ describe('Generator artifacts routes', () => {
   describe('Route parameter validation', () => {
     beforeEach(async () => {
       // Create a known test file for validation tests
-      const testDir = path.join(artifactsDir, '2024-01-15')
+      const testDir = path.join(artifactsDir, '2024-01-15', 'testrun')
       await fs.mkdir(testDir, { recursive: true })
       await fs.writeFile(
         path.join(testDir, 'test_acme_engineer_resume_abc123def456.pdf'),
@@ -126,7 +127,7 @@ describe('Generator artifacts routes', () => {
 
       for (const date of invalidDates) {
         const response = await request(app)
-          .get(`/api/generator/artifacts/${date}/test.pdf`)
+          .get(`/api/generator/artifacts/${date}/testrun/test.pdf`)
           .set('Authorization', 'Bearer bypass-token')
 
         // Should not return 200 for invalid date formats
@@ -144,7 +145,7 @@ describe('Generator artifacts routes', () => {
 
       for (const date of invalidCalendarDates) {
         const response = await request(app)
-          .get(`/api/generator/artifacts/${date}/test.pdf`)
+          .get(`/api/generator/artifacts/${date}/testrun/test.pdf`)
           .set('Authorization', 'Bearer bypass-token')
 
         // Should not return 200 for invalid calendar dates
@@ -154,7 +155,7 @@ describe('Generator artifacts routes', () => {
 
     it('should return 404 for non-existent files', async () => {
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-15/nonexistent.pdf')
+        .get('/api/generator/artifacts/2024-01-15/testrun/nonexistent.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       expect(response.status).toBe(404)
@@ -163,7 +164,7 @@ describe('Generator artifacts routes', () => {
 
     it('should successfully serve existing files', async () => {
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-15/test_acme_engineer_resume_abc123def456.pdf')
+        .get('/api/generator/artifacts/2024-01-15/testrun/test_acme_engineer_resume_abc123def456.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       expect(response.status).toBe(200)
@@ -174,9 +175,9 @@ describe('Generator artifacts routes', () => {
   describe('Security: path traversal prevention', () => {
     it('should sanitize path segments to prevent directory traversal', async () => {
       const maliciousPaths = [
-        '/api/generator/artifacts/2024-01-15/../../../etc/passwd',
-        '/api/generator/artifacts/2024-01-15/..%2F..%2Fetc/passwd',
-        '/api/generator/artifacts/2024-01-15/test/../../secret.pdf',
+        '/api/generator/artifacts/2024-01-15/testrun/../../../etc/passwd',
+        '/api/generator/artifacts/2024-01-15/testrun/..%2F..%2Fetc/passwd',
+        '/api/generator/artifacts/2024-01-15/testrun/test/../../secret.pdf',
       ]
 
       for (const maliciousPath of maliciousPaths) {
@@ -192,7 +193,7 @@ describe('Generator artifacts routes', () => {
     it('should strip special characters from filename', async () => {
       // These should be sanitized and result in 404 (file not found after sanitization)
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-15/test<script>alert(1)</script>.pdf')
+        .get('/api/generator/artifacts/2024-01-15/testrun/test<script>alert(1)</script>.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       // Should be 404 because sanitization removes the special chars
@@ -202,7 +203,7 @@ describe('Generator artifacts routes', () => {
 
   describe('Response headers', () => {
     beforeEach(async () => {
-      const testDir = path.join(artifactsDir, '2024-01-20')
+      const testDir = path.join(artifactsDir, '2024-01-20', 'testrun')
       await fs.mkdir(testDir, { recursive: true })
       await fs.writeFile(
         path.join(testDir, 'headers_test_resume_abc123.pdf'),
@@ -212,7 +213,7 @@ describe('Generator artifacts routes', () => {
 
     it('should set correct content-type for PDF files', async () => {
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
+        .get('/api/generator/artifacts/2024-01-20/testrun/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       expect(response.status).toBe(200)
@@ -221,7 +222,7 @@ describe('Generator artifacts routes', () => {
 
     it('should set content-length header', async () => {
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
+        .get('/api/generator/artifacts/2024-01-20/testrun/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       expect(response.status).toBe(200)
@@ -231,7 +232,7 @@ describe('Generator artifacts routes', () => {
 
     it('should set cache-control header for private caching', async () => {
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
+        .get('/api/generator/artifacts/2024-01-20/testrun/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       expect(response.status).toBe(200)
@@ -240,7 +241,7 @@ describe('Generator artifacts routes', () => {
 
     it('should set content-disposition header', async () => {
       const response = await request(app)
-        .get('/api/generator/artifacts/2024-01-20/headers_test_resume_abc123.pdf')
+        .get('/api/generator/artifacts/2024-01-20/testrun/headers_test_resume_abc123.pdf')
         .set('Authorization', 'Bearer bypass-token')
 
       expect(response.status).toBe(200)
@@ -264,7 +265,7 @@ describe('Storage service path format', () => {
     await fs.rm(artifactsDir, { recursive: true, force: true })
   })
 
-  it('should create paths with exactly 2 segments: date/filename', async () => {
+  it('should create paths with exactly 3 segments: date/run/filename', async () => {
     const metadata: ArtifactMetadata = {
       name: 'Test User',
       company: 'Test Company',
@@ -277,15 +278,15 @@ describe('Storage service path format', () => {
       metadata
     )
 
-    // This is the contract: storage paths MUST have exactly 2 segments
+    // This is the contract: storage paths MUST have exactly 3 segments
     const segments = result.storagePath.split('/')
-    expect(segments).toHaveLength(2)
+    expect(segments).toHaveLength(3)
     expect(segments[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    expect(segments[1]).toContain('test-user')
-    expect(segments[1]).toContain('test-company')
-    expect(segments[1]).toContain('test-role')
-    expect(segments[1]).toContain('resume')
-    expect(segments[1]).toMatch(/\.pdf$/)
+    expect(segments[1]).toBeTruthy()
+    expect(segments[2]).toContain('test-user')
+    expect(segments[2]).toContain('test-role')
+    expect(segments[2]).toContain('resume')
+    expect(segments[2]).toMatch(/\.pdf$/)
   })
 
   it('should create public URLs matching the route pattern', async () => {
@@ -303,13 +304,14 @@ describe('Storage service path format', () => {
 
     const publicUrl = storageService.createPublicUrl(result.storagePath)
 
-    // Public URL must follow: /api/generator/artifacts/{date}/{filename}
-    expect(publicUrl).toMatch(/^\/api\/generator\/artifacts\/\d{4}-\d{2}-\d{2}\/[a-z0-9_-]+\.pdf$/)
+    // Public URL must follow: /api/generator/artifacts/{date}/{run}/{filename}
+    expect(publicUrl).toMatch(/^\/api\/generator\/artifacts\/\d{4}-\d{2}-\d{2}\/[^/]+\/[a-z0-9_-]+\.pdf$/)
 
     // Verify the URL can be parsed back to the expected route params
     const urlPath = publicUrl.replace('/api/generator/artifacts/', '')
-    const [date, filename] = urlPath.split('/')
+    const [date, run, filename] = urlPath.split('/')
     expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(run).toMatch(/^run-[a-f0-9]{12}$/)
     expect(filename).toBeTruthy()
   })
 
@@ -331,7 +333,7 @@ describe('Storage service path format', () => {
     expect(result.filename).toMatch(/^[\w\-_.]+$/)
   })
 
-  it('should truncate long values to prevent path length issues', async () => {
+  it('should truncate long values to keep filename within 55 chars', async () => {
     const metadata: ArtifactMetadata = {
       name: 'A'.repeat(100),
       company: 'B'.repeat(100),
@@ -344,8 +346,7 @@ describe('Storage service path format', () => {
       metadata
     )
 
-    // Each component should be truncated to 50 chars
     const filename = result.filename
-    expect(filename.length).toBeLessThan(300) // reasonable total length
+    expect(filename.length).toBeLessThanOrEqual(55)
   })
 })
