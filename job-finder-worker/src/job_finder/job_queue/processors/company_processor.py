@@ -501,6 +501,8 @@ class CompanyProcessor(BaseProcessor):
 
             return heuristic_choice
 
+        return heuristic_choice
+
     def _find_career_page_if_needed(
         self,
         company_id: Optional[str],
@@ -586,8 +588,14 @@ class CompanyProcessor(BaseProcessor):
             )
 
         # Deduplicate while preserving order
-        seen_queries = set()
-        queries = [q for q in queries if not (q in seen_queries or seen_queries.add(q))]
+        seen_queries: set[str] = set()
+        deduped: List[str] = []
+        for q in queries:
+            if q in seen_queries:
+                continue
+            seen_queries.add(q)
+            deduped.append(q)
+        queries = deduped
 
         try:
             aggregated: List[SearchResult] = []
