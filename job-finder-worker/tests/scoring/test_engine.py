@@ -640,12 +640,20 @@ class TestScoringEngine:
 
         result = engine.score(extraction, "ML Engineer", "Machine learning role")
 
-        # Count how many times "ml" appears in missing adjustments
-        missing_adjustments = [a for a in result.adjustments if "Missing" in a.reason]
+        # Parse the missing skills list to check for duplicates
+        # Use startswith to avoid substring false positives (e.g., 'ml' in 'html')
+        missing_adjustments = [a for a in result.adjustments if a.reason.startswith("Missing: ")]
         if missing_adjustments:
-            missing_text = " ".join(a.reason for a in missing_adjustments)
-            ml_count = missing_text.lower().count("ml")
-            assert ml_count <= 1, f"ml should appear at most once in missing, got: {missing_text}"
+            assert (
+                len(missing_adjustments) == 1
+            ), "Expected only one adjustment for all missing skills"
+            missing_reason = missing_adjustments[0].reason
+            missing_skills_str = missing_reason.replace("Missing: ", "")
+            missing_skills = [s.strip() for s in missing_skills_str.split(",")]
+            ml_count = missing_skills.count("ml")
+            assert (
+                ml_count == 1
+            ), f"'ml' should be missing exactly once, but was found {ml_count} times in {missing_skills}"
 
     def test_company_size_large_company_bonus(self, default_config):
         """Large companies should get bonus based on employee count threshold."""

@@ -32,6 +32,7 @@ If you need a new scoring adjustment, ADD IT TO THE CONFIG. Do not hardcode.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
@@ -1053,18 +1054,28 @@ class ScoringEngine:
         if ai_ml_score:
             # Use the aiMlFocus field from company data (set during enrichment)
             # Also check description and tech stack for AI/ML indicators
+            # Use word boundaries to avoid false positives (e.g., 'llm' in 'small')
             ai_keywords = [
                 "machine learning",
                 "artificial intelligence",
+                "ai",
+                "ml",
                 "deep learning",
                 "llm",
                 "generative ai",
             ]
+            tech_keywords = ["pytorch", "tensorflow", "ml", "ai"]
             has_ai_focus = (
                 ai_ml_focus
-                or any(kw in description for kw in ai_keywords)
                 or any(
-                    any(kw in str(t).lower() for kw in ["pytorch", "tensorflow"])
+                    re.search(rf"\b{re.escape(kw)}\b", description, re.IGNORECASE)
+                    for kw in ai_keywords
+                )
+                or any(
+                    any(
+                        re.search(rf"\b{re.escape(kw)}\b", str(t), re.IGNORECASE)
+                        for kw in tech_keywords
+                    )
                     for t in tech_stack
                 )
             )
