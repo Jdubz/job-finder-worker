@@ -52,10 +52,6 @@ const matchPolicy: MatchPolicy = {
     maxBonus: 25,
     maxPenalty: -15,
   },
-  skills: {
-    bonusPerSkill: 2,
-    maxSkillBonus: 15,
-  },
   salary: {
     minimum: null,
     target: null,

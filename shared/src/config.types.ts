@@ -315,14 +315,6 @@ export interface SkillMatchConfig {
   maxPenalty: number
 }
 
-/** Skill keyword matching in job descriptions (supplemental to technology extraction) */
-export interface SkillsKeywordConfig {
-  /** Points per matched user skill found in description */
-  bonusPerSkill: number
-  /** Maximum total bonus from keyword skill matching */
-  maxSkillBonus: number
-}
-
 /** Salary preferences */
 export interface SalaryConfig {
   /** Minimum acceptable salary (hard floor) */
@@ -427,10 +419,8 @@ export interface MatchPolicy {
   seniority: SeniorityConfig
   /** Location and remote work preferences */
   location: LocationConfig
-  /** Skill/technology matching */
+  /** Skill/technology matching (unified scoring - no separate keyword matching) */
   skillMatch: SkillMatchConfig
-  /** Skill keyword matching in descriptions */
-  skills: SkillsKeywordConfig
   /** Salary preferences */
   salary: SalaryConfig
   /** @deprecated Experience scoring is disabled - this field is ignored */

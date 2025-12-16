@@ -160,11 +160,6 @@ const skillMatchConfigSchema = z.object({
   maxPenalty: z.number(),
 })
 
-const skillsKeywordConfigSchema = z.object({
-  bonusPerSkill: z.number(),
-  maxSkillBonus: z.number(),
-})
-
 const salaryConfigSchema = z.object({
   minimum: z.number().nullable(),
   target: z.number().nullable(),
@@ -217,7 +212,6 @@ export const matchPolicySchema = z.object({
   seniority: seniorityConfigSchema,
   location: locationConfigSchema,
   skillMatch: skillMatchConfigSchema,
-  skills: skillsKeywordConfigSchema,
   salary: salaryConfigSchema,
   experience: experienceConfigSchema,
   freshness: freshnessConfigSchema,

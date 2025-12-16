@@ -5,12 +5,11 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, For
 import { Input } from "@/components/ui/input"
 import { TabCard } from "../shared"
 import { StringListField, NumericField, CheckboxRow, ImpactBadge, InfoTooltip } from "../shared/form-fields"
-import type { MatchPolicy, SkillsKeywordConfig } from "@shared/types"
+import type { MatchPolicy } from "@shared/types"
 
 // Skill relationships (synonyms, implies, parallels) are now managed by taxonomy in DB
-type MatchPolicyFormValues = Omit<MatchPolicy, "skills"> & {
-  skills: SkillsKeywordConfig
-}
+// Skills keyword matching has been consolidated into skillMatch (single skill scoring pipeline)
+type MatchPolicyFormValues = MatchPolicy
 
 type MatchPolicyTabProps = {
   isSaving: boolean
@@ -22,15 +21,8 @@ type MatchPolicyTabProps = {
 const cleanList = (items?: string[]) => (items ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)
 
 // No defaults - config is required and validated by backend
-const defaultSkills: SkillsKeywordConfig = {
-  bonusPerSkill: 2,
-  maxSkillBonus: 15,
-}
-
-// No defaults - config is required and validated by backend
 const mapConfigToForm = (config: MatchPolicy): MatchPolicyFormValues => ({
   ...config,
-  skills: config.skills || defaultSkills,
 })
 
 const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
@@ -59,6 +51,7 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     relocationAllowed: values.location.relocationAllowed,
   },
   // Skill relationships (synonyms, implies, parallels) are now managed by taxonomy
+  // Skills keyword matching has been consolidated into skillMatch (single skill scoring pipeline)
   skillMatch: {
     baseMatchScore: values.skillMatch.baseMatchScore,
     yearsMultiplier: values.skillMatch.yearsMultiplier,
@@ -68,10 +61,6 @@ const mapFormToConfig = (values: MatchPolicyFormValues): MatchPolicy => ({
     analogScore: values.skillMatch.analogScore,
     maxBonus: values.skillMatch.maxBonus,
     maxPenalty: values.skillMatch.maxPenalty,
-  },
-  skills: {
-    bonusPerSkill: values.skills.bonusPerSkill,
-    maxSkillBonus: values.skills.maxSkillBonus,
   },
   salary: {
     minimum: values.salary.minimum,
@@ -466,33 +455,6 @@ export function MatchPolicyTab({ isSaving, config, onSave, onReset }: MatchPolic
                 Skills and experience years are derived from your content items.
                 Skill relationships (synonyms, implies, parallels) are managed by the taxonomy system.
               </p>
-            </section>
-
-            {/* Skills Keyword Matching */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold">Skill Keyword Matching</h3>
-                <ImpactBadge label="Score adjustment" tone="neutral" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Additional scoring based on your skills found in job descriptions (supplemental to technology extraction).
-              </p>
-              <div className="grid gap-6 md:grid-cols-2">
-                <NumericField
-                  control={form.control}
-                  name="skills.bonusPerSkill"
-                  label="Bonus Per Skill"
-                  description="Points per matched skill in description."
-                  info="Score adjustment for each user skill found in job description text."
-                />
-                <NumericField
-                  control={form.control}
-                  name="skills.maxSkillBonus"
-                  label="Max Skill Bonus"
-                  description="Cap on total keyword skill bonus."
-                  info="Maximum total points from skill keyword matching."
-                />
-              </div>
             </section>
 
             {/* Salary Preferences */}
