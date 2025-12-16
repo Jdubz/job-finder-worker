@@ -747,6 +747,7 @@ class SourceProcessor(BaseProcessor):
         headers.update(sc.headers or {})
 
         resp = None
+        text_sample: Optional[str] = None  # Capture sample before any exceptions
         try:
             if sc.type == "api":
                 if sc.method.upper() == "POST":
@@ -771,7 +772,7 @@ class SourceProcessor(BaseProcessor):
             if sc.type == "rss":
                 resp = requests.get(sc.url, headers=headers, timeout=25)
                 status_code = resp.status_code
-                text_sample = (resp.text or "")[:4000]
+                text_sample = (resp.text or "")[:4000]  # Capture before raise_for_status
                 resp.raise_for_status()
                 feed = feedparser.parse(resp.text)
                 job_count = len(feed.entries or [])
@@ -796,11 +797,13 @@ class SourceProcessor(BaseProcessor):
                         )
                     )
                     html = result.html
+                    text_sample = html[:4000]  # Capture for exception handler
                     # Use status code from renderer if available, default to 200
                     status_code = getattr(result, "status_code", 200)
                 else:
                     resp = requests.get(sc.url, headers=headers, timeout=25)
                     status_code = resp.status_code
+                    text_sample = (resp.text or "")[:4000]  # Capture before raise
                     resp.raise_for_status()
                     html = resp.text
                 soup = BeautifulSoup(html, "html.parser")
@@ -817,7 +820,10 @@ class SourceProcessor(BaseProcessor):
 
         except Exception as exc:  # noqa: BLE001
             status_code = getattr(resp, "status_code", None) if resp is not None else None
-            return ProbeResult(status="error", status_code=status_code, hint=str(exc))
+            # Include captured sample so _is_protected_error can detect patterns
+            return ProbeResult(
+                status="error", status_code=status_code, hint=str(exc), sample=text_sample
+            )
 
     def _agent_validate_empty(
         self,
