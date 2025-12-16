@@ -557,12 +557,18 @@ class TestConstants:
         assert CONTENT_SAMPLE_FETCH_LIMIT >= 4000
         assert CONTENT_SAMPLE_PROMPT_LIMIT >= 4000
 
-    def test_probe_timeout_is_shorter_than_default(self):
-        """Verify probe timeout is shorter for fast failure."""
+    def test_probe_timeout_matches_default(self):
+        """Verify probe timeout matches default to avoid false negatives.
+
+        Previously the probe timeout was shorter (10s vs 20s) which caused
+        valid JS-rendered sources to fail during recovery because they didn't
+        have enough time to render. The probe timeout should match normal
+        render timeout to give pages the same rendering window.
+        """
         from job_finder.scrapers.source_config import DEFAULT_RENDER_TIMEOUT_MS
 
-        assert PROBE_RENDER_TIMEOUT_MS < DEFAULT_RENDER_TIMEOUT_MS
-        assert PROBE_RENDER_TIMEOUT_MS >= 5000  # At least 5 seconds
+        assert PROBE_RENDER_TIMEOUT_MS == DEFAULT_RENDER_TIMEOUT_MS
+        assert PROBE_RENDER_TIMEOUT_MS >= 15000  # At least 15 seconds for JS rendering
 
 
 class TestAgentTypeChange:
@@ -652,3 +658,127 @@ class TestProbeHintInErrorDetails:
         final_call = calls[-1]
         assert final_call[0][1] == QueueStatus.FAILED
         assert "Timeout waiting for selector" in final_call[0][2]
+
+
+class TestTypeJsonNormalization:
+    """Test that type=json is normalized to type=api."""
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_normalizes_type_json_to_api(self, mock_extract_json, source_processor):
+        """Test that agent proposing type=json is normalized to type=api."""
+        source_processor.agent_manager = Mock()
+        source_processor.agent_manager.execute.return_value = Mock(
+            text='{"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}'
+        )
+        mock_extract_json.return_value = '{"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}'
+
+        result = source_processor._agent_recover_source(
+            source_name="Test API",
+            url="https://api.example.com/jobs",
+            current_config={"type": "html", "url": "https://api.example.com/jobs"},
+            disabled_notes="",
+            content_sample='{"content": [{"name": "Test Job", "applyUrl": "/apply/123"}]}',
+        )
+
+        assert result is not None
+        assert result["type"] == "api"  # Should be normalized to "api", not "json"
+        assert result["response_path"] == "content"
+
+
+class TestAgentURLChange:
+    """Test that agent can propose different URLs."""
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_uses_agent_url_for_html_type(self, mock_extract_json, source_processor):
+        """Test that agent's proposed URL is used for HTML sources (e.g., URL redirects)."""
+        source_processor.agent_manager = Mock()
+        new_url = "https://example.com/careers/all-jobs"
+        source_processor.agent_manager.execute.return_value = Mock(
+            text=f'{{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}'
+        )
+        mock_extract_json.return_value = f'{{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}'
+
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url="https://example.com/careers",  # Original URL (redirects to new one)
+            current_config={"type": "html", "url": "https://example.com/careers"},
+            disabled_notes="",
+            content_sample="<div class='job'></div>",
+        )
+
+        assert result is not None
+        assert result["type"] == "html"
+        assert result["url"] == new_url  # Should use agent's URL, not original
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_uses_agent_url_for_api_type(self, mock_extract_json, source_processor):
+        """Test that agent's proposed URL is used for API type changes."""
+        source_processor.agent_manager = Mock()
+        new_api_url = "https://api.example.com/v1/jobs"
+        source_processor.agent_manager.execute.return_value = Mock(
+            text=f'{{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}'
+        )
+        mock_extract_json.return_value = f'{{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}'
+
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url="https://example.com/careers",  # Original HTML page URL
+            current_config={"type": "html", "url": "https://example.com/careers"},
+            disabled_notes="",
+            content_sample='<script>fetch("/api/v1/jobs")</script>',
+        )
+
+        assert result is not None
+        assert result["type"] == "api"
+        assert result["url"] == new_api_url  # Should use agent's URL, not original
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_falls_back_to_original_url_when_not_provided(
+        self, mock_extract_json, source_processor
+    ):
+        """Test that original URL is used when agent doesn't provide one."""
+        source_processor.agent_manager = Mock()
+        source_processor.agent_manager.execute.return_value = Mock(
+            text='{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+        )
+        mock_extract_json.return_value = (
+            '{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+        )
+
+        original_url = "https://example.com/api/jobs"
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url=original_url,
+            current_config={"type": "html", "url": original_url},
+            disabled_notes="",
+            content_sample='{"jobs": []}',
+        )
+
+        assert result is not None
+        assert result["url"] == original_url  # Should fall back to original
+
+
+class TestBodyNormalization:
+    """Test that body is normalized to post_body for API configs."""
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_normalizes_body_to_post_body(self, mock_extract_json, source_processor):
+        """Test that agent using 'body' key gets normalized to 'post_body'."""
+        source_processor.agent_manager = Mock()
+        source_processor.agent_manager.execute.return_value = Mock(
+            text='{"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+        )
+        mock_extract_json.return_value = '{"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url="https://example.com/careers",
+            current_config={"type": "html", "url": "https://example.com/careers"},
+            disabled_notes="",
+            content_sample="<html></html>",
+        )
+
+        assert result is not None
+        assert "post_body" in result
+        assert result["post_body"] == {"limit": 20}
+        assert "body" not in result  # Should be removed after normalization
