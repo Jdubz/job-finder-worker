@@ -28,10 +28,13 @@ from job_finder.job_queue.models import (
     SourceDiscoveryConfig,
     SourceTypeHint,
 )
+from job_finder.utils.url_utils import get_root_domain
 
 from .base_processor import BaseProcessor
 
 logger = logging.getLogger(__name__)
+
+MAX_CAREER_SEARCH_QUERIES = 8  # cap to avoid long sequential search latency
 
 
 class CompanyProcessor(BaseProcessor):
@@ -199,7 +202,7 @@ class CompanyProcessor(BaseProcessor):
             search_discovered = False
             if not job_board_url:
                 job_board_url, search_discovered = self._find_career_page_if_needed(
-                    company_id, company_name, company_display
+                    company_id, company_name, company_display, extracted_info.get("website")
                 )
 
             source_spawned = False
@@ -498,7 +501,6 @@ class CompanyProcessor(BaseProcessor):
             return heuristic_choice
         except Exception as exc:  # noqa: BLE001
             logger.warning("Career page agent selection failed for %s: %s", company_name, exc)
-
         return heuristic_choice
 
     def _find_career_page_if_needed(
@@ -506,6 +508,7 @@ class CompanyProcessor(BaseProcessor):
         company_id: Optional[str],
         company_name: str,
         company_display: str,
+        website: Optional[str] = None,
     ) -> tuple[Optional[str], bool]:
         """
         Search for a career page if the company doesn't already have a source.
@@ -536,14 +539,16 @@ class CompanyProcessor(BaseProcessor):
 
         # Agent-driven career page discovery
         logger.info("Searching for career page for %s (no existing sources)", company_display)
-        job_board_url = self._agent_find_career_page(company_name)
+        job_board_url = self._agent_find_career_page(company_name, website)
         if job_board_url:
             return job_board_url, True
 
         logger.info("No career page found via search for %s", company_display)
         return None, False
 
-    def _agent_find_career_page(self, company_name: str) -> Optional[str]:
+    def _agent_find_career_page(
+        self, company_name: str, website: Optional[str] = None
+    ) -> Optional[str]:
         """Use the agent (without heuristics) to pick a career page URL from search results."""
         search_client = get_search_client()
         if not search_client:
@@ -553,14 +558,54 @@ class CompanyProcessor(BaseProcessor):
             )
             return None
 
+        # Build diverse queries to surface the real job board (api/ats or /careers)
+        queries: List[str] = [
+            f"{company_name} careers",
+            f"{company_name} jobs",
+            f"{company_name} job openings",
+        ]
+
+        root_domain: Optional[str] = None
+        if website:
+            try:
+                parsed = urlparse(website if "//" in website else f"https://{website}")
+                host = parsed.netloc or parsed.path
+                root_domain = get_root_domain(host)
+            except Exception:  # noqa: BLE001
+                root_domain = None
+
+        if root_domain:
+            queries.extend(
+                [
+                    f"site:{root_domain} careers",
+                    f"site:{root_domain} jobs",
+                    f"{root_domain} careers",
+                    f"{root_domain} jobs",
+                    f"{company_name} careers {root_domain}",
+                ]
+            )
+
+        # Deduplicate while preserving order
+        queries = [q for q in dict.fromkeys(queries)][:MAX_CAREER_SEARCH_QUERIES]
+
         try:
-            results = search_client.search(f"{company_name} careers jobs", max_results=10)
-            if not results:
+            aggregated: List[SearchResult] = []
+            seen_urls = set()
+            for q in queries:
+                search_results = search_client.search(q, max_results=6) or []
+                for r in search_results:
+                    url_lower = (r.url or "").lower()
+                    if not url_lower or url_lower in seen_urls:
+                        continue
+                    seen_urls.add(url_lower)
+                    aggregated.append(r)
+
+            if not aggregated:
                 return None
 
             trimmed: List[Dict[str, str]] = []
             max_serialized_len = 4000
-            for idx, r in enumerate(results):
+            for idx, r in enumerate(aggregated):
                 candidate = {
                     "rank": idx + 1,
                     "title": (r.title or "")[:120],
