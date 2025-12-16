@@ -391,7 +391,9 @@ async function handleGetFormFields(): Promise<ToolResult> {
       const inputs = document.querySelectorAll('input, select, textarea');
       return Array.from(inputs).map((el, idx) => {
         const rect = el.getBoundingClientRect();
-        const fieldType = el.type || el.tagName.toLowerCase();
+        // Use getAttribute to avoid DOM Clobbering (forms with <input name="type">)
+        // Fall back to tagName for elements without type attribute
+        const fieldType = el.getAttribute('type') || el.tagName.toLowerCase();
 
         // Skip hidden type fields (but NOT visually hidden file inputs)
         if (fieldType === 'hidden') return null;
@@ -430,6 +432,8 @@ async function handleGetFormFields(): Promise<ToolResult> {
           }));
         }
 
+        // Note: getAttribute returns null if attribute missing, but we use || null
+        // for explicit clarity that these fields are nullable in the returned data
         return {
           index: idx,
           selector: selector,
@@ -1259,8 +1263,7 @@ async function handleGetButtons(): Promise<ToolResult> {
         '[role="button"]',              // ARIA buttons (any element)
         '[type="button"]',
         'a.btn', 'a.button',
-        'a[tabindex]',                  // Clickable links with tabindex (like "Add Another")
-        'a[class*="add"]',              // Links with "add" in class name
+        'a[tabindex="0"]',              // Links explicitly in tab order (not tabindex="-1")
         '[onclick]',
         '[data-action]',
         '[data-testid*="add"]',         // Test IDs containing "add"
@@ -1269,7 +1272,9 @@ async function handleGetButtons(): Promise<ToolResult> {
         '[class*="button"]',            // Classes containing "button"
         '[class*="btn-"]',
         '[class*="-btn"]',
-        '[class*="multifield__add"]',   // Common pattern for "Add Another" links
+        '[class*="__add"]',             // BEM pattern for add elements (e.g., multifield__add)
+        '[class*="-add"]',              // Kebab-case pattern (e.g., form-add)
+        '[class$="add"]',               // Class ending with "add"
       ].join(', ');
 
       const elements = document.querySelectorAll(selectorPatterns);
@@ -1277,10 +1282,11 @@ async function handleGetButtons(): Promise<ToolResult> {
       const results = [];
 
       // Also find elements by text content for "Add Another" patterns
+      // Use a targeted query instead of '*' for better performance
       const addPatterns = /add\\s*(another|more|new|education|experience|employment|entry)/i;
-      const allElements = document.querySelectorAll('*');
+      const clickableElements = document.querySelectorAll('a, button, span, div[role], [tabindex]');
 
-      for (const el of allElements) {
+      for (const el of clickableElements) {
         // Skip if already processed
         const selector = buildSelectorPath(el);
         if (seen.has(selector)) continue;

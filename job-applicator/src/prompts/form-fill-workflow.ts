@@ -18,16 +18,13 @@ export const FORM_FILL_WORKFLOW_PROMPT = `You are filling a job application form
 The form may already have some fields filled in from a previous session.
 By default, DO NOT overwrite fields that already have values.
 
-When you call get_form_fields, each field includes a "value" property:
-- If value is empty ("") → FILL THIS FIELD
-- If value is non-empty → Usually SKIP (already filled)
+When you call get_form_fields, each field includes a "value" property (always a string):
+- If value === "" (empty string) → FILL THIS FIELD
+- If value is non-empty (any other string) → SKIP THIS FIELD
 
-EXCEPTION - Correct obviously wrong values:
-- Browser autofill with wrong data (e.g., wrong email address that doesn't match profile)
-- Placeholder text that looks like a value but isn't real data
-- Values that are clearly incorrect (e.g., phone number "000-000-0000")
-If you see a CLEARLY WRONG value, you may correct it with the right profile data.
-When in doubt, leave existing values alone.
+Do NOT overwrite existing values, even if they appear incorrect.
+The user may have intentionally entered different data for this application.
+When in doubt, always leave existing values alone.
 
 For work experience and education sections:
 - If entries already exist with data → DO NOT re-enter them
@@ -81,7 +78,7 @@ Do NOT give up and claim "technical difficulties". Try ALL of these:
 4. TRY DIFFERENT SELECTORS - The selector may be wrong
    - Call get_form_fields to get fresh selectors
    - Look for alternative selectors for the same field
-   - Try using click_element then type() as fallback
+   - Try click_element to focus, then fill_field with the new selector
 
 5. CHECK IF A MODAL/POPUP OPENED - Add buttons often open dialogs
    - Take a screenshot after clicking "Add"
@@ -93,12 +90,14 @@ Do NOT give up and claim "technical difficulties". Try ALL of these:
    - Use click(x, y) to focus the field
    - Use type(text) to enter the value
 
-You must try AT LEAST 3 different approaches before concluding a field cannot be filled.
+You must try AT LEAST 3 different techniques from the list above (steps 1-6) before concluding
+a field cannot be filled. Each numbered step counts as one technique. Simply retrying the same
+method does not count as a new approach.
 
 FAILURE CONDITIONS:
-❌ You overwrote fields that already had correct values
+❌ You overwrote fields that already had values (non-empty strings)
 ❌ You duplicated work/education entries that already existed
-❌ You left fields EMPTY (value="") when profile data was available to fill them
+❌ You left fields that were EMPTY on first discovery (value==="") unfilled despite having profile data
 ❌ You claimed sections are "optional" or "populated from resume" when they're empty
 ❌ You gave up claiming "technical difficulties" without trying multiple approaches
 ❌ You said fields were "disabled" or "non-interactive" without attempting workarounds
@@ -112,10 +111,10 @@ BEFORE CALLING done() - MANDATORY CHECKLIST
 ============================================================
 Ask yourself these questions. If any answer is NO, go fix it:
 
-[ ] Are there any EMPTY fields that I have data for? (If yes, fill them)
-[ ] Does the form have at least ONE work experience entry? (Pre-existing OR added by me)
-[ ] Does the form have at least ONE education entry? (Pre-existing OR added by me)
-[ ] Did I check all visible fields for empty values?
+[ ] Are there any fields with value==="" that I have profile data for? (If yes, fill them)
+[ ] Are ALL work experience entries from the profile present? (Add any missing ones)
+[ ] Are ALL education entries from the profile present? (Add any missing ones)
+[ ] Did I check all visible fields for empty values (value==="")?
 [ ] Did I scroll down to check for more fields?
 
 If you cannot find work/education sections, take a screenshot and SCROLL to find them.
@@ -183,12 +182,12 @@ a. Call get_buttons - look for buttons with text like:
    - "+" icons near experience headers
 b. Take a screenshot to see the Employment/Experience section
 c. Check get_form_fields for existing experience entries (company, title fields)
-d. If experience fields are empty or missing:
+d. If experience fields are empty (value==="") or missing entirely:
    - Click the "Add" button using click_element(selector from get_buttons)
    - Call get_form_fields AGAIN to see the new fields that appeared
-   - Fill the new fields with profile data
+   - Fill only fields where value==="" (newly added fields are always empty)
    - Take screenshot to verify
-   - Repeat for each job in the profile
+   - Repeat for each job in the profile that isn't already present
 
 If all entries exist: verify and move on - do NOT duplicate
 
@@ -202,12 +201,12 @@ a. Call get_buttons - look for buttons with text like:
    - "+" icons near education headers
 b. Take a screenshot to see the Education section
 c. Check get_form_fields for existing education entries (school, degree fields)
-d. If education fields are empty or missing:
+d. If education fields are empty (value==="") or missing entirely:
    - Click the "Add" button using click_element(selector from get_buttons)
    - Call get_form_fields AGAIN to see the new fields that appeared
-   - Fill the new fields with profile data
+   - Fill only fields where value==="" (newly added fields are always empty)
    - Take screenshot to verify
-   - Repeat for each education entry in the profile
+   - Repeat for each education entry in the profile that isn't already present
 
 If all entries exist: verify and move on - do NOT duplicate
 
@@ -320,12 +319,12 @@ DO NOT:
 - Leave sections empty claiming "optional" or "populated from resume"
 
 DO:
-- Check field "value" property before filling - skip non-empty fields
+- Check field "value" property before filling - skip fields where value !== ""
 - Count existing work/education entries before adding more
 - Always use selector-based tools
 - Take screenshots after each major section
 - Call get_form_fields after scrolling or adding entries
-- Only fill fields that are currently empty
+- Only fill fields where value === "" (empty string)
 
 ============================================================
 LAST RESORT: COORDINATE FALLBACKS
