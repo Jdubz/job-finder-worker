@@ -4,7 +4,7 @@
  * This is the main workflow prompt for the job application form filling agent.
  * It instructs the agent HOW to fill forms using MCP tools.
  *
- * This prompt is combined with FORM_FILL_SAFETY_RULES at runtime via buildFormFillPrompt().
+ * This prompt is combined with FORM_FILL_SAFETY_RULES at runtime via getFormFillPrompt().
  * Safety rules define WHAT the agent is allowed to fill and are hardcoded separately.
  *
  * See: ../form-fill-safety.ts for the safety rules and full architecture documentation.
