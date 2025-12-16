@@ -46,6 +46,9 @@ logger = logging.getLogger(__name__)
 CONTENT_SAMPLE_FETCH_LIMIT = 8000  # Max chars to fetch from page
 CONTENT_SAMPLE_PROMPT_LIMIT = 6000  # Max chars to include in agent prompt
 
+# Probe timeout - shorter than normal render to fail fast on bad selectors
+PROBE_RENDER_TIMEOUT_MS = 10_000
+
 
 @dataclass
 class ProbeResult:
@@ -586,11 +589,12 @@ class SourceProcessor(BaseProcessor):
             if sc.type == "html":
                 if sc.requires_js:
                     # Use Playwright for JS-rendered sources
+                    # Use shorter timeout for probes to fail fast on bad selectors
                     result = get_renderer().render(
                         RenderRequest(
                             url=sc.url,
                             wait_for_selector=sc.render_wait_for or sc.job_selector,
-                            wait_timeout_ms=sc.render_timeout_ms,
+                            wait_timeout_ms=PROBE_RENDER_TIMEOUT_MS,
                             block_resources=True,
                             headers=headers,
                         )
@@ -1053,11 +1057,12 @@ class SourceProcessor(BaseProcessor):
                 )
             else:
                 # Keep disabled but log what we tried
+                hint_msg = f"\nError: {probe.hint}" if probe.hint else ""
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
-                    f"Proposed config for {source_name} found 0 jobs",
-                    error_details=f"Probe status: {probe.status}\nProposed config: {json.dumps(fixed_config, indent=2)}\nSample: {probe.sample[:1000] if probe.sample else 'none'}",
+                    f"Proposed config for {source_name} failed: {probe.hint or 'found 0 jobs'}",
+                    error_details=f"Probe status: {probe.status}{hint_msg}\nProposed config: {json.dumps(fixed_config, indent=2)}\nSample: {probe.sample[:1000] if probe.sample else 'none'}",
                 )
 
         except Exception as e:
@@ -1185,20 +1190,45 @@ Return ONLY valid JSON matching the source type (no markdown, no explanation).
                 temperature=0.0,
             )
             data = json.loads(extract_json_from_response(result.text))
+
+            # Log agent's raw response for debugging
+            logger.info(
+                "SOURCE_RECOVER agent response for %s: %s",
+                source_name,
+                json.dumps(data, indent=2)[:1000],
+            )
+
             # Validate based on source type
             if not isinstance(data, dict):
+                logger.warning("Agent returned non-dict for %s: %s", source_name, type(data))
                 return None
-            # Merge required fields from current_config (url, type) into agent response
-            if source_type == "html" and data.get("job_selector") and data.get("fields"):
+
+            # Check if agent proposed a different type than current
+            proposed_type = data.get("type", source_type)
+
+            # Merge required fields from current_config (url) into agent response
+            # Allow agent to change source type if it proposes one
+            if proposed_type == "html" and data.get("job_selector") and data.get("fields"):
                 merged = dict(data)
                 merged["url"] = current_config.get("url")
-                merged["type"] = current_config.get("type", "html")
+                merged["type"] = "html"
                 return merged
-            if source_type == "api" and data.get("fields") and data.get("response_path"):
+            if proposed_type == "api" and data.get("fields") and data.get("response_path"):
                 merged = dict(data)
                 merged["url"] = current_config.get("url")
-                merged["type"] = current_config.get("type", "api")
+                merged["type"] = "api"
                 return merged
+
+            # Log why validation failed
+            logger.warning(
+                "Agent proposal for %s failed validation: type=%s, has_job_selector=%s, "
+                "has_fields=%s, has_response_path=%s",
+                source_name,
+                proposed_type,
+                bool(data.get("job_selector")),
+                bool(data.get("fields")),
+                bool(data.get("response_path")),
+            )
             return None
         except Exception as e:
             logger.warning(f"Agent recovery failed for {source_name}: {e}")

@@ -18,6 +18,7 @@ from job_finder.job_queue.processor import QueueItemProcessor
 from job_finder.job_queue.processors.source_processor import (
     CONTENT_SAMPLE_FETCH_LIMIT,
     CONTENT_SAMPLE_PROMPT_LIMIT,
+    PROBE_RENDER_TIMEOUT_MS,
     ProbeResult,
 )
 
@@ -555,3 +556,99 @@ class TestConstants:
         """Verify constants are reasonable sizes."""
         assert CONTENT_SAMPLE_FETCH_LIMIT >= 4000
         assert CONTENT_SAMPLE_PROMPT_LIMIT >= 4000
+
+    def test_probe_timeout_is_shorter_than_default(self):
+        """Verify probe timeout is shorter for fast failure."""
+        from job_finder.scrapers.source_config import DEFAULT_RENDER_TIMEOUT_MS
+
+        assert PROBE_RENDER_TIMEOUT_MS < DEFAULT_RENDER_TIMEOUT_MS
+        assert PROBE_RENDER_TIMEOUT_MS >= 5000  # At least 5 seconds
+
+
+class TestAgentTypeChange:
+    """Test that agent can propose different source types."""
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_allows_html_to_api_type_change(self, mock_extract_json, source_processor):
+        """Test that agent can propose API config for source currently typed as HTML."""
+        source_processor.agent_manager = Mock()
+        source_processor.agent_manager.execute.return_value = Mock(
+            text='{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+        )
+        mock_extract_json.return_value = (
+            '{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+        )
+
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url="https://example.com/api",
+            current_config={"type": "html", "url": "https://example.com/api"},
+            disabled_notes="",
+            content_sample='{"jobs": []}',
+        )
+
+        assert result is not None
+        assert result["type"] == "api"
+        assert result["response_path"] == "jobs"
+
+    @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
+    def test_allows_api_to_html_type_change(self, mock_extract_json, source_processor):
+        """Test that agent can propose HTML config for source currently typed as API."""
+        source_processor.agent_manager = Mock()
+        source_processor.agent_manager.execute.return_value = Mock(
+            text='{"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}'
+        )
+        mock_extract_json.return_value = '{"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}'
+
+        result = source_processor._agent_recover_source(
+            source_name="Test",
+            url="https://example.com/careers",
+            current_config={"type": "api", "url": "https://example.com/careers"},
+            disabled_notes="",
+            content_sample="<html><div class='job'></div></html>",
+        )
+
+        assert result is not None
+        assert result["type"] == "html"
+        assert result["job_selector"] == ".job"
+
+
+class TestProbeHintInErrorDetails:
+    """Test that probe hints are included in error messages."""
+
+    @patch("job_finder.job_queue.processors.source_processor.get_renderer")
+    def test_includes_probe_hint_in_failure_message(
+        self, mock_get_renderer, source_processor, mock_dependencies
+    ):
+        """Test that probe hint is included when recovery fails."""
+        mock_renderer = Mock()
+        mock_result = Mock()
+        mock_result.html = "<html></html>"
+        mock_renderer.render.return_value = mock_result
+        mock_get_renderer.return_value = mock_renderer
+
+        source_processor.agent_manager = Mock()
+        source_processor.agent_manager.execute.return_value = Mock(
+            text='{"job_selector": ".job", "fields": {"title": "h2", "url": "a@href"}}'
+        )
+
+        # Probe returns error with hint
+        with patch.object(
+            source_processor,
+            "_probe_config",
+            return_value=ProbeResult(
+                status="error", job_count=0, hint="Timeout waiting for selector"
+            ),
+        ):
+            with patch(
+                "job_finder.job_queue.processors.source_processor.extract_json_from_response",
+                return_value='{"job_selector": ".job", "fields": {"title": "h2", "url": "a@href"}}',
+            ):
+                item = make_recover_item()
+                source_processor.process_source_recover(item)
+
+        # Verify hint is in result message
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        final_call = calls[-1]
+        assert final_call[0][1] == QueueStatus.FAILED
+        assert "Timeout waiting for selector" in final_call[0][2]
