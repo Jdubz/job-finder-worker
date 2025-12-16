@@ -20,6 +20,7 @@ from job_finder.job_queue.processors.source_processor import (
     CONTENT_SAMPLE_PROMPT_LIMIT,
     PROBE_RENDER_TIMEOUT_MS,
     ProbeResult,
+    RecoveryResult,
 )
 
 
@@ -350,8 +351,8 @@ class TestFetchContentSample:
 class TestAgentRecoverSource:
     """Test the _agent_recover_source method."""
 
-    def test_returns_none_without_agent_manager(self, source_processor):
-        """Test that method returns None when agent_manager is not available."""
+    def test_returns_recovery_result_without_agent_manager(self, source_processor):
+        """Test that method returns RecoveryResult with can_recover=False when agent_manager is not available."""
         source_processor.agent_manager = None
 
         result = source_processor._agent_recover_source(
@@ -362,18 +363,18 @@ class TestAgentRecoverSource:
             content_sample="<html></html>",
         )
 
-        assert result is None
+        assert isinstance(result, RecoveryResult)
+        assert result.can_recover is False
+        assert result.config is None
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_returns_valid_html_config(self, mock_extract_json, source_processor):
         """Test that valid HTML config from agent is returned."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"job_selector": ".new-selector", "fields": {"title": ".title"}}'
+            text='{"can_recover": true, "config": {"job_selector": ".new-selector", "fields": {"title": ".title"}}}'
         )
-        mock_extract_json.return_value = (
-            '{"job_selector": ".new-selector", "fields": {"title": ".title"}}'
-        )
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"job_selector": ".new-selector", "fields": {"title": ".title"}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -383,20 +384,21 @@ class TestAgentRecoverSource:
             content_sample="<html></html>",
         )
 
-        assert result is not None
-        assert result["job_selector"] == ".new-selector"
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["job_selector"] == ".new-selector"
         # Verify required fields are merged from current_config
-        assert result["url"] == "https://example.com"
-        assert result["type"] == "html"
+        assert result.config["url"] == "https://example.com"
+        assert result.config["type"] == "html"
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_returns_valid_api_config(self, mock_extract_json, source_processor):
         """Test that valid API config from agent is returned."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"response_path": "jobs", "fields": {"title": "title"}}'
+            text='{"can_recover": true, "config": {"response_path": "jobs", "fields": {"title": "title"}}}'
         )
-        mock_extract_json.return_value = '{"response_path": "jobs", "fields": {"title": "title"}}'
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"response_path": "jobs", "fields": {"title": "title"}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -406,20 +408,25 @@ class TestAgentRecoverSource:
             content_sample='{"jobs": []}',
         )
 
-        assert result is not None
-        assert result["fields"]["title"] == "title"
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["fields"]["title"] == "title"
         # Verify required fields are merged from current_config
-        assert result["url"] == "https://api.example.com"
-        assert result["type"] == "api"
+        assert result.config["url"] == "https://api.example.com"
+        assert result.config["type"] == "api"
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
-    def test_returns_none_for_invalid_html_config(self, mock_extract_json, source_processor):
-        """Test that invalid HTML config (missing job_selector) returns None."""
+    def test_returns_non_recoverable_for_invalid_html_config(
+        self, mock_extract_json, source_processor
+    ):
+        """Test that invalid HTML config (missing job_selector) returns non-recoverable result."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"fields": {"title": ".title"}}'
+            text='{"can_recover": true, "config": {"fields": {"title": ".title"}}}'
         )
-        mock_extract_json.return_value = '{"fields": {"title": ".title"}}'
+        mock_extract_json.return_value = (
+            '{"can_recover": true, "config": {"fields": {"title": ".title"}}}'
+        )
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -429,7 +436,9 @@ class TestAgentRecoverSource:
             content_sample="<html></html>",
         )
 
-        assert result is None
+        assert isinstance(result, RecoveryResult)
+        assert result.can_recover is False
+        assert result.config is None
 
 
 class TestSourceRecoverSuccess:
@@ -447,11 +456,13 @@ class TestSourceRecoverSuccess:
         mock_renderer.render.return_value = mock_result
         mock_get_renderer.return_value = mock_renderer
 
-        # Mock agent to return a fixed config
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
-            text='{"job_selector": ".job", "fields": {"title": "h2"}}'
-        )
+        # Mock agent to return a fixed config via RecoveryResult
+        fixed_config = {
+            "type": "html",
+            "url": "https://example.com/careers",
+            "job_selector": ".job",
+            "fields": {"title": "h2"},
+        }
 
         # Mock probe to return success
         with patch.object(
@@ -459,9 +470,10 @@ class TestSourceRecoverSuccess:
             "_probe_config",
             return_value=ProbeResult(status="success", job_count=5),
         ):
-            with patch(
-                "job_finder.job_queue.processors.source_processor.extract_json_from_response",
-                return_value='{"job_selector": ".job", "fields": {"title": "h2"}}',
+            with patch.object(
+                source_processor,
+                "_agent_recover_source",
+                return_value=RecoveryResult(config=fixed_config),
             ):
                 item = make_recover_item()
                 source_processor.process_source_recover(item)
@@ -490,15 +502,21 @@ class TestSourceRecoverFailure:
         """Test that recovery fails when agent cannot propose a fix."""
         mock_renderer = Mock()
         mock_result = Mock()
-        mock_result.html = "<html></html>"
+        # Use content with job-related keywords to avoid triggering bot detection
+        mock_result.html = (
+            "<html><body><div class='job-listings'>Jobs at Company</div></body></html>"
+        )
         mock_renderer.render.return_value = mock_result
         mock_get_renderer.return_value = mock_renderer
 
-        # Agent returns None (couldn't propose fix)
-        source_processor.agent_manager = None
-
-        item = make_recover_item()
-        source_processor.process_source_recover(item)
+        # Agent returns RecoveryResult with no config
+        with patch.object(
+            source_processor,
+            "_agent_recover_source",
+            return_value=RecoveryResult(can_recover=False, diagnosis="Could not find jobs"),
+        ):
+            item = make_recover_item()
+            source_processor.process_source_recover(item)
 
         calls = mock_dependencies["queue_manager"].update_status.call_args_list
         final_call = calls[-1]
@@ -512,24 +530,34 @@ class TestSourceRecoverFailure:
         """Test that recovery fails when probe finds 0 jobs with proposed config."""
         mock_renderer = Mock()
         mock_result = Mock()
-        mock_result.html = "<html></html>"
+        # Use content with job-related keywords to avoid triggering bot detection
+        mock_result.html = (
+            "<html><body><div class='job-listings'>Jobs at Company</div></body></html>"
+        )
         mock_renderer.render.return_value = mock_result
         mock_get_renderer.return_value = mock_renderer
 
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
-            text='{"job_selector": ".job", "fields": {"title": "h2"}}'
-        )
+        fixed_config = {
+            "type": "html",
+            "url": "https://example.com/careers",
+            "job_selector": ".job",
+            "fields": {"title": "h2", "url": "a@href"},
+        }
 
-        # Probe returns 0 jobs
+        # Probe returns 0 jobs - use content with job keywords
         with patch.object(
             source_processor,
             "_probe_config",
-            return_value=ProbeResult(status="empty", job_count=0, sample="<html></html>"),
+            return_value=ProbeResult(
+                status="empty",
+                job_count=0,
+                sample="<html><body><div class='careers'>Open Positions</div></body></html>",
+            ),
         ):
-            with patch(
-                "job_finder.job_queue.processors.source_processor.extract_json_from_response",
-                return_value='{"job_selector": ".job", "fields": {"title": "h2"}}',
+            with patch.object(
+                source_processor,
+                "_agent_recover_source",
+                return_value=RecoveryResult(config=fixed_config),
             ):
                 item = make_recover_item()
                 source_processor.process_source_recover(item)
@@ -579,11 +607,9 @@ class TestAgentTypeChange:
         """Test that agent can propose API config for source currently typed as HTML."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+            text='{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
         )
-        mock_extract_json.return_value = (
-            '{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
-        )
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -593,18 +619,19 @@ class TestAgentTypeChange:
             content_sample='{"jobs": []}',
         )
 
-        assert result is not None
-        assert result["type"] == "api"
-        assert result["response_path"] == "jobs"
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["type"] == "api"
+        assert result.config["response_path"] == "jobs"
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_allows_api_to_html_type_change(self, mock_extract_json, source_processor):
         """Test that agent can propose HTML config for source currently typed as API."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}'
+            text='{"can_recover": true, "config": {"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}}'
         )
-        mock_extract_json.return_value = '{"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}'
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -614,9 +641,10 @@ class TestAgentTypeChange:
             content_sample="<html><div class='job'></div></html>",
         )
 
-        assert result is not None
-        assert result["type"] == "html"
-        assert result["job_selector"] == ".job"
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["type"] == "html"
+        assert result.config["job_selector"] == ".job"
 
 
 class TestProbeHintInErrorDetails:
@@ -629,26 +657,35 @@ class TestProbeHintInErrorDetails:
         """Test that probe hint is included when recovery fails."""
         mock_renderer = Mock()
         mock_result = Mock()
-        mock_result.html = "<html></html>"
+        # Use content with job-related keywords to avoid triggering bot detection
+        mock_result.html = (
+            "<html><body><div class='job-listings'>Jobs at Company</div></body></html>"
+        )
         mock_renderer.render.return_value = mock_result
         mock_get_renderer.return_value = mock_renderer
 
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
-            text='{"job_selector": ".job", "fields": {"title": "h2", "url": "a@href"}}'
-        )
+        fixed_config = {
+            "type": "html",
+            "url": "https://example.com/careers",
+            "job_selector": ".job",
+            "fields": {"title": "h2", "url": "a@href"},
+        }
 
-        # Probe returns error with hint
+        # Probe returns error with hint - include job content to avoid bot detection
         with patch.object(
             source_processor,
             "_probe_config",
             return_value=ProbeResult(
-                status="error", job_count=0, hint="Timeout waiting for selector"
+                status="error",
+                job_count=0,
+                hint="Timeout waiting for selector",
+                sample="<html><body>Careers page content</body></html>",
             ),
         ):
-            with patch(
-                "job_finder.job_queue.processors.source_processor.extract_json_from_response",
-                return_value='{"job_selector": ".job", "fields": {"title": "h2", "url": "a@href"}}',
+            with patch.object(
+                source_processor,
+                "_agent_recover_source",
+                return_value=RecoveryResult(config=fixed_config),
             ):
                 item = make_recover_item()
                 source_processor.process_source_recover(item)
@@ -668,9 +705,9 @@ class TestTypeJsonNormalization:
         """Test that agent proposing type=json is normalized to type=api."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}'
+            text='{"can_recover": true, "config": {"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}}'
         )
-        mock_extract_json.return_value = '{"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}'
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test API",
@@ -680,9 +717,10 @@ class TestTypeJsonNormalization:
             content_sample='{"content": [{"name": "Test Job", "applyUrl": "/apply/123"}]}',
         )
 
-        assert result is not None
-        assert result["type"] == "api"  # Should be normalized to "api", not "json"
-        assert result["response_path"] == "content"
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["type"] == "api"  # Should be normalized to "api", not "json"
+        assert result.config["response_path"] == "content"
 
 
 class TestAgentURLChange:
@@ -694,9 +732,9 @@ class TestAgentURLChange:
         source_processor.agent_manager = Mock()
         new_url = "https://example.com/careers/all-jobs"
         source_processor.agent_manager.execute.return_value = Mock(
-            text=f'{{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}'
+            text=f'{{"can_recover": true, "config": {{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}}}'
         )
-        mock_extract_json.return_value = f'{{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}'
+        mock_extract_json.return_value = f'{{"can_recover": true, "config": {{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -706,9 +744,10 @@ class TestAgentURLChange:
             content_sample="<div class='job'></div>",
         )
 
-        assert result is not None
-        assert result["type"] == "html"
-        assert result["url"] == new_url  # Should use agent's URL, not original
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["type"] == "html"
+        assert result.config["url"] == new_url  # Should use agent's URL, not original
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_uses_agent_url_for_api_type(self, mock_extract_json, source_processor):
@@ -716,9 +755,9 @@ class TestAgentURLChange:
         source_processor.agent_manager = Mock()
         new_api_url = "https://api.example.com/v1/jobs"
         source_processor.agent_manager.execute.return_value = Mock(
-            text=f'{{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}'
+            text=f'{{"can_recover": true, "config": {{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}}}'
         )
-        mock_extract_json.return_value = f'{{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}'
+        mock_extract_json.return_value = f'{{"can_recover": true, "config": {{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -728,9 +767,10 @@ class TestAgentURLChange:
             content_sample='<script>fetch("/api/v1/jobs")</script>',
         )
 
-        assert result is not None
-        assert result["type"] == "api"
-        assert result["url"] == new_api_url  # Should use agent's URL, not original
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["type"] == "api"
+        assert result.config["url"] == new_api_url  # Should use agent's URL, not original
 
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_falls_back_to_original_url_when_not_provided(
@@ -739,11 +779,9 @@ class TestAgentURLChange:
         """Test that original URL is used when agent doesn't provide one."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+            text='{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
         )
-        mock_extract_json.return_value = (
-            '{"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
-        )
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
 
         original_url = "https://example.com/api/jobs"
         result = source_processor._agent_recover_source(
@@ -754,8 +792,9 @@ class TestAgentURLChange:
             content_sample='{"jobs": []}',
         )
 
-        assert result is not None
-        assert result["url"] == original_url  # Should fall back to original
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert result.config["url"] == original_url  # Should fall back to original
 
 
 class TestBodyNormalization:
@@ -766,9 +805,9 @@ class TestBodyNormalization:
         """Test that agent using 'body' key gets normalized to 'post_body'."""
         source_processor.agent_manager = Mock()
         source_processor.agent_manager.execute.return_value = Mock(
-            text='{"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+            text='{"can_recover": true, "config": {"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
         )
-        mock_extract_json.return_value = '{"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}'
+        mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -778,10 +817,11 @@ class TestBodyNormalization:
             content_sample="<html></html>",
         )
 
-        assert result is not None
-        assert "post_body" in result
-        assert result["post_body"] == {"limit": 20}
-        assert "body" not in result  # Should be removed after normalization
+        assert isinstance(result, RecoveryResult)
+        assert result.config is not None
+        assert "post_body" in result.config
+        assert result.config["post_body"] == {"limit": 20}
+        assert "body" not in result.config  # Should be removed after normalization
 
 
 class TestDisabledTagsRecovery:
@@ -872,7 +912,11 @@ class TestDisabledTagsRecovery:
             patch.object(
                 source_processor, "_fetch_content_sample", return_value="<html>jobs</html>"
             ),
-            patch.object(source_processor, "_agent_recover_source", return_value=None),
+            patch.object(
+                source_processor,
+                "_agent_recover_source",
+                return_value=RecoveryResult(can_recover=False, diagnosis="Test"),
+            ),
         ):
             item = make_recover_item()
             source_processor.process_source_recover(item)
@@ -899,6 +943,13 @@ class TestDisabledTagsRecovery:
             },
         }
 
+        fixed_config = {
+            "type": "api",
+            "url": "https://api.example.com/v2/jobs",
+            "response_path": "jobs",
+            "fields": {"title": "title", "url": "url"},
+        }
+
         # Mock probe to return protected API error
         with (
             patch.object(
@@ -909,12 +960,7 @@ class TestDisabledTagsRecovery:
             patch.object(
                 source_processor,
                 "_agent_recover_source",
-                return_value={
-                    "type": "api",
-                    "url": "https://api.example.com/v2/jobs",
-                    "response_path": "jobs",
-                    "fields": {"title": "title", "url": "url"},
-                },
+                return_value=RecoveryResult(config=fixed_config),
             ),
             patch.object(
                 source_processor,
@@ -931,3 +977,91 @@ class TestDisabledTagsRecovery:
             "API endpoint is protected (HTTP 401)",
             tags=["protected_api"],
         )
+
+    @patch("job_finder.job_queue.processors.source_processor.get_renderer")
+    def test_sets_anti_bot_tag_when_agent_diagnoses_bot_protection(
+        self, mock_get_renderer, source_processor, mock_dependencies
+    ):
+        """Test that anti_bot tag is set when agent diagnoses bot protection."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "HTML Source",
+            "config": {
+                "type": "html",
+                "url": "https://example.com/careers",
+                "job_selector": ".job",
+                "fields": {"title": ".title", "url": "a@href"},
+            },
+        }
+
+        mock_renderer = Mock()
+        mock_result = Mock()
+        # Use content with job keywords to pass content detection
+        mock_result.html = "<html><body><div class='careers'>Open Positions</div></body></html>"
+        mock_renderer.render.return_value = mock_result
+        mock_get_renderer.return_value = mock_renderer
+
+        # Agent diagnoses bot protection
+        with patch.object(
+            source_processor,
+            "_agent_recover_source",
+            return_value=RecoveryResult(
+                can_recover=False,
+                disable_reason="bot_protection",
+                diagnosis="Cloudflare protection detected in rendered content",
+            ),
+        ):
+            item = make_recover_item()
+            source_processor.process_source_recover(item)
+
+        # Should have called disable_source_with_tags with anti_bot
+        mock_dependencies["sources_manager"].disable_source_with_tags.assert_called_once_with(
+            "source-123",
+            "Cloudflare protection detected in rendered content",
+            tags=["anti_bot"],
+        )
+
+        # Verify queue status
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        final_call = calls[-1]
+        assert final_call[0][1] == QueueStatus.FAILED
+        assert "bot_protection" in final_call[0][2]
+        assert "anti_bot" in final_call[0][2]
+
+    @patch("job_finder.job_queue.processors.source_processor.get_renderer")
+    def test_sets_auth_required_tag_when_content_has_login_page(
+        self, mock_get_renderer, source_processor, mock_dependencies
+    ):
+        """Test that auth_required tag is set when content shows login page."""
+        mock_dependencies["sources_manager"].get_source_by_id.return_value = {
+            "id": "source-123",
+            "name": "HTML Source",
+            "config": {
+                "type": "html",
+                "url": "https://example.com/careers",
+                "job_selector": ".job",
+                "fields": {"title": ".title", "url": "a@href"},
+            },
+        }
+
+        mock_renderer = Mock()
+        mock_result = Mock()
+        # Content with login page indicator
+        mock_result.html = "<html><body><h1>Please log in to view jobs</h1></body></html>"
+        mock_renderer.render.return_value = mock_result
+        mock_get_renderer.return_value = mock_renderer
+
+        item = make_recover_item()
+        source_processor.process_source_recover(item)
+
+        # Should have called disable_source_with_tags with auth_required
+        mock_dependencies["sources_manager"].disable_source_with_tags.assert_called_once()
+        call_args = mock_dependencies["sources_manager"].disable_source_with_tags.call_args
+        assert call_args[0][0] == "source-123"
+        assert "auth_required" in call_args[1]["tags"]
+
+        # Verify queue status
+        calls = mock_dependencies["queue_manager"].update_status.call_args_list
+        final_call = calls[-1]
+        assert final_call[0][1] == QueueStatus.FAILED
+        assert "Authentication required" in final_call[0][2]

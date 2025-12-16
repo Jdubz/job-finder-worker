@@ -73,6 +73,16 @@ class ProbeResult:
     config: Optional[Dict[str, Any]] = None
 
 
+@dataclass
+class RecoveryResult:
+    """Result from agent recovery attempt."""
+
+    config: Optional[Dict[str, Any]] = None  # Proposed config if recoverable
+    can_recover: bool = True  # False if agent determines issue is non-recoverable
+    disable_reason: Optional[str] = None  # bot_protection, auth_required, etc.
+    diagnosis: str = ""  # Human-readable explanation
+
+
 class SourceProcessor(BaseProcessor):
     """Processor for source discovery and scraping queue items."""
 
@@ -609,6 +619,81 @@ class SourceProcessor(BaseProcessor):
     # PROBE + VALIDATION HELPERS
     # ============================================================
 
+    # Common bot protection patterns in HTML content
+    BOT_PROTECTION_PATTERNS = [
+        # Cloudflare
+        "cf-browser-verification",
+        "cf_clearance",
+        "cloudflare",
+        "ray id",
+        "checking your browser",
+        # Generic bot protection
+        "captcha",
+        "recaptcha",
+        "hcaptcha",
+        "please verify you are human",
+        "access denied",
+        "blocked",
+        "bot detected",
+        "unusual traffic",
+        # Auth walls
+        "sign in to continue",
+        "login required",
+        "please log in",
+        "authentication required",
+    ]
+
+    def _detect_bot_protection(self, content: str) -> Optional[str]:
+        """Detect bot protection patterns in content.
+
+        Returns:
+            "anti_bot" if bot protection detected
+            "auth_required" if auth wall detected
+            None if no protection detected
+        """
+        if not content:
+            return None
+
+        content_lower = content.lower()
+
+        # Check for auth patterns first (more specific)
+        auth_patterns = [
+            "sign in to continue",
+            "login required",
+            "please log in",
+            "authentication required",
+        ]
+        for pattern in auth_patterns:
+            if pattern in content_lower:
+                return "auth_required"
+
+        # Check for bot protection patterns
+        bot_patterns = [
+            "cf-browser-verification",
+            "cloudflare",
+            "ray id",
+            "checking your browser",
+            "captcha",
+            "recaptcha",
+            "hcaptcha",
+            "please verify you are human",
+            "access denied",
+            "bot detected",
+            "unusual traffic",
+        ]
+        for pattern in bot_patterns:
+            if pattern in content_lower:
+                return "anti_bot"
+
+        # Check for very short HTML responses (often challenge pages)
+        # A real job page should have more content
+        if len(content.strip()) < 500 and "<html" in content_lower:
+            # Short HTML with no job-related content
+            if not any(word in content_lower for word in ["job", "career", "position", "opening"]):
+                return "anti_bot"
+
+        return None
+
     def _is_protected_api_error(self, probe: ProbeResult, config: Dict[str, Any]) -> bool:
         """Check if probe failure indicates a protected API endpoint.
 
@@ -622,6 +707,29 @@ class SourceProcessor(BaseProcessor):
         if config.get("type") != "api":
             return False
         return probe.status_code in (401, 403, 422)
+
+    def _is_protected_error(self, probe: ProbeResult, config: Dict[str, Any]) -> Optional[str]:
+        """Check if probe failure indicates a protected endpoint.
+
+        Returns:
+            "protected_api" for API 401/403/422 errors
+            "anti_bot" for bot protection detected in content
+            "auth_required" for auth wall detected in content
+            None if not a protection-related error
+        """
+        # Check API errors
+        if config.get("type") == "api" and probe.status_code in (401, 403, 422):
+            return "protected_api"
+
+        # Check HTML 403 errors
+        if probe.status_code == 403:
+            return "anti_bot"
+
+        # Check content for bot protection patterns
+        if probe.sample:
+            return self._detect_bot_protection(probe.sample)
+
+        return None
 
     def _probe_config(self, source_type: str, config: Dict[str, Any]) -> ProbeResult:
         """Lightweight probe: one request + count jobs, with a hint/sample."""
@@ -1136,8 +1244,36 @@ class SourceProcessor(BaseProcessor):
             # Fetch content sample for agent diagnosis
             content_sample = self._fetch_content_sample(url, source_type, config)
 
+            # Check content sample for obvious bot protection BEFORE calling agent
+            content_protection = self._detect_bot_protection(content_sample)
+            if content_protection:
+                tag = content_protection  # anti_bot or auth_required
+                tag_labels = {
+                    "anti_bot": "Bot protection",
+                    "auth_required": "Authentication required",
+                }
+                self.sources_manager.disable_source_with_tags(
+                    source_id,
+                    f"{tag_labels.get(tag, tag)} detected in content",
+                    tags=[tag],
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"{source_name}: {tag_labels.get(tag, tag)} detected. "
+                    f"Source marked as non-recoverable.",
+                    error_details=f"Content sample shows protection that cannot be bypassed.\n"
+                    f"Tag applied: {tag}",
+                )
+                logger.info(
+                    "SOURCE_RECOVER: Detected %s in content for %s, marking non-recoverable",
+                    tag,
+                    source_name,
+                )
+                return
+
             # Ask agent to diagnose and propose fix
-            fixed_config = self._agent_recover_source(
+            recovery_result = self._agent_recover_source(
                 source_name=source_name,
                 url=url,
                 current_config=config,
@@ -1145,12 +1281,62 @@ class SourceProcessor(BaseProcessor):
                 content_sample=content_sample,
             )
 
+            # Handle agent diagnosis of non-recoverable issues
+            if not recovery_result.can_recover or recovery_result.disable_reason:
+                # Map agent's disable_reason to tag
+                reason_to_tag = {
+                    "bot_protection": "anti_bot",
+                    "auth_required": "auth_required",
+                    "protected_api": "protected_api",
+                }
+                agent_tag = (
+                    reason_to_tag.get(recovery_result.disable_reason)
+                    if recovery_result.disable_reason
+                    else None
+                )
+
+                if agent_tag:
+                    # Apply the tag to mark as non-recoverable
+                    self.sources_manager.disable_source_with_tags(
+                        source_id,
+                        recovery_result.diagnosis
+                        or f"Agent diagnosed: {recovery_result.disable_reason}",
+                        tags=[agent_tag],
+                    )
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"{source_name}: Non-recoverable issue detected ({recovery_result.disable_reason}). "
+                        f"Source marked with tag: {agent_tag}",
+                        error_details=f"Agent diagnosis: {recovery_result.diagnosis}\n"
+                        f"Disable reason: {recovery_result.disable_reason}\n"
+                        f"Tag applied: {agent_tag}",
+                    )
+                    logger.info(
+                        "SOURCE_RECOVER: Agent diagnosed %s as non-recoverable (%s), applied tag %s",
+                        source_name,
+                        recovery_result.disable_reason,
+                        agent_tag,
+                    )
+                else:
+                    # Agent couldn't propose a fix but no specific non-recoverable reason
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"Agent could not propose a fix for {source_name}",
+                        error_details=f"Diagnosis: {recovery_result.diagnosis}\n"
+                        f"Current config: {json.dumps(config, indent=2)}",
+                    )
+                return
+
+            fixed_config = recovery_result.config
             if not fixed_config:
                 self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
                     f"Agent could not propose a fix for {source_name}",
-                    error_details=f"Current config: {json.dumps(config, indent=2)}",
+                    error_details=f"Diagnosis: {recovery_result.diagnosis}\n"
+                    f"Current config: {json.dumps(config, indent=2)}",
                 )
                 return
 
@@ -1168,31 +1354,44 @@ class SourceProcessor(BaseProcessor):
                 logger.info(
                     f"SOURCE_RECOVER: Successfully recovered {source_name} with {probe.job_count} jobs"
                 )
-            elif self._is_protected_api_error(probe, fixed_config):
-                # API returned 401/403/422 - mark with protected_api tag
-                self.sources_manager.disable_source_with_tags(
-                    source_id,
-                    f"API endpoint is protected (HTTP {probe.status_code})",
-                    tags=["protected_api"],
-                )
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    f"{source_name}: API endpoint is protected (HTTP {probe.status_code}). "
-                    f"Source requires authentication or has bot protection.",
-                    error_details=f"The API endpoint appears to require authentication or cookies. "
-                    f"Consider scraping from a different URL or using browser automation.\n"
-                    f"Proposed URL: {fixed_config.get('url')}\n"
-                    f"Status code: {probe.status_code}",
-                )
             else:
-                # Keep disabled but log what we tried
-                self.queue_manager.update_status(
-                    item.id,
-                    QueueStatus.FAILED,
-                    f"Proposed config for {source_name} failed: {probe.hint or 'found 0 jobs'}",
-                    error_details=f"Probe status: {probe.status}\nProposed config: {json.dumps(fixed_config, indent=2)}\nSample: {probe.sample[:1000] if probe.sample else 'none'}",
-                )
+                # Check if probe detected protection issues
+                protection_tag = self._is_protected_error(probe, fixed_config)
+                if protection_tag:
+                    tag_labels = {
+                        "protected_api": f"API endpoint is protected (HTTP {probe.status_code})",
+                        "anti_bot": "Bot protection detected",
+                        "auth_required": "Authentication required",
+                    }
+                    self.sources_manager.disable_source_with_tags(
+                        source_id,
+                        tag_labels.get(protection_tag, protection_tag),
+                        tags=[protection_tag],
+                    )
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"{source_name}: {tag_labels.get(protection_tag, protection_tag)}. "
+                        f"Source marked as non-recoverable.",
+                        error_details=f"Probe detected protection that cannot be bypassed.\n"
+                        f"Tag applied: {protection_tag}\n"
+                        f"Probe status: {probe.status}, status_code: {probe.status_code}",
+                    )
+                    logger.info(
+                        "SOURCE_RECOVER: Probe detected %s for %s, marking non-recoverable",
+                        protection_tag,
+                        source_name,
+                    )
+                else:
+                    # Keep disabled but log what we tried - no tags applied
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"Proposed config for {source_name} failed: {probe.hint or 'found 0 jobs'}",
+                        error_details=f"Probe status: {probe.status}\n"
+                        f"Proposed config: {json.dumps(fixed_config, indent=2)}\n"
+                        f"Sample: {probe.sample[:1000] if probe.sample else 'none'}",
+                    )
 
         except Exception as e:
             logger.error(f"SOURCE_RECOVER failed for {source_id}: {e}")
@@ -1265,14 +1464,23 @@ class SourceProcessor(BaseProcessor):
         current_config: Dict[str, Any],
         disabled_notes: str,
         content_sample: str,
-    ) -> Optional[Dict[str, Any]]:
-        """Ask agent to diagnose and propose a fixed config for a broken source."""
+    ) -> RecoveryResult:
+        """Ask agent to diagnose and propose a fixed config for a broken source.
+
+        Returns a RecoveryResult with:
+        - config: Proposed config if recoverable
+        - can_recover: False if agent determines issue is non-recoverable
+        - disable_reason: The reason if non-recoverable (bot_protection, auth_required, etc.)
+        - diagnosis: Human-readable explanation
+        """
         if not self.agent_manager:
-            return None
+            return RecoveryResult(can_recover=False, diagnosis="No agent available")
 
         source_type = current_config.get("type", "html")
 
-        prompt = f"""You are diagnosing a broken job source. Analyze the content sample and propose a working configuration.
+        prompt = f"""You are diagnosing a broken job source. Analyze the content sample and either:
+1. Propose a working configuration if the issue is fixable, OR
+2. Diagnose why it cannot be recovered if the issue is non-recoverable
 
 ## Source: {source_name}
 URL: {url}
@@ -1291,64 +1499,69 @@ Type: {source_type}
 {content_sample[:CONTENT_SAMPLE_PROMPT_LIMIT]}
 ```
 
-## CRITICAL RULES
-1. ONLY use type "html" or "api" - NEVER use "json" (use "api" for JSON endpoints)
-2. NEVER output placeholder text like "TODO" or example selectors - analyze the ACTUAL content above
-3. All CSS selectors must be REAL selectors found in the content sample
-4. NEVER invent or guess API URLs - only use URLs you can see in the content sample
-5. Keep the URL on the SAME DOMAIN unless you see an actual API URL in the content
-6. If the content shows a JavaScript-rendered page, prefer type "html" with requires_js=true
+## CRITICAL: First determine if recovery is possible
 
-## Your Task
-1. Analyze the content sample to find job listings
-2. Identify correct selectors/paths based on the ACTUAL HTML/JSON structure
-3. Propose a fixed configuration
+Look for these NON-RECOVERABLE issues:
+- **bot_protection**: Cloudflare challenge, CAPTCHA, "checking your browser", "Ray ID", WAF blocking
+- **auth_required**: Login page, "sign in to continue", OAuth redirect, session cookie required
+- **protected_api**: API returns 401/403/422, requires authentication token
 
-## When to use HTML vs API:
-- Use type "html" with requires_js=true if:
-  - The content shows rendered job listings in HTML
-  - You can find CSS selectors for job cards in the content
-  - The page uses JavaScript frameworks (React, Vue, etc.)
-- Use type "api" ONLY if:
-  - The content sample IS JSON (starts with {{ or [)
-  - You can see an actual API endpoint URL in the content (e.g., in a script tag)
-  - You know the exact API pattern for this job board platform
+If you detect ANY of these issues, set can_recover=false and specify the disable_reason.
 
-## For HTML sources (type: "html"):
-- job_selector: CSS selector matching each job card/row (find real elements in content above)
+## Response Format
+
+Return JSON with this structure:
+```json
+{{
+  "can_recover": true/false,
+  "disable_reason": "bot_protection|auth_required|protected_api|null",
+  "diagnosis": "Human-readable explanation of the issue",
+  "config": {{ ... proposed config if can_recover is true, otherwise null ... }}
+}}
+```
+
+## If recovery IS possible (can_recover: true):
+
+Include a config object with:
+
+### For HTML sources (type: "html"):
+- type: "html"
+- url: The page URL
+- job_selector: CSS selector matching each job card/row
 - fields.title: CSS selector for title within each job card
-- fields.url: CSS selector with attribute for link (e.g., "a@href" or ".job-link@href")
-- requires_js: true if the content shows JavaScript is needed for rendering
-- render_wait_for: CSS selector to wait for (must exist in the rendered DOM)
+- fields.url: CSS selector with attribute for link (e.g., "a@href")
+- requires_js: true if JavaScript rendering is needed
+- render_wait_for: CSS selector to wait for when requires_js is true
 
-## For API sources (type: "api"):
-- url: The ACTUAL API endpoint URL - MUST be visible in the content sample or a known pattern
+### For API sources (type: "api"):
+- type: "api"
+- url: The API endpoint URL
 - method: "GET" or "POST"
-- post_body: Request body for POST requests (e.g., {{"limit": 20, "offset": 0}})
-- response_path: JSON path to jobs array (e.g., "jobs", "data.results", "jobPostings")
+- post_body: Request body for POST requests
+- response_path: JSON path to jobs array
 - fields.title: JSON key for job title
 - fields.url: JSON key for job URL
-- base_url: Base URL to prepend to relative job URLs if needed
+- base_url: Base URL for relative URLs if needed
 
-## Common API patterns to look for in HTML:
-- Workday: Look for "wday/cxs" URLs, use POST with {{"appliedFacets": {{}}, "limit": 20, "offset": 0}}
-- Greenhouse: https://boards-api.greenhouse.io/v1/boards/COMPANY/jobs
-- Lever: https://api.lever.co/v0/postings/COMPANY?mode=json
-- SmartRecruiters: https://api.smartrecruiters.com/v1/companies/COMPANY/postings
+## CRITICAL RULES
+1. ONLY use type "html" or "api" - NEVER use "json"
+2. All CSS selectors must be REAL selectors found in the content sample
+3. NEVER invent or guess API URLs
+4. If you see bot protection or auth walls, set can_recover=false
 
-Return ONLY valid JSON (no markdown, no explanation, no placeholders).
+Return ONLY valid JSON (no markdown, no explanation outside the JSON).
 """
 
         try:
             result = self.agent_manager.execute(
                 task_type="analysis",
                 prompt=prompt,
-                max_tokens=1200,  # Increased for complete configs with all fields
+                max_tokens=1200,
                 temperature=0.0,
             )
             data = json.loads(extract_json_from_response(result.text))
 
-            # Log agent's raw response for debugging (compact JSON to avoid truncation issues)
+            # Log agent's raw response for debugging
             response_json = json.dumps(data)
             logger.info(
                 "SOURCE_RECOVER agent response for %s: %s%s",
@@ -1357,22 +1570,42 @@ Return ONLY valid JSON (no markdown, no explanation, no placeholders).
                 "..." if len(response_json) > 1500 else "",
             )
 
-            # Validate based on source type
             if not isinstance(data, dict):
                 logger.warning("Agent returned non-dict for %s: %s", source_name, type(data))
-                return None
+                return RecoveryResult(can_recover=False, diagnosis="Invalid agent response")
+
+            # Check if agent determined recovery is not possible
+            can_recover = data.get("can_recover", True)
+            disable_reason = data.get("disable_reason")
+            diagnosis = data.get("diagnosis", "")
+
+            if not can_recover or disable_reason:
+                logger.info(
+                    "Agent diagnosed %s as non-recoverable: %s (%s)",
+                    source_name,
+                    disable_reason,
+                    diagnosis,
+                )
+                return RecoveryResult(
+                    can_recover=False,
+                    disable_reason=disable_reason,
+                    diagnosis=diagnosis,
+                )
+
+            # Agent says recovery is possible - validate the proposed config
+            config_data = data.get("config") or data  # Handle both formats
 
             # Check if agent proposed a different type than current
-            proposed_type = data.get("type", source_type)
+            proposed_type = config_data.get("type", source_type)
 
-            # Normalize type=json to type=api (agent sometimes uses "json" instead of "api")
+            # Normalize type=json to type=api
             if proposed_type == "json":
                 proposed_type = "api"
-                data["type"] = "api"
+                config_data["type"] = "api"
 
-            # Validate proposed URL domain - must be same domain or known job API
+            # Validate proposed URL domain
             original_url = current_config.get("url", "")
-            proposed_url = data.get("url")
+            proposed_url = config_data.get("url")
             if proposed_url and not self._is_valid_url_change(original_url, proposed_url):
                 logger.warning(
                     "Agent proposed URL on different domain for %s: %s -> %s",
@@ -1380,43 +1613,48 @@ Return ONLY valid JSON (no markdown, no explanation, no placeholders).
                     original_url,
                     proposed_url,
                 )
-                # Fall back to original URL instead of rejecting entirely
-                data["url"] = original_url
+                config_data["url"] = original_url
 
-            # Merge required fields into agent response
-            # Allow agent to change source type and URL if it proposes them
-            if proposed_type == "html" and data.get("job_selector") and data.get("fields"):
-                merged = dict(data)
-                # Use agent's URL if provided, otherwise keep original
-                if not data.get("url"):
+            # Validate and merge config
+            if (
+                proposed_type == "html"
+                and config_data.get("job_selector")
+                and config_data.get("fields")
+            ):
+                merged = dict(config_data)
+                if not config_data.get("url"):
                     merged["url"] = current_config.get("url")
                 merged["type"] = "html"
-                return merged
+                return RecoveryResult(config=merged, diagnosis=diagnosis)
 
-            if proposed_type == "api" and data.get("fields") and data.get("response_path"):
-                merged = dict(data)
-                # For API type changes, prefer agent's URL since API endpoints differ from HTML pages
-                # Agent often discovers the actual API endpoint from the page content
-                if not data.get("url"):
+            if (
+                proposed_type == "api"
+                and config_data.get("fields")
+                and config_data.get("response_path")
+            ):
+                merged = dict(config_data)
+                if not config_data.get("url"):
                     merged["url"] = current_config.get("url")
-                # else: keep agent's proposed URL
                 merged["type"] = "api"
-                # Normalize body -> post_body if agent used wrong key
                 if "body" in merged and "post_body" not in merged:
                     merged["post_body"] = merged.pop("body")
-                return merged
+                return RecoveryResult(config=merged, diagnosis=diagnosis)
 
-            # Log why validation failed
+            # Config validation failed
             logger.warning(
                 "Agent proposal for %s failed validation: type=%s, has_job_selector=%s, "
                 "has_fields=%s, has_response_path=%s",
                 source_name,
                 proposed_type,
-                bool(data.get("job_selector")),
-                bool(data.get("fields")),
-                bool(data.get("response_path")),
+                bool(config_data.get("job_selector")),
+                bool(config_data.get("fields")),
+                bool(config_data.get("response_path")),
             )
-            return None
+            return RecoveryResult(
+                can_recover=False,
+                diagnosis=diagnosis or "Agent config failed validation",
+            )
+
         except Exception as e:
             logger.warning(f"Agent recovery failed for {source_name}: {e}")
-            return None
+            return RecoveryResult(can_recover=False, diagnosis=str(e))
