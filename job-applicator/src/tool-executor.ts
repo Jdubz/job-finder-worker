@@ -1296,13 +1296,10 @@ async function handleGetButtons(): Promise<ToolResult> {
 
         const rect = el.getBoundingClientRect();
 
-        // Skip invisible or disabled
+        // Skip truly invisible or disabled elements
+        // Note: We do NOT filter by viewport position - the agent can scroll
         if (rect.width === 0 || rect.height === 0) continue;
         if (el.disabled) continue;
-        // Skip elements far outside viewport - BUT keep "Add" buttons even if far below
-        // (they're critical for form completion and user may need to scroll)
-        const isFarOutsideViewport = rect.top < -1000 || rect.top > window.innerHeight + 2000;
-        if (isFarOutsideViewport && !hasAddText) continue;
 
         const displayText = text.slice(0, 100) || el.getAttribute('aria-label') || '';
 
