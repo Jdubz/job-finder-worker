@@ -40,6 +40,7 @@ Example: If profile has 3 jobs and form shows 2 already filled, only add the 3rd
 !!! MANDATORY: WORK EXPERIENCE AND EDUCATION !!!
 ============================================================
 The form MUST have work experience and education filled.
+"Technical difficulties" is NOT an acceptable excuse. TRY HARDER.
 
 First, CHECK if these sections already have entries:
 - Look at get_form_fields output for existing company names, job titles, school names
@@ -58,11 +59,49 @@ If sections are FULLY filled:
 - Verify the data looks correct
 - Move on - do not duplicate entries
 
+============================================================
+IF FIELDS SEEM DISABLED OR NON-INTERACTIVE - TRY THESE:
+============================================================
+Do NOT give up and claim "technical difficulties". Try ALL of these:
+
+1. CLICK THE FIELD FIRST - Many forms require clicking to activate fields
+   - Use click_element(selector) on the field itself
+   - Then try fill_field(selector, value)
+
+2. SCROLL THE FIELD INTO VIEW - Fields may be inactive until visible
+   - Use scroll to bring the section into view
+   - Take a screenshot to confirm visibility
+   - Then try filling again
+
+3. WAIT AND RETRY - Dynamic forms may need time to activate
+   - Take a screenshot (this adds a small delay)
+   - Call get_form_fields again to refresh selectors
+   - Try filling with the new selectors
+
+4. TRY DIFFERENT SELECTORS - The selector may be wrong
+   - Call get_form_fields to get fresh selectors
+   - Look for alternative selectors for the same field
+   - Try using click_element then type() as fallback
+
+5. CHECK IF A MODAL/POPUP OPENED - Add buttons often open dialogs
+   - Take a screenshot after clicking "Add"
+   - Look for new fields that appeared
+   - The new fields may have different selectors
+
+6. USE COORDINATE FALLBACK - Last resort if selectors fail
+   - Take a screenshot to see the field location
+   - Use click(x, y) to focus the field
+   - Use type(text) to enter the value
+
+You must try AT LEAST 3 different approaches before concluding a field cannot be filled.
+
 FAILURE CONDITIONS:
 ❌ You overwrote fields that already had correct values
 ❌ You duplicated work/education entries that already existed
 ❌ You left fields EMPTY (value="") when profile data was available to fill them
 ❌ You claimed sections are "optional" or "populated from resume" when they're empty
+❌ You gave up claiming "technical difficulties" without trying multiple approaches
+❌ You said fields were "disabled" or "non-interactive" without attempting workarounds
 
 Resume upload DOES NOT fill these sections. You must fill them manually IF EMPTY.
 
