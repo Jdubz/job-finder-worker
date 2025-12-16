@@ -4,7 +4,7 @@ import type {
   GetPromptsResponse,
   UpdatePromptsResponse,
 } from "@shared/types"
-import { ApiErrorCode, FORM_FILL_SAFETY_RULES } from "@shared/types"
+import { ApiErrorCode } from "@shared/types"
 import { asyncHandler } from "../../utils/async-handler"
 import { success, failure } from "../../utils/api-response"
 import { PromptsRepository } from "./prompts.repository"
@@ -15,7 +15,6 @@ const promptSchema = z.object({
   coverLetterGeneration: z.string().min(1),
   jobScraping: z.string().min(1),
   jobMatching: z.string().min(1),
-  formFill: z.string().min(1),
 })
 
 const updateSchema = z.object({
@@ -39,11 +38,7 @@ export function buildPromptsRouter() {
     asyncHandler((_req, res) => {
       try {
         const prompts = repository.getPrompts()
-        const response: GetPromptsResponse = {
-          prompts,
-          // Include hardcoded safety rules as read-only info
-          formFillSafetyRules: FORM_FILL_SAFETY_RULES,
-        }
+        const response: GetPromptsResponse = { prompts }
         res.json(success(response))
       } catch (err) {
         const message = err instanceof Error ? err.message : ''

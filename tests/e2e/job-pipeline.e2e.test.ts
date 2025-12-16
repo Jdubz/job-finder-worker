@@ -20,7 +20,6 @@ const TEST_PROMPTS: PromptConfig = {
   coverLetterGeneration: "Test cover letter prompt",
   jobScraping: "Test scraping prompt",
   jobMatching: "Test matching prompt",
-  formFill: "Test form fill prompt",
 }
 
 interface ApiSuccess<T> {

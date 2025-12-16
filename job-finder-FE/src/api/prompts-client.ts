@@ -18,15 +18,6 @@ export class PromptsClient extends BaseApiClient {
     return response.data.prompts
   }
 
-  /**
-   * Get prompts along with the hardcoded safety rules.
-   * Use this when you need to display both editable prompts and read-only safety rules.
-   */
-  async getPromptsWithSafety(): Promise<GetPromptsResponse> {
-    const response = await this.get<ApiSuccessResponse<GetPromptsResponse>>("/prompts")
-    return response.data
-  }
-
   async savePrompts(
     prompts: Omit<PromptConfig, "updatedAt" | "updatedBy">,
     userEmail: string
