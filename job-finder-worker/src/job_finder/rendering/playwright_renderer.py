@@ -5,6 +5,7 @@ MVP goals:
 - Block heavy resources by default.
 - Structured logging of duration, request count, and errors.
 - Simple concurrency guard to avoid overloading the worker host.
+- Hard timeout wrapper to prevent hung renders from blocking the worker.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import hashlib
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, TYPE_CHECKING
 
@@ -24,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 BLOCKED_RESOURCE_TYPES = {"image", "font", "media", "stylesheet"}
+
+# Hard timeout multiplier - if render takes longer than this multiple of the
+# requested timeout, force-kill the context to prevent indefinite hangs
+HARD_TIMEOUT_MULTIPLIER = 1.5
+# Minimum hard timeout in ms to allow for slow initial page loads
+MIN_HARD_TIMEOUT_MS = 30_000
 
 
 @dataclass
@@ -47,7 +55,7 @@ class RenderResult:
 
 
 class PlaywrightRenderer:
-    """Minimal headless renderer with a concurrency guard."""
+    """Minimal headless renderer with a concurrency guard and health monitoring."""
 
     def __init__(self, max_concurrent: int = 2, default_timeout_ms: int = 20_000):
         self._sem = threading.Semaphore(max_concurrent)
@@ -55,16 +63,33 @@ class PlaywrightRenderer:
         self._browser_lock = threading.Lock()
         self._playwright: Optional["Playwright"] = None
         self._browser: Optional["Browser"] = None
+        self._consecutive_failures = 0
+        self._max_consecutive_failures = 3  # Restart browser after this many failures
         self._ensure_browser()
 
-    def _ensure_browser(self) -> None:
+    def _ensure_browser(self, force_restart: bool = False) -> None:
         """Start or restart the shared browser instance."""
         with self._browser_lock:
             is_connected = (
                 self._browser is not None and getattr(self._browser, "is_connected", lambda: True)()
             )
-            if is_connected:
+            if is_connected and not force_restart:
                 return
+
+            # Clean up existing browser if present
+            if self._browser is not None:
+                try:
+                    self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
+            if self._playwright is not None:
+                try:
+                    self._playwright.stop()
+                except Exception:
+                    pass
+                self._playwright = None
+
             from playwright.sync_api import sync_playwright
 
             pw = sync_playwright().start()
@@ -76,6 +101,8 @@ class PlaywrightRenderer:
                     "--no-sandbox",
                 ],
             )
+            if force_restart:
+                logger.info("playwright_browser_restarted after consecutive failures")
 
     def render(self, req: RenderRequest) -> RenderResult:
         try:
@@ -89,6 +116,61 @@ class PlaywrightRenderer:
         if not req.url.startswith(("http://", "https://")):
             raise ValueError(f"Invalid URL scheme for rendering: {req.url}")
 
+        # Check if we need to restart browser due to consecutive failures
+        if self._consecutive_failures >= self._max_consecutive_failures:
+            logger.warning(
+                "playwright_health_check: %d consecutive failures, restarting browser",
+                self._consecutive_failures,
+            )
+            self._ensure_browser(force_restart=True)
+            self._consecutive_failures = 0
+
+        start = time.monotonic()
+        timeout = req.wait_timeout_ms or self._default_timeout
+
+        # Calculate hard timeout - prevents indefinite hangs
+        hard_timeout_ms = max(
+            int(timeout * HARD_TIMEOUT_MULTIPLIER),
+            MIN_HARD_TIMEOUT_MS,
+        )
+        hard_timeout_sec = hard_timeout_ms / 1000
+
+        # Run the actual render in a thread with hard timeout
+        def _do_render():
+            return self._render_internal(req, timeout, PlaywrightTimeoutError)
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_do_render)
+                result = future.result(timeout=hard_timeout_sec)
+
+            # Success - reset failure counter
+            self._consecutive_failures = 0
+            return result
+
+        except FuturesTimeoutError:
+            # Hard timeout exceeded - browser likely hung
+            duration_ms = int((time.monotonic() - start) * 1000)
+            url_hash = hashlib.sha256(req.url.encode()).hexdigest()[:10]
+            logger.error(
+                "playwright_render status=hard_timeout url_hash=%s duration_ms=%s hard_limit_ms=%s",
+                url_hash,
+                duration_ms,
+                hard_timeout_ms,
+            )
+            self._consecutive_failures += 1
+            raise RuntimeError(
+                f"Render failed (hard_timeout): Exceeded {hard_timeout_sec}s hard limit"
+            )
+        except RuntimeError:
+            # Normal render failure - track it
+            self._consecutive_failures += 1
+            raise
+
+    def _render_internal(
+        self, req: RenderRequest, timeout: int, PlaywrightTimeoutError
+    ) -> RenderResult:
+        """Internal render implementation - runs in thread with hard timeout."""
         start = time.monotonic()
         request_count = 0
         console_logs: List[str] = []
@@ -132,7 +214,6 @@ class PlaywrightRenderer:
 
             page.on("request", on_request)
 
-            timeout = req.wait_timeout_ms or self._default_timeout
             final_url = req.url
 
             try:
@@ -148,7 +229,10 @@ class PlaywrightRenderer:
                 status = "error"
                 errors.append(str(exc)[:500])
             finally:
-                context.close()
+                try:
+                    context.close()
+                except Exception:
+                    pass  # Context close can fail if browser crashed
 
         duration_ms = int((time.monotonic() - start) * 1000)
         url_hash = hashlib.sha256(req.url.encode()).hexdigest()[:10]

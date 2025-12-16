@@ -43,11 +43,13 @@ from .base_processor import BaseProcessor
 logger = logging.getLogger(__name__)
 
 # Content sample size limits for source recovery
-CONTENT_SAMPLE_FETCH_LIMIT = 8000  # Max chars to fetch from page
-CONTENT_SAMPLE_PROMPT_LIMIT = 6000  # Max chars to include in agent prompt
+# Increased to capture job listings that appear deep in JS-rendered DOM
+CONTENT_SAMPLE_FETCH_LIMIT = 15000  # Max chars to fetch from page
+CONTENT_SAMPLE_PROMPT_LIMIT = 12000  # Max chars to include in agent prompt
 
-# Probe timeout - shorter than normal render to fail fast on bad selectors
-PROBE_RENDER_TIMEOUT_MS = 10_000
+# Probe timeout - must match normal render timeout to avoid false negatives
+# JS-heavy sites (Google, Meta, etc.) often need 15-20 seconds to render
+PROBE_RENDER_TIMEOUT_MS = 20_000
 
 
 @dataclass
@@ -1142,7 +1144,7 @@ class SourceProcessor(BaseProcessor):
 
         source_type = current_config.get("type", "html")
 
-        prompt = f"""You are diagnosing a broken job source. Analyze the issue and propose a fixed configuration.
+        prompt = f"""You are diagnosing a broken job source. Analyze the content sample and propose a working configuration.
 
 ## Source: {source_name}
 URL: {url}
@@ -1156,36 +1158,52 @@ Type: {source_type}
 ## Error History
 {disabled_notes or "No error history available"}
 
-## Content Sample
+## Content Sample (rendered HTML or API response)
 ```
 {content_sample[:CONTENT_SAMPLE_PROMPT_LIMIT]}
 ```
 
+## CRITICAL RULES
+1. ONLY use type "html" or "api" - NEVER use "json" (use "api" for JSON endpoints)
+2. NEVER output placeholder text like "TODO" or example selectors - analyze the ACTUAL content above
+3. All CSS selectors must be REAL selectors found in the content sample
+4. If changing from html to api type, you MUST provide the actual API endpoint URL
+
 ## Your Task
-1. Identify why the current config fails
-2. Analyze the content to determine correct configuration
+1. Analyze the content sample to find job listings
+2. Identify correct selectors/paths based on the ACTUAL HTML/JSON structure
 3. Propose a fixed configuration
 
-For HTML sources:
-- job_selector: CSS selector matching each job card/row container
-- fields.title: CSS selector for job title within each card
-- fields.url: CSS selector or attribute for job link (e.g., "a@href")
-- requires_js: true if page needs JavaScript rendering
-- render_wait_for: CSS selector to wait for if requires_js is true
+## For HTML sources (type: "html"):
+- job_selector: CSS selector matching each job card/row (find real elements in content above)
+- fields.title: CSS selector for title within each job card
+- fields.url: CSS selector with attribute for link (e.g., "a@href" or ".job-link@href")
+- requires_js: true if the content shows JavaScript is needed for rendering
+- render_wait_for: CSS selector to wait for (must exist in the rendered DOM)
 
-For API sources:
-- response_path: JSON path to the jobs array (e.g., "jobs" or "data.results")
+## For API sources (type: "api"):
+- url: The ACTUAL API endpoint URL (often different from the HTML page URL!)
+- method: "GET" or "POST"
+- post_body: Request body for POST requests (e.g., {{"limit": 20, "offset": 0}})
+- response_path: JSON path to jobs array (e.g., "jobs", "data.results", "jobPostings")
 - fields.title: JSON key for job title
-- fields.url: JSON key for job URL (e.g., "absolute_url" or "link")
+- fields.url: JSON key for job URL
+- base_url: Base URL to prepend to relative job URLs if needed
 
-Return ONLY valid JSON matching the source type (no markdown, no explanation).
+## Common API patterns to look for in HTML:
+- Workday: Look for "wday/cxs" URLs, use POST with {{"appliedFacets": {{}}, "limit": 20, "offset": 0}}
+- Greenhouse: https://boards-api.greenhouse.io/v1/boards/COMPANY/jobs
+- Lever: https://api.lever.co/v0/postings/COMPANY?mode=json
+- SmartRecruiters: https://api.smartrecruiters.com/v1/companies/COMPANY/postings
+
+Return ONLY valid JSON (no markdown, no explanation, no placeholders).
 """
 
         try:
             result = self.agent_manager.execute(
                 task_type="analysis",
                 prompt=prompt,
-                max_tokens=800,
+                max_tokens=1200,  # Increased for complete configs with all fields
                 temperature=0.0,
             )
             data = json.loads(extract_json_from_response(result.text))
@@ -1207,17 +1225,32 @@ Return ONLY valid JSON matching the source type (no markdown, no explanation).
             # Check if agent proposed a different type than current
             proposed_type = data.get("type", source_type)
 
-            # Merge required fields from current_config (url) into agent response
-            # Allow agent to change source type if it proposes one
+            # Normalize type=json to type=api (agent sometimes uses "json" instead of "api")
+            if proposed_type == "json":
+                proposed_type = "api"
+                data["type"] = "api"
+
+            # Merge required fields into agent response
+            # Allow agent to change source type and URL if it proposes them
             if proposed_type == "html" and data.get("job_selector") and data.get("fields"):
                 merged = dict(data)
-                merged["url"] = current_config.get("url")
+                # Use agent's URL if provided and different type, otherwise keep original
+                if not data.get("url") or (proposed_type == source_type):
+                    merged["url"] = current_config.get("url")
                 merged["type"] = "html"
                 return merged
+
             if proposed_type == "api" and data.get("fields") and data.get("response_path"):
                 merged = dict(data)
-                merged["url"] = current_config.get("url")
+                # For API type changes, prefer agent's URL since API endpoints differ from HTML pages
+                # Agent often discovers the actual API endpoint from the page content
+                if not data.get("url"):
+                    merged["url"] = current_config.get("url")
+                # else: keep agent's proposed URL
                 merged["type"] = "api"
+                # Normalize body -> post_body if agent used wrong key
+                if "body" in merged and "post_body" not in merged:
+                    merged["post_body"] = merged.pop("body")
                 return merged
 
             # Log why validation failed
