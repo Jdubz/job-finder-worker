@@ -544,7 +544,9 @@ class CompanyProcessor(BaseProcessor):
         logger.info("No career page found via search for %s", company_display)
         return None, False
 
-    def _agent_find_career_page(self, company_name: str, website: Optional[str] = None) -> Optional[str]:
+    def _agent_find_career_page(
+        self, company_name: str, website: Optional[str] = None
+    ) -> Optional[str]:
         """Use the agent (without heuristics) to pick a career page URL from search results."""
         search_client = get_search_client()
         if not search_client:

@@ -496,9 +496,7 @@ class SourceProcessor(BaseProcessor):
                             "snippet": r.snippet,
                         }
                     )
-                logger.info(
-                    "Search for '%s' returned %s results", query, len(search_results)
-                )
+                logger.info("Search for '%s' returned %s results", query, len(search_results))
             except Exception as e:  # noqa: BLE001
                 logger.debug("Search failed for '%s': %s", query, e)
 
