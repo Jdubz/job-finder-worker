@@ -274,8 +274,8 @@ def _build_analysis_prompt(
                     f"- **{result.get('provider', 'unknown')}**: {result.get('job_count', 0)} jobs {domain_match}\n"
                 )
                 prompt_parts.append(f"  API URL: {result.get('api_url', 'N/A')}\n")
-                if result.get("sample_job_url"):
-                    prompt_parts.append(f"  Job URL domain: {result.get('sample_job_url')}\n")
+                if result.get("sample_job_domain"):
+                    prompt_parts.append(f"  Job URL domain: {result.get('sample_job_domain')}\n")
                 if result.get("sample_job"):
                     sample = result["sample_job"]
                     prompt_parts.append(f"  Sample job title: {sample.get('title', 'N/A')}\n")

@@ -101,16 +101,16 @@ def _ats_probe_result_set_to_dict(
     for r in result_set.all_results:
         # Check if this result's domain matches expected
         domain_matched = False
-        if expected_domain and r.sample_job_url:
+        if expected_domain and r.sample_job_domain:
             from job_finder.scrapers.ats_prober import domains_match
 
-            domain_matched = domains_match(r.sample_job_url, expected_domain)
+            domain_matched = domains_match(r.sample_job_domain, expected_domain)
 
         result_dict: Dict[str, Any] = {
             "provider": r.ats_provider,
             "job_count": r.job_count,
             "api_url": r.api_url,
-            "sample_job_url": r.sample_job_url,
+            "sample_job_domain": r.sample_job_domain,
             "domain_matched": domain_matched,
         }
         # Add sample job info if available
@@ -894,30 +894,6 @@ class SourceProcessor(BaseProcessor):
     # ============================================================
     # PROBE + VALIDATION HELPERS
     # ============================================================
-
-    # Common bot protection patterns in HTML content
-    BOT_PROTECTION_PATTERNS = [
-        # Cloudflare
-        "cf-browser-verification",
-        "cf_clearance",
-        "cloudflare",
-        "ray id",
-        "checking your browser",
-        # Generic bot protection
-        "captcha",
-        "recaptcha",
-        "hcaptcha",
-        "please verify you are human",
-        "access denied",
-        "blocked",
-        "bot detected",
-        "unusual traffic",
-        # Auth walls
-        "sign in to continue",
-        "login required",
-        "please log in",
-        "authentication required",
-    ]
 
     def _detect_bot_protection(self, content: str) -> Optional[str]:
         """Detect bot protection patterns in content.
@@ -1881,8 +1857,8 @@ class SourceProcessor(BaseProcessor):
                 domain_match = "✓ DOMAIN MATCH" if result.get("domain_matched") else ""
                 ats_section += f"- **{result.get('provider', 'unknown')}**: {result.get('job_count', 0)} jobs {domain_match}\n"
                 ats_section += f"  API URL: {result.get('api_url', 'N/A')}\n"
-                if result.get("sample_job_url"):
-                    ats_section += f"  Job URL domain: {result.get('sample_job_url')}\n"
+                if result.get("sample_job_domain"):
+                    ats_section += f"  Job URL domain: {result.get('sample_job_domain')}\n"
                 if result.get("sample_job"):
                     sample = result["sample_job"]
                     ats_section += f"  Sample job: {sample.get('title', 'N/A')}"

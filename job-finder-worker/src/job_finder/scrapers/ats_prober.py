@@ -39,7 +39,7 @@ class ATSProbeResult:
     job_count: int = 0
     sample_job: Optional[Dict[str, Any]] = None
     config: Optional[Dict[str, Any]] = None  # Ready-to-use scraper config
-    sample_job_url: Optional[str] = None  # URL of a sample job for verification
+    sample_job_domain: Optional[str] = None  # Domain extracted from sample job URL
 
 
 # Common ATS providers and their API patterns
@@ -131,46 +131,6 @@ ATS_PROVIDERS = {
 WORKDAY_SUBDOMAINS = ["wd1", "wd3", "wd5"]
 # Common Workday board names
 WORKDAY_BOARDS = ["jobs", "careers", "External", "Careers"]
-
-
-def normalize_company_slug(name: str) -> str:
-    """Convert company name to a typical ATS slug format.
-
-    Examples:
-        "Acme Corp" -> "acmecorp"
-        "Full-Script Inc." -> "fullscript"
-        "REI Co-op" -> "rei"
-    """
-    # Remove common suffixes
-    suffixes = [
-        " inc",
-        " inc.",
-        " corp",
-        " corp.",
-        " llc",
-        " ltd",
-        " ltd.",
-        " co",
-        " co.",
-        " company",
-        " corporation",
-        " group",
-        " holdings",
-        " technologies",
-        " technology",
-        " tech",
-        " software",
-        " solutions",
-    ]
-    name_lower = name.lower()
-    for suffix in suffixes:
-        if name_lower.endswith(suffix):
-            name_lower = name_lower[: -len(suffix)]
-
-    # Remove special characters and spaces
-    slug = re.sub(r"[^a-z0-9]", "", name_lower)
-
-    return slug
 
 
 def generate_slug_variations(name: str) -> List[str]:
@@ -371,7 +331,10 @@ def domains_match(domain1: str, domain2: str) -> bool:
     - "www.example.com" vs "example.com"
     - "careers.example.com" vs "example.com"
     - "jobs.example.com" vs "example.com"
+    - "company.co.uk" vs "jobs.company.co.uk" (multi-part TLDs)
     """
+    from job_finder.utils.url_utils import get_root_domain
+
     if not domain1 or not domain2:
         return False
 
@@ -383,16 +346,11 @@ def domains_match(domain1: str, domain2: str) -> bool:
     if d1 == d2:
         return True
 
-    # Check if one is a subdomain of the other
-    # Extract root domain (last 2 parts for .com, .io, etc.)
-    parts1 = d1.split(".")
-    parts2 = d2.split(".")
-
-    if len(parts1) >= 2 and len(parts2) >= 2:
-        root1 = ".".join(parts1[-2:])
-        root2 = ".".join(parts2[-2:])
-        if root1 == root2:
-            return True
+    # Check if root domains match (handles multi-part TLDs like .co.uk)
+    root1 = get_root_domain(d1)
+    root2 = get_root_domain(d2)
+    if root1 and root2 and root1 == root2:
+        return True
 
     return False
 
@@ -472,9 +430,9 @@ def probe_ats_provider(
         }
 
         # Extract sample job URL for domain verification
-        sample_job_url = None
+        sample_job_domain = None
         if sample_job:
-            sample_job_url = extract_job_url_domain(sample_job, provider)
+            sample_job_domain = extract_job_url_domain(sample_job, provider)
 
         aggregator_domain = config.get("aggregator_domain")
         logger.info(f"ATS probe SUCCESS: {provider}/{slug} has {job_count} jobs")
@@ -487,7 +445,7 @@ def probe_ats_provider(
             job_count=job_count,
             sample_job=sample_job,
             config=scraper_config,
-            sample_job_url=sample_job_url,
+            sample_job_domain=sample_job_domain,
         )
 
     except requests.exceptions.Timeout:
@@ -588,152 +546,6 @@ def probe_workday(
     return ATSProbeResult(found=False)
 
 
-def probe_all_ats_providers(
-    company_name: Optional[str] = None,
-    url: Optional[str] = None,
-    additional_slugs: Optional[List[str]] = None,
-) -> ATSProbeResult:
-    """Probe all known ATS providers to find which one a company uses.
-
-    Tries multiple slug variations derived from company name and URL.
-
-    Args:
-        company_name: Company name to derive slugs from
-        url: URL to extract potential slugs from
-        additional_slugs: Extra slugs to try (e.g., from domain name)
-
-    Returns:
-        ATSProbeResult with found=True if any provider has jobs
-    """
-    # Build list of slugs to try
-    slugs_to_try: List[str] = []
-
-    # Extract slug from URL (most reliable)
-    url_slug = extract_slug_from_url(url or "")
-    if url_slug:
-        slugs_to_try.append(url_slug)
-
-    # Derive multiple slug variations from company name
-    if company_name:
-        for variation in generate_slug_variations(company_name):
-            if variation and variation not in slugs_to_try:
-                slugs_to_try.append(variation)
-
-    # Extract slug from domain
-    if url:
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        # Get root domain without TLD: "www.acme.com" -> "acme"
-        parts = domain.replace("www.", "").split(".")
-        if len(parts) >= 2:
-            domain_slug = parts[0]
-            if domain_slug and domain_slug not in slugs_to_try:
-                slugs_to_try.append(domain_slug)
-
-    # Add any additional slugs
-    if additional_slugs:
-        for slug in additional_slugs:
-            if slug and slug not in slugs_to_try:
-                slugs_to_try.append(slug)
-
-    # De-duplicate while preserving order
-    seen = set()
-    unique_slugs = []
-    for slug in slugs_to_try:
-        if slug not in seen:
-            seen.add(slug)
-            unique_slugs.append(slug)
-
-    if not unique_slugs:
-        logger.debug("No slugs to probe for ATS")
-        return ATSProbeResult(found=False)
-
-    logger.debug(f"Probing ATS providers with slugs: {unique_slugs}")
-
-    # Try each provider with each slug
-    # Prioritize providers by likelihood of success (most common first)
-    provider_order = [
-        "greenhouse",
-        "lever",
-        "ashby",
-        "smartrecruiters",
-        "recruitee",
-        "breezy",
-        "workable",
-    ]
-
-    # Collect all successful results to return the best one
-    all_results: List[ATSProbeResult] = []
-
-    # If we have a URL, we need to check all providers for domain verification
-    # to prevent slug collisions. Without URL, we can exit early for performance.
-    need_domain_verification = url is not None
-
-    for provider in provider_order:
-        for slug in unique_slugs:
-            result = probe_ats_provider(provider, slug)
-            if result.found:
-                all_results.append(result)
-                # Early exit if we find a result with many jobs (unless we need domain verification)
-                if not need_domain_verification and result.job_count >= 5:
-                    break
-        # If we found a good result for this provider, move on (unless we need domain verification)
-        if not need_domain_verification and all_results and all_results[-1].job_count >= 5:
-            break
-
-    # Also try Workday (requires special handling)
-    for slug in unique_slugs:
-        result = probe_workday(slug)
-        if result.found:
-            all_results.append(result)
-            break
-
-    if not all_results:
-        logger.debug(f"No ATS provider found for slugs: {unique_slugs}")
-        return ATSProbeResult(found=False)
-
-    # If we have an original URL, prefer results that match the company domain
-    # This prevents slug collisions (e.g., "profound" matching wrong company)
-    expected_domain = None
-    if url:
-        parsed = urlparse(url)
-        expected_domain = parsed.netloc.lower().replace("www.", "")
-
-    if expected_domain and len(all_results) > 1:
-        # Filter results to those whose job URLs match the expected domain
-        domain_matched_results = [
-            r
-            for r in all_results
-            if r.sample_job_url and domains_match(r.sample_job_url, expected_domain)
-        ]
-
-        if domain_matched_results:
-            # Return the domain-matched result with the most jobs
-            best_result = max(domain_matched_results, key=lambda r: r.job_count)
-            if len(all_results) > len(domain_matched_results):
-                logger.info(
-                    f"Found {len(all_results)} ATS providers, {len(domain_matched_results)} match "
-                    f"domain {expected_domain}. Returning {best_result.ats_provider} "
-                    f"with {best_result.job_count} jobs"
-                )
-            return best_result
-        else:
-            # No domain matches - log warning about potential slug collision
-            logger.warning(
-                f"Found {len(all_results)} ATS providers but none match expected domain "
-                f"{expected_domain}. Potential slug collision. Returning result with most jobs."
-            )
-
-    # Return the result with the most jobs
-    best_result = max(all_results, key=lambda r: r.job_count)
-    if len(all_results) > 1:
-        logger.info(
-            f"Found {len(all_results)} ATS providers, returning best: "
-            f"{best_result.ats_provider} with {best_result.job_count} jobs"
-        )
-    return best_result
-
-
 @dataclass
 class ATSProbeResultSet:
     """Collection of all ATS probe results for detailed analysis."""
@@ -753,9 +565,8 @@ def probe_all_ats_providers_detailed(
 ) -> ATSProbeResultSet:
     """Probe all ATS providers and return detailed results for agent analysis.
 
-    Unlike probe_all_ats_providers which returns only the best result, this
-    function returns ALL results to help AI agents verify company identity
-    and detect slug collisions.
+    Returns ALL results (not just the best one) to help AI agents verify
+    company identity and detect slug collisions.
 
     Args:
         company_name: Company name to derive slugs from
@@ -765,7 +576,7 @@ def probe_all_ats_providers_detailed(
     Returns:
         ATSProbeResultSet with all results and collision detection info
     """
-    # Build list of slugs to try (same logic as probe_all_ats_providers)
+    # Build list of slugs to try
     slugs_to_try: List[str] = []
 
     url_slug = extract_slug_from_url(url or "")
@@ -846,7 +657,7 @@ def probe_all_ats_providers_detailed(
         domain_matched_results = [
             r
             for r in all_results
-            if r.sample_job_url and domains_match(r.sample_job_url, expected_domain)
+            if r.sample_job_domain and domains_match(r.sample_job_domain, expected_domain)
         ]
 
     # Detect slug collision (same slug matches different companies on different providers)

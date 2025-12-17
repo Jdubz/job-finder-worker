@@ -22,7 +22,7 @@ import json
 import re
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -52,6 +52,7 @@ class InvestigationResult:
     # Content
     html_length: int = 0
     html_sample: str = ""
+    full_html: str = ""  # Full HTML for saving (not included in JSON output)
 
     # ATS probe results
     ats_probe_results: List[Dict[str, Any]] = field(default_factory=list)
@@ -200,6 +201,7 @@ def investigate_with_playwright(
     """Render page with Playwright and analyze content."""
     try:
         from playwright.sync_api import sync_playwright
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     except ImportError:
         print("ERROR: playwright is not installed.")
         print("Install it with: pip install playwright && playwright install chromium")
@@ -247,25 +249,29 @@ def investigate_with_playwright(
             # Navigate to page
             try:
                 page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            except PlaywrightTimeoutError as e:
+                result.status = "timeout"
+                result.errors.append(f"Navigation timeout: {e}")
             except Exception as e:
-                if "timeout" in str(e).lower():
-                    result.status = "timeout"
-                    result.errors.append(f"Navigation timeout: {e}")
-                else:
-                    result.status = "error"
-                    result.errors.append(f"Navigation error: {e}")
+                result.status = "error"
+                result.errors.append(f"Navigation error: {e}")
 
             # Wait for additional selector if specified
             if wait_for_selector and result.status == "ok":
                 try:
                     page.wait_for_selector(wait_for_selector, timeout=5000)
-                except Exception:
-                    pass  # Don't fail if selector not found
+                except PlaywrightTimeoutError:
+                    # Selector not found within timeout - continue with available content
+                    pass
+                except Exception as e:
+                    # Log unexpected errors but don't fail the investigation
+                    result.errors.append(f"Selector wait error: {e}")
 
             # Get page content
             html = page.content()
             result.html_length = len(html)
             result.html_sample = html[:5000]
+            result.full_html = html
             result.final_url = page.url
             result.title = page.title()
 
@@ -308,6 +314,7 @@ def investigate_with_playwright(
                             }
                         )
                 except Exception:
+                    # Some selectors may fail on certain pages - silently continue
                     pass
 
             result.api_calls = api_calls
@@ -327,26 +334,21 @@ def probe_ats_apis(
     url: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Probe known ATS APIs to find which one the company uses."""
-    from job_finder.scrapers.ats_prober import ATS_PROVIDERS
+    from job_finder.scrapers.ats_prober import (
+        ATS_PROVIDERS,
+        generate_slug_variations,
+        probe_ats_provider,
+    )
 
     results = []
 
-    # Get slugs to try
-    slugs = []
-
+    # Generate slugs using the same logic as the main prober
+    slugs: List[str] = []
     if company_name:
-        # Normalize company name to slug
-        slug = re.sub(r"[^a-z0-9]", "", company_name.lower())
-        slugs.append(slug)
-
-        # Try first word
-        first_word = company_name.split()[0].lower()
-        clean_first = re.sub(r"[^a-z0-9]", "", first_word)
-        if clean_first and clean_first != slug:
-            slugs.append(clean_first)
+        slugs.extend(generate_slug_variations(company_name))
 
     if url:
-        # Extract domain as slug
+        # Also try domain-based slug
         parsed = urlparse(url)
         domain = parsed.netloc.lower().replace("www.", "")
         domain_slug = domain.split(".")[0]
@@ -358,9 +360,6 @@ def probe_ats_apis(
 
     print(f"\nProbing ATS APIs with slugs: {slugs}")
     print("-" * 50)
-
-    # Import the probe function
-    from job_finder.scrapers.ats_prober import probe_ats_provider
 
     for provider in ATS_PROVIDERS.keys():
         for slug in slugs:
@@ -515,44 +514,21 @@ def main():
             url=args.url,
         )
 
-    # Save HTML if requested
+    # Save HTML if requested - reuse already-fetched content
     if args.save_html:
-        # Need to re-render to get full HTML
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            print("ERROR: playwright is not installed for HTML saving.")
-            sys.exit(1)
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(args.url, wait_until="networkidle", timeout=args.timeout)
-            html = page.content()
-            browser.close()
-
-        with open(args.save_html, "w", encoding="utf-8") as f:
-            f.write(html)
-        print(f"\nHTML saved to: {args.save_html}")
+        if result.full_html:
+            with open(args.save_html, "w", encoding="utf-8") as f:
+                f.write(result.full_html)
+            print(f"\nHTML saved to: {args.save_html}")
+        else:
+            print("\nWARNING: No HTML content available to save (page may have failed to load)")
 
     # Output results
     if args.json:
-        # Convert to JSON-serializable dict
-        output = {
-            "url": result.url,
-            "final_url": result.final_url,
-            "status": result.status,
-            "duration_ms": result.duration_ms,
-            "title": result.title,
-            "detected_ats": result.detected_ats,
-            "bot_protection": result.bot_protection,
-            "html_length": result.html_length,
-            "iframes": result.iframes,
-            "api_calls": result.api_calls,
-            "job_element_candidates": result.job_element_candidates,
-            "ats_probe_results": result.ats_probe_results,
-            "errors": result.errors,
-        }
+        # Convert to JSON-serializable dict using asdict, excluding full_html (too verbose)
+        output = asdict(result)
+        del output["full_html"]  # Don't include full HTML in JSON output
+        del output["html_sample"]  # Also exclude sample to keep output clean
         print(json.dumps(output, indent=2))
     else:
         print_result(result, verbose=args.verbose)
