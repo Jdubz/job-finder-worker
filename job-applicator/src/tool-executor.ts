@@ -51,12 +51,50 @@ type WebFrameMainLike = {
   url?: string
   routingId?: number
   frames?: WebFrameMainLike[]
-  executeJavaScript?: (code: string, userGesture?: boolean) => Promise<any>
+  executeJavaScript?: (code: string, userGesture?: boolean) => Promise<unknown>
 }
 
+type ExecFn = <T = unknown>(code: string) => Promise<T>
+
 type ExecContext =
-  | { kind: "webContents"; exec: (code: string) => Promise<any>; frameUrl: string | null; routingId: null }
-  | { kind: "frame"; exec: (code: string) => Promise<any>; frameUrl: string | null; routingId: number | null }
+  | { kind: "webContents"; exec: ExecFn; frameUrl: string | null; routingId: null }
+  | { kind: "frame"; exec: ExecFn; frameUrl: string | null; routingId: number | null }
+
+type SelectorProbeResult = { ok: boolean; found: boolean; error?: string }
+type SimpleSuccessResult = { success: boolean; error?: string }
+type VerifyValueResult = { success: boolean; value?: string; error?: string }
+type FillFieldResult = {
+  success: boolean
+  selector?: string
+  value?: string
+  method?: string
+  error?: string
+  needsKeyboard?: boolean
+  attempted?: string
+  actual?: string
+}
+type SelectOptionResult = {
+  success: boolean
+  selector?: string
+  selectedValue?: string
+  selectedText?: string
+  error?: string
+  attempted?: string
+  actual?: string
+}
+type DropdownOption = { text: string; value: string }
+type PeekDropdownResult = { success: boolean; options?: DropdownOption[]; error?: string }
+type ComboboxOptionSelectResult = {
+  success: boolean
+  error?: string
+  searchedFor?: string
+  availableOptions?: string[]
+  selectedText?: string
+  selectedValue?: string
+  matchScore?: number
+}
+type SetCheckboxResult = { success: boolean; selector?: string; checked?: boolean; error?: string }
+type ClickElementResult = { success: boolean; selector?: string; text?: string; error?: string }
 
 function getAllFramesFromWebContents(): WebFrameMainLike[] | null {
   if (!browserView) return null
@@ -87,7 +125,7 @@ function getWebContentsExecContext(): ExecContext | null {
   if (!browserView) return null
   return {
     kind: "webContents",
-    exec: (code: string) => browserView!.webContents.executeJavaScript(code),
+    exec: <T = unknown>(code: string) => browserView!.webContents.executeJavaScript(code) as Promise<T>,
     frameUrl: browserView.webContents.getURL?.() || null,
     routingId: null,
   }
@@ -111,11 +149,11 @@ async function resolveExecContextForSelector(selector: string): Promise<ExecCont
   if (frames && frames.length > 0) {
     for (const frame of frames) {
       try {
-        const res = await frame.executeJavaScript!(probe)
-        if (res && typeof res === "object" && (res as { found?: boolean }).found) {
+        const res = (await frame.executeJavaScript!(probe)) as SelectorProbeResult
+        if (res?.found) {
           return {
             kind: "frame",
-            exec: (code: string) => frame.executeJavaScript!(code),
+            exec: <T = unknown>(code: string) => frame.executeJavaScript!(code) as Promise<T>,
             frameUrl: frame.url || null,
             routingId: typeof frame.routingId === "number" ? frame.routingId : null,
           }
@@ -127,8 +165,8 @@ async function resolveExecContextForSelector(selector: string): Promise<ExecCont
 
     // If selector is invalid, surface that by returning null (caller can report "not found")
     try {
-      const res = await frames[0].executeJavaScript!(probe)
-      if (res && typeof res === "object" && (res as { ok?: boolean }).ok === false) {
+      const res = (await frames[0].executeJavaScript!(probe)) as SelectorProbeResult
+      if (res?.ok === false) {
         return null
       }
     } catch {
@@ -141,8 +179,8 @@ async function resolveExecContextForSelector(selector: string): Promise<ExecCont
   // Fallback for tests/mocks where mainFrame isn't present
   const ctx = getWebContentsExecContext()
   if (!ctx) return null
-  const res = await ctx.exec(probe)
-  if (res && typeof res === "object" && (res as { found?: boolean }).found) return ctx
+  const res = await ctx.exec<SelectorProbeResult>(probe)
+  if (res?.found) return ctx
   return null
 }
 
@@ -656,7 +694,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
     const valueJson = JSON.stringify(value)
 
     // Strategy 1: Enhanced DOM-based filling with InputEvent
-    const result = await ctx.exec(`
+    const result = await ctx.exec<FillFieldResult>(`
       (() => {
         const selector = ${selectorJson};
         const value = ${valueJson};
@@ -779,7 +817,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
       }
 
       // Verify the value
-      const verifyResult = await ctx.exec(`
+      const verifyResult = await ctx.exec<VerifyValueResult>(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false, error: 'Element not found after typing' };
@@ -834,7 +872,7 @@ async function handleSelectOption(params: { selector: string; value: string }): 
 
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
-    const result = await ctx.exec(`
+    const result = await ctx.exec<SelectOptionResult>(`
       (() => {
         const selector = ${selectorJson};
         const targetValue = ${valueJson};
@@ -977,7 +1015,7 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
     // Step 1: Focus/click to open dropdown
-    await ctx.exec(`
+    await ctx.exec<SimpleSuccessResult>(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false, error: 'Element not found' };
@@ -994,7 +1032,7 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
     // Step 2: Collect all visible options
-    const result = await ctx.exec(`
+    const result = await ctx.exec<PeekDropdownResult>(`
       (() => {
         const dropdownSelectors = ${selectorsJson};
         const maxOptions = ${MAX_DROPDOWN_OPTIONS_TO_RETURN};
@@ -1075,10 +1113,10 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
     // Helper function to find and click the best matching option
-    const findAndSelectOption = async (searchValue: string): Promise<ToolResult> => {
+    const findAndSelectOption = async (searchValue: string): Promise<ComboboxOptionSelectResult> => {
       const searchJson = JSON.stringify(searchValue.toLowerCase())
 
-      const selectResult = await ctx.exec(`
+      const selectResult = await ctx.exec<ComboboxOptionSelectResult>(`
         (() => {
           const targetValue = ${searchJson};
           const dropdownSelectors = ${selectorsJson};
@@ -1170,7 +1208,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     }
 
     // Step 1: Open dropdown by focusing/clicking without typing
-    await ctx.exec(`
+    await ctx.exec<SimpleSuccessResult>(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false };
@@ -1186,7 +1224,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
     // Step 2: Try to find a match in the open dropdown
-    let result = await findAndSelectOption(value) as ToolResult & { selectedText?: string; matchScore?: number; availableOptions?: string[] }
+    let result = await findAndSelectOption(value)
 
     if (result.success) {
       logger.info(`[ToolExecutor] Combobox selected (no typing): "${result.selectedText}" (score: ${result.matchScore})`)
@@ -1201,7 +1239,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
       logger.info(`[ToolExecutor] Typing "${partialValue}" to filter dropdown...`)
 
       // Clear and type partial value
-      await ctx.exec(`
+      await ctx.exec<SimpleSuccessResult>(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false };
@@ -1225,7 +1263,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
 
       await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
-      result = await findAndSelectOption(value) as ToolResult & { selectedText?: string; matchScore?: number; availableOptions?: string[] }
+      result = await findAndSelectOption(value)
 
       if (result.success) {
         logger.info(`[ToolExecutor] Combobox selected (after typing "${partialValue}"): "${result.selectedText}" (score: ${result.matchScore})`)
@@ -1283,7 +1321,7 @@ async function handleSetCheckbox(params: { selector: string; checked: boolean })
     }
 
     const selectorJson = JSON.stringify(selector)
-    const result = await ctx.exec(`
+    const result = await ctx.exec<SetCheckboxResult>(`
       (() => {
         const selector = ${selectorJson};
         const targetChecked = ${checked};
@@ -1353,7 +1391,7 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
     }
 
     const selectorJson = JSON.stringify(selector)
-    const result = await ctx.exec(`
+    const result = await ctx.exec<ClickElementResult>(`
       (() => {
         const selector = ${selectorJson};
         const el = document.querySelector(selector);
