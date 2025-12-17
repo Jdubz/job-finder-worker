@@ -5,15 +5,15 @@ import { ApiHttpError } from '../../middleware/api-error'
 
 export type SubmitJobInput = {
   url: string
-  companyName?: string
-  companyUrl?: string
+  companyName?: string | null
+  companyUrl?: string | null
   source?: QueueSource
   companyId?: string | null
-  generationId?: string
-  title?: string
-  description?: string
-  location?: string
-  techStack?: string
+  generationId?: string | null
+  title?: string | null
+  description?: string | null
+  location?: string | null
+  techStack?: string | null
   bypassFilter?: boolean
   metadata?: Record<string, unknown>
 }
