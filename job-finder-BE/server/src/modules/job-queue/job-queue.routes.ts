@@ -42,13 +42,13 @@ const submitJobSchema = z.object({
   url: z.string().url(),
   companyName: z.string().nullable().optional(),
   companyId: z.string().nullable().optional(),
-  companyUrl: z.string().url().optional(),
+  companyUrl: z.string().url().nullable().optional(),
   title: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   techStack: z.string().nullable().optional(),
   bypassFilter: z.boolean().optional(),
-  generationId: z.string().optional(),
+  generationId: z.string().nullable().optional(),
   source: z.enum(QUEUE_SOURCES).optional(),
   metadata: z.record(z.unknown()).optional()
 })
