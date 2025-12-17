@@ -732,3 +732,139 @@ def probe_all_ats_providers(
             f"{best_result.ats_provider} with {best_result.job_count} jobs"
         )
     return best_result
+
+
+@dataclass
+class ATSProbeResultSet:
+    """Collection of all ATS probe results for detailed analysis."""
+
+    best_result: Optional[ATSProbeResult]
+    all_results: List[ATSProbeResult]
+    expected_domain: Optional[str]
+    domain_matched_results: List[ATSProbeResult]
+    has_slug_collision: bool  # True if multiple providers found with same slug
+    slugs_tried: List[str]
+
+
+def probe_all_ats_providers_detailed(
+    company_name: Optional[str] = None,
+    url: Optional[str] = None,
+    additional_slugs: Optional[List[str]] = None,
+) -> ATSProbeResultSet:
+    """Probe all ATS providers and return detailed results for agent analysis.
+
+    Unlike probe_all_ats_providers which returns only the best result, this
+    function returns ALL results to help AI agents verify company identity
+    and detect slug collisions.
+
+    Args:
+        company_name: Company name to derive slugs from
+        url: URL to extract potential slugs from
+        additional_slugs: Extra slugs to try
+
+    Returns:
+        ATSProbeResultSet with all results and collision detection info
+    """
+    # Build list of slugs to try (same logic as probe_all_ats_providers)
+    slugs_to_try: List[str] = []
+
+    url_slug = extract_slug_from_url(url or "")
+    if url_slug:
+        slugs_to_try.append(url_slug)
+
+    if company_name:
+        for variation in generate_slug_variations(company_name):
+            if variation and variation not in slugs_to_try:
+                slugs_to_try.append(variation)
+
+    if url:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        parts = domain.replace("www.", "").split(".")
+        if len(parts) >= 2:
+            domain_slug = parts[0]
+            if domain_slug and domain_slug not in slugs_to_try:
+                slugs_to_try.append(domain_slug)
+
+    if additional_slugs:
+        for slug in additional_slugs:
+            if slug and slug not in slugs_to_try:
+                slugs_to_try.append(slug)
+
+    seen = set()
+    unique_slugs = []
+    for slug in slugs_to_try:
+        if slug not in seen:
+            seen.add(slug)
+            unique_slugs.append(slug)
+
+    if not unique_slugs:
+        return ATSProbeResultSet(
+            best_result=None,
+            all_results=[],
+            expected_domain=None,
+            domain_matched_results=[],
+            has_slug_collision=False,
+            slugs_tried=[],
+        )
+
+    # Probe all providers (always check all for detailed analysis)
+    provider_order = [
+        "greenhouse",
+        "lever",
+        "ashby",
+        "smartrecruiters",
+        "recruitee",
+        "breezy",
+        "workable",
+    ]
+
+    all_results: List[ATSProbeResult] = []
+
+    for provider in provider_order:
+        for slug in unique_slugs:
+            result = probe_ats_provider(provider, slug)
+            if result.found:
+                all_results.append(result)
+
+    # Also try Workday
+    for slug in unique_slugs:
+        result = probe_workday(slug)
+        if result.found:
+            all_results.append(result)
+            break
+
+    # Determine expected domain
+    expected_domain = None
+    if url:
+        parsed = urlparse(url)
+        expected_domain = parsed.netloc.lower().replace("www.", "")
+
+    # Find domain-matched results
+    domain_matched_results = []
+    if expected_domain:
+        domain_matched_results = [
+            r
+            for r in all_results
+            if r.sample_job_url and domains_match(r.sample_job_url, expected_domain)
+        ]
+
+    # Detect slug collision (same slug matches different companies on different providers)
+    has_slug_collision = len(all_results) > 1 and len(domain_matched_results) < len(all_results)
+
+    # Determine best result
+    best_result = None
+    if all_results:
+        if domain_matched_results:
+            best_result = max(domain_matched_results, key=lambda r: r.job_count)
+        else:
+            best_result = max(all_results, key=lambda r: r.job_count)
+
+    return ATSProbeResultSet(
+        best_result=best_result,
+        all_results=all_results,
+        expected_domain=expected_domain,
+        domain_matched_results=domain_matched_results,
+        has_slug_collision=has_slug_collision,
+        slugs_tried=unique_slugs,
+    )

@@ -110,12 +110,31 @@ job discovery system. Your analysis will determine how the source is classified 
 - Can scrape static HTML pages with CSS selectors
 - Can render JavaScript-driven pages via Playwright **when `requires_js: true` is set in the source_config**. Always include a CSS selector for readiness (job list container or first job card).
 - Supports pagination for APIs with offset/page parameters
+- **ATS API probing**: The system automatically probes known ATS providers before calling you.
+  If ATS probe results are provided below, USE THEM - they are verified API responses.
 - Known ATS patterns (preferred when detected):
   - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
   - Lever: GET https://api.lever.co/v0/postings/{{slug}}?mode=json, fields.title=text, url=hostedUrl, location=categories.location, description=descriptionPlain, posted_date=createdAt
   - Ashby: GET https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs, fields.title=title, url=jobUrl, description=descriptionHtml, location=location
   - Workday: POST https://{{tenant}}.wd{{N}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{site}}/jobs with body {\"limit\":20,\"offset\":0}, response_path=jobPostings, fields.title=title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn
   - RSS: if the URL is clearly an RSS feed, use type=rss and map title/link/description/pubDate
+
+### CRITICAL: Slug Collision Detection
+
+**The same ATS slug can match DIFFERENT companies on different providers!**
+
+Example: The slug "profound" matches:
+- Greenhouse: ProFound Therapeutics (biotech company in Boston, ~5 jobs)
+- Ashby: A different tech company (64 jobs, NYC/SF locations)
+
+When multiple ATS providers are found with the same slug:
+1. **Verify company identity** by checking job titles, locations, and descriptions
+2. **Check domain match** - does the job URL domain match the expected company domain?
+3. **Do NOT assume** the provider with the most jobs is correct
+4. Consider company characteristics: industry, location, typical role types
+
+If ATS probe results show a potential slug collision (multiple providers found), you MUST
+verify which provider actually belongs to the company in question.
 
 ### System Limitations (CRITICAL)
 - **No authentication**: Cannot handle login-required or OAuth-protected sources
@@ -191,6 +210,7 @@ def _build_analysis_prompt(
     company_id: Optional[str] = None,
     fetch_result: Optional[Dict[str, Any]] = None,
     search_results: Optional[List[Dict[str, str]]] = None,
+    ats_probe_results: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build the prompt for source analysis.
 
@@ -200,6 +220,7 @@ def _build_analysis_prompt(
         company_id: Optional company ID from intake
         fetch_result: Optional result from attempting to fetch the URL
         search_results: Optional search results about the URL/domain
+        ats_probe_results: Optional ATS probe results from probe_all_ats_providers_detailed
 
     Returns:
         Formatted prompt string
@@ -226,6 +247,49 @@ def _build_analysis_prompt(
             prompt_parts.append(f"Company Name (provided): {company_name}\n")
         if company_id:
             prompt_parts.append(f"Company ID (provided): {company_id}\n")
+
+    # Add ATS probe results if provided - CRITICAL for agent decision making
+    if ats_probe_results:
+        prompt_parts.append("\n### ATS Probe Results (VERIFIED API RESPONSES)\n")
+        prompt_parts.append(
+            "The system has already probed known ATS providers. These are real API responses:\n\n"
+        )
+
+        if ats_probe_results.get("has_slug_collision"):
+            prompt_parts.append(
+                "⚠️ **POTENTIAL SLUG COLLISION DETECTED** - Multiple providers found!\n"
+                "You MUST verify which provider belongs to this company.\n\n"
+            )
+
+        all_results = ats_probe_results.get("all_results", [])
+        if all_results:
+            prompt_parts.append(f"Slugs tried: {ats_probe_results.get('slugs_tried', [])}\n")
+            prompt_parts.append(
+                f"Expected domain: {ats_probe_results.get('expected_domain', 'Unknown')}\n\n"
+            )
+
+            for result in all_results:
+                domain_match = "✓ DOMAIN MATCH" if result.get("domain_matched") else ""
+                prompt_parts.append(
+                    f"- **{result.get('provider', 'unknown')}**: {result.get('job_count', 0)} jobs {domain_match}\n"
+                )
+                prompt_parts.append(f"  API URL: {result.get('api_url', 'N/A')}\n")
+                if result.get("sample_job_url"):
+                    prompt_parts.append(f"  Job URL domain: {result.get('sample_job_url')}\n")
+                if result.get("sample_job"):
+                    sample = result["sample_job"]
+                    prompt_parts.append(f"  Sample job title: {sample.get('title', 'N/A')}\n")
+                    if sample.get("location"):
+                        prompt_parts.append(f"  Sample location: {sample.get('location')}\n")
+                prompt_parts.append("\n")
+
+            if ats_probe_results.get("best_result"):
+                best = ats_probe_results["best_result"]
+                prompt_parts.append(
+                    f"**Recommended**: {best.get('provider')} (domain-matched or highest job count)\n"
+                )
+        else:
+            prompt_parts.append("No ATS providers found for the derived slugs.\n")
 
     # Add fetch results if available
     if fetch_result:
@@ -377,6 +441,7 @@ class SourceAnalysisAgent:
         company_id: Optional[str] = None,
         fetch_result: Optional[Dict[str, Any]] = None,
         search_results: Optional[List[Dict[str, str]]] = None,
+        ats_probe_results: Optional[Dict[str, Any]] = None,
     ) -> SourceAnalysisResult:
         """Analyze a URL to determine source classification and usability.
 
@@ -386,6 +451,7 @@ class SourceAnalysisAgent:
             company_id: Optional company ID from intake
             fetch_result: Optional result from attempting to fetch the URL
             search_results: Optional search results about the URL/domain
+            ats_probe_results: Optional ATS probe results for agent verification
 
         Returns:
             SourceAnalysisResult with classification and recommendations
@@ -396,6 +462,7 @@ class SourceAnalysisAgent:
             company_id=company_id,
             fetch_result=fetch_result,
             search_results=search_results,
+            ats_probe_results=ats_probe_results,
         )
 
         try:
@@ -480,6 +547,7 @@ def analyze_source(
     company_id: Optional[str] = None,
     fetch_result: Optional[Dict[str, Any]] = None,
     search_results: Optional[List[Dict[str, str]]] = None,
+    ats_probe_results: Optional[Dict[str, Any]] = None,
 ) -> SourceAnalysisResult:
     """Convenience function to analyze a source.
 
@@ -490,6 +558,7 @@ def analyze_source(
         company_id: Optional company ID
         fetch_result: Optional fetch result
         search_results: Optional search results
+        ats_probe_results: Optional ATS probe results for agent verification
 
     Returns:
         SourceAnalysisResult with classification
@@ -501,4 +570,5 @@ def analyze_source(
         company_id=company_id,
         fetch_result=fetch_result,
         search_results=search_results,
+        ats_probe_results=ats_probe_results,
     )

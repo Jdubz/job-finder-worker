@@ -37,7 +37,10 @@ from job_finder.job_queue.models import (
     SourceStatus,
 )
 from job_finder.job_queue.scraper_intake import ScraperIntake
-from job_finder.scrapers.ats_prober import probe_all_ats_providers
+from job_finder.scrapers.ats_prober import (
+    probe_all_ats_providers_detailed,
+    ATSProbeResultSet,
+)
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
@@ -84,6 +87,55 @@ class RecoveryResult:
     can_recover: bool = True  # False if agent determines issue is non-recoverable
     disable_reason: Optional[str] = None  # bot_protection, auth_required, etc.
     diagnosis: str = ""  # Human-readable explanation
+
+
+def _ats_probe_result_set_to_dict(
+    result_set: ATSProbeResultSet, expected_domain: Optional[str] = None
+) -> Dict[str, Any]:
+    """Convert ATSProbeResultSet to dict for agent prompts.
+
+    Formats the probe results in a way the AI agent can understand,
+    including slug collision detection and domain matching info.
+    """
+    all_results = []
+    for r in result_set.all_results:
+        # Check if this result's domain matches expected
+        domain_matched = False
+        if expected_domain and r.sample_job_url:
+            from job_finder.scrapers.ats_prober import domains_match
+
+            domain_matched = domains_match(r.sample_job_url, expected_domain)
+
+        result_dict: Dict[str, Any] = {
+            "provider": r.ats_provider,
+            "job_count": r.job_count,
+            "api_url": r.api_url,
+            "sample_job_url": r.sample_job_url,
+            "domain_matched": domain_matched,
+        }
+        # Add sample job info if available
+        if r.sample_job:
+            result_dict["sample_job"] = {
+                "title": r.sample_job.get("title") or r.sample_job.get("name", ""),
+                "location": (r.sample_job.get("location") or r.sample_job.get("location.name", "")),
+            }
+        all_results.append(result_dict)
+
+    # Format best result
+    best_result = None
+    if result_set.best_result:
+        best_result = {
+            "provider": result_set.best_result.ats_provider,
+            "job_count": result_set.best_result.job_count,
+        }
+
+    return {
+        "all_results": all_results,
+        "best_result": best_result,
+        "expected_domain": result_set.expected_domain,
+        "has_slug_collision": result_set.has_slug_collision,
+        "slugs_tried": result_set.slugs_tried,
+    }
 
 
 class SourceProcessor(BaseProcessor):
@@ -192,12 +244,25 @@ class SourceProcessor(BaseProcessor):
             # Step 0: Try ATS probing FIRST (before agent guessing)
             # This eliminates the need for the agent to guess which ATS provider
             # the company uses - we verify it directly via API probes.
-            ats_result = probe_all_ats_providers(
+            # Use detailed probe to get ALL results for potential agent verification
+            ats_probe_set = probe_all_ats_providers_detailed(
                 company_name=config.company_name,
                 url=url,
             )
+            ats_result = ats_probe_set.best_result
 
-            if ats_result.found:
+            # If we found a result AND (no collision OR confident match)
+            # we can use it directly without agent verification
+            use_probe_directly = (
+                ats_result is not None
+                and ats_result.found
+                and (
+                    not ats_probe_set.has_slug_collision
+                    or len(ats_probe_set.domain_matched_results) == 1
+                )
+            )
+
+            if use_probe_directly:
                 logger.info(
                     f"SOURCE_DISCOVERY: ATS probe found {ats_result.ats_provider} "
                     f"for {config.company_name or url} ({ats_result.job_count} jobs)"
@@ -263,16 +328,29 @@ class SourceProcessor(BaseProcessor):
                     url=url,
                 )
 
-            # ATS probe didn't find anything - fall back to agent analysis
-            logger.debug(
-                f"SOURCE_DISCOVERY: No ATS found for {config.company_name or url}, using agent"
-            )
+            # ATS probe didn't find anything OR found a slug collision
+            # Fall back to agent analysis with full probe context
+            if ats_probe_set.has_slug_collision:
+                logger.info(
+                    f"SOURCE_DISCOVERY: Slug collision detected for {config.company_name or url}, "
+                    f"using agent to verify ({len(ats_probe_set.all_results)} providers found)"
+                )
+            else:
+                logger.debug(
+                    f"SOURCE_DISCOVERY: No ATS found for {config.company_name or url}, using agent"
+                )
 
             # Step 1: Gather context for agent proposal
             fetch_result = self._attempt_fetch(url) if url else {"success": False}
             search_results = self._gather_search_context(url or "", config.company_name)
 
+            # Convert probe results for agent context
+            ats_probe_dict = _ats_probe_result_set_to_dict(
+                ats_probe_set, ats_probe_set.expected_domain
+            )
+
             # Step 2: Agent proposal (URL + config + classification)
+            # Pass ATS probe results so agent can verify company identity
             analysis_agent = SourceAnalysisAgent(self.agent_manager)
             analysis = analysis_agent.analyze(
                 url=url,
@@ -280,6 +358,7 @@ class SourceProcessor(BaseProcessor):
                 company_id=config.company_id,
                 fetch_result=fetch_result,
                 search_results=search_results,
+                ats_probe_results=ats_probe_dict,
             )
 
             # Resolve company + aggregator
@@ -1454,12 +1533,25 @@ class SourceProcessor(BaseProcessor):
 
             # Step 0: Try ATS probing FIRST (before agent guessing)
             # This eliminates the need to guess which ATS the company uses
-            ats_result = probe_all_ats_providers(
+            # Use detailed probe to get ALL results for potential agent verification
+            ats_probe_set = probe_all_ats_providers_detailed(
                 company_name=company_name,
                 url=url,
             )
+            ats_result = ats_probe_set.best_result
 
-            if ats_result.found:
+            # If we found a result AND (no collision OR confident match)
+            # we can use it directly without agent verification
+            use_probe_directly = (
+                ats_result is not None
+                and ats_result.found
+                and (
+                    not ats_probe_set.has_slug_collision
+                    or len(ats_probe_set.domain_matched_results) == 1
+                )
+            )
+
+            if use_probe_directly:
                 logger.info(
                     f"SOURCE_RECOVER: ATS probe found {ats_result.ats_provider} "
                     f"for {source_name} ({ats_result.job_count} jobs)"
@@ -1506,8 +1598,15 @@ class SourceProcessor(BaseProcessor):
                 )
                 return
 
-            # ATS probe didn't find anything - continue with agent recovery
-            logger.debug(f"SOURCE_RECOVER: No ATS found for {source_name}, using agent")
+            # ATS probe didn't find anything OR found a slug collision
+            # Fall back to agent recovery with full probe context
+            if ats_probe_set.has_slug_collision:
+                logger.info(
+                    f"SOURCE_RECOVER: Slug collision detected for {source_name}, "
+                    f"using agent to verify ({len(ats_probe_set.all_results)} providers found)"
+                )
+            else:
+                logger.debug(f"SOURCE_RECOVER: No ATS found for {source_name}, using agent")
 
             # Get error history from config
             disabled_notes = config.get("disabled_notes", "")
@@ -1517,6 +1616,11 @@ class SourceProcessor(BaseProcessor):
 
             # Fetch content sample for agent diagnosis
             content_sample = self._fetch_content_sample(url, source_type, config)
+
+            # Convert probe results for agent context
+            ats_probe_dict = _ats_probe_result_set_to_dict(
+                ats_probe_set, ats_probe_set.expected_domain
+            )
 
             # Check content sample for obvious bot protection BEFORE calling agent
             content_protection = self._detect_bot_protection(content_sample)
@@ -1547,6 +1651,7 @@ class SourceProcessor(BaseProcessor):
                 return
 
             # Ask agent to diagnose and propose fix
+            # Pass ATS probe results so agent can verify company identity
             recovery_result = self._agent_recover_source(
                 source_name=source_name,
                 url=url,
@@ -1555,6 +1660,7 @@ class SourceProcessor(BaseProcessor):
                 content_sample=content_sample,
                 company_name=company_name,
                 search_results=search_results,
+                ats_probe_results=ats_probe_dict,
             )
 
             # Handle agent diagnosis of non-recoverable issues
@@ -1742,6 +1848,7 @@ class SourceProcessor(BaseProcessor):
         content_sample: str,
         company_name: Optional[str] = None,
         search_results: Optional[List[Dict[str, str]]] = None,
+        ats_probe_results: Optional[Dict[str, Any]] = None,
     ) -> RecoveryResult:
         """Ask agent to diagnose and propose a fixed config for a broken source.
 
@@ -1756,6 +1863,39 @@ class SourceProcessor(BaseProcessor):
 
         source_type = current_config.get("type", "html")
 
+        # Build ATS probe results section
+        ats_section = ""
+        if ats_probe_results and ats_probe_results.get("all_results"):
+            ats_section = "\n## ATS Probe Results (VERIFIED API RESPONSES)\n"
+            if ats_probe_results.get("has_slug_collision"):
+                ats_section += (
+                    "⚠️ **SLUG COLLISION DETECTED** - Multiple providers found with same slug!\n"
+                    "You MUST verify which provider belongs to this company.\n\n"
+                )
+            ats_section += f"Slugs tried: {ats_probe_results.get('slugs_tried', [])}\n"
+            ats_section += (
+                f"Expected domain: {ats_probe_results.get('expected_domain', 'Unknown')}\n\n"
+            )
+
+            for result in ats_probe_results.get("all_results", []):
+                domain_match = "✓ DOMAIN MATCH" if result.get("domain_matched") else ""
+                ats_section += f"- **{result.get('provider', 'unknown')}**: {result.get('job_count', 0)} jobs {domain_match}\n"
+                ats_section += f"  API URL: {result.get('api_url', 'N/A')}\n"
+                if result.get("sample_job_url"):
+                    ats_section += f"  Job URL domain: {result.get('sample_job_url')}\n"
+                if result.get("sample_job"):
+                    sample = result["sample_job"]
+                    ats_section += f"  Sample job: {sample.get('title', 'N/A')}"
+                    if sample.get("location"):
+                        ats_section += f" ({sample.get('location')})"
+                    ats_section += "\n"
+
+            if ats_probe_results.get("best_result"):
+                best = ats_probe_results["best_result"]
+                ats_section += f"\n**Recommended**: {best.get('provider')} (domain-matched or highest job count)\n"
+        elif ats_probe_results:
+            ats_section = "\n## ATS Probe Results\nNo ATS providers found for derived slugs.\n"
+
         prompt = f"""You are diagnosing a broken job source. Analyze the content sample and either:
 1. Propose a working configuration if the issue is fixable, OR
 2. Diagnose why it cannot be recovered if the issue is non-recoverable
@@ -1764,6 +1904,7 @@ class SourceProcessor(BaseProcessor):
 Company: {company_name or "Unknown"}
 URL: {url}
 Type: {source_type}
+{ats_section}
 
 ## Search Results (use these to locate the real job board if the URL is wrong)
 {json.dumps(search_results or [], indent=2)}
