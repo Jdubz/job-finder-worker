@@ -115,9 +115,13 @@ def _ats_probe_result_set_to_dict(
         }
         # Add sample job info if available
         if r.sample_job:
+            # Extract location - handle both flat and nested structures
+            location = r.sample_job.get("location", "")
+            if isinstance(location, dict):
+                location = location.get("name", "")
             result_dict["sample_job"] = {
                 "title": r.sample_job.get("title") or r.sample_job.get("name", ""),
-                "location": (r.sample_job.get("location") or r.sample_job.get("location.name", "")),
+                "location": location,
             }
         all_results.append(result_dict)
 

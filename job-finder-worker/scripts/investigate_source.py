@@ -338,6 +338,7 @@ def probe_ats_apis(
         ATS_PROVIDERS,
         generate_slug_variations,
         probe_ats_provider,
+        probe_workday,
     )
 
     results = []
@@ -376,6 +377,22 @@ def probe_ats_apis(
                 )
                 print(f"  FOUND: {provider}/{slug} - {result.job_count} jobs")
                 print(f"         URL: {result.api_url}")
+
+    # Also probe Workday (requires special handling with POST requests)
+    for slug in slugs:
+        result = probe_workday(slug, timeout=5)
+        if result.found:
+            results.append(
+                {
+                    "provider": "workday",
+                    "slug": slug,
+                    "url": result.api_url,
+                    "job_count": result.job_count,
+                    "config": result.config,
+                }
+            )
+            print(f"  FOUND: workday/{slug} - {result.job_count} jobs")
+            print(f"         URL: {result.api_url}")
 
     if not results:
         print("  No ATS APIs found for these slugs")

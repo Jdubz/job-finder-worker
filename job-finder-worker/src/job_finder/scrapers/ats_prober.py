@@ -127,7 +127,10 @@ ATS_PROVIDERS = {
 }
 
 # Workday requires special handling (POST request, variable wd* subdomain)
-# Common Workday subdomain numbers (wd2, wd4, wd6 don't exist)
+# Workday uses wd1, wd3, wd5 subdomains for different data centers/regions.
+# wd2, wd4, wd6 were tested and do not exist (connection refused).
+# The subdomain is usually consistent per company but we try all to be thorough.
+# To find a company's subdomain, check their careers page URL or try each one.
 WORKDAY_SUBDOMAINS = ["wd1", "wd3", "wd5"]
 
 # Generic Workday board names (tried for all companies)
@@ -715,12 +718,11 @@ def probe_all_ats_providers_detailed(
             if result.found:
                 all_results.append(result)
 
-    # Also try Workday
+    # Also try Workday (probe all slugs like other providers)
     for slug in unique_slugs:
         result = probe_workday(slug)
         if result.found:
             all_results.append(result)
-            break
 
     # Determine expected domain
     expected_domain = None
