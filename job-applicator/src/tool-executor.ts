@@ -29,6 +29,10 @@ const COMBOBOX_DROPDOWN_DELAY_MS = 500 // Wait for dropdown to appear after typi
 const MAX_DROPDOWN_OPTIONS_TO_RETURN = 30 // Max options to return from peek_dropdown (prevents overwhelming agent)
 const MIN_MATCH_SCORE_THRESHOLD = 40 // Minimum score to accept a dropdown match (0-100 scale)
 
+// Iframe detection thresholds
+const MIN_ATS_IFRAME_SIZE = 100 // Minimum width/height for ATS iframes (known domains)
+const MIN_GENERIC_IFRAME_SIZE = 300 // Minimum width/height for non-ATS cross-origin iframes (reduces false positives)
+
 // ============================================================================
 // BrowserView Reference
 // ============================================================================
@@ -443,6 +447,10 @@ async function handleGetFormFields(): Promise<ToolResult> {
         const iframes = document.querySelectorAll('iframe');
         const applicationIframes = [];
 
+        // Size thresholds (injected from constants)
+        const MIN_ATS_SIZE = ${MIN_ATS_IFRAME_SIZE};
+        const MIN_GENERIC_SIZE = ${MIN_GENERIC_IFRAME_SIZE};
+
         // Known ATS domains that embed application forms
         const atsDomains = [
           'greenhouse.io',
@@ -458,28 +466,40 @@ async function handleGetFormFields(): Promise<ToolResult> {
           'workable.com',
         ];
 
+        // Check if hostname is exact match or subdomain of an ATS domain
+        // e.g., "boards.greenhouse.io" matches "greenhouse.io", but "evil-greenhouse.io" does not
+        function isAtsDomain(hostname) {
+          return atsDomains.some(domain => hostname === domain || hostname.endsWith('.' + domain));
+        }
+
         for (const iframe of iframes) {
           const src = iframe.src || '';
           if (!src) continue;
 
           try {
             const url = new URL(src);
-            const isAts = atsDomains.some(domain => url.hostname.includes(domain));
+            const isAts = isAtsDomain(url.hostname);
             const isCrossOrigin = url.origin !== window.location.origin;
 
-            if (isAts || isCrossOrigin) {
-              const rect = iframe.getBoundingClientRect();
-              // Only consider visible iframes
-              if (rect.width > 100 && rect.height > 100) {
-                applicationIframes.push({
-                  src: src,
-                  hostname: url.hostname,
-                  isAts: isAts,
-                  isCrossOrigin: isCrossOrigin,
-                  width: Math.round(rect.width),
-                  height: Math.round(rect.height),
-                });
-              }
+            // Skip same-origin iframes (we can access those directly)
+            if (!isCrossOrigin) continue;
+
+            const rect = iframe.getBoundingClientRect();
+
+            // Use different size thresholds for ATS vs generic cross-origin iframes
+            // ATS iframes: smaller threshold since we trust these domains
+            // Generic cross-origin: larger threshold to filter out widgets, analytics, etc.
+            const minSize = isAts ? MIN_ATS_SIZE : MIN_GENERIC_SIZE;
+
+            if (rect.width > minSize && rect.height > minSize) {
+              applicationIframes.push({
+                src: src,
+                hostname: url.hostname,
+                isAts: isAts,
+                isCrossOrigin: isCrossOrigin,
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              });
             }
           } catch (e) {
             // Invalid URL, skip
@@ -579,13 +599,21 @@ async function handleGetFormFields(): Promise<ToolResult> {
     }
   }
 
-  // If no form fields found but there's an application iframe, include actionable info
-  if (fields.length === 0 && applicationIframes.length > 0) {
-    const primaryIframe = applicationIframes[0]
+  // Check for ATS iframes (known application tracking systems)
+  const atsIframes = applicationIframes.filter((iframe: { isAts: boolean }) => iframe.isAts)
+
+  // Include embeddedFormDetected info when:
+  // 1. There's an ATS iframe (always - these are definitely application forms)
+  // 2. No form fields found but there's a large cross-origin iframe (likely the form)
+  const primaryIframe = atsIframes.length > 0 ? atsIframes[0] : applicationIframes[0]
+  const shouldFlagEmbeddedForm = atsIframes.length > 0 || (fields.length === 0 && applicationIframes.length > 0)
+
+  if (shouldFlagEmbeddedForm && primaryIframe) {
     return {
       success: true,
       data: {
         fields,
+        applicationIframes,
         embeddedFormDetected: true,
         embeddedFormUrl: primaryIframe.src,
         embeddedFormHost: primaryIframe.hostname,
