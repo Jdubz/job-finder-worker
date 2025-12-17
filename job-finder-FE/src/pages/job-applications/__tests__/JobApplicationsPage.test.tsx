@@ -51,6 +51,7 @@ describe("JobApplicationsPage", () => {
         location: "NY",
         description: "desc",
         status: "matched",
+        postedDate: "2024-01-10", // newest posted date
         createdAt: new Date("2024-01-01"),
         updatedAt: new Date("2024-01-02"),
       },
@@ -80,6 +81,7 @@ describe("JobApplicationsPage", () => {
         location: "SF",
         description: "desc",
         status: "matched",
+        postedDate: null, // null posted date - should sort last
         createdAt: new Date("2024-01-03"),
         updatedAt: new Date("2024-01-03"),
       },
@@ -109,6 +111,7 @@ describe("JobApplicationsPage", () => {
         location: "LA",
         description: "desc",
         status: "matched",
+        postedDate: "2024-01-05", // older posted date
         createdAt: new Date("2024-01-04"),
         updatedAt: new Date("2024-01-04"),
       },
@@ -176,6 +179,32 @@ describe("JobApplicationsPage", () => {
     const rows = screen.getAllByRole("row").slice(1)
     expect(rows[0]).toHaveTextContent("Alpha")
     expect(rows[1]).toHaveTextContent("Beta")
+  })
+
+  it("sorts by posted date with null values last", async () => {
+    render(
+      <MemoryRouter>
+        <JobApplicationsPage />
+      </MemoryRouter>
+    )
+
+    await screen.findByText("A Engineer")
+
+    // Change to "All" status to include all 3 matches
+    const statusSelect = screen.getByRole("combobox", { name: /status filter/i })
+    fireEvent.click(statusSelect)
+    fireEvent.click(screen.getByRole("option", { name: /All/i }))
+
+    // Sort by posted date
+    const sortSelect = screen.getByRole("combobox", { name: /sort by/i })
+    fireEvent.click(sortSelect)
+    fireEvent.click(screen.getByRole("option", { name: /Posted/i }))
+
+    // Expected order: A Engineer (2024-01-10), C Engineer (2024-01-05), B Engineer (null)
+    const rows = screen.getAllByRole("row").slice(1)
+    expect(rows[0]).toHaveTextContent("A Engineer")
+    expect(rows[1]).toHaveTextContent("C Engineer")
+    expect(rows[2]).toHaveTextContent("B Engineer") // null postedDate sorted last
   })
 
   it("applies status filter locally", async () => {

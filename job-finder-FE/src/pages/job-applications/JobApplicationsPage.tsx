@@ -159,10 +159,10 @@ export function JobApplicationsPage() {
           // Sort by job posted date (newest first), null values last
           const aPosted = normalizeDateValue(a.listing.postedDate)
           const bPosted = normalizeDateValue(b.listing.postedDate)
-          if (!aPosted && !bPosted) return 0
-          if (!aPosted) return 1
-          if (!bPosted) return -1
-          return bPosted.getTime() - aPosted.getTime()
+          if (aPosted && bPosted) {
+            return bPosted.getTime() - aPosted.getTime()
+          }
+          return bPosted ? 1 : aPosted ? -1 : 0
         }
         case "company":
           return a.listing.companyName.localeCompare(b.listing.companyName)
