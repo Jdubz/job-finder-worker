@@ -40,7 +40,255 @@ let browserView: BrowserView | null = null
  */
 export function setBrowserView(view: BrowserView | null): void {
   browserView = view
+  selectorFrameCache.clear()
   logger.info(`[ToolExecutor] BrowserView ${view ? "set" : "cleared"}`)
+}
+
+// ============================================================================
+// Frame helpers (cross-origin iframe support)
+// ============================================================================
+
+type WebFrameMainLike = {
+  url?: string
+  routingId?: number
+  frames?: WebFrameMainLike[]
+  executeJavaScript?: (code: string, userGesture?: boolean) => Promise<unknown>
+}
+
+type ExecFn = <T = unknown>(code: string) => Promise<T>
+
+type ExecContext =
+  | { kind: "webContents"; exec: ExecFn; frameUrl: string | null; routingId: null }
+  | { kind: "frame"; exec: ExecFn; frameUrl: string | null; routingId: number | null }
+
+type SelectorProbeResult = { ok: boolean; found: boolean; error?: string }
+type SimpleSuccessResult = { success: boolean; error?: string }
+type VerifyValueResult = { success: boolean; value?: string; error?: string }
+type FillFieldResult = {
+  success: boolean
+  selector?: string
+  value?: string
+  method?: string
+  error?: string
+  needsKeyboard?: boolean
+  attempted?: string
+  actual?: string
+}
+type SelectOptionResult = {
+  success: boolean
+  selector?: string
+  selectedValue?: string
+  selectedText?: string
+  error?: string
+  attempted?: string
+  actual?: string
+}
+type DropdownOption = { text: string; value: string }
+type PeekDropdownResult = { success: boolean; options?: DropdownOption[]; error?: string }
+type ComboboxOptionSelectResult = {
+  success: boolean
+  error?: string
+  searchedFor?: string
+  availableOptions?: string[]
+  selectedText?: string
+  selectedValue?: string
+  matchScore?: number
+}
+type SetCheckboxResult = { success: boolean; selector?: string; checked?: boolean; error?: string }
+type ClickElementResult = { success: boolean; selector?: string; text?: string; error?: string }
+
+const selectorFrameCache = new Map<string, { routingId: number | null; frameUrl: string | null }>()
+
+function getAllFramesFromWebContents(): WebFrameMainLike[] | null {
+  if (!browserView) return null
+
+  const webContents = browserView.webContents as unknown as { mainFrame?: WebFrameMainLike }
+  const root = webContents.mainFrame
+
+  if (!root || typeof root.executeJavaScript !== "function") return null
+
+  const frames: WebFrameMainLike[] = []
+  const seen = new Set<number>()
+  const seenNoId = new Set<WebFrameMainLike>()
+
+  const visit = (frame: WebFrameMainLike) => {
+    const rid = typeof frame.routingId === "number" ? frame.routingId : null
+    if (rid !== null) {
+      if (seen.has(rid)) return
+      seen.add(rid)
+    } else {
+      // Fallback deduplication when routingId is unavailable.
+      if (seenNoId.has(frame)) return
+      seenNoId.add(frame)
+    }
+    frames.push(frame)
+    for (const child of frame.frames || []) visit(child)
+  }
+
+  visit(root)
+  return frames
+}
+
+type FrameMeta = {
+  frameUrl: string | null
+  frameRoutingId: number | null
+  frameIndex: number
+  coordinateSpace: "top" | "frame"
+}
+
+function annotateWithFrameMeta(item: unknown, meta: FrameMeta): void {
+  if (!item || typeof item !== "object") return
+  Object.assign(item as Record<string, unknown>, meta)
+}
+
+async function extractFromAllFrames<T = unknown>(extractionScript: string, loggerContext: string): Promise<T[]> {
+  if (!browserView) return []
+
+  const frames = getAllFramesFromWebContents()
+
+  // Fallback for tests/mocks where mainFrame isn't present
+  if (!frames || frames.length === 0) {
+    const items = await browserView.webContents.executeJavaScript(extractionScript)
+    return Array.isArray(items) ? (items as T[]) : []
+  }
+
+  const allItems: T[] = []
+
+  for (const [frameIndex, frame] of frames.entries()) {
+    try {
+      const frameItems = await frame.executeJavaScript!(extractionScript)
+      if (!Array.isArray(frameItems)) continue
+
+      const meta: FrameMeta = {
+        frameUrl: frame.url || null,
+        frameRoutingId: typeof frame.routingId === "number" ? frame.routingId : null,
+        frameIndex,
+        coordinateSpace: frameIndex === 0 ? "top" : "frame",
+      }
+
+      for (const item of frameItems) {
+        annotateWithFrameMeta(item, meta)
+        allItems.push(item as T)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.warn(`[ToolExecutor] ${loggerContext}: frame extraction failed: ${message}`)
+    }
+  }
+
+  return allItems
+}
+
+function getWebContentsExecContext(): ExecContext | null {
+  if (!browserView) return null
+  return {
+    kind: "webContents",
+    exec: <T = unknown>(code: string) => browserView!.webContents.executeJavaScript(code) as Promise<T>,
+    frameUrl: browserView.webContents.getURL?.() || null,
+    routingId: null,
+  }
+}
+
+async function resolveExecContextForSelector(selector: string): Promise<ExecContext | null> {
+  if (!browserView) return null
+
+  const selectorJson = JSON.stringify(selector)
+  const probe = `
+    (() => {
+      try {
+        return { ok: true, found: !!document.querySelector(${selectorJson}) };
+      } catch (e) {
+        return { ok: false, found: false, error: String(e && (e.message || e)) };
+      }
+    })()
+  `
+
+  const frames = getAllFramesFromWebContents()
+  if (frames && frames.length > 0) {
+    // Validate the selector syntax once in the root frame (avoids re-probing frames[0]).
+    try {
+      const rootRes = (await frames[0].executeJavaScript!(probe)) as SelectorProbeResult
+      if (rootRes?.ok === false) return null
+      if (rootRes?.found) {
+        selectorFrameCache.set(selector, {
+          routingId: typeof frames[0].routingId === "number" ? frames[0].routingId : null,
+          frameUrl: frames[0].url || null,
+        })
+        if (selectorFrameCache.size > 200) selectorFrameCache.clear()
+        return {
+          kind: "frame",
+          exec: <T = unknown>(code: string) => frames[0].executeJavaScript!(code) as Promise<T>,
+          frameUrl: frames[0].url || null,
+          routingId: typeof frames[0].routingId === "number" ? frames[0].routingId : null,
+        }
+      }
+    } catch {
+      // ignore selector validation failures and fall back to probing other frames
+    }
+
+    // Try cached frame first (if any) to avoid probing all frames repeatedly.
+    const cached = selectorFrameCache.get(selector)
+    if (cached && typeof cached.routingId === "number") {
+      const cachedFrame = frames.find((f) => f.routingId === cached.routingId)
+      if (cachedFrame) {
+        try {
+          const cachedRes = (await cachedFrame.executeJavaScript!(probe)) as SelectorProbeResult
+          if (cachedRes?.found) {
+            return {
+              kind: "frame",
+              exec: <T = unknown>(code: string) => cachedFrame.executeJavaScript!(code) as Promise<T>,
+              frameUrl: cachedFrame.url || null,
+              routingId: typeof cachedFrame.routingId === "number" ? cachedFrame.routingId : null,
+            }
+          }
+        } catch {
+          // ignore cached probe failures
+        }
+      }
+    }
+
+    const candidates = frames
+      .map((frame, index) => ({ frame, index }))
+      .filter(({ index }) => index !== 0)
+
+    // Probe the remaining frames concurrently to reduce worst-case latency on pages with many iframes.
+    const settled = await Promise.allSettled(
+      candidates.map(async ({ frame, index }) => ({
+        frame,
+        index,
+        res: (await frame.executeJavaScript!(probe)) as SelectorProbeResult,
+      }))
+    )
+
+    const found = settled
+      .flatMap((r) => (r.status === "fulfilled" ? [r.value] : []))
+      .filter((r) => r.res?.found)
+      .sort((a, b) => a.index - b.index)[0]
+
+    if (found) {
+      selectorFrameCache.set(selector, {
+        routingId: typeof found.frame.routingId === "number" ? found.frame.routingId : null,
+        frameUrl: found.frame.url || null,
+      })
+      if (selectorFrameCache.size > 200) selectorFrameCache.clear()
+
+      return {
+        kind: "frame",
+        exec: <T = unknown>(code: string) => found.frame.executeJavaScript!(code) as Promise<T>,
+        frameUrl: found.frame.url || null,
+        routingId: typeof found.frame.routingId === "number" ? found.frame.routingId : null,
+      }
+    }
+
+    return null
+  }
+
+  // Fallback for tests/mocks where mainFrame isn't present
+  const ctx = getWebContentsExecContext()
+  if (!ctx) return null
+  const res = await ctx.exec<SelectorProbeResult>(probe)
+  if (res?.found) return ctx
+  return null
 }
 
 // ============================================================================
@@ -77,7 +325,8 @@ let documentUrls: { resumeUrl?: string; coverLetterUrl?: string } = {}
 type UploadCallback = (
   selector: string,
   type: "resume" | "coverLetter",
-  documentUrl: string
+  documentUrl: string,
+  frameUrl?: string | null
 ) => Promise<{ success: boolean; message: string }>
 
 let uploadCallback: UploadCallback | null = null
@@ -328,7 +577,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const fields = await browserView.webContents.executeJavaScript(`
+  const extractionScript = `
     (() => {
       // Helper: Build a unique CSS selector path for an element
       // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
@@ -450,15 +699,24 @@ async function handleGetFormFields(): Promise<ToolResult> {
         };
       }).filter(f => f !== null);
     })()
-  `)
+  `
+
+  const frames = getAllFramesFromWebContents()
+  const fields = await extractFromAllFrames<unknown>(extractionScript, "get_form_fields")
 
   // Log summary including dropdowns for debugging
-  const dropdowns = fields.filter((f: { type: string; options?: unknown[] }) => f.type === "select-one" || f.type === "select-multiple")
-  logger.info(`[ToolExecutor] Found ${fields.length} form fields (${dropdowns.length} dropdowns)`)
+  const dropdowns = fields.filter(
+    (f: unknown) =>
+      !!f &&
+      typeof f === "object" &&
+      (((f as { type?: string }).type === "select-one") || ((f as { type?: string }).type === "select-multiple"))
+  )
+  const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
+  logger.info(`[ToolExecutor] Found ${fields.length} form fields${frameMsg} (${dropdowns.length} dropdowns)`)
   if (dropdowns.length > 0) {
     for (const dd of dropdowns) {
       const optCount = (dd as { options?: unknown[] }).options?.length || 0
-      logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label: string }).label} (${optCount} options)`)
+      logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label?: string }).label || "(unknown)"} (${optCount} options)`)
     }
   }
 
@@ -475,10 +733,17 @@ async function handleGetPageInfo(): Promise<ToolResult> {
 
   const url = browserView.webContents.getURL()
   const title = await browserView.webContents.executeJavaScript("document.title")
+  const frames = getAllFramesFromWebContents()
+  const frameSummaries = frames
+    ? frames.map((f) => ({
+      url: f.url || null,
+      routingId: typeof f.routingId === "number" ? f.routingId : null,
+    }))
+    : null
 
   logger.info(`[ToolExecutor] Page: ${title} (${url})`)
 
-  return { success: true, data: { url, title } }
+  return { success: true, data: { url, title, frames: frameSummaries } }
 }
 
 /**
@@ -497,11 +762,19 @@ async function handleFillField(params: { selector: string; value: string }): Pro
   }
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
 
     // Strategy 1: Enhanced DOM-based filling with InputEvent
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec<FillFieldResult>(`
       (() => {
         const selector = ${selectorJson};
         const value = ${valueJson};
@@ -593,6 +866,10 @@ async function handleFillField(params: { selector: string; value: string }): Pro
 
     // If DOM approach worked, we're done
     if (result.success) {
+      if (ctx.kind === "frame" && result && typeof result === "object") {
+        ;(result as Record<string, unknown>).frameUrl = ctx.frameUrl
+        ;(result as Record<string, unknown>).frameRoutingId = ctx.routingId
+      }
       logger.info(`[ToolExecutor] Filled ${selector} via ${result.method}`)
       return result
     }
@@ -620,7 +897,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
       }
 
       // Verify the value
-      const verifyResult = await browserView.webContents.executeJavaScript(`
+      const verifyResult = await ctx.exec<VerifyValueResult>(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false, error: 'Element not found after typing' };
@@ -631,12 +908,12 @@ async function handleFillField(params: { selector: string; value: string }): Pro
 
       if (verifyResult.success && verifyResult.value === value) {
         logger.info(`[ToolExecutor] Filled ${selector} via keyboard input`)
-        return { success: true, data: { selector, value, method: 'keyboard' } }
+        return { success: true, data: { selector, value, method: 'keyboard', frameUrl: ctx.frameUrl, frameRoutingId: ctx.kind === "frame" ? ctx.routingId : null } }
       }
 
       // Even if verification failed, the value might be there (some forms mask values)
       logger.info(`[ToolExecutor] Filled ${selector} via keyboard (value may be masked)`)
-      return { success: true, data: { selector, value, method: 'keyboard-unverified' } }
+      return { success: true, data: { selector, value, method: 'keyboard-unverified', frameUrl: ctx.frameUrl, frameRoutingId: ctx.kind === "frame" ? ctx.routingId : null } }
     }
 
     logger.warn(`[ToolExecutor] fill_field failed: ${result.error}`)
@@ -665,9 +942,17 @@ async function handleSelectOption(params: { selector: string; value: string }): 
   logger.info(`[ToolExecutor] select_option: trying to select "${value}" in ${selector}`)
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec<SelectOptionResult>(`
       (() => {
         const selector = ${selectorJson};
         const targetValue = ${valueJson};
@@ -723,6 +1008,11 @@ async function handleSelectOption(params: { selector: string; value: string }): 
       logger.info(`[ToolExecutor] Selected "${result.selectedText}" in ${selector}`)
     } else {
       logger.warn(`[ToolExecutor] select_option failed: ${result.error}`)
+    }
+
+    if (ctx.kind === "frame" && result && typeof result === "object") {
+      ;(result as Record<string, unknown>).frameUrl = ctx.frameUrl
+      ;(result as Record<string, unknown>).frameRoutingId = ctx.routingId
     }
 
     return result
@@ -793,11 +1083,19 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
   logger.info(`[ToolExecutor] peek_dropdown: opening ${selector}`)
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
     // Step 1: Focus/click to open dropdown
-    await browserView.webContents.executeJavaScript(`
+    await ctx.exec<SimpleSuccessResult>(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false, error: 'Element not found' };
@@ -814,7 +1112,7 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
     // Step 2: Collect all visible options
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec<PeekDropdownResult>(`
       (() => {
         const dropdownSelectors = ${selectorsJson};
         const maxOptions = ${MAX_DROPDOWN_OPTIONS_TO_RETURN};
@@ -883,14 +1181,22 @@ async function handleSelectCombobox(params: { selector: string; value: string })
   logger.info(`[ToolExecutor] select_combobox: selecting "${value}" in ${selector}`)
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
     // Helper function to find and click the best matching option
-    const findAndSelectOption = async (searchValue: string): Promise<ToolResult> => {
+    const findAndSelectOption = async (searchValue: string): Promise<ComboboxOptionSelectResult> => {
       const searchJson = JSON.stringify(searchValue.toLowerCase())
 
-      const selectResult = await browserView!.webContents.executeJavaScript(`
+      const selectResult = await ctx.exec<ComboboxOptionSelectResult>(`
         (() => {
           const targetValue = ${searchJson};
           const dropdownSelectors = ${selectorsJson};
@@ -982,7 +1288,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     }
 
     // Step 1: Open dropdown by focusing/clicking without typing
-    await browserView.webContents.executeJavaScript(`
+    await ctx.exec<SimpleSuccessResult>(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false };
@@ -998,7 +1304,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
     // Step 2: Try to find a match in the open dropdown
-    let result = await findAndSelectOption(value) as ToolResult & { selectedText?: string; matchScore?: number; availableOptions?: string[] }
+    let result = await findAndSelectOption(value)
 
     if (result.success) {
       logger.info(`[ToolExecutor] Combobox selected (no typing): "${result.selectedText}" (score: ${result.matchScore})`)
@@ -1013,7 +1319,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
       logger.info(`[ToolExecutor] Typing "${partialValue}" to filter dropdown...`)
 
       // Clear and type partial value
-      await browserView.webContents.executeJavaScript(`
+      await ctx.exec<SimpleSuccessResult>(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false };
@@ -1037,7 +1343,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
 
       await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
-      result = await findAndSelectOption(value) as ToolResult & { selectedText?: string; matchScore?: number; availableOptions?: string[] }
+      result = await findAndSelectOption(value)
 
       if (result.success) {
         logger.info(`[ToolExecutor] Combobox selected (after typing "${partialValue}"): "${result.selectedText}" (score: ${result.matchScore})`)
@@ -1086,8 +1392,16 @@ async function handleSetCheckbox(params: { selector: string; checked: boolean })
   }
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec<SetCheckboxResult>(`
       (() => {
         const selector = ${selectorJson};
         const targetChecked = ${checked};
@@ -1148,8 +1462,16 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
   }
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec<ClickElementResult>(`
       (() => {
         const selector = ${selectorJson};
         const el = document.querySelector(selector);
@@ -1204,7 +1526,7 @@ async function handleGetButtons(): Promise<ToolResult> {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const buttons = await browserView.webContents.executeJavaScript(`
+  const extractionScript = `
     (() => {
       // Helper: Build a unique CSS selector path for an element
       // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
@@ -1329,16 +1651,21 @@ async function handleGetButtons(): Promise<ToolResult> {
 
       return results;
     })()
-  `)
+  `
+
+  const frames = getAllFramesFromWebContents()
+  const buttons = await extractFromAllFrames<unknown>(extractionScript, "get_buttons")
 
   // Filter to most relevant buttons (add, education, employment, experience)
   const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more', 'entry', 'position', 'degree', 'school', 'job'];
-  const relevantButtons = buttons.filter((b: { text: string }) => {
-    const lowerText = b.text.toLowerCase();
+  const relevantButtons = buttons.filter((b: unknown) => {
+    if (!b || typeof b !== "object") return false
+    const lowerText = String((b as { text?: string }).text || "").toLowerCase()
     return relevantKeywords.some(keyword => lowerText.includes(keyword));
   });
 
-  logger.info(`[ToolExecutor] Found ${buttons.length} buttons, ${relevantButtons.length} relevant for dynamic forms`)
+  const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
+  logger.info(`[ToolExecutor] Found ${buttons.length} buttons${frameMsg}, ${relevantButtons.length} relevant for dynamic forms`)
 
   return {
     success: true,
@@ -1427,14 +1754,35 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
   }
 
   // Check if focused element can receive text
-  const canType = await browserView.webContents.executeJavaScript(`
+  const canTypeScript = `
     (() => {
       const el = document.activeElement;
       if (!el) return false;
       const tag = el.tagName.toLowerCase();
       return tag === 'input' || tag === 'textarea' || el.isContentEditable;
     })()
-  `)
+  `
+
+  let canType = await browserView.webContents.executeJavaScript(canTypeScript)
+
+  // If focus is inside an iframe, document.activeElement in the main frame is the <iframe> itself.
+  // Probe subframes to see if an input/textarea is actually focused.
+  if (!canType) {
+    const frames = getAllFramesFromWebContents()
+    if (frames && frames.length > 0) {
+      for (const frame of frames) {
+        try {
+          const frameCanType = await frame.executeJavaScript!(canTypeScript)
+          if (frameCanType) {
+            canType = true
+            break
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
 
   if (!canType) {
     return { success: false, error: "Focused element cannot receive text input" }
@@ -1677,11 +2025,14 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
   logger.info(`[ToolExecutor] Uploading ${typeLabel} to ${selector}: ${documentUrl}`)
 
   try {
-    const result = await uploadCallback(selector, type, documentUrl)
+    const ctx = await resolveExecContextForSelector(selector)
+    const frameUrl = ctx?.frameUrl || null
+
+    const result = await uploadCallback(selector, type, documentUrl, frameUrl)
 
     if (result.success) {
       logger.info(`[ToolExecutor] Upload successful: ${result.message}`)
-      return { success: true, data: { message: result.message, type, selector } }
+      return { success: true, data: { message: result.message, type, selector, frameUrl } }
     } else {
       logger.warn(`[ToolExecutor] Upload failed: ${result.message}`)
       return { success: false, error: result.message }
@@ -1702,7 +2053,7 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const uploadAreas = await browserView.webContents.executeJavaScript(`
+  const extractionScript = `
     (() => {
       // Helper: Build a unique CSS selector path for an element
       // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
@@ -1855,9 +2206,13 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
 
       return results;
     })()
-  `)
+  `
 
-  logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas`)
+  const frames = getAllFramesFromWebContents()
+  const uploadAreas = await extractFromAllFrames<unknown>(extractionScript, "find_upload_areas")
+
+  const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
+  logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas${frameMsg}`)
 
   return {
     success: true,
@@ -1869,4 +2224,3 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
     }
   }
 }
-
