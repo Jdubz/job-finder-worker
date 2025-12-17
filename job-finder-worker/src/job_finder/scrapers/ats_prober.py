@@ -39,6 +39,7 @@ class ATSProbeResult:
     job_count: int = 0
     sample_job: Optional[Dict[str, Any]] = None
     config: Optional[Dict[str, Any]] = None  # Ready-to-use scraper config
+    sample_job_url: Optional[str] = None  # URL of a sample job for verification
 
 
 # Common ATS providers and their API patterns
@@ -316,6 +317,86 @@ def extract_slug_from_url(url: str) -> Optional[str]:
     return None
 
 
+def extract_job_url_domain(job: Dict[str, Any], provider: str) -> Optional[str]:
+    """Extract the company domain from a job's URL.
+
+    Different ATS providers store the job URL in different fields.
+    Some URLs point to the ATS domain, others to the company's own domain.
+
+    Returns:
+        The domain of the company's website (not the ATS domain), or None
+    """
+    url_fields = {
+        "greenhouse": "absolute_url",
+        "lever": "hostedUrl",
+        "ashby": "jobUrl",
+        "smartrecruiters": "ref",
+        "recruitee": "careers_url",
+        "breezy": "url",
+        "workable": "url",
+    }
+
+    url_field = url_fields.get(provider)
+    if not url_field:
+        return None
+
+    job_url = job.get(url_field, "")
+    if not job_url:
+        return None
+
+    parsed = urlparse(job_url)
+    domain = parsed.netloc.lower()
+
+    # Skip ATS-hosted URLs - they don't tell us about the company
+    ats_domains = [
+        "greenhouse.io",
+        "lever.co",
+        "ashbyhq.com",
+        "smartrecruiters.com",
+        "recruitee.com",
+        "breezy.hr",
+        "workable.com",
+    ]
+    for ats in ats_domains:
+        if ats in domain:
+            return None
+
+    return domain
+
+
+def domains_match(domain1: str, domain2: str) -> bool:
+    """Check if two domains belong to the same company.
+
+    Handles cases like:
+    - "www.example.com" vs "example.com"
+    - "careers.example.com" vs "example.com"
+    - "jobs.example.com" vs "example.com"
+    """
+    if not domain1 or not domain2:
+        return False
+
+    # Normalize domains
+    d1 = domain1.lower().replace("www.", "")
+    d2 = domain2.lower().replace("www.", "")
+
+    # Direct match
+    if d1 == d2:
+        return True
+
+    # Check if one is a subdomain of the other
+    # Extract root domain (last 2 parts for .com, .io, etc.)
+    parts1 = d1.split(".")
+    parts2 = d2.split(".")
+
+    if len(parts1) >= 2 and len(parts2) >= 2:
+        root1 = ".".join(parts1[-2:])
+        root2 = ".".join(parts2[-2:])
+        if root1 == root2:
+            return True
+
+    return False
+
+
 def probe_ats_provider(
     provider: str,
     slug: str,
@@ -390,6 +471,11 @@ def probe_ats_provider(
             "fields": config["fields"].copy(),
         }
 
+        # Extract sample job URL for domain verification
+        sample_job_url = None
+        if sample_job:
+            sample_job_url = extract_job_url_domain(sample_job, provider)
+
         aggregator_domain = config.get("aggregator_domain")
         logger.info(f"ATS probe SUCCESS: {provider}/{slug} has {job_count} jobs")
 
@@ -401,6 +487,7 @@ def probe_ats_provider(
             job_count=job_count,
             sample_job=sample_job,
             config=scraper_config,
+            sample_job_url=sample_job_url,
         )
 
     except requests.exceptions.Timeout:
@@ -578,16 +665,20 @@ def probe_all_ats_providers(
     # Collect all successful results to return the best one
     all_results: List[ATSProbeResult] = []
 
+    # If we have a URL, we need to check all providers for domain verification
+    # to prevent slug collisions. Without URL, we can exit early for performance.
+    need_domain_verification = url is not None
+
     for provider in provider_order:
         for slug in unique_slugs:
             result = probe_ats_provider(provider, slug)
             if result.found:
                 all_results.append(result)
-                # Early exit if we find a result with many jobs
-                if result.job_count >= 5:
+                # Early exit if we find a result with many jobs (unless we need domain verification)
+                if not need_domain_verification and result.job_count >= 5:
                     break
-        # If we found a good result for this provider, move on
-        if all_results and all_results[-1].job_count >= 5:
+        # If we found a good result for this provider, move on (unless we need domain verification)
+        if not need_domain_verification and all_results and all_results[-1].job_count >= 5:
             break
 
     # Also try Workday (requires special handling)
@@ -597,16 +688,47 @@ def probe_all_ats_providers(
             all_results.append(result)
             break
 
-    # Return the result with the most jobs
-    if all_results:
-        best_result = max(all_results, key=lambda r: r.job_count)
-        if len(all_results) > 1:
-            logger.info(
-                f"Found {len(all_results)} ATS providers, returning best: "
-                f"{best_result.ats_provider} with {best_result.job_count} jobs"
-            )
-        return best_result
+    if not all_results:
+        logger.debug(f"No ATS provider found for slugs: {unique_slugs}")
+        return ATSProbeResult(found=False)
 
-    # No provider found
-    logger.debug(f"No ATS provider found for slugs: {unique_slugs}")
-    return ATSProbeResult(found=False)
+    # If we have an original URL, prefer results that match the company domain
+    # This prevents slug collisions (e.g., "profound" matching wrong company)
+    expected_domain = None
+    if url:
+        parsed = urlparse(url)
+        expected_domain = parsed.netloc.lower().replace("www.", "")
+
+    if expected_domain and len(all_results) > 1:
+        # Filter results to those whose job URLs match the expected domain
+        domain_matched_results = [
+            r
+            for r in all_results
+            if r.sample_job_url and domains_match(r.sample_job_url, expected_domain)
+        ]
+
+        if domain_matched_results:
+            # Return the domain-matched result with the most jobs
+            best_result = max(domain_matched_results, key=lambda r: r.job_count)
+            if len(all_results) > len(domain_matched_results):
+                logger.info(
+                    f"Found {len(all_results)} ATS providers, {len(domain_matched_results)} match "
+                    f"domain {expected_domain}. Returning {best_result.ats_provider} "
+                    f"with {best_result.job_count} jobs"
+                )
+            return best_result
+        else:
+            # No domain matches - log warning about potential slug collision
+            logger.warning(
+                f"Found {len(all_results)} ATS providers but none match expected domain "
+                f"{expected_domain}. Potential slug collision. Returning result with most jobs."
+            )
+
+    # Return the result with the most jobs
+    best_result = max(all_results, key=lambda r: r.job_count)
+    if len(all_results) > 1:
+        logger.info(
+            f"Found {len(all_results)} ATS providers, returning best: "
+            f"{best_result.ats_provider} with {best_result.job_count} jobs"
+        )
+    return best_result
