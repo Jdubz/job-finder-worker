@@ -44,6 +44,109 @@ export function setBrowserView(view: BrowserView | null): void {
 }
 
 // ============================================================================
+// Frame helpers (cross-origin iframe support)
+// ============================================================================
+
+type WebFrameMainLike = {
+  url?: string
+  routingId?: number
+  frames?: WebFrameMainLike[]
+  executeJavaScript?: (code: string, userGesture?: boolean) => Promise<any>
+}
+
+type ExecContext =
+  | { kind: "webContents"; exec: (code: string) => Promise<any>; frameUrl: string | null; routingId: null }
+  | { kind: "frame"; exec: (code: string) => Promise<any>; frameUrl: string | null; routingId: number | null }
+
+function getAllFramesFromWebContents(): WebFrameMainLike[] | null {
+  if (!browserView) return null
+
+  const webContents = browserView.webContents as unknown as { mainFrame?: WebFrameMainLike }
+  const root = webContents.mainFrame
+
+  if (!root || typeof root.executeJavaScript !== "function") return null
+
+  const frames: WebFrameMainLike[] = []
+  const seen = new Set<number>()
+
+  const visit = (frame: WebFrameMainLike) => {
+    const rid = typeof frame.routingId === "number" ? frame.routingId : null
+    if (rid !== null) {
+      if (seen.has(rid)) return
+      seen.add(rid)
+    }
+    frames.push(frame)
+    for (const child of frame.frames || []) visit(child)
+  }
+
+  visit(root)
+  return frames
+}
+
+function getWebContentsExecContext(): ExecContext | null {
+  if (!browserView) return null
+  return {
+    kind: "webContents",
+    exec: (code: string) => browserView!.webContents.executeJavaScript(code),
+    frameUrl: browserView.webContents.getURL?.() || null,
+    routingId: null,
+  }
+}
+
+async function resolveExecContextForSelector(selector: string): Promise<ExecContext | null> {
+  if (!browserView) return null
+
+  const selectorJson = JSON.stringify(selector)
+  const probe = `
+    (() => {
+      try {
+        return { ok: true, found: !!document.querySelector(${selectorJson}) };
+      } catch (e) {
+        return { ok: false, found: false, error: String(e && (e.message || e)) };
+      }
+    })()
+  `
+
+  const frames = getAllFramesFromWebContents()
+  if (frames && frames.length > 0) {
+    for (const frame of frames) {
+      try {
+        const res = await frame.executeJavaScript!(probe)
+        if (res && typeof res === "object" && (res as { found?: boolean }).found) {
+          return {
+            kind: "frame",
+            exec: (code: string) => frame.executeJavaScript!(code),
+            frameUrl: frame.url || null,
+            routingId: typeof frame.routingId === "number" ? frame.routingId : null,
+          }
+        }
+      } catch {
+        // ignore frame probe failures
+      }
+    }
+
+    // If selector is invalid, surface that by returning null (caller can report "not found")
+    try {
+      const res = await frames[0].executeJavaScript!(probe)
+      if (res && typeof res === "object" && (res as { ok?: boolean }).ok === false) {
+        return null
+      }
+    } catch {
+      // ignore
+    }
+
+    return null
+  }
+
+  // Fallback for tests/mocks where mainFrame isn't present
+  const ctx = getWebContentsExecContext()
+  if (!ctx) return null
+  const res = await ctx.exec(probe)
+  if (res && typeof res === "object" && (res as { found?: boolean }).found) return ctx
+  return null
+}
+
+// ============================================================================
 // Completion Callback
 // ============================================================================
 
@@ -77,7 +180,8 @@ let documentUrls: { resumeUrl?: string; coverLetterUrl?: string } = {}
 type UploadCallback = (
   selector: string,
   type: "resume" | "coverLetter",
-  documentUrl: string
+  documentUrl: string,
+  frameUrl?: string | null
 ) => Promise<{ success: boolean; message: string }>
 
 let uploadCallback: UploadCallback | null = null
@@ -328,7 +432,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const fields = await browserView.webContents.executeJavaScript(`
+  const extractionScript = `
     (() => {
       // Helper: Build a unique CSS selector path for an element
       function buildSelectorPath(el) {
@@ -436,7 +540,57 @@ async function handleGetFormFields(): Promise<ToolResult> {
         };
       }).filter(f => f !== null);
     })()
-  `)
+  `
+
+  const frames = getAllFramesFromWebContents()
+
+  // Preferred path: run extraction in every frame (supports cross-origin iframes like Greenhouse).
+  if (frames && frames.length > 0) {
+    const allFields: unknown[] = []
+
+    for (const [frameIndex, frame] of frames.entries()) {
+      try {
+        const frameFields = await frame.executeJavaScript!(extractionScript)
+        if (!Array.isArray(frameFields)) continue
+
+        for (const f of frameFields) {
+          if (f && typeof f === "object") {
+            ;(f as Record<string, unknown>).frameUrl = frame.url || null
+            ;(f as Record<string, unknown>).frameRoutingId = typeof frame.routingId === "number" ? frame.routingId : null
+            ;(f as Record<string, unknown>).frameIndex = frameIndex
+            ;(f as Record<string, unknown>).coordinateSpace = frameIndex === 0 ? "top" : "frame"
+          }
+          allFields.push(f)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[ToolExecutor] get_form_fields: frame extraction failed: ${message}`)
+      }
+    }
+
+    // Log summary including dropdowns for debugging
+    const dropdowns = allFields.filter(
+      (f: unknown) =>
+        !!f &&
+        typeof f === "object" &&
+        (((f as { type?: string }).type === "select-one") || ((f as { type?: string }).type === "select-multiple"))
+    )
+    logger.info(
+      `[ToolExecutor] Found ${allFields.length} form fields across ${frames.length} frames (${dropdowns.length} dropdowns)`
+    )
+
+    if (dropdowns.length > 0) {
+      for (const dd of dropdowns) {
+        const optCount = (dd as { options?: unknown[] }).options?.length || 0
+        logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label?: string }).label || "(unknown)"} (${optCount} options)`)
+      }
+    }
+
+    return { success: true, data: { fields: allFields } }
+  }
+
+  // Fallback: tests/mocks (no mainFrame API)
+  const fields = await browserView.webContents.executeJavaScript(extractionScript)
 
   // Log summary including dropdowns for debugging
   const dropdowns = fields.filter((f: { type: string; options?: unknown[] }) => f.type === "select-one" || f.type === "select-multiple")
@@ -461,10 +615,17 @@ async function handleGetPageInfo(): Promise<ToolResult> {
 
   const url = browserView.webContents.getURL()
   const title = await browserView.webContents.executeJavaScript("document.title")
+  const frames = getAllFramesFromWebContents()
+  const frameSummaries = frames
+    ? frames.map((f) => ({
+      url: f.url || null,
+      routingId: typeof f.routingId === "number" ? f.routingId : null,
+    }))
+    : null
 
   logger.info(`[ToolExecutor] Page: ${title} (${url})`)
 
-  return { success: true, data: { url, title } }
+  return { success: true, data: { url, title, frames: frameSummaries } }
 }
 
 /**
@@ -483,11 +644,19 @@ async function handleFillField(params: { selector: string; value: string }): Pro
   }
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
 
     // Strategy 1: Enhanced DOM-based filling with InputEvent
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec(`
       (() => {
         const selector = ${selectorJson};
         const value = ${valueJson};
@@ -579,6 +748,10 @@ async function handleFillField(params: { selector: string; value: string }): Pro
 
     // If DOM approach worked, we're done
     if (result.success) {
+      if (ctx.kind === "frame" && result && typeof result === "object") {
+        ;(result as Record<string, unknown>).frameUrl = ctx.frameUrl
+        ;(result as Record<string, unknown>).frameRoutingId = ctx.routingId
+      }
       logger.info(`[ToolExecutor] Filled ${selector} via ${result.method}`)
       return result
     }
@@ -606,7 +779,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
       }
 
       // Verify the value
-      const verifyResult = await browserView.webContents.executeJavaScript(`
+      const verifyResult = await ctx.exec(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false, error: 'Element not found after typing' };
@@ -617,12 +790,12 @@ async function handleFillField(params: { selector: string; value: string }): Pro
 
       if (verifyResult.success && verifyResult.value === value) {
         logger.info(`[ToolExecutor] Filled ${selector} via keyboard input`)
-        return { success: true, data: { selector, value, method: 'keyboard' } }
+        return { success: true, data: { selector, value, method: 'keyboard', frameUrl: ctx.frameUrl, frameRoutingId: ctx.kind === "frame" ? ctx.routingId : null } }
       }
 
       // Even if verification failed, the value might be there (some forms mask values)
       logger.info(`[ToolExecutor] Filled ${selector} via keyboard (value may be masked)`)
-      return { success: true, data: { selector, value, method: 'keyboard-unverified' } }
+      return { success: true, data: { selector, value, method: 'keyboard-unverified', frameUrl: ctx.frameUrl, frameRoutingId: ctx.kind === "frame" ? ctx.routingId : null } }
     }
 
     logger.warn(`[ToolExecutor] fill_field failed: ${result.error}`)
@@ -651,9 +824,17 @@ async function handleSelectOption(params: { selector: string; value: string }): 
   logger.info(`[ToolExecutor] select_option: trying to select "${value}" in ${selector}`)
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec(`
       (() => {
         const selector = ${selectorJson};
         const targetValue = ${valueJson};
@@ -709,6 +890,11 @@ async function handleSelectOption(params: { selector: string; value: string }): 
       logger.info(`[ToolExecutor] Selected "${result.selectedText}" in ${selector}`)
     } else {
       logger.warn(`[ToolExecutor] select_option failed: ${result.error}`)
+    }
+
+    if (ctx.kind === "frame" && result && typeof result === "object") {
+      ;(result as Record<string, unknown>).frameUrl = ctx.frameUrl
+      ;(result as Record<string, unknown>).frameRoutingId = ctx.routingId
     }
 
     return result
@@ -779,11 +965,19 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
   logger.info(`[ToolExecutor] peek_dropdown: opening ${selector}`)
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
     // Step 1: Focus/click to open dropdown
-    await browserView.webContents.executeJavaScript(`
+    await ctx.exec(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false, error: 'Element not found' };
@@ -800,7 +994,7 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 
     // Step 2: Collect all visible options
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec(`
       (() => {
         const dropdownSelectors = ${selectorsJson};
         const maxOptions = ${MAX_DROPDOWN_OPTIONS_TO_RETURN};
@@ -869,6 +1063,14 @@ async function handleSelectCombobox(params: { selector: string; value: string })
   logger.info(`[ToolExecutor] select_combobox: selecting "${value}" in ${selector}`)
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
@@ -876,7 +1078,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     const findAndSelectOption = async (searchValue: string): Promise<ToolResult> => {
       const searchJson = JSON.stringify(searchValue.toLowerCase())
 
-      const selectResult = await browserView!.webContents.executeJavaScript(`
+      const selectResult = await ctx.exec(`
         (() => {
           const targetValue = ${searchJson};
           const dropdownSelectors = ${selectorsJson};
@@ -968,7 +1170,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     }
 
     // Step 1: Open dropdown by focusing/clicking without typing
-    await browserView.webContents.executeJavaScript(`
+    await ctx.exec(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false };
@@ -999,7 +1201,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
       logger.info(`[ToolExecutor] Typing "${partialValue}" to filter dropdown...`)
 
       // Clear and type partial value
-      await browserView.webContents.executeJavaScript(`
+      await ctx.exec(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false };
@@ -1072,8 +1274,16 @@ async function handleSetCheckbox(params: { selector: string; checked: boolean })
   }
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec(`
       (() => {
         const selector = ${selectorJson};
         const targetChecked = ${checked};
@@ -1134,8 +1344,16 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
   }
 
   try {
+    const ctx =
+      (await resolveExecContextForSelector(selector)) ||
+      getWebContentsExecContext()
+
+    if (!ctx) {
+      return { success: false, error: "BrowserView not initialized" }
+    }
+
     const selectorJson = JSON.stringify(selector)
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await ctx.exec(`
       (() => {
         const selector = ${selectorJson};
         const el = document.querySelector(selector);
@@ -1190,7 +1408,7 @@ async function handleGetButtons(): Promise<ToolResult> {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const buttons = await browserView.webContents.executeJavaScript(`
+  const extractionScript = `
     (() => {
       // Helper: Build a unique CSS selector path for an element
       function buildSelectorPath(el) {
@@ -1303,7 +1521,54 @@ async function handleGetButtons(): Promise<ToolResult> {
 
       return results;
     })()
-  `)
+  `
+
+  const frames = getAllFramesFromWebContents()
+
+  // Preferred path: run in every frame (supports buttons inside cross-origin iframes).
+  if (frames && frames.length > 0) {
+    const allButtons: unknown[] = []
+
+    for (const [frameIndex, frame] of frames.entries()) {
+      try {
+        const frameButtons = await frame.executeJavaScript!(extractionScript)
+        if (!Array.isArray(frameButtons)) continue
+        for (const b of frameButtons) {
+          if (b && typeof b === "object") {
+            ;(b as Record<string, unknown>).frameUrl = frame.url || null
+            ;(b as Record<string, unknown>).frameRoutingId = typeof frame.routingId === "number" ? frame.routingId : null
+            ;(b as Record<string, unknown>).frameIndex = frameIndex
+            ;(b as Record<string, unknown>).coordinateSpace = frameIndex === 0 ? "top" : "frame"
+          }
+          allButtons.push(b)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[ToolExecutor] get_buttons: frame extraction failed: ${message}`)
+      }
+    }
+
+    const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more', 'entry', 'position', 'degree', 'school', 'job'];
+    const relevantButtons = allButtons.filter((b: unknown) => {
+      if (!b || typeof b !== "object") return false
+      const lowerText = String((b as { text?: string }).text || "").toLowerCase()
+      return relevantKeywords.some(keyword => lowerText.includes(keyword))
+    })
+
+    logger.info(`[ToolExecutor] Found ${allButtons.length} buttons across ${frames.length} frames, ${relevantButtons.length} relevant for dynamic forms`)
+
+    return {
+      success: true,
+      data: {
+        buttons: relevantButtons.length > 0 ? relevantButtons : allButtons.slice(0, MAX_DROPDOWN_OPTIONS_TO_RETURN),
+        totalFound: allButtons.length,
+        hint: relevantButtons.length === 0 ? "No 'Add' buttons found. Try scrolling or look for icons (+) that add entries." : null
+      }
+    }
+  }
+
+  // Fallback: tests/mocks (no mainFrame API)
+  const buttons = await browserView.webContents.executeJavaScript(extractionScript)
 
   // Filter to most relevant buttons (add, education, employment, experience)
   const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more', 'entry', 'position', 'degree', 'school', 'job'];
@@ -1401,14 +1666,35 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
   }
 
   // Check if focused element can receive text
-  const canType = await browserView.webContents.executeJavaScript(`
+  const canTypeScript = `
     (() => {
       const el = document.activeElement;
       if (!el) return false;
       const tag = el.tagName.toLowerCase();
       return tag === 'input' || tag === 'textarea' || el.isContentEditable;
     })()
-  `)
+  `
+
+  let canType = await browserView.webContents.executeJavaScript(canTypeScript)
+
+  // If focus is inside an iframe, document.activeElement in the main frame is the <iframe> itself.
+  // Probe subframes to see if an input/textarea is actually focused.
+  if (!canType) {
+    const frames = getAllFramesFromWebContents()
+    if (frames && frames.length > 0) {
+      for (const frame of frames) {
+        try {
+          const frameCanType = await frame.executeJavaScript!(canTypeScript)
+          if (frameCanType) {
+            canType = true
+            break
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
 
   if (!canType) {
     return { success: false, error: "Focused element cannot receive text input" }
@@ -1651,11 +1937,14 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
   logger.info(`[ToolExecutor] Uploading ${typeLabel} to ${selector}: ${documentUrl}`)
 
   try {
-    const result = await uploadCallback(selector, type, documentUrl)
+    const ctx = await resolveExecContextForSelector(selector)
+    const frameUrl = ctx?.frameUrl || null
+
+    const result = await uploadCallback(selector, type, documentUrl, frameUrl)
 
     if (result.success) {
       logger.info(`[ToolExecutor] Upload successful: ${result.message}`)
-      return { success: true, data: { message: result.message, type, selector } }
+      return { success: true, data: { message: result.message, type, selector, frameUrl } }
     } else {
       logger.warn(`[ToolExecutor] Upload failed: ${result.message}`)
       return { success: false, error: result.message }
@@ -1676,7 +1965,7 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const uploadAreas = await browserView.webContents.executeJavaScript(`
+  const extractionScript = `
     (() => {
       // Helper: Build a unique CSS selector path for an element
       function buildSelectorPath(el) {
@@ -1818,7 +2107,48 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
 
       return results;
     })()
-  `)
+  `
+
+  const frames = getAllFramesFromWebContents()
+
+  // Preferred path: run in every frame (supports uploads inside cross-origin iframes like Greenhouse).
+  if (frames && frames.length > 0) {
+    const allAreas: unknown[] = []
+
+    for (const [frameIndex, frame] of frames.entries()) {
+      try {
+        const frameAreas = await frame.executeJavaScript!(extractionScript)
+        if (!Array.isArray(frameAreas)) continue
+        for (const a of frameAreas) {
+          if (a && typeof a === "object") {
+            ;(a as Record<string, unknown>).frameUrl = frame.url || null
+            ;(a as Record<string, unknown>).frameRoutingId = typeof frame.routingId === "number" ? frame.routingId : null
+            ;(a as Record<string, unknown>).frameIndex = frameIndex
+            ;(a as Record<string, unknown>).coordinateSpace = frameIndex === 0 ? "top" : "frame"
+          }
+          allAreas.push(a)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[ToolExecutor] find_upload_areas: frame extraction failed: ${message}`)
+      }
+    }
+
+    logger.info(`[ToolExecutor] Found ${allAreas.length} upload areas across ${frames.length} frames`)
+
+    return {
+      success: true,
+      data: {
+        uploadAreas: allAreas,
+        hint: allAreas.length === 0
+          ? "No file upload areas found. Scroll down to reveal more of the form."
+          : "Use upload_file with the inputSelector. If isHidden=true, the triggerSelector can be clicked to open file dialog."
+      }
+    }
+  }
+
+  // Fallback: tests/mocks (no mainFrame API)
+  const uploadAreas = await browserView.webContents.executeJavaScript(extractionScript)
 
   logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas`)
 
@@ -1832,4 +2162,3 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
     }
   }
 }
-
