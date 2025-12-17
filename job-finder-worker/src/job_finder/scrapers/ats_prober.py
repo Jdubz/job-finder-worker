@@ -9,6 +9,9 @@ Supported ATS Providers:
 - Ashby (api.ashbyhq.com)
 - SmartRecruiters (api.smartrecruiters.com)
 - Recruitee (SLUG.recruitee.com)
+- Breezy (SLUG.breezy.hr)
+- Workable (apply.workable.com)
+- Workday (SLUG.wd*.myworkdayjobs.com) - requires special handling
 """
 
 import logging
@@ -97,7 +100,36 @@ ATS_PROVIDERS = {
             "description": "description",
         },
     },
+    "breezy": {
+        "api_url": "https://{slug}.breezy.hr/json",
+        "response_path": "",  # Root is array
+        "aggregator_domain": "breezy.hr",
+        "fields": {
+            "title": "name",
+            "url": "url",
+            "location": "location.name",
+            "description": "description",
+            "posted_date": "published_date",
+        },
+    },
+    "workable": {
+        "api_url": "https://apply.workable.com/api/v1/widget/accounts/{slug}",
+        "response_path": "jobs",
+        "aggregator_domain": "workable.com",
+        "fields": {
+            "title": "title",
+            "url": "url",
+            "location": "location.city",
+            "description": "description",
+        },
+    },
 }
+
+# Workday requires special handling (POST request, variable wd* subdomain)
+# Common Workday subdomain numbers
+WORKDAY_SUBDOMAINS = ["wd1", "wd3", "wd5"]
+# Common Workday board names
+WORKDAY_BOARDS = ["jobs", "careers", "External", "Careers"]
 
 
 def normalize_company_slug(name: str) -> str:
@@ -138,6 +170,78 @@ def normalize_company_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]", "", name_lower)
 
     return slug
+
+
+def generate_slug_variations(name: str) -> List[str]:
+    """Generate multiple slug variations for a company name.
+
+    Different ATS providers use different slug conventions:
+    - "3Pillar Global" -> ["3pillarglobal", "3pillar-global", "3pillar"]
+    - "Full Script" -> ["fullscript", "full-script"]
+
+    Args:
+        name: Company name
+
+    Returns:
+        List of unique slug variations to try
+    """
+    variations: List[str] = []
+
+    # Clean the name first
+    name_lower = name.lower().strip()
+
+    # Remove common suffixes for cleaner slugs
+    suffixes = [
+        " inc",
+        " inc.",
+        " corp",
+        " corp.",
+        " llc",
+        " ltd",
+        " ltd.",
+        " co",
+        " co.",
+        " company",
+        " corporation",
+        " group",
+        " holdings",
+        " technologies",
+        " technology",
+        " tech",
+        " software",
+        " solutions",
+    ]
+    for suffix in suffixes:
+        if name_lower.endswith(suffix):
+            name_lower = name_lower[: -len(suffix)]
+            break
+
+    # Variation 1: All alphanumeric joined (most common)
+    slug1 = re.sub(r"[^a-z0-9]", "", name_lower)
+    if slug1:
+        variations.append(slug1)
+
+    # Variation 2: Words joined with hyphens
+    words = re.split(r"[^a-z0-9]+", name_lower)
+    words = [w for w in words if w]
+    if len(words) > 1:
+        slug2 = "-".join(words)
+        if slug2 not in variations:
+            variations.append(slug2)
+
+    # Variation 3: First word only (for "Acme Corp" -> "acme")
+    if words:
+        first_word = words[0]
+        if len(first_word) > 2 and first_word not in variations:
+            variations.append(first_word)
+
+    # Variation 4: CamelCase to hyphenated (for "PostHog" -> "post-hog")
+    camel_split = re.sub(r"([a-z])([A-Z])", r"\1-\2", name).lower()
+    camel_slug = re.sub(r"[^a-z0-9-]", "", camel_split)
+    if camel_slug and camel_slug not in variations:
+        variations.append(camel_slug)
+
+    return variations
 
 
 def extract_slug_from_url(url: str) -> Optional[str]:
@@ -191,6 +295,23 @@ def extract_slug_from_url(url: str) -> Optional[str]:
         parts = host.split(".")
         if len(parts) >= 3 and parts[0] != "www":
             return parts[0]
+
+    # Breezy: SLUG.breezy.hr
+    if "breezy.hr" in host:
+        parts = host.split(".")
+        if len(parts) >= 3 and parts[0] != "www":
+            return parts[0]
+
+    # Workable: apply.workable.com/SLUG or SLUG.workable.com
+    if "workable.com" in host:
+        if host.startswith("apply.") and path:
+            parts = path.split("/")
+            if parts:
+                return parts[0]
+        else:
+            parts = host.split(".")
+            if len(parts) >= 3 and parts[0] not in ("www", "apply"):
+                return parts[0]
 
     return None
 
@@ -293,6 +414,93 @@ def probe_ats_provider(
         return ATSProbeResult(found=False)
 
 
+def probe_workday(
+    slug: str,
+    timeout: int = ATS_PROBE_TIMEOUT_SECONDS,
+) -> ATSProbeResult:
+    """Probe Workday ATS which requires special handling.
+
+    Workday uses POST requests and has variable URL patterns:
+    - https://{slug}.wd{N}.myworkdayjobs.com/wday/cxs/{slug}/{board}/jobs
+
+    Args:
+        slug: Company slug to test
+        timeout: Request timeout in seconds
+
+    Returns:
+        ATSProbeResult with found=True if jobs are available
+    """
+    for wd_num in WORKDAY_SUBDOMAINS:
+        for board in WORKDAY_BOARDS:
+            api_url = f"https://{slug}.{wd_num}.myworkdayjobs.com/wday/cxs/{slug}/{board}/jobs"
+            try:
+                response = requests.post(
+                    api_url,
+                    json={"limit": 20, "offset": 0},
+                    headers={
+                        "User-Agent": "JobFinderBot/1.0",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=timeout,
+                )
+
+                if response.status_code == 404:
+                    continue
+
+                if response.status_code != 200:
+                    continue
+
+                data = response.json()
+                job_postings = data.get("jobPostings", [])
+                job_count = len(job_postings)
+
+                if job_count == 0:
+                    continue
+
+                # Found jobs - build config
+                sample_job = job_postings[0] if job_postings else None
+                base_url = f"https://{slug}.{wd_num}.myworkdayjobs.com/{board}"
+                scraper_config = {
+                    "type": "api",
+                    "url": api_url,
+                    "method": "POST",
+                    "post_body": {"limit": 50, "offset": 0},
+                    "response_path": "jobPostings",
+                    "base_url": base_url,
+                    "headers": {"Content-Type": "application/json"},
+                    "fields": {
+                        "title": "title",
+                        "url": "externalPath",
+                        "location": "locationsText",
+                        "posted_date": "postedOn",
+                    },
+                }
+
+                logger.info(
+                    f"ATS probe SUCCESS: workday/{slug} ({wd_num}/{board}) has {job_count}+ jobs"
+                )
+
+                return ATSProbeResult(
+                    found=True,
+                    ats_provider="workday",
+                    aggregator_domain="myworkdayjobs.com",
+                    api_url=api_url,
+                    job_count=data.get("total", job_count),
+                    sample_job=sample_job,
+                    config=scraper_config,
+                )
+
+            except requests.exceptions.Timeout:
+                continue
+            except requests.exceptions.RequestException:
+                continue
+            except (ValueError, KeyError):
+                continue
+
+    return ATSProbeResult(found=False)
+
+
 def probe_all_ats_providers(
     company_name: Optional[str] = None,
     url: Optional[str] = None,
@@ -318,17 +526,11 @@ def probe_all_ats_providers(
     if url_slug:
         slugs_to_try.append(url_slug)
 
-    # Derive slugs from company name
+    # Derive multiple slug variations from company name
     if company_name:
-        # Full slug (spaces/special chars removed)
-        slugs_to_try.append(normalize_company_slug(company_name))
-
-        # First word only (for "Acme Corp" -> "acme")
-        first_word = company_name.split()[0].lower() if company_name else ""
-        if first_word and len(first_word) > 2:
-            clean_first = re.sub(r"[^a-z0-9]", "", first_word)
-            if clean_first and clean_first not in slugs_to_try:
-                slugs_to_try.append(clean_first)
+        for variation in generate_slug_variations(company_name):
+            if variation and variation not in slugs_to_try:
+                slugs_to_try.append(variation)
 
     # Extract slug from domain
     if url:
@@ -362,14 +564,48 @@ def probe_all_ats_providers(
     logger.debug(f"Probing ATS providers with slugs: {unique_slugs}")
 
     # Try each provider with each slug
-    # Prioritize providers by likelihood of success
-    provider_order = ["greenhouse", "lever", "ashby", "smartrecruiters", "recruitee"]
+    # Prioritize providers by likelihood of success (most common first)
+    provider_order = [
+        "greenhouse",
+        "lever",
+        "ashby",
+        "smartrecruiters",
+        "recruitee",
+        "breezy",
+        "workable",
+    ]
+
+    # Collect all successful results to return the best one
+    all_results: List[ATSProbeResult] = []
 
     for provider in provider_order:
         for slug in unique_slugs:
             result = probe_ats_provider(provider, slug)
             if result.found:
-                return result
+                all_results.append(result)
+                # Early exit if we find a result with many jobs
+                if result.job_count >= 5:
+                    break
+        # If we found a good result for this provider, move on
+        if all_results and all_results[-1].job_count >= 5:
+            break
+
+    # Also try Workday (requires special handling)
+    for slug in unique_slugs:
+        result = probe_workday(slug)
+        if result.found:
+            all_results.append(result)
+            break
+
+    # Return the result with the most jobs
+    if all_results:
+        best_result = max(all_results, key=lambda r: r.job_count)
+        if len(all_results) > 1:
+            logger.info(
+                f"Found {len(all_results)} ATS providers, returning best: "
+                f"{best_result.ats_provider} with {best_result.job_count} jobs"
+            )
+        return best_result
 
     # No provider found
     logger.debug(f"No ATS provider found for slugs: {unique_slugs}")
