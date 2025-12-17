@@ -41,6 +41,7 @@ from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.rendering.playwright_renderer import get_renderer, RenderRequest
+from job_finder.utils.url_utils import get_root_domain
 
 from .base_processor import BaseProcessor
 
@@ -54,6 +55,7 @@ CONTENT_SAMPLE_PROMPT_LIMIT = 12000  # Max chars to include in agent prompt
 # Probe timeout - must match normal render timeout to avoid false negatives
 # JS-heavy sites (Google, Meta, etc.) often need 15-20 seconds to render
 PROBE_RENDER_TIMEOUT_MS = 20_000
+SEARCH_QUERY_LIMIT = 8  # cap queries to avoid long sequential search latency
 
 # Mapping from DisableReason to disabled_tags for non-recoverable issues
 # Only truly unrecoverable reasons are mapped - others are discovery mistakes
@@ -188,7 +190,7 @@ class SourceProcessor(BaseProcessor):
         try:
             # Step 1: Gather context for agent proposal
             fetch_result = self._attempt_fetch(url) if url else {"success": False}
-            search_results = self._gather_search_context(url or config.company_name or "")
+            search_results = self._gather_search_context(url or "", config.company_name)
 
             # Step 2: Agent proposal (URL + config + classification)
             analysis_agent = SourceAnalysisAgent(self.agent_manager)
@@ -427,41 +429,77 @@ class SourceProcessor(BaseProcessor):
                 "error_message": str(e),
             }
 
-    def _gather_search_context(self, url: str) -> Optional[List[Dict[str, str]]]:
-        """Gather search results about the URL/domain for agent context.
+    def _gather_search_context(
+        self, url: str, company_name: Optional[str] = None
+    ) -> Optional[List[Dict[str, str]]]:
+        """Gather richer search results for discovery/recovery.
 
-        Args:
-            url: URL to search for information about
-
-        Returns:
-            List of search result dicts or None
+        We intentionally fire multiple targeted queries so the agent has
+        evidence to locate the correct job board when the provided URL is a
+        marketing or landing page (common for employer-brand pages like
+        employers.builtin.com).
         """
+
         search_client = get_search_client()
         if not search_client:
             return None
 
-        parsed = urlparse(url)
-        domain = parsed.netloc or url
-        queries = [
-            f"{domain} jobs api",
-            f"{domain} careers api",
+        if not (url or company_name):
+            return None
+
+        parsed = urlparse(url or "")
+        domain = parsed.netloc if parsed.netloc else ""
+        root_domain = get_root_domain(domain) if domain else None
+
+        # Compose diverse, de-duplicated queries
+        queries: List[str] = []
+        candidate_queries: List[str] = []
+        if root_domain:
+            candidate_queries.extend(
+                [
+                    f"{root_domain} jobs",
+                    f"{root_domain} careers",
+                    f"{root_domain} job board",
+                    f"site:{root_domain} jobs",
+                    f"{root_domain} jobs api",
+                ]
+            )
+
+        if company_name:
+            candidate_queries.extend(
+                [
+                    f"{company_name} jobs",
+                    f"{company_name} careers",
+                    f"{company_name} careers {root_domain or ''}".strip(),
+                    f"{company_name} jobs site:{root_domain}" if root_domain else "",
+                ]
+            )
+
+        queries = [q for q in dict.fromkeys(q for q in candidate_queries if q.strip())][
+            :SEARCH_QUERY_LIMIT
         ]
 
         results = []
+        seen_urls = set()
         for query in queries:
             try:
                 search_results = search_client.search(query, max_results=3)
                 for r in search_results:
+                    url_lower = (r.url or "").lower()
+                    if not url_lower or url_lower in seen_urls:
+                        continue
+                    seen_urls.add(url_lower)
                     results.append(
                         {
+                            "query": query,
                             "title": r.title,
                             "url": r.url,
                             "snippet": r.snippet,
                         }
                     )
-                logger.info(f"Tavily search for '{query}' returned {len(search_results)} results")
-            except Exception as e:
-                logger.debug(f"Search failed for '{query}': {e}")
+                logger.info("Search for '%s' returned %s results", query, len(search_results))
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Search failed for '%s': %s", query, e)
 
         return results if results else None
 
@@ -1210,6 +1248,17 @@ class SourceProcessor(BaseProcessor):
             config = source.get("config", {})
             url = config.get("url", "")
             source_type = config.get("type", "html")
+            company_id = source.get("companyId") or source.get("company_id")
+            company_name = None
+            if company_id:
+                try:
+                    company_record = self.companies_manager.get_company_by_id(company_id)
+                    company_name = company_record.get("name") if company_record else None
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Failed to retrieve company name for company_id=%s: %s", company_id, exc
+                    )
+                    company_name = None
 
             # Check for non-recoverable tags - skip recovery if present
             disabled_tags = config.get("disabled_tags", [])
@@ -1246,6 +1295,9 @@ class SourceProcessor(BaseProcessor):
 
             # Get error history from config
             disabled_notes = config.get("disabled_notes", "")
+
+            # Gather web search context to help locate correct board
+            search_results = self._gather_search_context(url, company_name)
 
             # Fetch content sample for agent diagnosis
             content_sample = self._fetch_content_sample(url, source_type, config)
@@ -1285,6 +1337,8 @@ class SourceProcessor(BaseProcessor):
                 current_config=config,
                 disabled_notes=disabled_notes,
                 content_sample=content_sample,
+                company_name=company_name,
+                search_results=search_results,
             )
 
             # Handle agent diagnosis of non-recoverable issues
@@ -1470,6 +1524,8 @@ class SourceProcessor(BaseProcessor):
         current_config: Dict[str, Any],
         disabled_notes: str,
         content_sample: str,
+        company_name: Optional[str] = None,
+        search_results: Optional[List[Dict[str, str]]] = None,
     ) -> RecoveryResult:
         """Ask agent to diagnose and propose a fixed config for a broken source.
 
@@ -1489,8 +1545,12 @@ class SourceProcessor(BaseProcessor):
 2. Diagnose why it cannot be recovered if the issue is non-recoverable
 
 ## Source: {source_name}
+Company: {company_name or "Unknown"}
 URL: {url}
 Type: {source_type}
+
+## Search Results (use these to locate the real job board if the URL is wrong)
+{json.dumps(search_results or [], indent=2)}
 
 ## Current Configuration (BROKEN)
 ```json
@@ -1513,6 +1573,8 @@ Look for these NON-RECOVERABLE issues:
 - **protected_api**: API returns 401/403/422, requires authentication token
 
 If you detect ANY of these issues, set can_recover=false and specify the disable_reason.
+
+If the content is a marketing/landing page with zero jobs, **use the search results to find the actual job board** (ATS API endpoints are preferred: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Recruitee, Workable). Do not stop at the first failure—return the corrected URL and config when possible.
 
 ## Response Format
 

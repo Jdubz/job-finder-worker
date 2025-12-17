@@ -278,8 +278,8 @@ const mockCoverLetterContent = {
     const reset = (AgentManagerModule as any).__resetAgentMock
     reset?.()
     vi.spyOn(storageService, 'saveArtifactWithMetadata').mockResolvedValue({
-      storagePath: '2024-01-15/acme-corp_software-engineer_a1b2c3d4e5f6/test-user_acme-corp_software-engineer_resume.pdf',
-      filename: 'test-user_acme-corp_software-engineer_resume.pdf',
+      storagePath: '2024-01-15/run-abc123/test-user_engineer_resume.pdf',
+      filename: 'test-user_engineer_resume.pdf',
       size: 1024
     })
     vi.spyOn(storageService, 'createPublicUrl').mockReturnValue('http://example.com/resume.pdf')
