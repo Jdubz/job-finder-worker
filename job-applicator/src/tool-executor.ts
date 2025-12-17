@@ -64,6 +64,54 @@ export function getBrowserView(): BrowserView | null {
   return browserView
 }
 
+/**
+ * Check if BrowserView's webContents is ready for JavaScript execution
+ * Returns error message if not ready, null if ready
+ */
+function checkWebContentsReady(): string | null {
+  if (!browserView) {
+    return "BrowserView not initialized"
+  }
+  try {
+    const webContents = browserView.webContents
+    if (!webContents) {
+      return "BrowserView webContents not available"
+    }
+    if (webContents.isDestroyed()) {
+      return "BrowserView webContents has been destroyed"
+    }
+    if (webContents.isLoading()) {
+      return "Page is still loading - wait for navigation to complete"
+    }
+    if (webContents.isCrashed()) {
+      return "BrowserView webContents has crashed"
+    }
+    return null // Ready
+  } catch (err) {
+    return `BrowserView in invalid state: ${err instanceof Error ? err.message : String(err)}`
+  }
+}
+
+/**
+ * Safely execute JavaScript in BrowserView with error handling
+ * Returns ToolResult with proper error if execution fails
+ */
+async function safeExecuteJavaScript<T>(code: string): Promise<{ success: true; value: T } | { success: false; error: string }> {
+  const readyError = checkWebContentsReady()
+  if (readyError) {
+    return { success: false, error: readyError }
+  }
+
+  try {
+    const value = await browserView!.webContents.executeJavaScript(code)
+    return { success: true, value }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[ToolExecutor] executeJavaScript failed: ${message}`)
+    return { success: false, error: `Script execution failed: ${message}` }
+  }
+}
+
 // ============================================================================
 // Job Context
 // ============================================================================
@@ -322,13 +370,14 @@ async function handleScreenshot(): Promise<ToolResult> {
 
 /**
  * Get form fields from the current page
+ * Also detects application form iframes (Greenhouse, Lever, etc.) that can't be accessed directly
  */
 async function handleGetFormFields(): Promise<ToolResult> {
   if (!browserView) {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const fields = await browserView.webContents.executeJavaScript(`
+  const result = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
       // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
@@ -388,8 +437,60 @@ async function handleGetFormFields(): Promise<ToolResult> {
         return path.join(' > ');
       }
 
+      // Detect application form iframes (Greenhouse, Lever, Workday, etc.)
+      // These are cross-origin and cannot be accessed directly via JS
+      function detectApplicationIframes() {
+        const iframes = document.querySelectorAll('iframe');
+        const applicationIframes = [];
+
+        // Known ATS domains that embed application forms
+        const atsDomains = [
+          'greenhouse.io',
+          'lever.co',
+          'workday.com',
+          'myworkdayjobs.com',
+          'icims.com',
+          'smartrecruiters.com',
+          'jobvite.com',
+          'ashbyhq.com',
+          'recruitee.com',
+          'breezy.hr',
+          'workable.com',
+        ];
+
+        for (const iframe of iframes) {
+          const src = iframe.src || '';
+          if (!src) continue;
+
+          try {
+            const url = new URL(src);
+            const isAts = atsDomains.some(domain => url.hostname.includes(domain));
+            const isCrossOrigin = url.origin !== window.location.origin;
+
+            if (isAts || isCrossOrigin) {
+              const rect = iframe.getBoundingClientRect();
+              // Only consider visible iframes
+              if (rect.width > 100 && rect.height > 100) {
+                applicationIframes.push({
+                  src: src,
+                  hostname: url.hostname,
+                  isAts: isAts,
+                  isCrossOrigin: isCrossOrigin,
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                });
+              }
+            }
+          } catch (e) {
+            // Invalid URL, skip
+          }
+        }
+
+        return applicationIframes;
+      }
+
       const inputs = document.querySelectorAll('input, select, textarea');
-      return Array.from(inputs).map((el, idx) => {
+      const fields = Array.from(inputs).map((el, idx) => {
         const rect = el.getBoundingClientRect();
         // Use getAttribute to avoid DOM Clobbering (forms with <input name="type">)
         // Fall back to tagName for elements without type attribute
@@ -449,8 +550,16 @@ async function handleGetFormFields(): Promise<ToolResult> {
           checked: (fieldType === 'checkbox' || fieldType === 'radio') ? el.checked : null,
         };
       }).filter(f => f !== null);
+
+      // Always check for application iframes
+      const applicationIframes = detectApplicationIframes();
+
+      return { fields, applicationIframes };
     })()
   `)
+
+  const fields = result.fields || []
+  const applicationIframes = result.applicationIframes || []
 
   // Log summary including dropdowns for debugging
   const dropdowns = fields.filter((f: { type: string; options?: unknown[] }) => f.type === "select-one" || f.type === "select-multiple")
@@ -462,7 +571,31 @@ async function handleGetFormFields(): Promise<ToolResult> {
     }
   }
 
-  return { success: true, data: { fields } }
+  // Log detected iframes
+  if (applicationIframes.length > 0) {
+    logger.info(`[ToolExecutor] Detected ${applicationIframes.length} application iframe(s):`)
+    for (const iframe of applicationIframes) {
+      logger.info(`[ToolExecutor]   ${iframe.hostname} (${iframe.width}x${iframe.height}) - ATS: ${iframe.isAts}`)
+    }
+  }
+
+  // If no form fields found but there's an application iframe, include actionable info
+  if (fields.length === 0 && applicationIframes.length > 0) {
+    const primaryIframe = applicationIframes[0]
+    return {
+      success: true,
+      data: {
+        fields,
+        embeddedFormDetected: true,
+        embeddedFormUrl: primaryIframe.src,
+        embeddedFormHost: primaryIframe.hostname,
+        hint: `The application form is embedded in a cross-origin iframe from ${primaryIframe.hostname}. ` +
+              `Navigate directly to ${primaryIframe.src} to fill the form.`
+      }
+    }
+  }
+
+  return { success: true, data: { fields, applicationIframes } }
 }
 
 /**
@@ -486,8 +619,10 @@ async function handleGetPageInfo(): Promise<ToolResult> {
  * Uses native value setter to work with React/Vue/Angular controlled inputs
  */
 async function handleFillField(params: { selector: string; value: string }): Promise<ToolResult> {
-  if (!browserView) {
-    return { success: false, error: "BrowserView not initialized" }
+  // Check webContents state first to provide better error messages
+  const readyError = checkWebContentsReady()
+  if (readyError) {
+    return { success: false, error: readyError }
   }
 
   const { selector, value } = params
@@ -501,7 +636,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
     const valueJson = JSON.stringify(value)
 
     // Strategy 1: Enhanced DOM-based filling with InputEvent
-    const result = await browserView.webContents.executeJavaScript(`
+    const result = await browserView!.webContents.executeJavaScript(`
       (() => {
         const selector = ${selectorJson};
         const value = ${valueJson};
@@ -620,7 +755,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
       }
 
       // Verify the value
-      const verifyResult = await browserView.webContents.executeJavaScript(`
+      const verifyResult = await browserView!.webContents.executeJavaScript(`
         (() => {
           const el = document.querySelector(${selectorJson});
           if (!el) return { success: false, error: 'Element not found after typing' };
@@ -1137,8 +1272,10 @@ async function handleSetCheckbox(params: { selector: string; checked: boolean })
  * Click an element by CSS selector
  */
 async function handleClickElement(params: { selector: string }): Promise<ToolResult> {
-  if (!browserView) {
-    return { success: false, error: "BrowserView not initialized" }
+  // Check webContents state first to provide better error messages
+  const readyError = checkWebContentsReady()
+  if (readyError) {
+    return { success: false, error: readyError }
   }
 
   const { selector } = params
@@ -1149,38 +1286,50 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
 
   try {
     const selectorJson = JSON.stringify(selector)
-    const result = await browserView.webContents.executeJavaScript(`
+    const execResult = await safeExecuteJavaScript<{ success: boolean; error?: string; text?: string; selector?: string }>(`
       (() => {
-        const selector = ${selectorJson};
-        const el = document.querySelector(selector);
-        if (!el) return { success: false, error: 'Element not found: ' + selector };
+        try {
+          const selector = ${selectorJson};
+          const el = document.querySelector(selector);
+          if (!el) return { success: false, error: 'Element not found: ' + selector };
 
-        // Block navigation away from the application by disallowing external links
-        if (el.tagName === 'A') {
-          const href = el.href || '';
-          try {
-            const target = new URL(href, window.location.href);
-            if (target.origin !== window.location.origin) {
-              return { success: false, error: 'Navigation blocked: link points outside current site' };
+          // Block navigation away from the application by disallowing external links
+          if (el.tagName === 'A') {
+            const href = el.href || '';
+            try {
+              const target = new URL(href, window.location.href);
+              if (target.origin !== window.location.origin) {
+                return { success: false, error: 'Navigation blocked: link points outside current site' };
+              }
+            } catch (e) {
+              return { success: false, error: 'Navigation blocked: invalid link href' };
             }
-          } catch (e) {
-            return { success: false, error: 'Navigation blocked: invalid link href' };
           }
+
+          // Scroll element into view if needed
+          el.scrollIntoView({ behavior: 'instant', block: 'center' });
+
+          // Get element text for logging
+          const text = (el.textContent || '').trim().slice(0, 50) || (el.value || '');
+
+          // Focus and click
+          el.focus();
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+
+          return { success: true, selector: selector, text: text };
+        } catch (jsError) {
+          return { success: false, error: 'JavaScript error: ' + (jsError.message || String(jsError)) };
         }
-
-        // Scroll element into view if needed
-        el.scrollIntoView({ behavior: 'instant', block: 'center' });
-
-        // Get element text for logging
-        const text = (el.textContent || '').trim().slice(0, 50) || (el.value || '');
-
-        // Focus and click
-        el.focus();
-        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-
-        return { success: true, selector: selector, text: text };
       })()
     `)
+
+    // Handle execution-level errors
+    if (!execResult.success) {
+      logger.warn(`[ToolExecutor] click_element execution failed: ${execResult.error}`)
+      return { success: false, error: execResult.error }
+    }
+
+    const result = execResult.value
 
     if (result.success) {
       logger.info(`[ToolExecutor] Clicked element ${selector} ("${result.text}")`)
@@ -1191,7 +1340,8 @@ async function handleClickElement(params: { selector: string }): Promise<ToolRes
     return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { success: false, error: message }
+    logger.error(`[ToolExecutor] click_element unexpected error: ${message}`)
+    return { success: false, error: `Unexpected error: ${message}` }
   }
 }
 
