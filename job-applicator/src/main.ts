@@ -431,6 +431,8 @@ ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boole
 
 type PageFrameTreeNode = { frame: { id: string; url: string }; childFrames?: PageFrameTreeNode[] }
 
+const MIN_FRAME_URL_MATCH_SCORE = 40
+
 function scoreFrameUrlMatch(candidateUrl: string, targetUrl: string): number {
   try {
     const candidate = new URL(candidateUrl)
@@ -446,8 +448,13 @@ function scoreFrameUrlMatch(candidateUrl: string, targetUrl: string): number {
       return 70
     }
 
-    // Weak match: substring
-    if (candidateUrl && targetUrl && (candidateUrl.includes(targetUrl) || targetUrl.includes(candidateUrl))) return 40
+    // Weak match: same hostname and overlapping path.
+    if (
+      candidate.hostname === target.hostname &&
+      (candidate.pathname.includes(target.pathname) || target.pathname.includes(candidate.pathname))
+    ) {
+      return 40
+    }
   } catch {
     // ignore URL parse errors
   }
@@ -478,7 +485,8 @@ async function findCdpFrameIdForUrl(debugger_: Electron.Debugger, frameUrl: stri
     for (const child of node.childFrames || []) stack.push(child)
   }
 
-  return { mainFrameId, frameId: bestId }
+  const frameId = bestScore >= MIN_FRAME_URL_MATCH_SCORE ? bestId : null
+  return { mainFrameId, frameId }
 }
 
 // Helper function to set files on a file input using Electron's debugger API.
@@ -515,18 +523,26 @@ async function setFileInputFiles(
             nodeId?: number
           }
 
-          const describeParams =
-            typeof owner.nodeId === "number"
-              ? { nodeId: owner.nodeId }
-              : { backendNodeId: owner.backendNodeId }
-
-          const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
-            node: { contentDocument?: { nodeId: number } }
+          let describeParams: { nodeId?: number; backendNodeId?: number } | null = null
+          if (typeof owner.nodeId === "number") {
+            describeParams = { nodeId: owner.nodeId }
+          } else if (typeof owner.backendNodeId === "number") {
+            describeParams = { backendNodeId: owner.backendNodeId }
           }
 
-          const contentDocumentNodeId = described.node?.contentDocument?.nodeId
-          if (typeof contentDocumentNodeId === "number") {
-            queryRootNodeId = contentDocumentNodeId
+          if (!describeParams) {
+            logger.warn(
+              `[Upload] Frame owner for selector "${selector}" (frameUrl=${frameUrl}) has no valid nodeId or backendNodeId`,
+            )
+          } else {
+            const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
+              node: { contentDocument?: { nodeId: number } }
+            }
+
+            const contentDocumentNodeId = described.node?.contentDocument?.nodeId
+            if (typeof contentDocumentNodeId === "number") {
+              queryRootNodeId = contentDocumentNodeId
+            }
           }
         }
       } catch (err) {

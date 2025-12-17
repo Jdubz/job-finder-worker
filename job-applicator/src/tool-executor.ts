@@ -40,6 +40,7 @@ let browserView: BrowserView | null = null
  */
 export function setBrowserView(view: BrowserView | null): void {
   browserView = view
+  selectorFrameCache.clear()
   logger.info(`[ToolExecutor] BrowserView ${view ? "set" : "cleared"}`)
 }
 
@@ -96,6 +97,8 @@ type ComboboxOptionSelectResult = {
 type SetCheckboxResult = { success: boolean; selector?: string; checked?: boolean; error?: string }
 type ClickElementResult = { success: boolean; selector?: string; text?: string; error?: string }
 
+const selectorFrameCache = new Map<string, { routingId: number | null; frameUrl: string | null }>()
+
 function getAllFramesFromWebContents(): WebFrameMainLike[] | null {
   if (!browserView) return null
 
@@ -106,12 +109,17 @@ function getAllFramesFromWebContents(): WebFrameMainLike[] | null {
 
   const frames: WebFrameMainLike[] = []
   const seen = new Set<number>()
+  const seenNoId = new Set<WebFrameMainLike>()
 
   const visit = (frame: WebFrameMainLike) => {
     const rid = typeof frame.routingId === "number" ? frame.routingId : null
     if (rid !== null) {
       if (seen.has(rid)) return
       seen.add(rid)
+    } else {
+      // Fallback deduplication when routingId is unavailable.
+      if (seenNoId.has(frame)) return
+      seenNoId.add(frame)
     }
     frames.push(frame)
     for (const child of frame.frames || []) visit(child)
@@ -119,6 +127,56 @@ function getAllFramesFromWebContents(): WebFrameMainLike[] | null {
 
   visit(root)
   return frames
+}
+
+type FrameMeta = {
+  frameUrl: string | null
+  frameRoutingId: number | null
+  frameIndex: number
+  coordinateSpace: "top" | "frame"
+}
+
+function annotateWithFrameMeta(item: unknown, meta: FrameMeta): void {
+  if (!item || typeof item !== "object") return
+  Object.assign(item as Record<string, unknown>, meta)
+}
+
+async function extractFromAllFrames<T = unknown>(extractionScript: string, loggerContext: string): Promise<T[]> {
+  if (!browserView) return []
+
+  const frames = getAllFramesFromWebContents()
+
+  // Fallback for tests/mocks where mainFrame isn't present
+  if (!frames || frames.length === 0) {
+    const items = await browserView.webContents.executeJavaScript(extractionScript)
+    return Array.isArray(items) ? (items as T[]) : []
+  }
+
+  const allItems: T[] = []
+
+  for (const [frameIndex, frame] of frames.entries()) {
+    try {
+      const frameItems = await frame.executeJavaScript!(extractionScript)
+      if (!Array.isArray(frameItems)) continue
+
+      const meta: FrameMeta = {
+        frameUrl: frame.url || null,
+        frameRoutingId: typeof frame.routingId === "number" ? frame.routingId : null,
+        frameIndex,
+        coordinateSpace: frameIndex === 0 ? "top" : "frame",
+      }
+
+      for (const item of frameItems) {
+        annotateWithFrameMeta(item, meta)
+        allItems.push(item as T)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.warn(`[ToolExecutor] ${loggerContext}: frame extraction failed: ${message}`)
+    }
+  }
+
+  return allItems
 }
 
 function getWebContentsExecContext(): ExecContext | null {
@@ -147,30 +205,79 @@ async function resolveExecContextForSelector(selector: string): Promise<ExecCont
 
   const frames = getAllFramesFromWebContents()
   if (frames && frames.length > 0) {
-    for (const frame of frames) {
-      try {
-        const res = (await frame.executeJavaScript!(probe)) as SelectorProbeResult
-        if (res?.found) {
-          return {
-            kind: "frame",
-            exec: <T = unknown>(code: string) => frame.executeJavaScript!(code) as Promise<T>,
-            frameUrl: frame.url || null,
-            routingId: typeof frame.routingId === "number" ? frame.routingId : null,
-          }
+    // Validate the selector syntax once in the root frame (avoids re-probing frames[0]).
+    try {
+      const rootRes = (await frames[0].executeJavaScript!(probe)) as SelectorProbeResult
+      if (rootRes?.ok === false) return null
+      if (rootRes?.found) {
+        selectorFrameCache.set(selector, {
+          routingId: typeof frames[0].routingId === "number" ? frames[0].routingId : null,
+          frameUrl: frames[0].url || null,
+        })
+        if (selectorFrameCache.size > 200) selectorFrameCache.clear()
+        return {
+          kind: "frame",
+          exec: <T = unknown>(code: string) => frames[0].executeJavaScript!(code) as Promise<T>,
+          frameUrl: frames[0].url || null,
+          routingId: typeof frames[0].routingId === "number" ? frames[0].routingId : null,
         }
-      } catch {
-        // ignore frame probe failures
+      }
+    } catch {
+      // ignore selector validation failures and fall back to probing other frames
+    }
+
+    // Try cached frame first (if any) to avoid probing all frames repeatedly.
+    const cached = selectorFrameCache.get(selector)
+    if (cached && typeof cached.routingId === "number") {
+      const cachedFrame = frames.find((f) => f.routingId === cached.routingId)
+      if (cachedFrame) {
+        try {
+          const cachedRes = (await cachedFrame.executeJavaScript!(probe)) as SelectorProbeResult
+          if (cachedRes?.found) {
+            return {
+              kind: "frame",
+              exec: <T = unknown>(code: string) => cachedFrame.executeJavaScript!(code) as Promise<T>,
+              frameUrl: cachedFrame.url || null,
+              routingId: typeof cachedFrame.routingId === "number" ? cachedFrame.routingId : null,
+            }
+          }
+        } catch {
+          // ignore cached probe failures
+        }
       }
     }
 
-    // If selector is invalid, surface that by returning null (caller can report "not found")
-    try {
-      const res = (await frames[0].executeJavaScript!(probe)) as SelectorProbeResult
-      if (res?.ok === false) {
-        return null
+    const candidates = frames
+      .map((frame, index) => ({ frame, index }))
+      .filter(({ index }) => index !== 0)
+
+    // Probe the remaining frames concurrently to reduce worst-case latency on pages with many iframes.
+    const settled = await Promise.allSettled(
+      candidates.map(async ({ frame, index }) => ({
+        frame,
+        index,
+        res: (await frame.executeJavaScript!(probe)) as SelectorProbeResult,
+      }))
+    )
+
+    const found = settled
+      .flatMap((r) => (r.status === "fulfilled" ? [r.value] : []))
+      .filter((r) => r.res?.found)
+      .sort((a, b) => a.index - b.index)[0]
+
+    if (found) {
+      selectorFrameCache.set(selector, {
+        routingId: typeof found.frame.routingId === "number" ? found.frame.routingId : null,
+        frameUrl: found.frame.url || null,
+      })
+      if (selectorFrameCache.size > 200) selectorFrameCache.clear()
+
+      return {
+        kind: "frame",
+        exec: <T = unknown>(code: string) => found.frame.executeJavaScript!(code) as Promise<T>,
+        frameUrl: found.frame.url || null,
+        routingId: typeof found.frame.routingId === "number" ? found.frame.routingId : null,
       }
-    } catch {
-      // ignore
     }
 
     return null
@@ -581,62 +688,21 @@ async function handleGetFormFields(): Promise<ToolResult> {
   `
 
   const frames = getAllFramesFromWebContents()
-
-  // Preferred path: run extraction in every frame (supports cross-origin iframes like Greenhouse).
-  if (frames && frames.length > 0) {
-    const allFields: unknown[] = []
-
-    for (const [frameIndex, frame] of frames.entries()) {
-      try {
-        const frameFields = await frame.executeJavaScript!(extractionScript)
-        if (!Array.isArray(frameFields)) continue
-
-        for (const f of frameFields) {
-          if (f && typeof f === "object") {
-            ;(f as Record<string, unknown>).frameUrl = frame.url || null
-            ;(f as Record<string, unknown>).frameRoutingId = typeof frame.routingId === "number" ? frame.routingId : null
-            ;(f as Record<string, unknown>).frameIndex = frameIndex
-            ;(f as Record<string, unknown>).coordinateSpace = frameIndex === 0 ? "top" : "frame"
-          }
-          allFields.push(f)
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn(`[ToolExecutor] get_form_fields: frame extraction failed: ${message}`)
-      }
-    }
-
-    // Log summary including dropdowns for debugging
-    const dropdowns = allFields.filter(
-      (f: unknown) =>
-        !!f &&
-        typeof f === "object" &&
-        (((f as { type?: string }).type === "select-one") || ((f as { type?: string }).type === "select-multiple"))
-    )
-    logger.info(
-      `[ToolExecutor] Found ${allFields.length} form fields across ${frames.length} frames (${dropdowns.length} dropdowns)`
-    )
-
-    if (dropdowns.length > 0) {
-      for (const dd of dropdowns) {
-        const optCount = (dd as { options?: unknown[] }).options?.length || 0
-        logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label?: string }).label || "(unknown)"} (${optCount} options)`)
-      }
-    }
-
-    return { success: true, data: { fields: allFields } }
-  }
-
-  // Fallback: tests/mocks (no mainFrame API)
-  const fields = await browserView.webContents.executeJavaScript(extractionScript)
+  const fields = await extractFromAllFrames<unknown>(extractionScript, "get_form_fields")
 
   // Log summary including dropdowns for debugging
-  const dropdowns = fields.filter((f: { type: string; options?: unknown[] }) => f.type === "select-one" || f.type === "select-multiple")
-  logger.info(`[ToolExecutor] Found ${fields.length} form fields (${dropdowns.length} dropdowns)`)
+  const dropdowns = fields.filter(
+    (f: unknown) =>
+      !!f &&
+      typeof f === "object" &&
+      (((f as { type?: string }).type === "select-one") || ((f as { type?: string }).type === "select-multiple"))
+  )
+  const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
+  logger.info(`[ToolExecutor] Found ${fields.length} form fields${frameMsg} (${dropdowns.length} dropdowns)`)
   if (dropdowns.length > 0) {
     for (const dd of dropdowns) {
       const optCount = (dd as { options?: unknown[] }).options?.length || 0
-      logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label: string }).label} (${optCount} options)`)
+      logger.info(`[ToolExecutor]   Dropdown: ${(dd as { label?: string }).label || "(unknown)"} (${optCount} options)`)
     }
   }
 
@@ -1562,60 +1628,18 @@ async function handleGetButtons(): Promise<ToolResult> {
   `
 
   const frames = getAllFramesFromWebContents()
-
-  // Preferred path: run in every frame (supports buttons inside cross-origin iframes).
-  if (frames && frames.length > 0) {
-    const allButtons: unknown[] = []
-
-    for (const [frameIndex, frame] of frames.entries()) {
-      try {
-        const frameButtons = await frame.executeJavaScript!(extractionScript)
-        if (!Array.isArray(frameButtons)) continue
-        for (const b of frameButtons) {
-          if (b && typeof b === "object") {
-            ;(b as Record<string, unknown>).frameUrl = frame.url || null
-            ;(b as Record<string, unknown>).frameRoutingId = typeof frame.routingId === "number" ? frame.routingId : null
-            ;(b as Record<string, unknown>).frameIndex = frameIndex
-            ;(b as Record<string, unknown>).coordinateSpace = frameIndex === 0 ? "top" : "frame"
-          }
-          allButtons.push(b)
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn(`[ToolExecutor] get_buttons: frame extraction failed: ${message}`)
-      }
-    }
-
-    const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more', 'entry', 'position', 'degree', 'school', 'job'];
-    const relevantButtons = allButtons.filter((b: unknown) => {
-      if (!b || typeof b !== "object") return false
-      const lowerText = String((b as { text?: string }).text || "").toLowerCase()
-      return relevantKeywords.some(keyword => lowerText.includes(keyword))
-    })
-
-    logger.info(`[ToolExecutor] Found ${allButtons.length} buttons across ${frames.length} frames, ${relevantButtons.length} relevant for dynamic forms`)
-
-    return {
-      success: true,
-      data: {
-        buttons: relevantButtons.length > 0 ? relevantButtons : allButtons.slice(0, MAX_DROPDOWN_OPTIONS_TO_RETURN),
-        totalFound: allButtons.length,
-        hint: relevantButtons.length === 0 ? "No 'Add' buttons found. Try scrolling or look for icons (+) that add entries." : null
-      }
-    }
-  }
-
-  // Fallback: tests/mocks (no mainFrame API)
-  const buttons = await browserView.webContents.executeJavaScript(extractionScript)
+  const buttons = await extractFromAllFrames<unknown>(extractionScript, "get_buttons")
 
   // Filter to most relevant buttons (add, education, employment, experience)
   const relevantKeywords = ['add', 'another', 'education', 'employment', 'experience', 'work', 'history', 'new', 'more', 'entry', 'position', 'degree', 'school', 'job'];
-  const relevantButtons = buttons.filter((b: { text: string }) => {
-    const lowerText = b.text.toLowerCase();
+  const relevantButtons = buttons.filter((b: unknown) => {
+    if (!b || typeof b !== "object") return false
+    const lowerText = String((b as { text?: string }).text || "").toLowerCase()
     return relevantKeywords.some(keyword => lowerText.includes(keyword));
   });
 
-  logger.info(`[ToolExecutor] Found ${buttons.length} buttons, ${relevantButtons.length} relevant for dynamic forms`)
+  const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
+  logger.info(`[ToolExecutor] Found ${buttons.length} buttons${frameMsg}, ${relevantButtons.length} relevant for dynamic forms`)
 
   return {
     success: true,
@@ -2148,47 +2172,10 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
   `
 
   const frames = getAllFramesFromWebContents()
+  const uploadAreas = await extractFromAllFrames<unknown>(extractionScript, "find_upload_areas")
 
-  // Preferred path: run in every frame (supports uploads inside cross-origin iframes like Greenhouse).
-  if (frames && frames.length > 0) {
-    const allAreas: unknown[] = []
-
-    for (const [frameIndex, frame] of frames.entries()) {
-      try {
-        const frameAreas = await frame.executeJavaScript!(extractionScript)
-        if (!Array.isArray(frameAreas)) continue
-        for (const a of frameAreas) {
-          if (a && typeof a === "object") {
-            ;(a as Record<string, unknown>).frameUrl = frame.url || null
-            ;(a as Record<string, unknown>).frameRoutingId = typeof frame.routingId === "number" ? frame.routingId : null
-            ;(a as Record<string, unknown>).frameIndex = frameIndex
-            ;(a as Record<string, unknown>).coordinateSpace = frameIndex === 0 ? "top" : "frame"
-          }
-          allAreas.push(a)
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn(`[ToolExecutor] find_upload_areas: frame extraction failed: ${message}`)
-      }
-    }
-
-    logger.info(`[ToolExecutor] Found ${allAreas.length} upload areas across ${frames.length} frames`)
-
-    return {
-      success: true,
-      data: {
-        uploadAreas: allAreas,
-        hint: allAreas.length === 0
-          ? "No file upload areas found. Scroll down to reveal more of the form."
-          : "Use upload_file with the inputSelector. If isHidden=true, the triggerSelector can be clicked to open file dialog."
-      }
-    }
-  }
-
-  // Fallback: tests/mocks (no mainFrame API)
-  const uploadAreas = await browserView.webContents.executeJavaScript(extractionScript)
-
-  logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas`)
+  const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
+  logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas${frameMsg}`)
 
   return {
     success: true,
