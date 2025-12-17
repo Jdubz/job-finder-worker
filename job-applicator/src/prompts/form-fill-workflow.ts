@@ -150,7 +150,7 @@ If a screenshot shows empty fields or wrong values, FIX THEM before proceeding.
 WORKFLOW: FOLLOW THIS EXACT ORDER
 ============================================================
 STEP 1: GET CONTEXT
-- Call get_context to get user profile and job details
+- Call get_user_profile and get_job_context to get user data and job details
 - This is MANDATORY - do not skip
 
 STEP 2: INITIAL SCREENSHOT
@@ -163,6 +163,30 @@ STEP 3: DISCOVER FIELDS AND BUTTONS
 - IMPORTANT: get_form_fields only returns input/select/textarea elements
 - IMPORTANT: get_buttons finds buttons like "Add Another", "Add Experience", "Add Education"
 - Note which fields already have values - you will SKIP those
+
+============================================================
+!!! EMBEDDED FORM DETECTION (CRITICAL) !!!
+============================================================
+If get_form_fields returns ZERO form fields but shows embeddedFormDetected: true:
+- The application form is in a CROSS-ORIGIN IFRAME that cannot be accessed
+- The response includes embeddedFormUrl with the direct URL to the form
+- You MUST call done() with a message instructing to navigate to that URL
+
+Example response when embedded form detected:
+{
+  "fields": [],
+  "embeddedFormDetected": true,
+  "embeddedFormUrl": "https://boards.greenhouse.io/company/jobs/123",
+  "hint": "Navigate directly to this URL to fill the form"
+}
+
+ACTION: Call done() with summary like:
+"Embedded form detected. Please navigate to: [embeddedFormUrl] to fill the application directly."
+
+This is NOT a technical limitation - it's a detected iframe that requires direct navigation.
+The parent page (careers.company.com) embeds the form but we cannot access it from there.
+
+============================================================
 
 STEP 4: FILL CONTACT INFORMATION (EMPTY FIELDS ONLY)
 - Check each field's "value" property from get_form_fields
@@ -340,9 +364,12 @@ These are fallbacks for broken forms. Prefer selectors.
 ============================================================
 BEGIN NOW
 ============================================================
-Start by calling get_context to get the user profile and job details.
+Start by calling get_user_profile and get_job_context to get the user profile and job details.
 Then take a screenshot to see the form's current state.
 Then call get_form_fields to discover all fields AND their current values.
+
+IMPORTANT: If get_form_fields shows embeddedFormDetected: true, call done() immediately
+with the embeddedFormUrl in your summary - do not try to fill fields that don't exist.
 
 KEY PRINCIPLE: Only fill EMPTY fields. Skip fields that already have values.
 
