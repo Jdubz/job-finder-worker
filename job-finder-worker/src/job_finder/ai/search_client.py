@@ -6,6 +6,7 @@ to reduce hallucination and improve data quality.
 
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
@@ -176,21 +177,124 @@ class BraveSearchClient(SearchClient):
             raise
 
 
+class FallbackSearchClient(SearchClient):
+    """Search client that automatically falls back through multiple providers.
+
+    If the primary provider fails (rate limits, quota exceeded, network errors),
+    automatically tries the next provider in the chain.
+    """
+
+    def __init__(self, clients: List[SearchClient]):
+        """
+        Initialize with a list of search clients to try in order.
+
+        Args:
+            clients: List of SearchClient instances, tried in order
+        """
+        if not clients:
+            raise ValueError("FallbackSearchClient requires at least one client")
+        self._clients = clients
+        self._failed_clients: Dict[str, float] = {}  # Track temporarily failed clients
+        self._failure_cooldown_seconds = 300  # 5 minute cooldown for failed clients
+
+    def search(self, query: str, max_results: int = 5) -> List[SearchResult]:
+        """
+        Search using the first available provider, falling back on errors.
+
+        Args:
+            query: Search query
+            max_results: Maximum results to return
+
+        Returns:
+            List of SearchResult objects
+
+        Raises:
+            requests.exceptions.RequestException: If all providers fail
+        """
+        errors = []
+        current_time = time.time()
+
+        for client in self._clients:
+            client_name = client.__class__.__name__
+
+            # Skip clients that recently failed (cooldown period)
+            if client_name in self._failed_clients:
+                fail_time = self._failed_clients[client_name]
+                if current_time - fail_time < self._failure_cooldown_seconds:
+                    logger.debug(
+                        f"Skipping {client_name} (failed {int(current_time - fail_time)}s ago)"
+                    )
+                    continue
+                else:
+                    # Cooldown expired, remove from failed list
+                    del self._failed_clients[client_name]
+
+            try:
+                results = client.search(query, max_results)
+                return results
+            except requests.exceptions.RequestException as e:
+                error_msg = str(e)
+                errors.append(f"{client_name}: {error_msg}")
+                logger.warning(f"Search provider {client_name} failed: {error_msg}")
+
+                # Check for quota/rate limit errors (don't retry these immediately)
+                status_code = getattr(getattr(e, "response", None), "status_code", None)
+                if status_code in (429, 432, 402, 403):
+                    # Quota exceeded, rate limited, or payment required - cooldown
+                    self._failed_clients[client_name] = current_time
+                    logger.info(
+                        f"Search provider {client_name} hit rate/quota limit, "
+                        f"cooling down for {self._failure_cooldown_seconds}s"
+                    )
+
+                # Continue to next provider
+                continue
+
+        # All providers failed
+        all_errors = "; ".join(errors)
+        logger.error(f"All search providers failed for '{query}': {all_errors}")
+        raise requests.exceptions.RequestException(f"All search providers failed: {all_errors}")
+
+
 def get_search_client() -> Optional[SearchClient]:
     """
-    Get a configured search client based on available API keys.
+    Get a configured search client with automatic fallback.
 
-    Returns Tavily client if TAVILY_API_KEY is set, otherwise Brave if
-    BRAVE_API_KEY is set, otherwise None.
+    Creates a FallbackSearchClient that tries providers in this order:
+    1. Tavily (if TAVILY_API_KEY is set)
+    2. Brave (if BRAVE_API_KEY is set)
+
+    If a provider fails (rate limits, errors), automatically falls back to the next.
 
     Returns:
         SearchClient instance or None if no API keys configured
     """
+    clients: List[SearchClient] = []
+
+    # Add available providers in priority order
     if os.getenv("TAVILY_API_KEY"):
-        return TavilySearchClient()
+        try:
+            clients.append(TavilySearchClient())
+        except ValueError:
+            pass  # Key not set
 
     if os.getenv("BRAVE_API_KEY"):
-        return BraveSearchClient()
+        try:
+            clients.append(BraveSearchClient())
+        except ValueError:
+            pass  # Key not set
 
-    logger.warning("No search API keys configured (TAVILY_API_KEY or BRAVE_API_KEY)")
-    return None
+    if not clients:
+        logger.warning("No search API keys configured (TAVILY_API_KEY or BRAVE_API_KEY)")
+        return None
+
+    # If only one client, return it directly
+    if len(clients) == 1:
+        return clients[0]
+
+    # Multiple clients - wrap in fallback handler
+    logger.info(
+        f"Search client initialized with fallback chain: "
+        f"{[c.__class__.__name__ for c in clients]}"
+    )
+    return FallbackSearchClient(clients)

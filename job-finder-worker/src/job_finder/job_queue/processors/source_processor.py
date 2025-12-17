@@ -37,6 +37,7 @@ from job_finder.job_queue.models import (
     SourceStatus,
 )
 from job_finder.job_queue.scraper_intake import ScraperIntake
+from job_finder.scrapers.ats_prober import probe_all_ats_providers
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
@@ -188,6 +189,85 @@ class SourceProcessor(BaseProcessor):
         )
 
         try:
+            # Step 0: Try ATS probing FIRST (before agent guessing)
+            # This eliminates the need for the agent to guess which ATS provider
+            # the company uses - we verify it directly via API probes.
+            ats_result = probe_all_ats_providers(
+                company_name=config.company_name,
+                url=url,
+            )
+
+            if ats_result.found:
+                logger.info(
+                    f"SOURCE_DISCOVERY: ATS probe found {ats_result.ats_provider} "
+                    f"for {config.company_name or url} ({ats_result.job_count} jobs)"
+                )
+                # Use verified ATS config directly - skip agent guessing
+                source_config = ats_result.config
+                source_type = "api"
+                aggregator_domain = (
+                    ats_result.aggregator_domain
+                )  # e.g., "greenhouse.io", "lever.co"
+                company_name = config.company_name
+                company_id = config.company_id
+                disabled_notes = ""
+                should_disable = False
+
+                # Get or create company
+                if company_name and not company_id:
+                    company_record = self.companies_manager.get_or_create_company(
+                        company_name=company_name,
+                        company_website=None,
+                    )
+                    company_id = company_record.get("id")
+                    company_created = not company_record.get("about")
+                else:
+                    company_created = False
+
+                # Deduplicate existing source on same aggregator + company
+                if company_id and aggregator_domain:
+                    existing = self.sources_manager.get_source_by_company_and_aggregator(
+                        company_id, aggregator_domain
+                    )
+                    if existing:
+                        self._handle_existing_source(item, existing, context="ats_probe_duplicate")
+                        return
+
+                # Build source name
+                source_name = (
+                    f"{company_name} Jobs ({aggregator_domain})"
+                    if company_name
+                    else f"{aggregator_domain} Jobs"
+                )
+
+                # Probe result is already verified - create source directly
+                ats_probe_result = ProbeResult(
+                    status="success",
+                    job_count=ats_result.job_count,
+                    status_code=200,
+                )
+
+                # Skip to source creation
+                return self._create_discovered_source(
+                    item=item,
+                    source_name=source_name,
+                    source_type=source_type,
+                    source_config=source_config,
+                    company_id=company_id,
+                    company_name=company_name,
+                    company_created=company_created,
+                    aggregator_domain=aggregator_domain,
+                    disabled_notes=disabled_notes,
+                    should_disable=should_disable,
+                    probe_result=ats_probe_result,
+                    url=url,
+                )
+
+            # ATS probe didn't find anything - fall back to agent analysis
+            logger.debug(
+                f"SOURCE_DISCOVERY: No ATS found for {config.company_name or url}, using agent"
+            )
+
             # Step 1: Gather context for agent proposal
             fetch_result = self._attempt_fetch(url) if url else {"success": False}
             search_results = self._gather_search_context(url or "", config.company_name)
@@ -245,7 +325,7 @@ class SourceProcessor(BaseProcessor):
                 SourceClassification.INVALID,
             )
 
-            probe_result = None
+            probe_result: Optional[ProbeResult] = None
             if not should_disable:
                 probe_result = self._probe_config(source_type, source_config)
 
@@ -305,76 +385,27 @@ class SourceProcessor(BaseProcessor):
                                 )
                     # valid_empty just passes through (active with 0 jobs)
 
-            # Attach probe diagnostics
-            if probe_result:
-                source_config = dict(source_config)
-                source_config["probe_status"] = probe_result.status
-                source_config["probe_job_count"] = probe_result.job_count
-                if probe_result.hint:
-                    source_config["probe_hint"] = probe_result.hint
-
-            if disabled_notes and not source_config.get("disabled_notes"):
-                source_config["disabled_notes"] = disabled_notes
-
-            # Set disabled_tags for non-recoverable issues
+            # Set disabled_tags for non-recoverable issues (agent-specific)
             if should_disable and analysis.disable_reason:
                 tag = DISABLE_REASON_TO_TAG.get(analysis.disable_reason)
                 if tag:
+                    source_config = dict(source_config) if source_config else {}
                     source_config["disabled_tags"] = [tag]
 
-            initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
-
-            try:
-                dup = self.sources_manager.find_duplicate_candidate(
-                    name=source_name,
-                    company_id=company_id,
-                    aggregator_domain=aggregator_domain,
-                    url=url,
-                )
-                if dup:
-                    self._handle_existing_source(item, dup, context="preflight")
-                    return
-
-                # Enforce invariant: a source is either company-specific OR an aggregator, not both
-                # If company_id exists, this is a company-specific source (drop aggregator_domain)
-                # and add company_filter to config so it only scrapes jobs for that company
-                if company_id and aggregator_domain:
-                    source_config = dict(source_config) if source_config else {}
-                    if company_name and not source_config.get("company_filter"):
-                        source_config["company_filter"] = company_name
-                    aggregator_domain = None
-                elif not company_id:
-                    # Pure aggregator source - no company_id needed
-                    pass
-
-                source_id = self.sources_manager.create_from_discovery(
-                    name=source_name,
-                    source_type=source_type,
-                    config=source_config,
-                    company_id=company_id,
-                    aggregator_domain=aggregator_domain,
-                    status=initial_status,
-                )
-            except DuplicateSourceError:
-                if company_id or aggregator_domain:
-                    # Handle race condition - fall back to name lookup for dupe handling
-                    existing = self.sources_manager.get_source_by_name(source_name)
-                    if existing:
-                        self._handle_existing_source(item, existing, context="race")
-                        return
-                raise
-
-            self._finalize_source_creation(
+            # Use helper to create source
+            self._create_discovered_source(
                 item=item,
-                source_id=source_id,
+                source_name=source_name,
                 source_type=source_type,
+                source_config=source_config,
                 company_id=company_id,
                 company_name=company_name,
                 company_created=company_created,
+                aggregator_domain=aggregator_domain,
                 disabled_notes=disabled_notes,
-                initial_status=initial_status,
+                should_disable=should_disable,
+                probe_result=probe_result,
                 url=url,
-                source_config=source_config,
             )
 
         except Exception as e:
@@ -385,6 +416,87 @@ class SourceProcessor(BaseProcessor):
                 str(e),
                 error_details=traceback.format_exc(),
             )
+
+    def _create_discovered_source(
+        self,
+        item: JobQueueItem,
+        source_name: str,
+        source_type: str,
+        source_config: Dict[str, Any],
+        company_id: Optional[str],
+        company_name: Optional[str],
+        company_created: bool,
+        aggregator_domain: Optional[str],
+        disabled_notes: str,
+        should_disable: bool,
+        probe_result: Optional[ProbeResult],
+        url: str,
+    ) -> None:
+        """Create a discovered source and finalize queue item.
+
+        This helper consolidates source creation logic for both ATS probe
+        and agent analysis paths.
+        """
+        # Attach probe diagnostics to config
+        if probe_result:
+            source_config = dict(source_config)
+            source_config["probe_status"] = probe_result.status
+            source_config["probe_job_count"] = probe_result.job_count
+            if probe_result.hint:
+                source_config["probe_hint"] = probe_result.hint
+
+        if disabled_notes and not source_config.get("disabled_notes"):
+            source_config["disabled_notes"] = disabled_notes
+
+        initial_status = SourceStatus.DISABLED if should_disable else SourceStatus.ACTIVE
+
+        try:
+            # Check for duplicates
+            dup = self.sources_manager.find_duplicate_candidate(
+                name=source_name,
+                company_id=company_id,
+                aggregator_domain=aggregator_domain,
+                url=url,
+            )
+            if dup:
+                self._handle_existing_source(item, dup, context="preflight")
+                return
+
+            # Enforce invariant: a source is either company-specific OR an aggregator
+            if company_id and aggregator_domain:
+                source_config = dict(source_config) if source_config else {}
+                if company_name and not source_config.get("company_filter"):
+                    source_config["company_filter"] = company_name
+                aggregator_domain = None
+
+            source_id = self.sources_manager.create_from_discovery(
+                name=source_name,
+                source_type=source_type,
+                config=source_config,
+                company_id=company_id,
+                aggregator_domain=aggregator_domain,
+                status=initial_status,
+            )
+        except DuplicateSourceError:
+            if company_id or aggregator_domain:
+                existing = self.sources_manager.get_source_by_name(source_name)
+                if existing:
+                    self._handle_existing_source(item, existing, context="race")
+                    return
+            raise
+
+        self._finalize_source_creation(
+            item=item,
+            source_id=source_id,
+            source_type=source_type,
+            company_id=company_id,
+            company_name=company_name,
+            company_created=company_created,
+            disabled_notes=disabled_notes,
+            initial_status=initial_status,
+            url=url,
+            source_config=source_config,
+        )
 
     def _attempt_fetch(self, url: str) -> Dict[str, Any]:
         """Attempt to fetch URL content and return result context."""
@@ -600,13 +712,49 @@ class SourceProcessor(BaseProcessor):
 
     # Known job board API domains that are allowed even if different from original
     KNOWN_JOB_API_DOMAINS = {
+        # Greenhouse
         "api.greenhouse.io",
         "boards-api.greenhouse.io",
+        "boards.greenhouse.io",
+        "jobs.greenhouse.io",
+        # Lever
         "api.lever.co",
-        "api.smartrecruiters.com",
+        "jobs.lever.co",
+        # Ashby
         "api.ashbyhq.com",
+        "jobs.ashbyhq.com",
+        # SmartRecruiters
+        "api.smartrecruiters.com",
+        "jobs.smartrecruiters.com",
+        # Recruitee
         "api.recruitee.com",
+        # Workable
         "api.workable.com",
+        "jobs.workable.com",
+        # JazzHR / ApplyToJob
+        "applytojob.com",
+        # Jobvite
+        "jobs.jobvite.com",
+        # BreezyHR
+        "breezy.hr",
+    }
+
+    # Known ATS root domains - any subdomain of these is valid
+    KNOWN_ATS_ROOT_DOMAINS = {
+        "greenhouse.io",
+        "lever.co",
+        "ashbyhq.com",
+        "smartrecruiters.com",
+        "recruitee.com",
+        "workable.com",
+        "myworkdayjobs.com",
+        "applytojob.com",
+        "jobvite.com",
+        "breezy.hr",
+        "workday.com",
+        "successfactors.com",
+        "icims.com",
+        "taleo.net",
     }
 
     def _is_valid_url_change(self, original_url: str, proposed_url: str) -> bool:
@@ -616,6 +764,7 @@ class SourceProcessor(BaseProcessor):
         - Same domain (e.g., example.com/page -> example.com/api)
         - Same parent domain for Workday (e.g., company.wd5.myworkdayjobs.com)
         - Known job board API domains (Greenhouse, Lever, etc.)
+        - Any subdomain of known ATS root domains
         """
         try:
             original_parsed = urlparse(original_url)
@@ -631,6 +780,16 @@ class SourceProcessor(BaseProcessor):
             # Check if proposed is a known job API domain
             if proposed_domain in self.KNOWN_JOB_API_DOMAINS:
                 return True
+
+            # Check if proposed is a subdomain of any known ATS root domain
+            # This allows: frmg.applytojob.com, company.myworkdayjobs.com, etc.
+            for ats_root in self.KNOWN_ATS_ROOT_DOMAINS:
+                if proposed_domain == ats_root or proposed_domain.endswith("." + ats_root):
+                    logger.debug(
+                        f"URL change allowed: {original_domain} -> {proposed_domain} "
+                        f"(known ATS domain: {ats_root})"
+                    )
+                    return True
 
             # Allow Workday subdomains (company.wd*.myworkdayjobs.com)
             if "myworkdayjobs.com" in original_domain and "myworkdayjobs.com" in proposed_domain:
@@ -1292,6 +1451,63 @@ class SourceProcessor(BaseProcessor):
                 return
 
             logger.info(f"SOURCE_RECOVER: Attempting recovery for {source_name} ({url})")
+
+            # Step 0: Try ATS probing FIRST (before agent guessing)
+            # This eliminates the need to guess which ATS the company uses
+            ats_result = probe_all_ats_providers(
+                company_name=company_name,
+                url=url,
+            )
+
+            if ats_result.found:
+                logger.info(
+                    f"SOURCE_RECOVER: ATS probe found {ats_result.ats_provider} "
+                    f"for {source_name} ({ats_result.job_count} jobs)"
+                )
+
+                # Update source config with verified ATS config
+                new_config = dict(config)
+                new_config.update(ats_result.config)
+                new_config["type"] = "api"
+                new_config["probe_status"] = "success"
+                new_config["probe_job_count"] = ats_result.job_count
+                new_config["recovered_via"] = "ats_probe"
+
+                # Clear old disabled notes
+                if "disabled_notes" in new_config:
+                    del new_config["disabled_notes"]
+
+                # Update source and mark active
+                self.sources_manager.update_source_config(source_id, new_config)
+                self.sources_manager.update_source_status(source_id, SourceStatus.ACTIVE)
+
+                # Spawn scrape task
+                scrape_item_id = self.queue_manager.spawn_item_safely(
+                    current_item=item,
+                    new_item_data={
+                        "type": QueueItemType.SCRAPE_SOURCE,
+                        "source_id": source_id,
+                        "source": "automated_scan",
+                    },
+                )
+                if scrape_item_id:
+                    logger.info(f"Spawned SCRAPE_SOURCE {scrape_item_id} after ATS recovery")
+
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.SUCCESS,
+                    f"Recovered {source_name} via {ats_result.ats_provider} API "
+                    f"({ats_result.job_count} jobs)",
+                    scraped_data={
+                        "source_id": source_id,
+                        "ats_provider": ats_result.ats_provider,
+                        "job_count": ats_result.job_count,
+                    },
+                )
+                return
+
+            # ATS probe didn't find anything - continue with agent recovery
+            logger.debug(f"SOURCE_RECOVER: No ATS found for {source_name}, using agent")
 
             # Get error history from config
             disabled_notes = config.get("disabled_notes", "")
