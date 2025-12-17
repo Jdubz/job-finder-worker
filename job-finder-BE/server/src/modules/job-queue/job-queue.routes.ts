@@ -40,13 +40,13 @@ import { getLocalCliHealth } from '../../services/cli-health.service'
 
 const submitJobSchema = z.object({
   url: z.string().url(),
-  companyName: z.string().optional(),
+  companyName: z.string().nullable().optional(),
   companyId: z.string().nullable().optional(),
   companyUrl: z.string().url().optional(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  location: z.string().optional(),
-  techStack: z.string().optional(),
+  title: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  techStack: z.string().nullable().optional(),
   bypassFilter: z.boolean().optional(),
   generationId: z.string().optional(),
   source: z.enum(QUEUE_SOURCES).optional(),
