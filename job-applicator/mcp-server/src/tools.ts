@@ -82,7 +82,8 @@ export const tools: Tool[] = [
     description:
       "Analyze the page DOM and return all form fields with their selectors, labels, types, " +
       "current values, and options (for dropdowns). Use this FIRST to understand the form structure, " +
-      "then use fill_field/select_option to fill fields by selector.",
+      "then use fill_field/select_option to fill fields by selector. " +
+      "NOTE: This tool scans embedded iframes too (including cross-origin ATS embeds like Greenhouse).",
     inputSchema: {
       type: "object",
       properties: {},
@@ -93,7 +94,7 @@ export const tools: Tool[] = [
     name: "fill_field",
     description:
       "Fill a form field by CSS selector. More reliable than click+type. " +
-      "Use the selector from get_form_fields. Works for text inputs, textareas, and similar fields.",
+      "Use the selector from get_form_fields. Works for text inputs, textareas, and similar fields (including fields inside iframes).",
     inputSchema: {
       type: "object",
       properties: {

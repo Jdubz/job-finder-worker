@@ -185,10 +185,10 @@ describe("Tool Executor", () => {
         { index: 1, type: "text", name: "name", label: "Full Name", x: 100, y: 300 },
       ]
 
-      // Mock returns { fields, applicationIframes } structure
+      // Main's extractFromAllFrames expects script to return array directly
       const mockView = createMockBrowserView({
         webContents: {
-          executeJavaScript: vi.fn().mockResolvedValue({ fields: mockFields, applicationIframes: [] }),
+          executeJavaScript: vi.fn().mockResolvedValue(mockFields),
         },
       })
       setBrowserView(mockView)

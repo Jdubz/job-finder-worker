@@ -429,8 +429,74 @@ ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boole
 })
 
 
-// Helper function to set files on a file input using Electron's debugger API
-async function setFileInputFiles(webContents: WebContents, selector: string, filePaths: string[]): Promise<void> {
+type PageFrameTreeNode = { frame: { id: string; url: string }; childFrames?: PageFrameTreeNode[] }
+
+const MIN_FRAME_URL_MATCH_SCORE = 40
+
+function scoreFrameUrlMatch(candidateUrl: string, targetUrl: string): number {
+  try {
+    const candidate = new URL(candidateUrl)
+    const target = new URL(targetUrl)
+
+    // Exact match (including query) is best.
+    if (candidate.href === target.href) return 100
+
+    // Same origin is a strong signal.
+    if (candidate.origin === target.origin) {
+      if (candidate.pathname === target.pathname) return 90
+      if (candidate.pathname.startsWith(target.pathname) || target.pathname.startsWith(candidate.pathname)) return 80
+      return 70
+    }
+
+    // Weak match: same hostname and overlapping path.
+    if (
+      candidate.hostname === target.hostname &&
+      (candidate.pathname.includes(target.pathname) || target.pathname.includes(candidate.pathname))
+    ) {
+      return 40
+    }
+  } catch {
+    // ignore URL parse errors
+  }
+
+  return 0
+}
+
+async function findCdpFrameIdForUrl(debugger_: Electron.Debugger, frameUrl: string): Promise<{
+  mainFrameId: string | null
+  frameId: string | null
+}> {
+  const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as { frameTree: PageFrameTreeNode }
+
+  const mainFrameId = frameTree?.frame?.id || null
+  let bestId: string | null = null
+  let bestScore = 0
+
+  // Use an explicit stack so TS can see mutations (avoids relying on nested function analysis).
+  const stack: PageFrameTreeNode[] = frameTree ? [frameTree] : []
+
+  while (stack.length > 0) {
+    const node = stack.pop()!
+    const score = scoreFrameUrlMatch(node.frame.url, frameUrl)
+    if (score > bestScore) {
+      bestScore = score
+      bestId = node.frame.id
+    }
+    for (const child of node.childFrames || []) stack.push(child)
+  }
+
+  const frameId = bestScore >= MIN_FRAME_URL_MATCH_SCORE ? bestId : null
+  return { mainFrameId, frameId }
+}
+
+// Helper function to set files on a file input using Electron's debugger API.
+// Supports file inputs within cross-origin iframes by targeting the correct subframe document.
+async function setFileInputFiles(
+  webContents: WebContents,
+  selector: string,
+  filePaths: string[],
+  frameUrl?: string | null
+): Promise<void> {
   const debugger_ = webContents.debugger
 
   try {
@@ -443,14 +509,53 @@ async function setFileInputFiles(webContents: WebContents, selector: string, fil
   }
 
   try {
-    // Get the document
-    const { root } = await debugger_.sendCommand("DOM.getDocument", {})
+    // Always start from the main document node; we may swap to a subframe document below.
+    const { root } = await debugger_.sendCommand("DOM.getDocument", {}) as { root: { nodeId: number } }
+    let queryRootNodeId = root.nodeId
 
-    // Find the file input element
+    // If we know (or can infer) the frame URL for the selector, query within that frame's document.
+    if (frameUrl) {
+      try {
+        const { mainFrameId, frameId } = await findCdpFrameIdForUrl(debugger_, frameUrl)
+        if (frameId && mainFrameId && frameId !== mainFrameId) {
+          const owner = await debugger_.sendCommand("DOM.getFrameOwner", { frameId }) as {
+            backendNodeId?: number
+            nodeId?: number
+          }
+
+          let describeParams: { nodeId?: number; backendNodeId?: number } | null = null
+          if (typeof owner.nodeId === "number") {
+            describeParams = { nodeId: owner.nodeId }
+          } else if (typeof owner.backendNodeId === "number") {
+            describeParams = { backendNodeId: owner.backendNodeId }
+          }
+
+          if (!describeParams) {
+            logger.warn(
+              `[Upload] Frame owner for selector "${selector}" (frameUrl=${frameUrl}) has no valid nodeId or backendNodeId`,
+            )
+          } else {
+            const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
+              node: { contentDocument?: { nodeId: number } }
+            }
+
+            const contentDocumentNodeId = described.node?.contentDocument?.nodeId
+            if (typeof contentDocumentNodeId === "number") {
+              queryRootNodeId = contentDocumentNodeId
+            }
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[Upload] Failed to resolve frame for selector "${selector}" (frameUrl=${frameUrl}): ${message}`)
+      }
+    }
+
+    // Find the file input element (within chosen document root)
     const { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
-      nodeId: root.nodeId,
-      selector: selector,
-    })
+      nodeId: queryRootNodeId,
+      selector,
+    }) as { nodeId: number }
 
     if (!nodeId) {
       throw new Error(`File input not found: ${selector}`)
@@ -1341,7 +1446,7 @@ ipcMain.handle(
       })
 
       // Set upload callback - this allows the tool executor to trigger uploads
-      setUploadCallback(async (selector: string, type: "resume" | "coverLetter", documentUrl: string) => {
+      setUploadCallback(async (selector: string, type: "resume" | "coverLetter", documentUrl: string, frameUrl?: string | null) => {
         const docTypeLabel = type === "coverLetter" ? "Cover letter" : "Resume"
 
         try {
@@ -1355,7 +1460,7 @@ ipcMain.handle(
           const resolvedPath = await downloadDocument(documentUrl)
 
           // Use Electron's debugger API to set the file
-          await setFileInputFiles(browserView.webContents, selector, [resolvedPath])
+          await setFileInputFiles(browserView.webContents, selector, [resolvedPath], frameUrl)
 
           return { success: true, message: `${docTypeLabel} uploaded successfully to ${selector}` }
         } catch (err) {
