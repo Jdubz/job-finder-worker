@@ -331,16 +331,21 @@ async function handleGetFormFields(): Promise<ToolResult> {
   const fields = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
+      // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
+      // Forms with <input name="id"> will have their .id property return the input element.
       function buildSelectorPath(el) {
-        // First try ID
-        if (el.id) {
-          return '#' + CSS.escape(el.id);
+        // First try ID - use getAttribute to avoid DOM Clobbering
+        const elId = el.getAttribute('id');
+        if (elId) {
+          return '#' + CSS.escape(elId);
         }
 
         // Try name attribute (common for form fields)
-        if (el.name) {
+        // Use getAttribute to avoid DOM Clobbering
+        const elName = el.getAttribute('name');
+        if (elName) {
           const tag = el.tagName.toLowerCase();
-          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          const nameSelector = tag + '[name="' + CSS.escape(elName) + '"]';
           // Check if this selector is unique
           if (document.querySelectorAll(nameSelector).length === 1) {
             return nameSelector;
@@ -353,9 +358,11 @@ async function handleGetFormFields(): Promise<ToolResult> {
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
 
-          if (current.id) {
+          // Use getAttribute to avoid DOM Clobbering
+          const currentId = current.getAttribute('id');
+          if (currentId) {
             // Found an ancestor with ID - start path from here
-            path.unshift('#' + CSS.escape(current.id));
+            path.unshift('#' + CSS.escape(currentId));
             break;
           }
 
@@ -384,7 +391,9 @@ async function handleGetFormFields(): Promise<ToolResult> {
       const inputs = document.querySelectorAll('input, select, textarea');
       return Array.from(inputs).map((el, idx) => {
         const rect = el.getBoundingClientRect();
-        const fieldType = el.type || el.tagName.toLowerCase();
+        // Use getAttribute to avoid DOM Clobbering (forms with <input name="type">)
+        // Fall back to tagName for elements without type attribute
+        const fieldType = el.getAttribute('type') || el.tagName.toLowerCase();
 
         // Skip hidden type fields (but NOT visually hidden file inputs)
         if (fieldType === 'hidden') return null;
@@ -397,10 +406,13 @@ async function handleGetFormFields(): Promise<ToolResult> {
         // Build a reliable CSS selector
         const selector = buildSelectorPath(el);
 
-        // Get label text from multiple sources (skip label[for] query if no id)
+        // Get label text from multiple sources
+        // Use getAttribute to avoid DOM Clobbering
+        const fieldId = el.getAttribute('id');
+        const fieldName = el.getAttribute('name');
         let labelEl = null;
-        if (el.id) {
-          labelEl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+        if (fieldId) {
+          labelEl = document.querySelector('label[for="' + CSS.escape(fieldId) + '"]');
         }
         const ariaLabel = el.getAttribute('aria-label');
         const placeholder = el.getAttribute('placeholder');
@@ -408,7 +420,7 @@ async function handleGetFormFields(): Promise<ToolResult> {
         // Also check for preceding label sibling or parent text
         const prevSibling = el.previousElementSibling;
         const prevLabel = prevSibling?.tagName === 'LABEL' ? prevSibling.textContent?.trim() : null;
-        const label = labelEl?.textContent?.trim() || ariaLabel || placeholder || closestLabel || prevLabel || el.name || 'field_' + idx;
+        const label = labelEl?.textContent?.trim() || ariaLabel || placeholder || closestLabel || prevLabel || fieldName || 'field_' + idx;
 
         // Get options for select elements
         let options = null;
@@ -420,12 +432,14 @@ async function handleGetFormFields(): Promise<ToolResult> {
           }));
         }
 
+        // Note: getAttribute returns null if attribute missing, but we use || null
+        // for explicit clarity that these fields are nullable in the returned data
         return {
           index: idx,
           selector: selector,
           type: fieldType,
-          name: el.name || null,
-          id: el.id || null,
+          name: fieldName || null,
+          id: fieldId || null,
           label: label,
           value: el.value || '',
           options: options,
@@ -1193,9 +1207,13 @@ async function handleGetButtons(): Promise<ToolResult> {
   const buttons = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
+      // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
+      // Forms with <input name="id"> will have their .id property return the input element.
       function buildSelectorPath(el) {
-        if (el.id) {
-          return '#' + CSS.escape(el.id);
+        // Use getAttribute to avoid DOM Clobbering
+        const elId = el.getAttribute('id');
+        if (elId) {
+          return '#' + CSS.escape(elId);
         }
         // Try data-testid or data-qa (common in modern apps)
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa') || el.getAttribute('data-cy');
@@ -1203,9 +1221,11 @@ async function handleGetButtons(): Promise<ToolResult> {
           const selector = '[data-testid="' + CSS.escape(testId) + '"]';
           if (document.querySelectorAll(selector).length === 1) return selector;
         }
-        if (el.name) {
+        // Use getAttribute to avoid DOM Clobbering
+        const elName = el.getAttribute('name');
+        if (elName) {
           const tag = el.tagName.toLowerCase();
-          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          const nameSelector = tag + '[name="' + CSS.escape(elName) + '"]';
           if (document.querySelectorAll(nameSelector).length === 1) {
             return nameSelector;
           }
@@ -1214,8 +1234,10 @@ async function handleGetButtons(): Promise<ToolResult> {
         let current = el;
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
-          if (current.id) {
-            path.unshift('#' + CSS.escape(current.id));
+          // Use getAttribute to avoid DOM Clobbering
+          const currentId = current.getAttribute('id');
+          if (currentId) {
+            path.unshift('#' + CSS.escape(currentId));
             break;
           }
           const parent = current.parentElement;
@@ -1241,6 +1263,7 @@ async function handleGetButtons(): Promise<ToolResult> {
         '[role="button"]',              // ARIA buttons (any element)
         '[type="button"]',
         'a.btn', 'a.button',
+        'a[tabindex="0"]',              // Links explicitly in tab order (not tabindex="-1")
         '[onclick]',
         '[data-action]',
         '[data-testid*="add"]',         // Test IDs containing "add"
@@ -1249,6 +1272,9 @@ async function handleGetButtons(): Promise<ToolResult> {
         '[class*="button"]',            // Classes containing "button"
         '[class*="btn-"]',
         '[class*="-btn"]',
+        '[class*="__add"]',             // BEM pattern for add elements (e.g., multifield__add)
+        '[class*="-add"]',              // Kebab-case pattern (e.g., form-add)
+        '[class$="add"]',               // Class ending with "add"
       ].join(', ');
 
       const elements = document.querySelectorAll(selectorPatterns);
@@ -1256,10 +1282,11 @@ async function handleGetButtons(): Promise<ToolResult> {
       const results = [];
 
       // Also find elements by text content for "Add Another" patterns
+      // Use a targeted query instead of '*' for better performance
       const addPatterns = /add\\s*(another|more|new|education|experience|employment|entry)/i;
-      const allElements = document.querySelectorAll('*');
+      const clickableElements = document.querySelectorAll('a, button, span, div[role], [tabindex]');
 
-      for (const el of allElements) {
+      for (const el of clickableElements) {
         // Skip if already processed
         const selector = buildSelectorPath(el);
         if (seen.has(selector)) continue;
@@ -1275,11 +1302,10 @@ async function handleGetButtons(): Promise<ToolResult> {
 
         const rect = el.getBoundingClientRect();
 
-        // Skip invisible or disabled
+        // Skip truly invisible or disabled elements
+        // Note: We do NOT filter by viewport position - the agent can scroll
         if (rect.width === 0 || rect.height === 0) continue;
         if (el.disabled) continue;
-        // Skip elements far outside viewport (likely hidden)
-        if (rect.top < -1000 || rect.top > window.innerHeight + 1000) continue;
 
         const displayText = text.slice(0, 100) || el.getAttribute('aria-label') || '';
 
@@ -1679,24 +1705,32 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
   const uploadAreas = await browserView.webContents.executeJavaScript(`
     (() => {
       // Helper: Build a unique CSS selector path for an element
+      // IMPORTANT: Use getAttribute('id') instead of .id to avoid DOM Clobbering.
+      // Forms with <input name="id"> will have their .id property return the input element.
       function buildSelectorPath(el) {
-        if (el.id) return '#' + CSS.escape(el.id);
+        // Use getAttribute to avoid DOM Clobbering
+        const elId = el.getAttribute('id');
+        if (elId) return '#' + CSS.escape(elId);
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-qa');
         if (testId) {
           const selector = '[data-testid="' + CSS.escape(testId) + '"]';
           if (document.querySelectorAll(selector).length === 1) return selector;
         }
-        if (el.name) {
+        // Use getAttribute to avoid DOM Clobbering
+        const elName = el.getAttribute('name');
+        if (elName) {
           const tag = el.tagName.toLowerCase();
-          const nameSelector = tag + '[name="' + CSS.escape(el.name) + '"]';
+          const nameSelector = tag + '[name="' + CSS.escape(elName) + '"]';
           if (document.querySelectorAll(nameSelector).length === 1) return nameSelector;
         }
         const path = [];
         let current = el;
         while (current && current !== document.body) {
           let segment = current.tagName.toLowerCase();
-          if (current.id) {
-            path.unshift('#' + CSS.escape(current.id));
+          // Use getAttribute to avoid DOM Clobbering
+          const currentId = current.getAttribute('id');
+          if (currentId) {
+            path.unshift('#' + CSS.escape(currentId));
             break;
           }
           const parent = current.parentElement;
@@ -1731,9 +1765,10 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         let triggerSelector = null;
         let label = input.getAttribute('aria-label') || '';
 
-        // Check for label[for]
-        if (input.id) {
-          const labelEl = document.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+        // Check for label[for] - use getAttribute to avoid DOM Clobbering
+        const inputId = input.getAttribute('id');
+        if (inputId) {
+          const labelEl = document.querySelector('label[for="' + CSS.escape(inputId) + '"]');
           if (labelEl) {
             label = labelEl.textContent?.trim() || label;
             if (isHidden) {
@@ -1763,7 +1798,9 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         }
 
         // Determine if this is for resume or cover letter
-        const contextText = (label + ' ' + (input.name || '') + ' ' + (input.id || '')).toLowerCase();
+        // Use getAttribute to avoid DOM Clobbering
+        const inputName = input.getAttribute('name');
+        const contextText = (label + ' ' + (inputName || '') + ' ' + (inputId || '')).toLowerCase();
         let documentType = 'unknown';
         if (/resume|cv|curriculum/i.test(contextText)) {
           documentType = 'resume';

@@ -66,7 +66,12 @@ class RenderResult:
 
 
 class PlaywrightRenderer:
-    """Minimal headless renderer with a concurrency guard and health monitoring."""
+    """Minimal headless renderer with a concurrency guard and health monitoring.
+
+    IMPORTANT: Browser is created lazily on first render call to ensure it's
+    created on the same thread that will use it. This prevents greenlet/threading
+    conflicts when SQLAlchemy (which uses greenlet) is in use.
+    """
 
     def __init__(self, max_concurrent: int = 2, default_timeout_ms: int = 20_000):
         self._sem = threading.Semaphore(max_concurrent)
@@ -74,13 +79,37 @@ class PlaywrightRenderer:
         self._browser_lock = threading.Lock()
         self._playwright: Optional["Playwright"] = None
         self._browser: Optional["Browser"] = None
+        self._browser_thread_id: Optional[int] = None  # Track which thread owns browser
         self._consecutive_failures = 0
         self._max_consecutive_failures = 3  # Restart browser after this many failures
-        self._ensure_browser()
+        # DON'T create browser here - create lazily on first render to ensure
+        # browser is created on the thread that will use it
 
     def _ensure_browser(self, force_restart: bool = False) -> None:
-        """Start or restart the shared browser instance."""
+        """Start or restart the shared browser instance.
+
+        IMPORTANT: Playwright browser must be created and used on the same thread.
+        If called from a different thread than the one that created the browser,
+        we force a restart to avoid greenlet/threading errors.
+        """
+        current_thread_id = threading.get_ident()
+
         with self._browser_lock:
+            # Check if browser was created on a different thread - force restart if so
+            # This prevents "Cannot switch to a different thread" greenlet errors
+            if (
+                self._browser is not None
+                and self._browser_thread_id is not None
+                and self._browser_thread_id != current_thread_id
+            ):
+                logger.info(
+                    "playwright_thread_mismatch: browser created on thread %s, "
+                    "current thread %s, forcing restart",
+                    self._browser_thread_id,
+                    current_thread_id,
+                )
+                force_restart = True
+
             is_connected = (
                 self._browser is not None and getattr(self._browser, "is_connected", lambda: True)()
             )
@@ -112,20 +141,25 @@ class PlaywrightRenderer:
                     "--no-sandbox",
                 ],
             )
+            # Track which thread created this browser
+            self._browser_thread_id = current_thread_id
+
             if force_restart:
-                logger.info("playwright_browser_restarted after consecutive failures")
+                logger.info("playwright_browser_restarted on thread %s", current_thread_id)
 
     def render(self, req: RenderRequest) -> RenderResult:
         if not req.url.startswith(("http://", "https://")):
             raise ValueError(f"Invalid URL scheme for rendering: {req.url}")
 
-        # Check if we need to restart browser due to consecutive failures
-        if self._consecutive_failures >= self._max_consecutive_failures:
+        # Track if we need to force restart due to consecutive failures
+        # Note: Don't actually restart here - _ensure_browser is called from
+        # within the ThreadPoolExecutor to ensure browser runs on correct thread
+        force_restart_needed = self._consecutive_failures >= self._max_consecutive_failures
+        if force_restart_needed:
             logger.warning(
-                "playwright_health_check: %d consecutive failures, restarting browser",
+                "playwright_health_check: %d consecutive failures, will restart browser",
                 self._consecutive_failures,
             )
-            self._ensure_browser(force_restart=True)
             self._consecutive_failures = 0
 
         start = time.monotonic()
@@ -143,7 +177,7 @@ class PlaywrightRenderer:
 
         # Run the actual render in a thread with hard timeout
         def _do_render():
-            return self._render_internal(req, timeout, render_context)
+            return self._render_internal(req, timeout, render_context, force_restart_needed)
 
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
@@ -192,6 +226,7 @@ class PlaywrightRenderer:
         req: RenderRequest,
         timeout: int,
         render_context: Dict[str, Optional[object]],
+        force_restart: bool = False,
     ) -> RenderResult:
         """Internal render implementation - runs in thread with hard timeout.
 
@@ -199,6 +234,7 @@ class PlaywrightRenderer:
             req: The render request with URL and options
             timeout: Timeout in milliseconds for page load and selector wait
             render_context: Mutable dict to store context reference for cleanup on hard timeout
+            force_restart: If True, force browser restart before rendering
         """
         start = time.monotonic()
         request_count = 0
@@ -210,7 +246,7 @@ class PlaywrightRenderer:
         headers = {**(req.headers or {})}
 
         with self._sem:
-            self._ensure_browser()
+            self._ensure_browser(force_restart=force_restart)
             context = self._browser.new_context(
                 user_agent="JobFinderBot/1.0",
                 viewport={"width": 1280, "height": 2000},
