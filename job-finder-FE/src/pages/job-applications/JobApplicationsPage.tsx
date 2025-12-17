@@ -26,7 +26,7 @@ import { AlertCircle, Loader2, Search, Briefcase } from "lucide-react"
 import { ROUTES } from "@/types/routes"
 import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
-import { toDate } from "@/utils/dateFormat"
+import { toDate, formatDate, normalizeDateValue } from "@/utils/dateFormat"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { getScoreColor, SCORE_THRESHOLDS } from "@/lib/score-utils"
 
@@ -155,6 +155,15 @@ export function JobApplicationsPage() {
           return b.matchScore - a.matchScore
         case "date":
           return toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime()
+        case "posted": {
+          // Sort by job posted date (newest first), null values last
+          const aPosted = normalizeDateValue(a.listing.postedDate)
+          const bPosted = normalizeDateValue(b.listing.postedDate)
+          if (!aPosted && !bPosted) return 0
+          if (!aPosted) return 1
+          if (!bPosted) return -1
+          return bPosted.getTime() - aPosted.getTime()
+        }
         case "company":
           return a.listing.companyName.localeCompare(b.listing.companyName)
         default:
@@ -263,6 +272,7 @@ export function JobApplicationsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="updated">Updated</SelectItem>
+                  <SelectItem value="posted">Posted</SelectItem>
                   <SelectItem value="score">Score</SelectItem>
                   <SelectItem value="date">Created</SelectItem>
                   <SelectItem value="company">Company</SelectItem>
@@ -328,6 +338,7 @@ export function JobApplicationsPage() {
                   <TableHead>Job Title</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead className="hidden md:table-cell">Location</TableHead>
+                  <TableHead className="hidden lg:table-cell">Posted</TableHead>
                   <TableHead className="text-center">Score</TableHead>
                 </TableRow>
               </TableHeader>
@@ -362,6 +373,9 @@ export function JobApplicationsPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">
                       {match.listing.location || "—"}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground">
+                      {formatDate(match.listing.postedDate)}
                     </TableCell>
                     <TableCell className="text-center">
                       <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
