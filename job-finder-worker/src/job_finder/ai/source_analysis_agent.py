@@ -116,8 +116,46 @@ job discovery system. Your analysis will determine how the source is classified 
   - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
   - Lever: GET https://api.lever.co/v0/postings/{{slug}}?mode=json, fields.title=text, url=hostedUrl, location=categories.location, description=descriptionPlain, posted_date=createdAt
   - Ashby: GET https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs, fields.title=title, url=jobUrl, description=descriptionHtml, location=location
-  - Workday: POST https://{{tenant}}.wd{{N}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{site}}/jobs with body {\"limit\":20,\"offset\":0}, response_path=jobPostings, fields.title=title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn
+  - Workday: See detailed Workday section below
   - RSS: if the URL is clearly an RSS feed, use type=rss and map title/link/description/pubDate
+
+### WORKDAY ATS - SPECIAL HANDLING
+
+Workday is complex because companies use highly variable board names:
+
+**URL Pattern**: POST https://{{tenant}}.wd{{N}}.myworkdayjobs.com/wday/cxs/{{tenant}}/{{board}}/jobs
+- Only wd1, wd3, wd5 subdomains exist (wd2, wd4, wd6 do NOT work)
+- Board names are NOT standardized - they vary per company
+
+**Common Board Name Patterns**:
+- Generic: jobs, careers, External, Careers, ExternalCareers, Search
+- Company name: ASCO, BMS, Genesys (slug or uppercase slug as board)
+- Company name + suffix: insuletcareers, Vernova_ExternalSite
+- Locale variants: en-US/Search
+
+**Request Body**: {"limit": 50, "offset": 0}
+
+**Response**: response_path=jobPostings
+- fields: title=title, url=externalPath, location=locationsText, posted_date=postedOn
+- IMPORTANT: externalPath is relative (e.g., "/job/Software-Engineer/123"). The scraper needs
+  base_url set to construct full URLs: https://{{tenant}}.wd{{N}}.myworkdayjobs.com/{{board}}
+
+**Example Config**:
+```json
+{
+  "type": "api",
+  "url": "https://gevernova.wd5.myworkdayjobs.com/wday/cxs/gevernova/Vernova_ExternalSite/jobs",
+  "method": "POST",
+  "post_body": {"limit": 50, "offset": 0},
+  "response_path": "jobPostings",
+  "base_url": "https://gevernova.wd5.myworkdayjobs.com/Vernova_ExternalSite",
+  "headers": {"Content-Type": "application/json"},
+  "fields": {"title": "title", "url": "externalPath", "location": "locationsText", "posted_date": "postedOn"}
+}
+```
+
+When you see a myworkdayjobs.com URL, extract the tenant and board from the URL path.
+If ATS probing found a working Workday endpoint, USE THAT EXACT URL in your config.
 
 ### CRITICAL: Slug Collision Detection
 
@@ -358,7 +396,7 @@ CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - Make sure `type` is api|rss|html; include response_path for APIs (e.g., jobs or jobPostings).
 - Include pagination hints only when supported (Workday/Greenhouse offset+limit).
 - Do NOT output auth-gated or CAPTCHA-protected endpoints (LinkedIn/Indeed/Glassdoor/ZipRecruiter) or single-job URLs.
-- For Workday: use the /wday/cxs/{{tenant}}/{{site}}/jobs POST endpoint with limit/offset; fields: title, url=externalPath, location=locationsText, description=bulletFields, posted_date=postedOn.
+- For Workday: use the /wday/cxs/{{tenant}}/{{board}}/jobs POST endpoint with {"limit":50,"offset":0}; response_path=jobPostings; fields: title, url=externalPath, location=locationsText, posted_date=postedOn. CRITICAL: include base_url (https://{{tenant}}.wd{{N}}.myworkdayjobs.com/{{board}}) for relative externalPath URLs.
 - For Greenhouse: https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs.
 - For Lever: https://api.lever.co/v0/postings/{{slug}}?mode=json.
 - For Ashby: https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs.

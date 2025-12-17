@@ -127,10 +127,66 @@ ATS_PROVIDERS = {
 }
 
 # Workday requires special handling (POST request, variable wd* subdomain)
-# Common Workday subdomain numbers
+# Common Workday subdomain numbers (wd2, wd4, wd6 don't exist)
 WORKDAY_SUBDOMAINS = ["wd1", "wd3", "wd5"]
-# Common Workday board names
-WORKDAY_BOARDS = ["jobs", "careers", "External", "Careers"]
+
+# Generic Workday board names (tried for all companies)
+WORKDAY_GENERIC_BOARDS = [
+    "jobs",
+    "careers",
+    "External",
+    "Careers",
+    "ExternalCareers",
+    "external",
+    "Search",
+]
+
+
+def generate_workday_board_variations(slug: str) -> List[str]:
+    """Generate Workday board name variations based on company slug.
+
+    Workday companies often use custom board names like:
+    - Company name as board: "ASCO", "BMS", "Genesys"
+    - Company name + suffix: "insuletcareers", "externalcareers"
+    - Company name + underscore suffix: "Vernova_ExternalSite"
+
+    Args:
+        slug: Company slug (lowercase)
+
+    Returns:
+        List of board name variations to try
+    """
+    variations = []
+
+    # Generic boards first (most common)
+    variations.extend(WORKDAY_GENERIC_BOARDS)
+
+    # Slug as board name (e.g., "genesys" -> "Genesys", "asco" -> "ASCO")
+    variations.append(slug)
+    variations.append(slug.upper())
+    variations.append(slug.capitalize())
+
+    # Slug + common suffixes
+    variations.append(f"{slug}careers")
+    variations.append(f"{slug}_careers")
+    variations.append(f"{slug}_ExternalSite")
+    variations.append(f"{slug}_External")
+    variations.append(f"{slug.capitalize()}_ExternalSite")
+    variations.append(f"{slug.upper()}_ExternalSite")
+
+    # en-US locale variant (seen in 3M)
+    variations.append("en-US/Search")
+
+    # Remove exact duplicates while preserving order
+    # NOTE: Keep case variants since Workday board names are case-sensitive
+    seen = set()
+    unique = []
+    for v in variations:
+        if v not in seen:
+            seen.add(v)
+            unique.append(v)
+
+    return unique
 
 
 def generate_slug_variations(name: str) -> List[str]:
@@ -468,6 +524,14 @@ def probe_workday(
     Workday uses POST requests and has variable URL patterns:
     - https://{slug}.wd{N}.myworkdayjobs.com/wday/cxs/{slug}/{board}/jobs
 
+    Board names are highly variable - companies use:
+    - Generic names: jobs, careers, External, Search
+    - Company name as board: ASCO, BMS, Genesys
+    - Company name + suffix: insuletcareers, Vernova_ExternalSite
+
+    Note: Workday requires session cookies, so we pre-fetch the careers page
+    before making API calls.
+
     Args:
         slug: Company slug to test
         timeout: Request timeout in seconds
@@ -475,15 +539,28 @@ def probe_workday(
     Returns:
         ATSProbeResult with found=True if jobs are available
     """
+    # Generate all board variations to try for this company
+    board_variations = generate_workday_board_variations(slug)
+
     for wd_num in WORKDAY_SUBDOMAINS:
-        for board in WORKDAY_BOARDS:
-            api_url = f"https://{slug}.{wd_num}.myworkdayjobs.com/wday/cxs/{slug}/{board}/jobs"
+        # Create session and establish cookies for this subdomain
+        session = requests.Session()
+        base_host = f"https://{slug}.{wd_num}.myworkdayjobs.com"
+
+        # Pre-fetch to get session cookies (Workday requires this)
+        try:
+            session.get(base_host, timeout=timeout)
+        except requests.exceptions.RequestException:
+            # If GET fails, subdomain probably doesn't exist, skip it
+            continue
+
+        for board in board_variations:
+            api_url = f"{base_host}/wday/cxs/{slug}/{board}/jobs"
             try:
-                response = requests.post(
+                response = session.post(
                     api_url,
-                    json={"limit": 20, "offset": 0},
+                    json={"limit": 50, "offset": 0},
                     headers={
-                        "User-Agent": "JobFinderBot/1.0",
                         "Accept": "application/json",
                         "Content-Type": "application/json",
                     },
@@ -505,7 +582,7 @@ def probe_workday(
 
                 # Found jobs - build config
                 sample_job = job_postings[0] if job_postings else None
-                base_url = f"https://{slug}.{wd_num}.myworkdayjobs.com/{board}"
+                base_url = f"{base_host}/{board}"
                 scraper_config = {
                     "type": "api",
                     "url": api_url,
