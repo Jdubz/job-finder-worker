@@ -17,7 +17,7 @@ from job_finder.ai.providers import (
     GeminiProvider,
     OpenAIProvider,
 )
-from job_finder.exceptions import AIProviderError
+from job_finder.exceptions import AIProviderError, QuotaExhaustedError
 
 
 class TestCodexCLIProvider:
@@ -215,47 +215,130 @@ class TestOpenAIProvider:
 
 
 class TestGeminiProvider:
-    """Test GeminiProvider behavior."""
+    """Test GeminiProvider behavior (Vertex AI implementation)."""
 
     @pytest.fixture(autouse=True)
-    def skip_if_no_google(self):
-        """Skip tests if google-generativeai is not installed."""
+    def skip_if_no_google_genai(self):
+        """Skip tests if google-genai is not installed."""
         try:
-            import google.generativeai  # noqa: F401
+            from google import genai  # noqa: F401
         except ImportError:
-            pytest.skip("google-generativeai package not installed")
+            pytest.skip("google-genai package not installed")
 
-    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"})
-    @patch("google.generativeai.configure")
-    @patch("google.generativeai.GenerativeModel")
-    def test_init_with_google_api_key(self, mock_model, mock_configure):
-        """Should use GOOGLE_API_KEY from environment."""
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_init_with_project(self, mock_client):
+        """Should use GOOGLE_CLOUD_PROJECT from environment."""
         provider = GeminiProvider()
-        assert provider.api_key == "test-key"
-        mock_configure.assert_called_once_with(api_key="test-key")
+        assert provider.project == "test-project"
+        mock_client.assert_called_once_with(
+            vertexai=True,
+            project="test-project",
+            location="us-central1",
+        )
 
-    @patch.dict("os.environ", {"GEMINI_API_KEY": "gemini-key"}, clear=True)
-    @patch("google.generativeai.configure")
-    @patch("google.generativeai.GenerativeModel")
-    def test_init_with_gemini_api_key(self, mock_model, mock_configure):
-        """Should fall back to GEMINI_API_KEY."""
-        import os
-
-        os.environ.pop("GOOGLE_API_KEY", None)
+    @patch.dict(
+        "os.environ",
+        {"GOOGLE_CLOUD_PROJECT": "test-project", "GOOGLE_CLOUD_LOCATION": "europe-west1"},
+    )
+    @patch("google.genai.Client")
+    def test_init_with_custom_location(self, mock_client):
+        """Should use custom location from environment."""
         provider = GeminiProvider()
-        assert provider.api_key == "gemini-key"
-        mock_configure.assert_called_once_with(api_key="gemini-key")
+        assert provider.location == "europe-west1"
+        mock_client.assert_called_once_with(
+            vertexai=True,
+            project="test-project",
+            location="europe-west1",
+        )
 
     @patch.dict("os.environ", {}, clear=True)
-    def test_init_raises_without_key(self):
-        """Should raise error when no API key available."""
+    def test_init_raises_without_project(self):
+        """Should raise error when GOOGLE_CLOUD_PROJECT not set."""
         import os
 
-        os.environ.pop("GOOGLE_API_KEY", None)
-        os.environ.pop("GEMINI_API_KEY", None)
+        os.environ.pop("GOOGLE_CLOUD_PROJECT", None)
 
-        with pytest.raises(AIProviderError, match="API key must be provided"):
+        with pytest.raises(AIProviderError, match="GCP project must be provided"):
             GeminiProvider()
+
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_generate_success(self, mock_client_class):
+        """Should return text from successful response."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.text = "Hello, world!"
+        mock_client.models.generate_content.return_value = mock_response
+
+        provider = GeminiProvider()
+        result = provider.generate("Say hello")
+
+        assert result == "Hello, world!"
+        mock_client.models.generate_content.assert_called_once()
+
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_generate_empty_response(self, mock_client_class):
+        """Should raise error when response.text raises ValueError."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.prompt_feedback = None
+        type(mock_response).text = property(
+            lambda self: (_ for _ in ()).throw(ValueError("No text"))
+        )
+        mock_client.models.generate_content.return_value = mock_response
+
+        provider = GeminiProvider()
+        with pytest.raises(AIProviderError, match="empty or invalid response"):
+            provider.generate("Say hello")
+
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_generate_safety_blocked(self, mock_client_class):
+        """Should raise error with safety filter reason when blocked."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.prompt_feedback = MagicMock()
+        mock_response.prompt_feedback.block_reason = MagicMock()
+        mock_response.prompt_feedback.block_reason.name = "SAFETY"
+        type(mock_response).text = property(
+            lambda self: (_ for _ in ()).throw(ValueError("Blocked"))
+        )
+        mock_client.models.generate_content.return_value = mock_response
+
+        provider = GeminiProvider()
+        with pytest.raises(AIProviderError, match="blocked by safety filters: SAFETY"):
+            provider.generate("Bad prompt")
+
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_generate_quota_exhausted(self, mock_client_class):
+        """Should raise QuotaExhaustedError when quota is hit."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.models.generate_content.side_effect = Exception(
+            "Resource exhausted: quota exceeded"
+        )
+
+        provider = GeminiProvider()
+        with pytest.raises(QuotaExhaustedError):
+            provider.generate("Say hello")
+
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_generate_api_error(self, mock_client_class):
+        """Should wrap generic errors in AIProviderError."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.models.generate_content.side_effect = Exception("Network error")
+
+        provider = GeminiProvider()
+        with pytest.raises(AIProviderError, match="Gemini API error: Network error"):
+            provider.generate("Say hello")
 
 
 class TestGeminiCLIProvider:
