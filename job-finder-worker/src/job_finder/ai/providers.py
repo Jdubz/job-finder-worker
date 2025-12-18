@@ -123,44 +123,97 @@ class OpenAIProvider(AIProvider):
 
 
 class GeminiProvider(AIProvider):
-    """Google Gemini provider (API interface)."""
+    """
+    Google Gemini provider via Vertex AI (API interface).
 
-    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None):
+    Uses the google-genai SDK with Vertex AI backend. Supports:
+    - Application Default Credentials (ADC) via gcloud auth
+    - Service account via GOOGLE_APPLICATION_CREDENTIALS
+    - Workload Identity Federation
+
+    Required environment variables:
+    - GOOGLE_CLOUD_PROJECT: GCP project ID
+    - GOOGLE_CLOUD_LOCATION: GCP region (default: us-central1)
+
+    Optional:
+    - GOOGLE_APPLICATION_CREDENTIALS: Path to service account JSON
+    """
+
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        project: Optional[str] = None,
+        location: Optional[str] = None,
+    ):
         """
-        Initialize Gemini provider.
+        Initialize Gemini provider with Vertex AI.
 
         Args:
-            model: Model identifier (defaults to GEMINI_DEFAULT_MODEL env or gemini-2.0-flash).
-            api_key: Google API key (defaults to GOOGLE_API_KEY or GEMINI_API_KEY env var).
+            model: Model identifier (defaults to gemini-2.0-flash).
+            project: GCP project ID (defaults to GOOGLE_CLOUD_PROJECT env var).
+            location: GCP region (defaults to GOOGLE_CLOUD_LOCATION or us-central1).
         """
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        if not self.api_key:
+        self.project = project or os.getenv("GOOGLE_CLOUD_PROJECT")
+        if not self.project:
             raise AIProviderError(
-                "Google API key must be provided or set in GOOGLE_API_KEY/GEMINI_API_KEY environment variable"
+                "GCP project must be provided or set in GOOGLE_CLOUD_PROJECT environment variable"
             )
 
+        self.location = location or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
         self.model = model or os.getenv("GEMINI_DEFAULT_MODEL") or "gemini-2.0-flash"
-        # Lazy import to avoid dependency if not used
-        try:
-            import google.generativeai as genai
 
-            genai.configure(api_key=self.api_key)
-            self.client = genai.GenerativeModel(self.model)
+        try:
+            from google import genai
+
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.project,
+                location=self.location,
+            )
         except ImportError:
-            raise AIProviderError("google-generativeai package not installed")
+            raise AIProviderError(
+                "google-genai package not installed. Run: pip install google-genai"
+            )
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "credentials" in error_msg or "authentication" in error_msg:
+                raise AIProviderError(
+                    f"Vertex AI authentication failed. Ensure ADC is configured "
+                    f"(run 'gcloud auth application-default login') or set "
+                    f"GOOGLE_APPLICATION_CREDENTIALS to a service account JSON. Error: {e}"
+                )
+            raise AIProviderError(f"Failed to initialize Vertex AI client: {e}") from e
 
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        """Generate a response using Gemini."""
+        """Generate a response using Gemini via Vertex AI."""
         try:
-            response = self.client.generate_content(
-                prompt,
-                generation_config={
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config={
                     "max_output_tokens": max_tokens,
                     "temperature": temperature,
                 },
             )
-            return response.text or ""
+            # Extract text from response
+            if hasattr(response, "text"):
+                return response.text or ""
+            # Handle structured response
+            if hasattr(response, "candidates") and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and candidate.content:
+                    parts = candidate.content.parts
+                    if parts:
+                        return parts[0].text or ""
+            raise AIProviderError("Gemini API returned empty response")
         except Exception as e:
+            error_msg = str(e).lower()
+            if _is_quota_exhausted(error_msg):
+                raise QuotaExhaustedError(
+                    "Gemini API quota exhausted",
+                    provider="gemini",
+                    reset_info="check GCP quotas",
+                )
             raise AIProviderError(f"Gemini API error: {str(e)}") from e
 
 
@@ -461,15 +514,15 @@ _PROVIDER_MAP: Dict[tuple, type] = {
     ("claude", "cli"): ClaudeCLIProvider,
     ("claude", "api"): ClaudeProvider,
     ("openai", "api"): OpenAIProvider,
-    ("gemini", "api"): GeminiProvider,
+    ("gemini", "api"): GeminiProvider,  # Uses Vertex AI with ADC
     ("gemini", "cli"): GeminiCLIProvider,
 }
 
 # Map of API-based providers to their required environment variables
+# Note: gemini/api uses Vertex AI with ADC, not API keys
 _API_KEY_REQUIREMENTS: Dict[tuple, list] = {
     ("claude", "api"): ["ANTHROPIC_API_KEY"],
     ("openai", "api"): ["OPENAI_API_KEY"],
-    ("gemini", "api"): ["GOOGLE_API_KEY", "GEMINI_API_KEY"],  # Either one works
 }
 
 # Fallback interfaces for providers when API keys are missing
@@ -565,8 +618,32 @@ def hydrate_auth_from_host_file(provider: str) -> None:
             os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = candidate
 
 
+def _check_vertex_auth() -> Tuple[bool, str]:
+    """Check if Vertex AI authentication is available."""
+    # Check for GCP project
+    project = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        return False, "missing_env:GOOGLE_CLOUD_PROJECT"
+
+    # Check for credentials: ADC or service account
+    gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if gcp_creds and Path(gcp_creds).exists():
+        return True, ""
+
+    # Check for ADC
+    adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+    if adc_path.exists():
+        return True, ""
+
+    return False, "missing_credentials:ADC or GOOGLE_APPLICATION_CREDENTIALS"
+
+
 def auth_status(provider: str, interface: str) -> Tuple[bool, str]:
     """Return (is_available, reason)."""
+    # Gemini API uses Vertex AI with ADC (not API keys)
+    if provider == "gemini" and interface == "api":
+        return _check_vertex_auth()
+
     if interface == "api":
         if _check_api_key_available(provider, interface):
             return True, ""

@@ -215,46 +215,51 @@ class TestOpenAIProvider:
 
 
 class TestGeminiProvider:
-    """Test GeminiProvider behavior."""
+    """Test GeminiProvider behavior (Vertex AI implementation)."""
 
     @pytest.fixture(autouse=True)
-    def skip_if_no_google(self):
-        """Skip tests if google-generativeai is not installed."""
+    def skip_if_no_google_genai(self):
+        """Skip tests if google-genai is not installed."""
         try:
-            import google.generativeai  # noqa: F401
+            from google import genai  # noqa: F401
         except ImportError:
-            pytest.skip("google-generativeai package not installed")
+            pytest.skip("google-genai package not installed")
 
-    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"})
-    @patch("google.generativeai.configure")
-    @patch("google.generativeai.GenerativeModel")
-    def test_init_with_google_api_key(self, mock_model, mock_configure):
-        """Should use GOOGLE_API_KEY from environment."""
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_init_with_project(self, mock_client):
+        """Should use GOOGLE_CLOUD_PROJECT from environment."""
         provider = GeminiProvider()
-        assert provider.api_key == "test-key"
-        mock_configure.assert_called_once_with(api_key="test-key")
+        assert provider.project == "test-project"
+        mock_client.assert_called_once_with(
+            vertexai=True,
+            project="test-project",
+            location="us-central1",
+        )
 
-    @patch.dict("os.environ", {"GEMINI_API_KEY": "gemini-key"}, clear=True)
-    @patch("google.generativeai.configure")
-    @patch("google.generativeai.GenerativeModel")
-    def test_init_with_gemini_api_key(self, mock_model, mock_configure):
-        """Should fall back to GEMINI_API_KEY."""
-        import os
-
-        os.environ.pop("GOOGLE_API_KEY", None)
+    @patch.dict(
+        "os.environ",
+        {"GOOGLE_CLOUD_PROJECT": "test-project", "GOOGLE_CLOUD_LOCATION": "europe-west1"},
+    )
+    @patch("google.genai.Client")
+    def test_init_with_custom_location(self, mock_client):
+        """Should use custom location from environment."""
         provider = GeminiProvider()
-        assert provider.api_key == "gemini-key"
-        mock_configure.assert_called_once_with(api_key="gemini-key")
+        assert provider.location == "europe-west1"
+        mock_client.assert_called_once_with(
+            vertexai=True,
+            project="test-project",
+            location="europe-west1",
+        )
 
     @patch.dict("os.environ", {}, clear=True)
-    def test_init_raises_without_key(self):
-        """Should raise error when no API key available."""
+    def test_init_raises_without_project(self):
+        """Should raise error when GOOGLE_CLOUD_PROJECT not set."""
         import os
 
-        os.environ.pop("GOOGLE_API_KEY", None)
-        os.environ.pop("GEMINI_API_KEY", None)
+        os.environ.pop("GOOGLE_CLOUD_PROJECT", None)
 
-        with pytest.raises(AIProviderError, match="API key must be provided"):
+        with pytest.raises(AIProviderError, match="GCP project must be provided"):
             GeminiProvider()
 
 

@@ -41,28 +41,14 @@ class AgentResult:
     model: str
 
 
-# Provider dispatch map: (provider, interface) -> provider class
-# Import lazily to avoid circular imports
 def _get_provider_class(provider: str, interface: str):
-    """Get the provider class for a provider/interface combination."""
-    from job_finder.ai.providers import (
-        ClaudeProvider,
-        ClaudeCLIProvider,
-        CodexCLIProvider,
-        GeminiCLIProvider,
-        GeminiProvider,
-        OpenAIProvider,
-    )
+    """Get the provider class for a provider/interface combination.
 
-    provider_map = {
-        ("codex", "cli"): CodexCLIProvider,
-        ("claude", "api"): ClaudeProvider,
-        ("claude", "cli"): ClaudeCLIProvider,
-        ("openai", "api"): OpenAIProvider,
-        ("gemini", "api"): GeminiProvider,
-        ("gemini", "cli"): GeminiCLIProvider,
-    }
-    return provider_map.get((provider, interface))
+    Uses the canonical _PROVIDER_MAP from providers.py to ensure consistency.
+    """
+    from job_finder.ai.providers import _PROVIDER_MAP
+
+    return _PROVIDER_MAP.get((provider, interface))
 
 
 class AgentManager:
