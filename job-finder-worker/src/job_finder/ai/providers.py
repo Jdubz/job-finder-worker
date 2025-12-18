@@ -195,17 +195,23 @@ class GeminiProvider(AIProvider):
                     "temperature": temperature,
                 },
             )
-            # Extract text from response
-            if hasattr(response, "text"):
+            # The .text property is the idiomatic way to get text from response.
+            # It raises ValueError if the response is blocked or empty.
+            try:
                 return response.text or ""
-            # Handle structured response
-            if hasattr(response, "candidates") and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, "content") and candidate.content:
-                    parts = candidate.content.parts
-                    if parts:
-                        return parts[0].text or ""
-            raise AIProviderError("Gemini API returned empty response")
+            except ValueError as e:
+                # Check if response was blocked by safety filters
+                if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+                    block_reason = getattr(response.prompt_feedback, "block_reason", None)
+                    if block_reason:
+                        reason = getattr(block_reason, "name", str(block_reason))
+                        raise AIProviderError(
+                            f"Gemini response blocked by safety filters: {reason}"
+                        ) from e
+                raise AIProviderError("Gemini API returned an empty or invalid response") from e
+        except AIProviderError:
+            # Re-raise our own errors unchanged
+            raise
         except Exception as e:
             error_msg = str(e).lower()
             if _is_quota_exhausted(error_msg):
@@ -625,17 +631,18 @@ def _check_vertex_auth() -> Tuple[bool, str]:
     if not project:
         return False, "missing_env:GOOGLE_CLOUD_PROJECT"
 
-    # Check for credentials: ADC or service account
-    gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if gcp_creds and Path(gcp_creds).exists():
-        return True, ""
+    # Check for credentials using google-auth library (handles all ADC scenarios:
+    # service account files, gcloud auth, metadata server in GCP environments)
+    try:
+        import google.auth
+        from google.auth.exceptions import DefaultCredentialsError
 
-    # Check for ADC
-    adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
-    if adc_path.exists():
+        google.auth.default()
         return True, ""
-
-    return False, "missing_credentials:ADC or GOOGLE_APPLICATION_CREDENTIALS"
+    except ImportError:
+        return False, "missing_credentials:google-auth not installed"
+    except DefaultCredentialsError:
+        return False, "missing_credentials:ADC or GOOGLE_APPLICATION_CREDENTIALS"
 
 
 def auth_status(provider: str, interface: str) -> Tuple[bool, str]:
