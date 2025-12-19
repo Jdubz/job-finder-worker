@@ -1318,6 +1318,8 @@ function createMcpConfigFile(): string {
   // Use forward slashes for better cross-platform compatibility
   const normalizedPath = mcpServerPath.replace(/\\/g, "/")
 
+  // On Windows, use node directly - windowsHide should be handled by Claude CLI
+  // On other platforms, use node normally
   const config = {
     mcpServers: {
       "job-applicator": {
@@ -1330,10 +1332,18 @@ function createMcpConfigFile(): string {
     }
   }
 
-  fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2))
+  const configJson = JSON.stringify(config, null, 2)
+  fs.writeFileSync(MCP_CONFIG_PATH, configJson)
   logger.info(`[FillForm] Created MCP config at ${MCP_CONFIG_PATH}`)
-  logger.info(`[FillForm] MCP server command: node ${normalizedPath}`)
+  logger.info(`[FillForm] MCP config contents:\n${configJson}`)
   logger.info(`[FillForm] Tool server URL: ${getToolServerUrl()}`)
+
+  // Verify the file was written correctly
+  const written = fs.readFileSync(MCP_CONFIG_PATH, 'utf-8')
+  if (written !== configJson) {
+    logger.error(`[FillForm] MCP config file mismatch! Expected ${configJson.length} chars, got ${written.length}`)
+  }
+
   return MCP_CONFIG_PATH
 }
 
@@ -1400,12 +1410,21 @@ async function ensureToolServerReadyWithRestart(): Promise<void> {
 /**
  * Fill form using Claude CLI with MCP tools
  */
+let fillFormInProgress = false
+
 ipcMain.handle(
   "fill-form",
   async (
     _event: IpcMainInvokeEvent,
     options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }
   ): Promise<{ success: boolean; message?: string }> => {
+    // Prevent multiple simultaneous fill-form calls
+    if (fillFormInProgress) {
+      logger.warn(`[FillForm] Ignoring duplicate call - fill already in progress`)
+      return { success: false, message: "Form fill already in progress" }
+    }
+    fillFormInProgress = true
+
     try {
       // Fast preflight: make sure the tool server is reachable before starting the agent
       try {
@@ -1415,6 +1434,7 @@ ipcMain.handle(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] Tool server health check failed: ${message}`)
+        fillFormInProgress = false
         return { success: false, message: `Tool server not ready: ${message}. Try restarting the app.` }
       }
 
@@ -1425,6 +1445,7 @@ ipcMain.handle(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] MCP server not found: ${message}`)
+        fillFormInProgress = false
         return { success: false, message: `MCP server not found: ${message}. Run 'npm run build'.` }
       }
 
@@ -1526,17 +1547,23 @@ ipcMain.handle(
 
       // Spawn Claude CLI with MCP server configured
       // Use stdin for prompt to avoid command line length limits
+      // --strict-mcp-config ensures ONLY our MCP server is used (ignores system configs)
+      // --debug shows MCP connection details for troubleshooting
       const spawnArgs = [
         "--print",
         "--dangerously-skip-permissions",
         "--mcp-config",
         mcpConfigPath,
+        "--strict-mcp-config",
+        "--debug",
       ]
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
-      // Use detached: true to create a new process group, allowing us to kill the entire tree
-      // on termination (electronmon restarts, etc.). stdio: "pipe" is default but explicit here.
+      // On Windows: avoid detached:true which creates visible console windows
+      // Use shell:true with windowsHide:true for proper hidden execution
+      const isWindows = process.platform === "win32"
       activeClaudeProcess = spawn("claude", spawnArgs, {
-        detached: true,
+        detached: !isWindows, // Only detach on non-Windows (for process group killing)
+        shell: isWindows,     // Use shell on Windows for proper windowsHide behavior
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       })
@@ -1572,6 +1599,7 @@ ipcMain.handle(
       activeClaudeProcess.on("close", (code: number | null) => {
         logger.info(`[FillForm] Claude CLI exited with code ${code}`)
         activeClaudeProcess = null
+        fillFormInProgress = false
         clearJobContext()
         setCompletionCallback(null)
         setToolStatusCallback(null)
@@ -1583,6 +1611,7 @@ ipcMain.handle(
       activeClaudeProcess.on("error", (err: Error) => {
         logger.error(`[FillForm] Claude CLI error: ${err.message}`)
         activeClaudeProcess = null
+        fillFormInProgress = false
         clearJobContext()
         setCompletionCallback(null)
         setToolStatusCallback(null)
