@@ -1,9 +1,13 @@
 -- Create user_sessions table for multi-session support
 -- Allows users to be logged in from multiple devices/browsers simultaneously
 
+-- Note: We don't use REFERENCES users(id) because migration 038 used CREATE TABLE AS SELECT
+-- which removed the PRIMARY KEY constraint from users.id. SQLite foreign keys require
+-- the parent column to be PRIMARY KEY or have a UNIQUE constraint.
+-- Cascade deletes are handled in application code via deleteAllUserSessions().
 CREATE TABLE IF NOT EXISTS user_sessions (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
   expires_at_ms INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

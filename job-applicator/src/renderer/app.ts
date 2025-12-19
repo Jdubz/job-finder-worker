@@ -366,7 +366,7 @@ log.info("electronAPI found")
 const api = window.electronAPI
 
 // State
-let currentUser: { email: string; name?: string } | null = null
+let _currentUser: { email: string; name?: string } | null = null
 let selectedJobMatchId: string | null = null
 let selectedResumeId: string | null = null
 let selectedCoverLetterId: string | null = null
@@ -492,7 +492,7 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
 
 // Update auth UI based on state
 function updateAuthUI(user: { email: string; name?: string } | null) {
-  currentUser = user
+  _currentUser = user
   if (user) {
     authUser.classList.remove("hidden")
     authLogin.classList.add("hidden")
