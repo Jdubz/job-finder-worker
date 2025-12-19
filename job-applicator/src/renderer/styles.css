@@ -216,6 +216,11 @@ select:focus {
   background: #ff6b6b;
 }
 
+.btn-login:focus {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
 .btn-login:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -236,6 +241,11 @@ select:focus {
   background: #374151;
   border-color: #9ca3af;
   color: #eee;
+}
+
+.btn-logout:focus {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 .auth-message {

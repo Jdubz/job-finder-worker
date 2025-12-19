@@ -23,7 +23,13 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at_ms ON user_sessions(expi
 -- Migrate existing sessions from users table to user_sessions
 INSERT INTO user_sessions (id, user_id, token_hash, expires_at_ms, created_at, last_used_at)
 SELECT
-  lower(hex(randomblob(16))),
+  lower(
+    hex(randomblob(4)) || '-' ||
+    hex(randomblob(2)) || '-' ||
+    hex(randomblob(2)) || '-' ||
+    hex(randomblob(2)) || '-' ||
+    hex(randomblob(6))
+  ),
   id,
   session_token,
   session_expires_at_ms,

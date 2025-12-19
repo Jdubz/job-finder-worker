@@ -76,14 +76,18 @@ async function openAuthPopup(
 
     let resolved = false
     let timeoutId: NodeJS.Timeout | null = null
+    let interval: NodeJS.Timeout | null = null
 
-    // Cleanup function
+    // Cleanup function - clears both timeout and interval
     const cleanup = () => {
       if (timeoutId) {
         clearTimeout(timeoutId)
         timeoutId = null
       }
-      clearInterval(interval)
+      if (interval) {
+        clearInterval(interval)
+        interval = null
+      }
     }
 
     // Listen for cookie changes to detect successful login
@@ -107,8 +111,9 @@ async function openAuthPopup(
           popup.close()
           resolve({ token: sessionCookie.value, user })
         }
-      } catch {
-        // Cookie not yet set, continue waiting
+      } catch (err) {
+        // Cookie not yet set, continue waiting. Log for debugging.
+        logger.debug(`[Auth] Cookie check failed (will retry): ${err instanceof Error ? err.message : String(err)}`)
       }
     }
 
@@ -117,7 +122,7 @@ async function openAuthPopup(
     popup.webContents.on("did-navigate-in-page", cookieListener)
 
     // Also check periodically (for SPAs that don't trigger navigation)
-    const interval = setInterval(cookieListener, 500)
+    interval = setInterval(cookieListener, 500)
 
     // Handle popup close without authentication
     popup.on("closed", () => {

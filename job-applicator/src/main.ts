@@ -1558,12 +1558,13 @@ ipcMain.handle(
         "--debug",
       ]
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
-      // On Windows: avoid detached:true which creates visible console windows
-      // Use shell:true with windowsHide:true for proper hidden execution
+      // Platform-specific spawn options:
+      // - Windows: shell:true + windowsHide:true hides console; detached:false avoids visible window
+      // - Unix: detached:true enables process group killing via negative PID (-pid)
       const isWindows = process.platform === "win32"
       activeClaudeProcess = spawn("claude", spawnArgs, {
-        detached: !isWindows, // Only detach on non-Windows (for process group killing)
-        shell: isWindows,     // Use shell on Windows for proper windowsHide behavior
+        detached: !isWindows,
+        shell: isWindows,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       })

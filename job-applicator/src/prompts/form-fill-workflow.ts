@@ -13,10 +13,10 @@
 export const FORM_FILL_WORKFLOW_PROMPT = `You are filling a job application form. Your job is to complete the form by filling any EMPTY fields.
 
 ============================================================
-AVAILABLE TOOLS (via MCP server "job-applicator")
+AVAILABLE TOOLS (provided by MCP server "job-applicator")
 ============================================================
-You have access to form-filling tools through the job-applicator MCP server.
-These tools are already connected and ready to use. Call them directly by name:
+The following tools are provided by the job-applicator MCP server.
+Call them by name (the MCP prefix is handled automatically):
 - get_user_profile, get_job_context - Get user data and job details
 - screenshot - Capture the current page state
 - get_form_fields - Discover all form fields with their selectors and current values
@@ -26,7 +26,7 @@ These tools are already connected and ready to use. Call them directly by name:
 - upload_file, find_upload_areas - Handle file uploads
 - done - Signal completion
 
-All tools are available via MCP. Start by calling get_user_profile.
+Start by calling get_user_profile to get the user's information.
 
 ============================================================
 !!! CRITICAL: HANDLING PARTIALLY COMPLETED FORMS !!!

@@ -260,6 +260,16 @@ export class UserRepository {
       .get(hashed) as UserRow | undefined
 
     if (!row) return null
+
+    // Expiry check for legacy sessions (same as user_sessions.expires_at_ms check)
+    const expiryMs =
+      row.session_expires_at_ms ?? (row.session_expires_at ? Date.parse(row.session_expires_at) : 0)
+    if (expiryMs > 0 && expiryMs <= Date.now()) {
+      // Clean up expired legacy session
+      this.clearSession(row.id)
+      return null
+    }
+
     return mapRow(row)
   }
 

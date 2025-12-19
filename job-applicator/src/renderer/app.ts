@@ -538,6 +538,14 @@ async function handleLogout() {
     // Clear job matches on logout
     jobMatches = []
     renderJobSelect()
+  } catch (err) {
+    // Log error but still clear local state (user is effectively logged out locally)
+    const message = err instanceof Error ? err.message : String(err)
+    log.error("Logout API call failed:", message)
+    // Still update UI to logged out state
+    updateAuthUI(null)
+    jobMatches = []
+    renderJobSelect()
   } finally {
     logoutBtn.disabled = false
   }
