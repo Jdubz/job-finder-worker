@@ -28,6 +28,7 @@ from job_finder.job_queue.models import (
     SourceDiscoveryConfig,
     SourceTypeHint,
 )
+from job_finder.scrapers.ats_prober import probe_all_ats_providers_detailed
 from job_finder.utils.url_utils import get_root_domain
 
 from .base_processor import BaseProcessor
@@ -543,7 +544,17 @@ class CompanyProcessor(BaseProcessor):
         if job_board_url:
             return job_board_url, True
 
-        logger.info("No career page found via search for %s", company_display)
+        # Fallback: Try ATS probing if search didn't find anything
+        # This probes known ATS APIs directly (Greenhouse, Lever, Ashby, etc.)
+        logger.info(
+            "Search found no career page for %s, trying ATS probing fallback", company_display
+        )
+        job_board_url = self._probe_ats_for_career_page(company_name, website)
+        if job_board_url:
+            logger.info("ATS probing found job board for %s: %s", company_display, job_board_url)
+            return job_board_url, True
+
+        logger.info("No career page found via search or ATS probing for %s", company_display)
         return None, False
 
     def _agent_find_career_page(
@@ -591,16 +602,29 @@ class CompanyProcessor(BaseProcessor):
         try:
             aggregated: List[SearchResult] = []
             seen_urls = set()
+            search_errors = 0
             for q in queries:
-                search_results = search_client.search(q, max_results=6) or []
-                for r in search_results:
-                    url_lower = (r.url or "").lower()
-                    if not url_lower or url_lower in seen_urls:
-                        continue
-                    seen_urls.add(url_lower)
-                    aggregated.append(r)
+                try:
+                    search_results = search_client.search(q, max_results=6) or []
+                    for r in search_results:
+                        url_lower = (r.url or "").lower()
+                        if not url_lower or url_lower in seen_urls:
+                            continue
+                        seen_urls.add(url_lower)
+                        aggregated.append(r)
+                except Exception as search_exc:  # noqa: BLE001
+                    # Log but continue - we want to use partial results if we have any
+                    logger.debug("Search query '%s' failed: %s", q, search_exc)
+                    search_errors += 1
+                    continue
 
             if not aggregated:
+                if search_errors > 0:
+                    logger.info(
+                        "All %d search queries failed for %s, will try ATS probing fallback",
+                        search_errors,
+                        company_name,
+                    )
                 return None
 
             trimmed: List[Dict[str, str]] = []
@@ -645,6 +669,96 @@ class CompanyProcessor(BaseProcessor):
             return None
         except Exception as exc:  # noqa: BLE001
             logger.warning("Career page agent selection failed for %s: %s", company_name, exc)
+            return None
+
+    def _probe_ats_for_career_page(
+        self, company_name: str, website: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Fallback: Probe known ATS providers directly to find a job board.
+
+        This bypasses search and directly probes ATS APIs (Greenhouse, Lever,
+        Ashby, etc.) using slug variations derived from the company name.
+
+        Args:
+            company_name: Company name to derive slugs from
+            website: Company website URL (used for domain matching)
+
+        Returns:
+            Job board URL if found, None otherwise
+        """
+        try:
+            result = probe_all_ats_providers_detailed(
+                company_name=company_name,
+                url=website,
+            )
+
+            if result.best_result and result.best_result.found:
+                # Build the job board URL based on the ATS provider
+                ats = result.best_result.ats_provider
+                api_url = result.best_result.api_url or ""
+
+                # Convert API URL to public job board URL
+                if ats == "greenhouse" and "boards-api.greenhouse.io" in api_url:
+                    # Extract slug from API URL
+                    # https://boards-api.greenhouse.io/v1/boards/{slug}/jobs
+                    parts = api_url.split("/boards/")
+                    if len(parts) > 1:
+                        slug = parts[1].split("/")[0]
+                        return f"https://job-boards.greenhouse.io/{slug}"
+                elif ats == "lever":
+                    parts = api_url.split("/postings/")
+                    if len(parts) > 1:
+                        slug = parts[1].split("?")[0]
+                        return f"https://jobs.lever.co/{slug}"
+                elif ats == "ashby":
+                    parts = api_url.split("/job-board/")
+                    if len(parts) > 1:
+                        slug = parts[1]
+                        return f"https://jobs.ashbyhq.com/{slug}"
+                elif ats == "workday":
+                    # Workday API URL pattern:
+                    # https://{slug}.wd{N}.myworkdayjobs.com/wday/cxs/{slug}/{board}/jobs
+                    # Convert to public URL: https://{slug}.wd{N}.myworkdayjobs.com/{board}
+                    config = result.best_result.config or {}
+                    base_url = config.get("base_url")
+                    if base_url:
+                        return base_url
+                elif ats == "smartrecruiters":
+                    parts = api_url.split("/companies/")
+                    if len(parts) > 1:
+                        slug = parts[1].split("/")[0]
+                        return f"https://jobs.smartrecruiters.com/{slug}"
+                elif ats == "recruitee":
+                    parts = api_url.split("://")
+                    if len(parts) > 1:
+                        host = parts[1].split("/")[0]
+                        slug = host.split(".")[0]
+                        return f"https://{slug}.recruitee.com/"
+                elif ats == "breezy":
+                    parts = api_url.split("://")
+                    if len(parts) > 1:
+                        host = parts[1].split("/")[0]
+                        slug = host.split(".")[0]
+                        return f"https://{slug}.breezy.hr/"
+                elif ats == "workable":
+                    parts = api_url.split("/accounts/")
+                    if len(parts) > 1:
+                        slug = parts[1]
+                        return f"https://apply.workable.com/{slug}/"
+
+                # Fallback: use the API URL itself (better than nothing)
+                logger.debug(
+                    "ATS probe found %s for %s but couldn't build public URL from %s",
+                    ats,
+                    company_name,
+                    api_url,
+                )
+                return None
+
+            return None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ATS probing failed for %s: %s", company_name, exc)
             return None
 
     @contextmanager
