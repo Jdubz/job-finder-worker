@@ -21,6 +21,20 @@
 
     <div class="sidebar" id="sidebar">
       <div class="sidebar-content">
+        <!-- Auth Section -->
+        <section class="sidebar-section auth-section" id="authSection">
+          <div class="auth-status" id="authStatus">
+            <div class="auth-user hidden" id="authUser">
+              <span class="user-email" id="userEmail"></span>
+              <button class="btn-logout" id="logoutBtn" title="Sign out">Sign Out</button>
+            </div>
+            <div class="auth-login" id="authLogin">
+              <span class="auth-message">Sign in to access your job matches</span>
+              <button class="btn-login" id="loginBtn">Sign In with Google</button>
+            </div>
+          </div>
+        </section>
+
         <!-- Workflow Progress Section -->
         <section class="sidebar-section workflow-section">
           <div class="workflow-progress" id="workflowProgress" role="group" aria-label="Application workflow progress">

@@ -14,6 +14,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     debug: (...args: unknown[]) => ipcRenderer.send("renderer-log", "debug", args),
   },
 
+  // Authentication
+  auth: {
+    login: (): Promise<{ success: boolean; user?: { email: string; name?: string }; message?: string }> =>
+      ipcRenderer.invoke("auth-login"),
+    logout: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke("auth-logout"),
+    getUser: (): Promise<{ authenticated: boolean; user?: { email: string; name?: string } }> =>
+      ipcRenderer.invoke("auth-get-user"),
+  },
+
   // Navigation
   navigate: (url: string): Promise<{ success: boolean; message?: string }> =>
     ipcRenderer.invoke("navigate", url),

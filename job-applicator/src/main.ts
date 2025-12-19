@@ -96,6 +96,9 @@ import {
   getApiUrl,
 } from "./api-client.js"
 
+// Auth manager
+import { initiateLogin, logout, restoreSession, getAuthHeaders } from "./auth-manager.js"
+
 // Temp directory for downloaded documents
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
@@ -143,7 +146,9 @@ async function downloadDocument(documentUrl: string): Promise<string> {
 
   logger.info(`[Download] Downloading document from: ${fullUrl}`)
 
-  const response = await fetch(fullUrl)
+  const response = await fetch(fullUrl, {
+    headers: getAuthHeaders(),
+  })
   if (!response.ok) {
     throw new Error(`Failed to download document: ${response.status} ${response.statusText}`)
   }
@@ -1310,12 +1315,14 @@ const MCP_CONFIG_PATH = path.join(import.meta.dirname, "..", "mcp-config.json")
 
 function createMcpConfigFile(): string {
   const mcpServerPath = getMcpServerPath()
+  // Use forward slashes for better cross-platform compatibility
+  const normalizedPath = mcpServerPath.replace(/\\/g, "/")
 
   const config = {
     mcpServers: {
       "job-applicator": {
         command: "node",
-        args: [mcpServerPath],
+        args: [normalizedPath],
         env: {
           JOB_APPLICATOR_URL: getToolServerUrl()
         }
@@ -1325,6 +1332,8 @@ function createMcpConfigFile(): string {
 
   fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2))
   logger.info(`[FillForm] Created MCP config at ${MCP_CONFIG_PATH}`)
+  logger.info(`[FillForm] MCP server command: node ${normalizedPath}`)
+  logger.info(`[FillForm] Tool server URL: ${getToolServerUrl()}`)
   return MCP_CONFIG_PATH
 }
 
@@ -1400,11 +1409,23 @@ ipcMain.handle(
     try {
       // Fast preflight: make sure the tool server is reachable before starting the agent
       try {
+        logger.info(`[FillForm] Checking tool server at ${getToolServerUrl()}`)
         await ensureToolServerReadyWithRestart()
+        logger.info(`[FillForm] Tool server is healthy`)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] Tool server health check failed: ${message}`)
-        return { success: false, message }
+        return { success: false, message: `Tool server not ready: ${message}. Try restarting the app.` }
+      }
+
+      // Verify MCP server exists
+      try {
+        const mcpPath = getMcpServerPath()
+        logger.info(`[FillForm] MCP server path: ${mcpPath}`)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] MCP server not found: ${message}`)
+        return { success: false, message: `MCP server not found: ${message}. Run 'npm run build'.` }
       }
 
       // Kill any existing process
@@ -1642,6 +1663,50 @@ ipcMain.handle("pause-agent", async (): Promise<{ success: boolean; message?: st
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`[FillForm] Failed to pause agent: ${message}`)
     return { success: false, message }
+  }
+})
+
+// ============================================================================
+// Auth IPC Handlers
+// ============================================================================
+
+// Login handler - opens OAuth popup
+ipcMain.handle("auth-login", async (): Promise<{
+  success: boolean
+  user?: { email: string; name?: string }
+  message?: string
+}> => {
+  try {
+    const result = await initiateLogin(mainWindow)
+    return { success: result.success, user: result.user, message: result.message }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[Auth] Login failed: ${message}`)
+    return { success: false, message }
+  }
+})
+
+// Logout handler
+ipcMain.handle("auth-logout", async (): Promise<{ success: boolean }> => {
+  try {
+    await logout()
+    return { success: true }
+  } catch (err) {
+    logger.error(`[Auth] Logout failed:`, err)
+    return { success: true } // Always clear local state even if API call fails
+  }
+})
+
+// Get current auth state
+ipcMain.handle("auth-get-user", async (): Promise<{
+  authenticated: boolean
+  user?: { email: string; name?: string }
+}> => {
+  try {
+    const user = await restoreSession()
+    return { authenticated: !!user, user: user || undefined }
+  } catch {
+    return { authenticated: false }
   }
 })
 
