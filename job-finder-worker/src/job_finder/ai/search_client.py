@@ -208,10 +208,12 @@ class FallbackSearchClient(SearchClient):
     def _get_available_clients(self, current_time: float) -> List[SearchClient]:
         """Get list of clients not on cooldown, in rotation order."""
         available = []
-        # Start from current rotation index
-        for i in range(len(self._clients)):
-            idx = (self._next_client_index + i) % len(self._clients)
-            client = self._clients[idx]
+        # Create a rotated list starting from the next client in rotation
+        rotated_clients = (
+            self._clients[self._next_client_index :] + self._clients[: self._next_client_index]
+        )
+
+        for client in rotated_clients:
             client_name = client.__class__.__name__
 
             # Skip clients on cooldown
@@ -304,7 +306,10 @@ class FallbackSearchClient(SearchClient):
                 status_code = getattr(getattr(e, "response", None), "status_code", None)
                 if status_code in (429, 432, 402, 403):
                     # Quota exceeded, rate limited, or payment required - cooldown
-                    self._failed_clients[client_name] = time.time()
+                    # Use _last_call_time for consistency (already recorded above)
+                    self._failed_clients[client_name] = self._last_call_time.get(
+                        client_name, time.time()
+                    )
                     logger.info(
                         f"Search provider {client_name} hit rate/quota limit, "
                         f"cooling down for {self._failure_cooldown_seconds}s"

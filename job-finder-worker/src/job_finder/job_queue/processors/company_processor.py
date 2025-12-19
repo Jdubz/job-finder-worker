@@ -671,6 +671,23 @@ class CompanyProcessor(BaseProcessor):
             logger.warning("Career page agent selection failed for %s: %s", company_name, exc)
             return None
 
+    def _extract_slug_from_path(self, path: str, delimiter: str) -> Optional[str]:
+        """Extract and clean slug from URL path after a delimiter.
+
+        Args:
+            path: URL path (without query params or fragments)
+            delimiter: Path segment to split on (e.g., "/boards/", "/postings/")
+
+        Returns:
+            Cleaned slug or None if not found
+        """
+        parts = path.split(delimiter)
+        if len(parts) < 2 or not parts[1]:
+            return None
+        # Get first path segment after delimiter, strip slashes
+        slug = parts[1].split("/")[0].strip("/")
+        return slug if slug else None
+
     def _probe_ats_for_career_page(
         self, company_name: str, website: Optional[str] = None
     ) -> Optional[str]:
@@ -687,76 +704,71 @@ class CompanyProcessor(BaseProcessor):
         Returns:
             Job board URL if found, None otherwise
         """
+        # ATS provider configurations: delimiter in API path -> public URL template
+        # Template uses {slug} placeholder
+        ats_configs = {
+            "greenhouse": ("/boards/", "https://job-boards.greenhouse.io/{slug}"),
+            "lever": ("/postings/", "https://jobs.lever.co/{slug}"),
+            "ashby": ("/job-board/", "https://jobs.ashbyhq.com/{slug}"),
+            "smartrecruiters": ("/companies/", "https://jobs.smartrecruiters.com/{slug}"),
+            "workable": ("/accounts/", "https://apply.workable.com/{slug}/"),
+        }
+        # Subdomain-based ATS providers: extract slug from hostname
+        subdomain_ats = {
+            "recruitee": "https://{slug}.recruitee.com/",
+            "breezy": "https://{slug}.breezy.hr/",
+        }
+
         try:
             result = probe_all_ats_providers_detailed(
                 company_name=company_name,
                 url=website,
             )
 
-            if result.best_result and result.best_result.found:
-                # Build the job board URL based on the ATS provider
-                ats = result.best_result.ats_provider
-                api_url = result.best_result.api_url or ""
-
-                # Convert API URL to public job board URL
-                if ats == "greenhouse" and "boards-api.greenhouse.io" in api_url:
-                    # Extract slug from API URL
-                    # https://boards-api.greenhouse.io/v1/boards/{slug}/jobs
-                    parts = api_url.split("/boards/")
-                    if len(parts) > 1:
-                        slug = parts[1].split("/")[0]
-                        return f"https://job-boards.greenhouse.io/{slug}"
-                elif ats == "lever":
-                    parts = api_url.split("/postings/")
-                    if len(parts) > 1:
-                        slug = parts[1].split("?")[0]
-                        return f"https://jobs.lever.co/{slug}"
-                elif ats == "ashby":
-                    parts = api_url.split("/job-board/")
-                    if len(parts) > 1:
-                        slug = parts[1]
-                        return f"https://jobs.ashbyhq.com/{slug}"
-                elif ats == "workday":
-                    # Workday API URL pattern:
-                    # https://{slug}.wd{N}.myworkdayjobs.com/wday/cxs/{slug}/{board}/jobs
-                    # Convert to public URL: https://{slug}.wd{N}.myworkdayjobs.com/{board}
-                    config = result.best_result.config or {}
-                    base_url = config.get("base_url")
-                    if base_url:
-                        return base_url
-                elif ats == "smartrecruiters":
-                    parts = api_url.split("/companies/")
-                    if len(parts) > 1:
-                        slug = parts[1].split("/")[0]
-                        return f"https://jobs.smartrecruiters.com/{slug}"
-                elif ats == "recruitee":
-                    parts = api_url.split("://")
-                    if len(parts) > 1:
-                        host = parts[1].split("/")[0]
-                        slug = host.split(".")[0]
-                        return f"https://{slug}.recruitee.com/"
-                elif ats == "breezy":
-                    parts = api_url.split("://")
-                    if len(parts) > 1:
-                        host = parts[1].split("/")[0]
-                        slug = host.split(".")[0]
-                        return f"https://{slug}.breezy.hr/"
-                elif ats == "workable":
-                    parts = api_url.split("/accounts/")
-                    if len(parts) > 1:
-                        slug = parts[1]
-                        return f"https://apply.workable.com/{slug}/"
-
-                # Fallback: use the API URL itself (better than nothing)
-                logger.debug(
-                    "ATS probe found %s for %s but couldn't build public URL from %s",
-                    ats,
-                    company_name,
-                    api_url,
-                )
+            if not (result.best_result and result.best_result.found):
                 return None
 
+            ats = result.best_result.ats_provider
+            api_url = result.best_result.api_url or ""
+
+            # Parse URL to properly handle query params and fragments
+            parsed = urlparse(api_url)
+            path = parsed.path or ""
+
+            # Handle workday specially - uses config base_url
+            if ats == "workday":
+                config = result.best_result.config or {}
+                base_url = config.get("base_url")
+                if base_url:
+                    return base_url
+                return None
+
+            # Handle path-based ATS providers
+            if ats in ats_configs:
+                delimiter, url_template = ats_configs[ats]
+                # Check if delimiter is in the path (not query string)
+                if delimiter in path:
+                    slug = self._extract_slug_from_path(path, delimiter)
+                    if slug:
+                        return url_template.format(slug=slug)
+
+            # Handle subdomain-based ATS providers
+            if ats in subdomain_ats:
+                hostname = parsed.netloc or ""
+                if "." in hostname:
+                    slug = hostname.split(".")[0]
+                    if slug:
+                        return subdomain_ats[ats].format(slug=slug)
+
+            # Fallback: couldn't build public URL
+            logger.debug(
+                "ATS probe found %s for %s but couldn't build public URL from %s",
+                ats,
+                company_name,
+                api_url,
+            )
             return None
+
         except Exception as exc:  # noqa: BLE001
             logger.debug("ATS probing failed for %s: %s", company_name, exc)
             return None
