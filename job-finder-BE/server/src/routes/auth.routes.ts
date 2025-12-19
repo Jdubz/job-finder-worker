@@ -54,10 +54,13 @@ function clearSessionCookie(res: Response) {
   })
 }
 
-function createSession(userId: string): string {
+function createSession(userId: string, req: Request): string {
   const token = randomUUID()
-  const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  userRepository.saveSession(userId, token, expires.toISOString())
+  const expiresAtMs = Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000
+  const userAgent = req.headers['user-agent']
+  const ipAddress = req.ip || req.socket.remoteAddress
+
+  userRepository.createSession(userId, token, expiresAtMs, userAgent, ipAddress)
   return token
 }
 
@@ -97,7 +100,7 @@ export function buildAuthRouter() {
           devConfig.roles
         )
 
-        const sessionToken = createSession(user.id)
+        const sessionToken = createSession(user.id, req)
         setSessionCookie(res, sessionToken)
         userRepository.touchLastLogin(user.id)
 
@@ -135,7 +138,7 @@ export function buildAuthRouter() {
         roles
       )
 
-      const sessionToken = createSession(user.id)
+      const sessionToken = createSession(user.id, req)
       setSessionCookie(res, sessionToken)
       userRepository.touchLastLogin(user.id)
 
@@ -171,17 +174,11 @@ export function buildAuthRouter() {
         throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'No session cookie', { status: 401 })
       }
 
+      // findBySessionToken handles expiry check and cleanup
       const user = userRepository.findBySessionToken(sessionToken)
       if (!user) {
         clearSessionCookie(res)
-        throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid session', { status: 401 })
-      }
-
-      const expiryMs = user.sessionExpiresAtMs ?? (user.sessionExpiresAt ? Date.parse(user.sessionExpiresAt) : 0)
-      if (expiryMs <= Date.now()) {
-        clearSessionCookie(res)
-        userRepository.clearSession(user.id)
-        throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Session expired', { status: 401 })
+        throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid or expired session', { status: 401 })
       }
 
       userRepository.touchLastLogin(user.id)
@@ -204,18 +201,17 @@ export function buildAuthRouter() {
 
   /**
    * POST /auth/logout
-   * Clear session cookie and invalidate server-side session.
+   * Clear session cookie and invalidate the current session only.
+   * Other sessions (e.g., on other devices) remain active.
    */
   router.post('/logout', (req, res) => {
     const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
     const sessionToken = cookies[SESSION_COOKIE]
 
     if (sessionToken) {
-      const user = userRepository.findBySessionToken(sessionToken)
-      if (user) {
-        userRepository.clearSession(user.id)
-        logger.info({ email: user.email }, 'User logged out')
-      }
+      // Only delete the specific session, not all user sessions
+      userRepository.deleteSessionByToken(sessionToken)
+      logger.info('Session logged out')
     }
 
     clearSessionCookie(res)

@@ -169,23 +169,12 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     )
   }
 
+  // findBySessionToken handles expiry check and cleanup for both new and legacy sessions
   const sessionUser = userRepository.findBySessionToken(sessionToken)
   if (!sessionUser) {
     clearSessionCookie(res)
     return next(
-      new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid session', { status: 401 })
-    )
-  }
-
-  const expiryMs =
-    sessionUser.sessionExpiresAtMs ??
-    (sessionUser.sessionExpiresAt ? Date.parse(sessionUser.sessionExpiresAt) : 0)
-
-  if (expiryMs <= Date.now()) {
-    clearSessionCookie(res)
-    userRepository.clearSession(sessionUser.id)
-    return next(
-      new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Session expired', { status: 401 })
+      new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid or expired session', { status: 401 })
     )
   }
 

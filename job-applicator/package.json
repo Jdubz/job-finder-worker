@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@shared/types": "*",
+    "electron-store": "^11.0.2",
     "playwright-core": "^1.47.2"
   },
   "devDependencies": {

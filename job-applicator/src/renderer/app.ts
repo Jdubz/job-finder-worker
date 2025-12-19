@@ -247,6 +247,14 @@ interface ElectronAPI {
     error: (...args: unknown[]) => void
     debug: (...args: unknown[]) => void
   }
+
+  // Authentication
+  auth: {
+    login: () => Promise<{ success: boolean; user?: { email: string; name?: string }; message?: string }>
+    logout: () => Promise<{ success: boolean }>
+    getUser: () => Promise<{ authenticated: boolean; user?: { email: string; name?: string } }>
+  }
+
   navigate: (url: string) => Promise<{ success: boolean; message?: string }>
   getUrl: () => Promise<string>
   goBack: () => Promise<{ success: boolean; canGoBack: boolean; message?: string }>
@@ -358,6 +366,7 @@ log.info("electronAPI found")
 const api = window.electronAPI
 
 // State
+let _currentUser: { email: string; name?: string } | null = null
 let selectedJobMatchId: string | null = null
 let selectedResumeId: string | null = null
 let selectedCoverLetterId: string | null = null
@@ -381,6 +390,13 @@ function getElement<T extends HTMLElement>(id: string): T {
   }
   return el as T
 }
+
+// DOM elements - Auth
+const authUser = getElement<HTMLDivElement>("authUser")
+const authLogin = getElement<HTMLDivElement>("authLogin")
+const userEmail = getElement<HTMLSpanElement>("userEmail")
+const loginBtn = getElement<HTMLButtonElement>("loginBtn")
+const logoutBtn = getElement<HTMLButtonElement>("logoutBtn")
 
 // DOM elements - Toolbar
 const backBtn = getElement<HTMLButtonElement>("backBtn")
@@ -469,6 +485,75 @@ function setWorkflowStep(step: WorkflowStep, state: "pending" | "active" | "comp
   updateWorkflowProgress()
 }
 
+
+// ============================================================================
+// Authentication
+// ============================================================================
+
+// Update auth UI based on state
+function updateAuthUI(user: { email: string; name?: string } | null) {
+  _currentUser = user
+  if (user) {
+    authUser.classList.remove("hidden")
+    authLogin.classList.add("hidden")
+    userEmail.textContent = user.name || user.email
+    setStatus(`Signed in as ${user.email}`, "success")
+  } else {
+    authUser.classList.add("hidden")
+    authLogin.classList.remove("hidden")
+    setStatus("Sign in to continue", "")
+  }
+}
+
+// Login handler
+async function handleLogin() {
+  loginBtn.disabled = true
+  setStatus("Signing in...", "loading")
+
+  try {
+    const result = await api.auth.login()
+    if (result.success && result.user) {
+      updateAuthUI(result.user)
+      // Load job matches after successful login
+      await loadJobMatches()
+    } else {
+      setStatus(result.message || "Login failed", "error")
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    setStatus(`Login failed: ${message}`, "error")
+  } finally {
+    loginBtn.disabled = false
+  }
+}
+
+// Logout handler
+async function handleLogout() {
+  logoutBtn.disabled = true
+  setStatus("Signing out...", "loading")
+
+  try {
+    await api.auth.logout()
+    updateAuthUI(null)
+    // Clear job matches on logout
+    jobMatches = []
+    renderJobSelect()
+  } catch (err) {
+    // Log error but still clear local state (user is effectively logged out locally)
+    const message = err instanceof Error ? err.message : String(err)
+    log.error("Logout API call failed:", message)
+    // Still update UI to logged out state
+    updateAuthUI(null)
+    jobMatches = []
+    renderJobSelect()
+  } finally {
+    logoutBtn.disabled = false
+  }
+}
+
+// ============================================================================
+// Job Matches
+// ============================================================================
 
 // Load job matches from backend
 // Returns true on success, false on failure
@@ -1326,6 +1411,10 @@ function escapeAttr(str: string): string {
 
 // Initialize application when DOM is ready
 function initializeApp() {
+  // Event listeners - Auth
+  loginBtn.addEventListener("click", handleLogin)
+  logoutBtn.addEventListener("click", handleLogout)
+
   // Event listeners - Toolbar
   backBtn.addEventListener("click", goBack)
   goBtn.addEventListener("click", navigate)
@@ -1394,7 +1483,7 @@ function initializeApp() {
 
 // Initialize
 async function init() {
-  setStatus("Ready")
+  setStatus("Checking authentication...", "loading")
 
   // Initialize workflow progress
   updateWorkflowProgress()
@@ -1402,8 +1491,20 @@ async function init() {
   // Initialize upload button state
   updateUploadButtonsState()
 
-  // Load job matches on startup (sidebar is always visible)
-  await loadJobMatches()
+  // Check auth state on startup
+  try {
+    const authState = await api.auth.getUser()
+    if (authState.authenticated && authState.user) {
+      updateAuthUI(authState.user)
+      // Load job matches only if authenticated
+      await loadJobMatches()
+    } else {
+      updateAuthUI(null)
+    }
+  } catch (err) {
+    log.warn("Failed to check auth state:", err)
+    updateAuthUI(null)
+  }
 }
 
 // Cleanup on page unload to prevent memory leaks

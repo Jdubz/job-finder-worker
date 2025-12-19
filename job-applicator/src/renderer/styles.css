@@ -172,6 +172,89 @@ select:focus {
   margin-bottom: 20px;
 }
 
+/* Auth Section */
+.auth-section {
+  border-bottom: 1px solid #0f3460;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.auth-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.user-email {
+  font-size: 13px;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-login {
+  width: 100%;
+  padding: 10px 16px;
+  background: #e94560;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-login:hover:not(:disabled) {
+  background: #ff6b6b;
+}
+
+.btn-login:focus {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.btn-login:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-logout {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid #6b7280;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #9ca3af;
+  transition: all 0.2s;
+}
+
+.btn-logout:hover {
+  background: #374151;
+  border-color: #9ca3af;
+  color: #eee;
+}
+
+.btn-logout:focus {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.auth-message {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
 .section-header {
   display: flex;
   align-items: center;

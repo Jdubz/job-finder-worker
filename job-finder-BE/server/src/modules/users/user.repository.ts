@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { getDb } from "../../db/sqlite"
 
 export type UserRole = string
@@ -13,9 +13,21 @@ export interface UserRecord {
   createdAt: string
   updatedAt: string
   lastLoginAt?: string
+  // Legacy fields - kept for backward compatibility
   sessionToken?: string | null
   sessionExpiresAt?: string | null
   sessionExpiresAtMs?: number | null
+}
+
+export interface SessionRecord {
+  id: string
+  userId: string
+  tokenHash: string
+  expiresAtMs: number
+  createdAt: string
+  lastUsedAt: string
+  userAgent?: string
+  ipAddress?: string
 }
 
 type UserRow = {
@@ -30,6 +42,30 @@ type UserRow = {
   session_token: string | null
   session_expires_at: string | null
   session_expires_at_ms: number | null
+}
+
+type SessionRow = {
+  id: string
+  user_id: string
+  token_hash: string
+  expires_at_ms: number
+  created_at: string
+  last_used_at: string
+  user_agent: string | null
+  ip_address: string | null
+}
+
+function mapSessionRow(row: SessionRow): SessionRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    tokenHash: row.token_hash,
+    expiresAtMs: row.expires_at_ms,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+    userAgent: row.user_agent ?? undefined,
+    ipAddress: row.ip_address ?? undefined,
+  }
 }
 
 function parseRoles(value: string | null): UserRole[] {
@@ -136,6 +172,153 @@ export class UserRepository {
     return this.findByEmail(email) as UserRecord
   }
 
+  // ============================================================================
+  // Multi-session support (new user_sessions table)
+  // ============================================================================
+
+  /**
+   * Create a new session for a user (supports multiple concurrent sessions)
+   */
+  createSession(
+    userId: string,
+    token: string,
+    expiresAtMs: number,
+    userAgent?: string,
+    ipAddress?: string
+  ): SessionRecord {
+    const id = randomUUID()
+    const hashed = this.hashToken(token)
+    const now = new Date().toISOString()
+
+    this.db
+      .prepare(
+        `INSERT INTO user_sessions (id, user_id, token_hash, expires_at_ms, created_at, last_used_at, user_agent, ip_address)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, userId, hashed, expiresAtMs, now, now, userAgent ?? null, ipAddress ?? null)
+
+    return {
+      id,
+      userId,
+      tokenHash: hashed,
+      expiresAtMs,
+      createdAt: now,
+      lastUsedAt: now,
+      userAgent,
+      ipAddress,
+    }
+  }
+
+  /**
+   * Find user by session token (checks new user_sessions table first, falls back to legacy)
+   */
+  findBySessionToken(token: string): UserRecord | null {
+    const hashed = this.hashToken(token)
+
+    // Try new user_sessions table first
+    const sessionRow = this.db
+      .prepare(
+        `SELECT s.user_id, s.expires_at_ms
+         FROM user_sessions s
+         WHERE s.token_hash = ?`
+      )
+      .get(hashed) as { user_id: string; expires_at_ms: number } | undefined
+
+    if (sessionRow) {
+      // Check if session is expired
+      if (sessionRow.expires_at_ms < Date.now()) {
+        // Clean up expired session
+        this.db.prepare("DELETE FROM user_sessions WHERE token_hash = ?").run(hashed)
+        return null
+      }
+
+      // Update last_used_at
+      this.db
+        .prepare("UPDATE user_sessions SET last_used_at = datetime('now') WHERE token_hash = ?")
+        .run(hashed)
+
+      // Fetch user record
+      const userRow = this.db
+        .prepare(
+          `SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at,
+                  session_token, session_expires_at, session_expires_at_ms
+           FROM users WHERE id = ?`
+        )
+        .get(sessionRow.user_id) as UserRow | undefined
+
+      if (!userRow) return null
+      return mapRow(userRow)
+    }
+
+    // Fallback to legacy session in users table (for backward compatibility)
+    const row = this.db
+      .prepare(
+        `SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at,
+                session_token, session_expires_at, session_expires_at_ms
+         FROM users WHERE session_token = ?`
+      )
+      .get(hashed) as UserRow | undefined
+
+    if (!row) return null
+
+    // Expiry check for legacy sessions (same as user_sessions.expires_at_ms check)
+    const expiryMs =
+      row.session_expires_at_ms ?? (row.session_expires_at ? Date.parse(row.session_expires_at) : 0)
+    if (expiryMs > 0 && expiryMs <= Date.now()) {
+      // Clean up expired legacy session
+      this.clearSession(row.id)
+      return null
+    }
+
+    return mapRow(row)
+  }
+
+  /**
+   * Delete a specific session by token
+   */
+  deleteSessionByToken(token: string): void {
+    const hashed = this.hashToken(token)
+    this.db.prepare("DELETE FROM user_sessions WHERE token_hash = ?").run(hashed)
+  }
+
+  /**
+   * Delete all sessions for a user
+   */
+  deleteAllUserSessions(userId: string): void {
+    this.db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId)
+  }
+
+  /**
+   * Get all active sessions for a user
+   */
+  getUserSessions(userId: string): SessionRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, user_id, token_hash, expires_at_ms, created_at, last_used_at, user_agent, ip_address
+         FROM user_sessions
+         WHERE user_id = ? AND expires_at_ms > ?
+         ORDER BY last_used_at DESC`
+      )
+      .all(userId, Date.now()) as SessionRow[]
+
+    return rows.map(mapSessionRow)
+  }
+
+  /**
+   * Clean up expired sessions (can be called periodically)
+   */
+  cleanupExpiredSessions(): number {
+    const result = this.db
+      .prepare("DELETE FROM user_sessions WHERE expires_at_ms < ?")
+      .run(Date.now())
+    return result.changes
+  }
+
+  // ============================================================================
+  // Legacy session methods (kept for backward compatibility)
+  // ============================================================================
+
+  /** @deprecated Use createSession instead */
   saveSession(userId: string, token: string, expiresAt: string): void {
     const hashed = this.hashToken(token)
     this.db
@@ -145,22 +328,12 @@ export class UserRepository {
       .run(hashed, expiresAt, Date.parse(expiresAt), userId)
   }
 
+  /** @deprecated Use deleteSessionByToken or deleteAllUserSessions instead */
   clearSession(userId: string): void {
     this.db
       .prepare(
         "UPDATE users SET session_token = NULL, session_expires_at = NULL, session_expires_at_ms = NULL, updated_at = datetime('now') WHERE id = ?"
       )
       .run(userId)
-  }
-
-  findBySessionToken(token: string): UserRecord | null {
-    const hashed = this.hashToken(token)
-    const row = this.db
-      .prepare(
-        "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms FROM users WHERE session_token = ?"
-      )
-      .get(hashed) as UserRow | undefined
-    if (!row) return null
-    return mapRow(row)
   }
 }

@@ -22,6 +22,7 @@ import type {
 } from "@shared/types"
 import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
+import { getAuthHeaders } from "./auth-manager.js"
 
 // Configuration from environment - use getter to read lazily after .env is loaded
 // This MUST be a function, not a const, because ES module imports are hoisted
@@ -34,11 +35,18 @@ function getApiUrl(): string {
 export { getApiUrl as API_URL_GETTER }
 
 /**
- * Helper to create fetch options with JSON content type
+ * Helper to create fetch options with JSON content type and auth headers
  */
 function fetchOptions(options: RequestInit = {}): RequestInit {
   const headers = new Headers(options.headers)
   headers.set("Content-Type", "application/json")
+
+  // Add auth headers if available
+  const authHeaders = getAuthHeaders()
+  for (const [key, value] of Object.entries(authHeaders)) {
+    headers.set(key, value)
+  }
+
   return { ...options, headers }
 }
 

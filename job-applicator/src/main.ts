@@ -96,6 +96,9 @@ import {
   getApiUrl,
 } from "./api-client.js"
 
+// Auth manager
+import { initiateLogin, logout, restoreSession, getAuthHeaders } from "./auth-manager.js"
+
 // Temp directory for downloaded documents
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
@@ -143,7 +146,9 @@ async function downloadDocument(documentUrl: string): Promise<string> {
 
   logger.info(`[Download] Downloading document from: ${fullUrl}`)
 
-  const response = await fetch(fullUrl)
+  const response = await fetch(fullUrl, {
+    headers: getAuthHeaders(),
+  })
   if (!response.ok) {
     throw new Error(`Failed to download document: ${response.status} ${response.statusText}`)
   }
@@ -1310,12 +1315,16 @@ const MCP_CONFIG_PATH = path.join(import.meta.dirname, "..", "mcp-config.json")
 
 function createMcpConfigFile(): string {
   const mcpServerPath = getMcpServerPath()
+  // Use forward slashes for better cross-platform compatibility
+  const normalizedPath = mcpServerPath.replace(/\\/g, "/")
 
+  // On Windows, use node directly - windowsHide should be handled by Claude CLI
+  // On other platforms, use node normally
   const config = {
     mcpServers: {
       "job-applicator": {
         command: "node",
-        args: [mcpServerPath],
+        args: [normalizedPath],
         env: {
           JOB_APPLICATOR_URL: getToolServerUrl()
         }
@@ -1323,8 +1332,18 @@ function createMcpConfigFile(): string {
     }
   }
 
-  fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2))
+  const configJson = JSON.stringify(config, null, 2)
+  fs.writeFileSync(MCP_CONFIG_PATH, configJson)
   logger.info(`[FillForm] Created MCP config at ${MCP_CONFIG_PATH}`)
+  logger.info(`[FillForm] MCP config contents:\n${configJson}`)
+  logger.info(`[FillForm] Tool server URL: ${getToolServerUrl()}`)
+
+  // Verify the file was written correctly
+  const written = fs.readFileSync(MCP_CONFIG_PATH, 'utf-8')
+  if (written !== configJson) {
+    logger.error(`[FillForm] MCP config file mismatch! Expected ${configJson.length} chars, got ${written.length}`)
+  }
+
   return MCP_CONFIG_PATH
 }
 
@@ -1391,20 +1410,43 @@ async function ensureToolServerReadyWithRestart(): Promise<void> {
 /**
  * Fill form using Claude CLI with MCP tools
  */
+let fillFormInProgress = false
+
 ipcMain.handle(
   "fill-form",
   async (
     _event: IpcMainInvokeEvent,
     options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }
   ): Promise<{ success: boolean; message?: string }> => {
+    // Prevent multiple simultaneous fill-form calls
+    if (fillFormInProgress) {
+      logger.warn(`[FillForm] Ignoring duplicate call - fill already in progress`)
+      return { success: false, message: "Form fill already in progress" }
+    }
+    fillFormInProgress = true
+
     try {
       // Fast preflight: make sure the tool server is reachable before starting the agent
       try {
+        logger.info(`[FillForm] Checking tool server at ${getToolServerUrl()}`)
         await ensureToolServerReadyWithRestart()
+        logger.info(`[FillForm] Tool server is healthy`)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] Tool server health check failed: ${message}`)
-        return { success: false, message }
+        fillFormInProgress = false
+        return { success: false, message: `Tool server not ready: ${message}. Try restarting the app.` }
+      }
+
+      // Verify MCP server exists
+      try {
+        const mcpPath = getMcpServerPath()
+        logger.info(`[FillForm] MCP server path: ${mcpPath}`)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] MCP server not found: ${message}`)
+        fillFormInProgress = false
+        return { success: false, message: `MCP server not found: ${message}. Run 'npm run build'.` }
       }
 
       // Kill any existing process
@@ -1505,17 +1547,24 @@ ipcMain.handle(
 
       // Spawn Claude CLI with MCP server configured
       // Use stdin for prompt to avoid command line length limits
+      // --strict-mcp-config ensures ONLY our MCP server is used (ignores system configs)
+      // --debug shows MCP connection details for troubleshooting
       const spawnArgs = [
         "--print",
         "--dangerously-skip-permissions",
         "--mcp-config",
         mcpConfigPath,
+        "--strict-mcp-config",
+        "--debug",
       ]
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
-      // Use detached: true to create a new process group, allowing us to kill the entire tree
-      // on termination (electronmon restarts, etc.). stdio: "pipe" is default but explicit here.
+      // Platform-specific spawn options:
+      // - Windows: shell:true + windowsHide:true hides console; detached:false avoids visible window
+      // - Unix: detached:true enables process group killing via negative PID (-pid)
+      const isWindows = process.platform === "win32"
       activeClaudeProcess = spawn("claude", spawnArgs, {
-        detached: true,
+        detached: !isWindows,
+        shell: isWindows,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       })
@@ -1551,6 +1600,7 @@ ipcMain.handle(
       activeClaudeProcess.on("close", (code: number | null) => {
         logger.info(`[FillForm] Claude CLI exited with code ${code}`)
         activeClaudeProcess = null
+        fillFormInProgress = false
         clearJobContext()
         setCompletionCallback(null)
         setToolStatusCallback(null)
@@ -1562,6 +1612,7 @@ ipcMain.handle(
       activeClaudeProcess.on("error", (err: Error) => {
         logger.error(`[FillForm] Claude CLI error: ${err.message}`)
         activeClaudeProcess = null
+        fillFormInProgress = false
         clearJobContext()
         setCompletionCallback(null)
         setToolStatusCallback(null)
@@ -1642,6 +1693,50 @@ ipcMain.handle("pause-agent", async (): Promise<{ success: boolean; message?: st
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`[FillForm] Failed to pause agent: ${message}`)
     return { success: false, message }
+  }
+})
+
+// ============================================================================
+// Auth IPC Handlers
+// ============================================================================
+
+// Login handler - opens OAuth popup
+ipcMain.handle("auth-login", async (): Promise<{
+  success: boolean
+  user?: { email: string; name?: string }
+  message?: string
+}> => {
+  try {
+    const result = await initiateLogin(mainWindow)
+    return { success: result.success, user: result.user, message: result.message }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[Auth] Login failed: ${message}`)
+    return { success: false, message }
+  }
+})
+
+// Logout handler
+ipcMain.handle("auth-logout", async (): Promise<{ success: boolean }> => {
+  try {
+    await logout()
+    return { success: true }
+  } catch (err) {
+    logger.error(`[Auth] Logout failed:`, err)
+    return { success: true } // Always clear local state even if API call fails
+  }
+})
+
+// Get current auth state
+ipcMain.handle("auth-get-user", async (): Promise<{
+  authenticated: boolean
+  user?: { email: string; name?: string }
+}> => {
+  try {
+    const user = await restoreSession()
+    return { authenticated: !!user, user: user || undefined }
+  } catch {
+    return { authenticated: false }
   }
 })
 

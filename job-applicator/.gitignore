@@ -1,3 +1,7 @@
+# Environment (local config)
+.env
+.env.local
+
 # Build output
 dist/
 
