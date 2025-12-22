@@ -425,7 +425,7 @@ export async function submitDocumentReview(
     throw new Error(`Failed to submit review: ${errorMsg}`)
   }
 
-  const data: ApiSuccessResponse<GenerationStepResponse & { success: boolean }> = await res.json()
+  const data: ApiSuccessResponse<GenerationStepResponse> = await res.json()
   return data.data
 }
 

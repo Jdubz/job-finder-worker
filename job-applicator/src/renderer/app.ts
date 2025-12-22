@@ -1062,7 +1062,8 @@ function collectResumeContent(original: ResumeContent): ResumeContent {
   const experience = original.experience.map((exp, expIndex) => {
     const highlightEls = document.querySelectorAll(`textarea[data-exp="${expIndex}"]`) as NodeListOf<HTMLTextAreaElement>
     const highlights = Array.from(highlightEls).map((el) => el.value.trim()).filter(Boolean)
-    return { ...exp, highlights: highlights.length > 0 ? highlights : exp.highlights }
+    // Always use collected highlights, even if empty (allows user to clear all)
+    return { ...exp, highlights }
   })
 
   return {
@@ -1090,10 +1091,11 @@ function collectCoverLetterContent(original: CoverLetterContent): CoverLetterCon
     bodyEl = document.getElementById(`review-body-${i}`) as HTMLTextAreaElement
   }
 
+  // Always use collected paragraphs, even if empty (allows user to clear all)
   return {
     greeting,
     openingParagraph,
-    bodyParagraphs: bodyParagraphs.length > 0 ? bodyParagraphs : original.bodyParagraphs,
+    bodyParagraphs,
     closingParagraph,
     signature,
   }
