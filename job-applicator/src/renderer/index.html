@@ -121,6 +121,20 @@
           <div class="generation-progress hidden" id="generationProgress">
             <div class="generation-steps" id="generationSteps"></div>
           </div>
+          <!-- Document Review Form -->
+          <div class="document-review hidden" id="documentReview">
+            <div class="review-header">
+              <h4 class="review-title" id="reviewTitle">Review Resume</h4>
+              <p class="review-subtitle">Edit the AI-generated content below before finalizing.</p>
+            </div>
+            <div class="review-content" id="reviewContent">
+              <!-- Content populated dynamically -->
+            </div>
+            <div class="review-actions">
+              <button class="btn-approve" id="approveReviewBtn">Approve & Continue</button>
+              <button class="btn-cancel-review" id="cancelReviewBtn">Cancel</button>
+            </div>
+          </div>
           <!-- Upload Actions (enabled when file input detected and document selected) -->
           <div class="upload-actions" id="uploadActions">
             <div class="upload-status" id="uploadStatus">

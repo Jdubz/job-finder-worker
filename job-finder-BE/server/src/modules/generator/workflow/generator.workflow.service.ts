@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import type { Logger } from 'pino'
-import type { ResumeContent, CoverLetterContent, PersonalInfo, JobMatchWithListing } from '@shared/types'
+import type {
+  ResumeContent,
+  CoverLetterContent,
+  PersonalInfo,
+  JobMatchWithListing,
+  DraftContentResponse,
+  ReviewDocumentType
+} from '@shared/types'
 import { logger } from '../../../logger'
 import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
@@ -47,6 +54,8 @@ export interface GenerateDocumentPayload {
   jobMatchId?: string
 }
 
+// Using DraftContentResponse from @shared/types
+
 export class GeneratorWorkflowService {
   private readonly userFriendlyError =
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
@@ -62,6 +71,93 @@ export class GeneratorWorkflowService {
     private readonly log: Logger = logger
   ) {
     this.agentManager = new AgentManager(this.configRepo, this.log)
+  }
+
+  /**
+   * Get draft content for review.
+   * Returns the content waiting for user review along with its type.
+   */
+  getDraftContent(requestId: string): DraftContentResponse | null {
+    const request = this.workflowRepo.getRequest(requestId)
+    if (!request || request.status !== 'awaiting_review') {
+      return null
+    }
+
+    // Determine which document type is awaiting review based on steps
+    const steps = request.steps ?? []
+    const reviewResumeStep = steps.find((s) => s.id === 'review-resume')
+    const reviewCoverLetterStep = steps.find((s) => s.id === 'review-cover-letter')
+    const renderPdfStep = steps.find((s) => s.id === 'render-pdf')
+
+    // If review-resume is completed but render-pdf hasn't started, we're reviewing resume
+    // If review-cover-letter is completed but render-pdf hasn't started, we're reviewing cover letter
+    // Check which review step was most recently completed
+    if (reviewCoverLetterStep?.status === 'completed' && renderPdfStep?.status === 'pending') {
+      const content = request.intermediateResults?.coverLetterContent
+      if (content) {
+        return {
+          requestId,
+          documentType: 'coverLetter',
+          content,
+          status: 'awaiting_review'
+        }
+      }
+    }
+
+    if (reviewResumeStep?.status === 'completed') {
+      // Check if we're still waiting for resume review (cover letter step pending or not exists)
+      const generateCoverLetterStep = steps.find((s) => s.id === 'generate-cover-letter')
+      if (!generateCoverLetterStep || generateCoverLetterStep.status === 'pending') {
+        const content = request.intermediateResults?.resumeContent
+        if (content) {
+          return {
+            requestId,
+            documentType: 'resume',
+            content,
+            status: 'awaiting_review'
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Submit reviewed/edited content and continue the workflow.
+   * Returns the next step result.
+   */
+  async submitReview(
+    requestId: string,
+    documentType: ReviewDocumentType,
+    content: ResumeContent | CoverLetterContent
+  ): Promise<StepExecutionResult | null> {
+    const request = this.workflowRepo.getRequest(requestId)
+    if (!request || request.status !== 'awaiting_review') {
+      return null
+    }
+
+    // Update the intermediate results with the edited content
+    if (documentType === 'resume') {
+      this.workflowRepo.updateRequest(requestId, {
+        status: 'processing',
+        intermediateResults: {
+          ...request.intermediateResults,
+          resumeContent: content as ResumeContent
+        }
+      })
+    } else {
+      this.workflowRepo.updateRequest(requestId, {
+        status: 'processing',
+        intermediateResults: {
+          ...request.intermediateResults,
+          coverLetterContent: content as CoverLetterContent
+        }
+      })
+    }
+
+    // Continue to the next step
+    return this.runNextStep(requestId)
   }
 
   private async ensureProviderAvailable(): Promise<void> {
@@ -149,8 +245,8 @@ export class GeneratorWorkflowService {
         request.status,
         steps,
         async () => {
-          const url = await this.generateResume(payload, requestId, personalInfo)
-          return { urlField: 'resumeUrl' as const, url }
+          await this.generateResumeContent(payload, requestId, personalInfo)
+          // No URL yet - content is stored for review
         },
         'Resume generation'
       )
@@ -163,28 +259,61 @@ export class GeneratorWorkflowService {
         request.status,
         steps,
         async () => {
-          const url = await this.generateCoverLetter(payload, requestId, personalInfo)
-          return { urlField: 'coverLetterUrl' as const, url }
+          await this.generateCoverLetterContent(payload, requestId, personalInfo)
+          // No URL yet - content is stored for review
         },
         'Cover letter generation'
       )
     }
 
-    // render-pdf step: PDF rendering is done within generateResume/generateCoverLetter,
-    // so just mark this step complete and finalize the request
-    if (pendingStep.id === 'render-pdf') {
-      const updated = completeStep(startStep(steps, 'render-pdf'), 'render-pdf', 'completed')
-      this.workflowRepo.updateRequest(requestId, { status: 'completed', steps: updated })
+    // Review steps: pause workflow and wait for user to review/edit content
+    if (pendingStep.id === 'review-resume' || pendingStep.id === 'review-cover-letter') {
+      const updated = completeStep(startStep(steps, pendingStep.id), pendingStep.id, 'completed')
+      this.workflowRepo.updateRequest(requestId, { status: 'awaiting_review', steps: updated })
       const finalRequest = this.workflowRepo.getRequest(requestId)
       return {
         requestId,
-        status: 'completed',
+        status: 'awaiting_review',
         steps: updated,
-        nextStep: undefined,
+        nextStep: steps.find((s) => s.status === 'pending' && s.id !== pendingStep.id)?.id,
+        stepCompleted: pendingStep.id,
         resumeUrl: finalRequest?.resumeUrl ?? undefined,
-        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined,
-        stepCompleted: 'render-pdf'
+        coverLetterUrl: finalRequest?.coverLetterUrl ?? undefined
       }
+    }
+
+    // render-pdf step: Render PDFs from intermediateResults content
+    if (pendingStep.id === 'render-pdf') {
+      return this.executeStep(
+        'render-pdf',
+        requestId,
+        request.status,
+        steps,
+        async () => {
+          let resumeUrl: string | undefined
+          let coverLetterUrl: string | undefined
+
+          // Render resume if content exists
+          if (request.intermediateResults?.resumeContent) {
+            resumeUrl = await this.renderResumePdf(payload, requestId, personalInfo)
+            this.workflowRepo.updateRequest(requestId, { resumeUrl })
+          }
+
+          // Render cover letter if content exists
+          if (request.intermediateResults?.coverLetterContent) {
+            coverLetterUrl = await this.renderCoverLetterPdf(payload, requestId, personalInfo)
+            this.workflowRepo.updateRequest(requestId, { coverLetterUrl })
+          }
+
+          // Return URLs (the executeStep will handle updating the request)
+          return resumeUrl
+            ? { urlField: 'resumeUrl' as const, url: resumeUrl }
+            : coverLetterUrl
+              ? { urlField: 'coverLetterUrl' as const, url: coverLetterUrl }
+              : undefined
+        },
+        'PDF rendering'
+      )
     }
 
     // Unknown step - mark request as failed to prevent infinite loop
@@ -284,12 +413,41 @@ export class GeneratorWorkflowService {
     }
   }
 
-  private async generateResume(
+  /**
+   * Generate resume content and store it in intermediateResults for review.
+   * Does NOT render PDF - that happens in renderResumePdf after review.
+   */
+  private async generateResumeContent(
+    payload: GenerateDocumentPayload,
+    requestId: string,
+    personalInfo: PersonalInfo
+  ): Promise<void> {
+    const resume = await this.buildResumeContent(payload, personalInfo)
+    // Store content for review
+    const request = this.workflowRepo.getRequest(requestId)
+    this.workflowRepo.updateRequest(requestId, {
+      intermediateResults: {
+        ...request?.intermediateResults,
+        resumeContent: resume
+      }
+    })
+  }
+
+  /**
+   * Render resume PDF from intermediateResults content.
+   * Called after user has reviewed and approved the content.
+   */
+  private async renderResumePdf(
     payload: GenerateDocumentPayload,
     requestId: string,
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
-    const resume = await this.buildResumeContent(payload, personalInfo)
+    const request = this.workflowRepo.getRequest(requestId)
+    const resume = request?.intermediateResults?.resumeContent
+    if (!resume) {
+      throw new Error('No resume content found in intermediateResults. Run generate-resume step first.')
+    }
+
     const pdf = await this.htmlPdf.renderResume(resume, personalInfo)
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,
@@ -310,12 +468,41 @@ export class GeneratorWorkflowService {
     return storageService.createPublicUrl(saved.storagePath)
   }
 
-  private async generateCoverLetter(
+  /**
+   * Generate cover letter content and store it in intermediateResults for review.
+   * Does NOT render PDF - that happens in renderCoverLetterPdf after review.
+   */
+  private async generateCoverLetterContent(
+    payload: GenerateDocumentPayload,
+    requestId: string,
+    personalInfo: PersonalInfo
+  ): Promise<void> {
+    const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
+    // Store content for review
+    const request = this.workflowRepo.getRequest(requestId)
+    this.workflowRepo.updateRequest(requestId, {
+      intermediateResults: {
+        ...request?.intermediateResults,
+        coverLetterContent: coverLetter
+      }
+    })
+  }
+
+  /**
+   * Render cover letter PDF from intermediateResults content.
+   * Called after user has reviewed and approved the content.
+   */
+  private async renderCoverLetterPdf(
     payload: GenerateDocumentPayload,
     requestId: string,
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
-    const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
+    const request = this.workflowRepo.getRequest(requestId)
+    const coverLetter = request?.intermediateResults?.coverLetterContent
+    if (!coverLetter) {
+      throw new Error('No cover letter content found in intermediateResults. Run generate-cover-letter step first.')
+    }
+
     const title = personalInfo.title || payload.job.role
     const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, {
       name: personalInfo.name,

@@ -19,6 +19,9 @@ import type {
   GeneratorDocument,
   GeneratorDocumentsResponse,
   GeneratorSingleDocumentResponse,
+  ResumeContent,
+  CoverLetterContent,
+  DraftContentResponse,
 } from "@shared/types"
 import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
@@ -266,7 +269,7 @@ export interface GenerationStartResponse {
  * Response from executing a generation step
  */
 export interface GenerationStepResponse {
-  status: "pending" | "processing" | "completed" | "failed"
+  status: "pending" | "processing" | "awaiting_review" | "completed" | "failed"
   nextStep: string | null
   steps: GenerationStep[]
   resumeUrl?: string
@@ -378,6 +381,51 @@ export async function executeGenerationStep(requestId: string): Promise<Generati
   }
 
   const data: ApiSuccessResponse<GenerationStepResponse> = await res.json()
+  return data.data
+}
+
+/**
+ * Fetch draft content awaiting review
+ */
+export async function fetchDraftContent(requestId: string): Promise<DraftContentResponse> {
+  const res = await fetchWithRetry(
+    `${getApiUrl()}/generator/requests/${requestId}/draft`,
+    fetchOptions(),
+    { maxRetries: 2, timeoutMs: 15000 }
+  )
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to fetch draft content: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<DraftContentResponse> = await res.json()
+  return data.data
+}
+
+/**
+ * Submit reviewed/edited document content
+ */
+export async function submitDocumentReview(
+  requestId: string,
+  documentType: "resume" | "coverLetter",
+  content: ResumeContent | CoverLetterContent
+): Promise<GenerationStepResponse> {
+  const res = await fetchWithRetry(
+    `${getApiUrl()}/generator/requests/${requestId}/submit-review`,
+    fetchOptions({
+      method: "POST",
+      body: JSON.stringify({ documentType, content }),
+    }),
+    { maxRetries: 2, timeoutMs: 30000 }
+  )
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to submit review: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<GenerationStepResponse & { success: boolean }> = await res.json()
   return data.data
 }
 

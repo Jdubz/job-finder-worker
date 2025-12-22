@@ -242,7 +242,7 @@ export interface GeneratorRequest {
   contentData?: {
     items: unknown[] // ContentItem[] - using unknown to avoid circular dependency
   }
-  status: "pending" | "processing" | "completed" | "failed"
+  status: "pending" | "processing" | "awaiting_review" | "completed" | "failed"
   steps?: GenerationStep[]
   intermediateResults?: {
     resumeContent?: ResumeContent
@@ -411,7 +411,7 @@ export interface UpdatePersonalInfoData {
 export interface GeneratorDocument {
   id: string
   generateType: GenerationType
-  status: "pending" | "processing" | "completed" | "failed"
+  status: "pending" | "processing" | "awaiting_review" | "completed" | "failed"
   resumeUrl?: string | null
   coverLetterUrl?: string | null
   jobMatchId?: string | null
@@ -432,4 +432,29 @@ export interface GeneratorDocumentsResponse {
  */
 export interface GeneratorSingleDocumentResponse {
   request: GeneratorDocument
+}
+
+/**
+ * Document type for review flow
+ */
+export type ReviewDocumentType = "resume" | "coverLetter"
+
+/**
+ * Response for GET /generator/requests/:id/draft
+ * Returns draft content awaiting user review
+ */
+export interface DraftContentResponse {
+  requestId: string
+  documentType: ReviewDocumentType
+  content: ResumeContent | CoverLetterContent
+  status: "awaiting_review"
+}
+
+/**
+ * Request body for POST /generator/requests/:id/submit-review
+ * Submits edited content to continue document generation
+ */
+export interface SubmitReviewRequest {
+  documentType: ReviewDocumentType
+  content: ResumeContent | CoverLetterContent
 }

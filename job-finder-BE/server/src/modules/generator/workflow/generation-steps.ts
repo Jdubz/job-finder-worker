@@ -19,6 +19,11 @@ const BASE_STEPS: Record<GenerationType, GenerationStepInit[]> = {
       description: 'Invoke AI provider to create resume content'
     },
     {
+      id: 'review-resume',
+      name: 'Review Resume',
+      description: 'Review and edit AI-generated resume content'
+    },
+    {
       id: 'render-pdf',
       name: 'Render PDF',
       description: 'Convert resume content into branded PDF'
@@ -34,6 +39,11 @@ const BASE_STEPS: Record<GenerationType, GenerationStepInit[]> = {
       id: 'generate-cover-letter',
       name: 'Generate Cover Letter',
       description: 'Invoke AI provider to craft a tailored cover letter'
+    },
+    {
+      id: 'review-cover-letter',
+      name: 'Review Cover Letter',
+      description: 'Review and edit AI-generated cover letter content'
     },
     {
       id: 'render-pdf',
@@ -53,9 +63,19 @@ const BASE_STEPS: Record<GenerationType, GenerationStepInit[]> = {
       description: 'Invoke AI provider to create resume content'
     },
     {
+      id: 'review-resume',
+      name: 'Review Resume',
+      description: 'Review and edit AI-generated resume content'
+    },
+    {
       id: 'generate-cover-letter',
       name: 'Generate Cover Letter',
       description: 'Invoke AI provider to craft a cover letter'
+    },
+    {
+      id: 'review-cover-letter',
+      name: 'Review Cover Letter',
+      description: 'Review and edit AI-generated cover letter content'
     },
     {
       id: 'render-pdf',

@@ -71,7 +71,7 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import type { JobMatchWithListing } from "@shared/types"
+import type { JobMatchWithListing, ResumeContent, CoverLetterContent } from "@shared/types"
 import {
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
@@ -92,6 +92,8 @@ import {
   fetchDocuments,
   startGeneration,
   executeGenerationStep,
+  fetchDraftContent,
+  submitDocumentReview,
   submitJobToQueue,
   getApiUrl,
 } from "./api-client.js"
@@ -1026,6 +1028,39 @@ ipcMain.handle(
           }
         }
 
+        // Check for awaiting_review status - pause generation and notify renderer
+        if (stepResult.status === "awaiting_review") {
+          logger.info("Generation paused for review")
+
+          // Update steps from result
+          if (stepResult.steps) {
+            currentSteps = stepResult.steps
+          }
+
+          // Send review-needed event to renderer
+          if (mainWindow) {
+            mainWindow.webContents.send("generation-awaiting-review", {
+              requestId,
+              status: "awaiting_review",
+              steps: currentSteps,
+              resumeUrl: stepResult.resumeUrl,
+              coverLetterUrl: stepResult.coverLetterUrl,
+            })
+          }
+
+          // Return with awaiting_review status - renderer will handle showing review form
+          return {
+            success: true,
+            data: {
+              requestId,
+              status: "awaiting_review",
+              steps: currentSteps,
+              resumeUrl: stepResult.resumeUrl,
+              coverLetterUrl: stepResult.coverLetterUrl,
+            },
+          }
+        }
+
         // Update state from step result
         if (stepResult.steps) {
           currentSteps = stepResult.steps
@@ -1082,6 +1117,158 @@ ipcMain.handle(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error("Generation error:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+// Fetch draft content for document review
+ipcMain.handle(
+  "fetch-draft-content",
+  async (_event: IpcMainInvokeEvent, requestId: string) => {
+    try {
+      const draft = await fetchDraftContent(requestId)
+      return { success: true, data: draft }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("Failed to fetch draft content:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+// Submit document review and continue generation
+ipcMain.handle(
+  "submit-document-review",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: {
+      requestId: string
+      documentType: "resume" | "coverLetter"
+      content: ResumeContent | CoverLetterContent
+    }
+  ): Promise<{
+    success: boolean
+    data?: GenerationProgress
+    message?: string
+  }> => {
+    try {
+      logger.info(`Submitting document review for ${options.documentType}`)
+
+      // Submit the review
+      const stepResult = await submitDocumentReview(
+        options.requestId,
+        options.documentType,
+        options.content
+      )
+
+      // If still awaiting review (e.g., for both documents), return that status
+      if (stepResult.status === "awaiting_review") {
+        if (mainWindow) {
+          mainWindow.webContents.send("generation-awaiting-review", {
+            requestId: options.requestId,
+            status: "awaiting_review",
+            steps: stepResult.steps,
+          })
+        }
+        return {
+          success: true,
+          data: {
+            requestId: options.requestId,
+            status: "awaiting_review",
+            steps: stepResult.steps || [],
+          },
+        }
+      }
+
+      // Continue executing remaining steps
+      let nextStep = stepResult.nextStep
+      let currentSteps = stepResult.steps || []
+      let resumeUrl = stepResult.resumeUrl
+      let coverLetterUrl = stepResult.coverLetterUrl
+      let stepCount = 0
+
+      while (nextStep && stepCount < MAX_GENERATION_STEPS) {
+        stepCount++
+
+        // Send progress update
+        if (mainWindow) {
+          mainWindow.webContents.send("generation-progress", {
+            requestId: options.requestId,
+            status: "processing",
+            steps: currentSteps,
+            currentStep: nextStep,
+            resumeUrl,
+            coverLetterUrl,
+          })
+        }
+
+        logger.info(`Executing step after review: ${nextStep}`)
+        const result = await executeGenerationStep(options.requestId)
+
+        if (result.status === "failed") {
+          return {
+            success: false,
+            message: result.error || "Generation step failed after review",
+            data: {
+              requestId: options.requestId,
+              status: "failed",
+              steps: result.steps || currentSteps,
+              error: result.error,
+            },
+          }
+        }
+
+        // Check for another review pause
+        if (result.status === "awaiting_review") {
+          if (mainWindow) {
+            mainWindow.webContents.send("generation-awaiting-review", {
+              requestId: options.requestId,
+              status: "awaiting_review",
+              steps: result.steps || currentSteps,
+            })
+          }
+          return {
+            success: true,
+            data: {
+              requestId: options.requestId,
+              status: "awaiting_review",
+              steps: result.steps || currentSteps,
+            },
+          }
+        }
+
+        if (result.steps) currentSteps = result.steps
+        if (result.resumeUrl) resumeUrl = result.resumeUrl
+        if (result.coverLetterUrl) coverLetterUrl = result.coverLetterUrl
+        nextStep = result.nextStep
+      }
+
+      // Generation completed
+      if (mainWindow) {
+        mainWindow.webContents.send("generation-progress", {
+          requestId: options.requestId,
+          status: "completed",
+          steps: currentSteps,
+          resumeUrl,
+          coverLetterUrl,
+        })
+      }
+
+      logger.info("Generation completed after review")
+      return {
+        success: true,
+        data: {
+          requestId: options.requestId,
+          status: "completed",
+          steps: currentSteps,
+          resumeUrl,
+          coverLetterUrl,
+        },
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("Submit review error:", message)
       return { success: false, message }
     }
   }

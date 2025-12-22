@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron") as typeof import("ele
 
 import type { GenerationProgress, AgentOutputData, AgentStatusData } from "./types.js"
 import type { IpcRendererEvent } from "electron"
+import type { DraftContentResponse, ResumeContent, CoverLetterContent } from "@shared/types"
 
 contextBridge.exposeInMainWorld("electronAPI", {
   // Logging - forwards to main process logger (logs to both console and file)
@@ -92,6 +93,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("generation-progress", handler)
     return () => ipcRenderer.removeListener("generation-progress", handler)
   },
+
+  // Event listener for when generation needs review
+  onGenerationAwaitingReview: (callback: (progress: GenerationProgress) => void) => {
+    const handler = (_event: IpcRendererEvent, progress: GenerationProgress) => callback(progress)
+    ipcRenderer.on("generation-awaiting-review", handler)
+    return () => ipcRenderer.removeListener("generation-awaiting-review", handler)
+  },
+
+  // Fetch draft content for review
+  fetchDraftContent: (requestId: string): Promise<{ success: boolean; data?: DraftContentResponse; message?: string }> =>
+    ipcRenderer.invoke("fetch-draft-content", requestId),
+
+  // Submit document review
+  submitDocumentReview: (options: {
+    requestId: string
+    documentType: "resume" | "coverLetter"
+    content: ResumeContent | CoverLetterContent
+  }): Promise<{ success: boolean; data?: GenerationProgress; message?: string }> =>
+    ipcRenderer.invoke("submit-document-review", options),
 
   // Event listener for refresh job matches (triggered by global Ctrl+R shortcut)
   onRefreshJobMatches: (callback: () => void) => {
