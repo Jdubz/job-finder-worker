@@ -1,8 +1,13 @@
 import { Router } from 'express'
-import { z } from 'zod'
+import { z, ZodError } from 'zod'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
-import { ApiErrorCode } from '@shared/types'
+import {
+  ApiErrorCode,
+  resumeContentSchema,
+  coverLetterContentSchema,
+  reviewDocumentTypeSchema
+} from '@shared/types'
 import { GeneratorWorkflowService } from './workflow/generator.workflow.service'
 import { GeneratorWorkflowRepository, type GeneratorRequestRecord } from './generator.workflow.repository'
 
@@ -124,6 +129,63 @@ export function buildGeneratorWorkflowRouter() {
       const jobMatchId = req.params.id
       const documents = attachArtifacts(repo.listRequests(50, jobMatchId))
       res.json(success({ requests: documents, count: documents.length }))
+    })
+  )
+
+  // Get draft content for review
+  router.get(
+    '/requests/:id/draft',
+    asyncHandler((req, res) => {
+      const requestId = req.params.id
+      const draft = service.getDraftContent(requestId)
+      if (!draft) {
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'No draft content awaiting review'))
+        return
+      }
+      res.json(success(draft))
+    })
+  )
+
+  // Submit reviewed/edited content - uses shared schemas from @shared/types
+  router.post(
+    '/requests/:id/submit-review',
+    asyncHandler(async (req, res) => {
+      const requestId = req.params.id
+      const body = req.body ?? {}
+
+      // Validate document type and content using shared schemas
+      let documentType: 'resume' | 'coverLetter'
+      let content: z.infer<typeof resumeContentSchema> | z.infer<typeof coverLetterContentSchema>
+
+      try {
+        documentType = reviewDocumentTypeSchema.parse(body.documentType)
+        content = documentType === 'resume'
+          ? resumeContentSchema.parse(body.content)
+          : coverLetterContentSchema.parse(body.content)
+      } catch (err) {
+        if (err instanceof ZodError) {
+          const message = err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, `Validation error: ${message}`))
+          return
+        }
+        throw err
+      }
+
+      const stepResult = await service.submitReview(requestId, documentType, content)
+      if (!stepResult) {
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Request not found or not awaiting review'))
+        return
+      }
+
+      res.json(
+        success({
+          nextStep: stepResult.nextStep,
+          status: stepResult.status,
+          steps: stepResult.steps,
+          resumeUrl: stepResult.resumeUrl,
+          coverLetterUrl: stepResult.coverLetterUrl
+        })
+      )
     })
   )
 

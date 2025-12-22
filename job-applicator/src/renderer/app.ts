@@ -9,6 +9,7 @@ import type {
   AgentOutputData,
   AgentStatusData,
 } from "../types.js"
+import type { ResumeContent, CoverLetterContent, DraftContentResponse } from "@shared/types"
 
 // ============================================================================
 // Agent Output Parser (inlined to avoid ES module issues in renderer)
@@ -307,6 +308,13 @@ interface ElectronAPI {
     type: "resume" | "coverLetter" | "both"
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onGenerationProgress: (callback: (progress: GenerationProgress) => void) => () => void
+  onGenerationAwaitingReview: (callback: (progress: GenerationProgress) => void) => () => void
+  fetchDraftContent: (requestId: string) => Promise<{ success: boolean; data?: DraftContentResponse; message?: string }>
+  submitDocumentReview: (options: {
+    requestId: string
+    documentType: "resume" | "coverLetter"
+    content: ResumeContent | CoverLetterContent
+  }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
   onRefreshJobMatches: (callback: () => void) => () => void
 }
 
@@ -379,8 +387,12 @@ const workflowState: WorkflowState = {
   submit: "pending",
 }
 let unsubscribeGenerationProgress: (() => void) | null = null
+let unsubscribeGenerationReview: (() => void) | null = null
 let isGenerating = false // Prevent concurrent document generations
 let hasFileInput = false // Whether current page has a file input element
+let currentReviewRequestId: string | null = null // Request ID when in review mode
+let currentReviewDocumentType: "resume" | "coverLetter" | null = null // Document type being reviewed
+let currentReviewContent: ResumeContent | CoverLetterContent | null = null // Content being reviewed
 
 // Helper to get DOM element with null check
 function getElement<T extends HTMLElement>(id: string): T {
@@ -417,6 +429,11 @@ const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
 const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
 const generationProgress = getElement<HTMLDivElement>("generationProgress")
 const generationSteps = getElement<HTMLDivElement>("generationSteps")
+const documentReview = getElement<HTMLDivElement>("documentReview")
+const reviewTitle = getElement<HTMLHeadingElement>("reviewTitle")
+const reviewContent = getElement<HTMLDivElement>("reviewContent")
+const approveReviewBtn = getElement<HTMLButtonElement>("approveReviewBtn")
+const cancelReviewBtn = getElement<HTMLButtonElement>("cancelReviewBtn")
 
 // DOM elements - Agent Panel
 const agentStatus = getElement<HTMLDivElement>("agentStatus")
@@ -865,16 +882,306 @@ function cleanupGenerationProgressListener() {
   isGenerating = false
 }
 
+// ============================================================================
+// Document Review Form
+// ============================================================================
+
+// Handle generation awaiting review
+async function handleGenerationAwaitingReview(progress: GenerationProgress) {
+  log.info("Generation awaiting review:", progress.requestId)
+
+  // Show loading state while fetching draft
+  setStatus("Loading content for review...", "loading")
+
+  // Fetch the draft content
+  const result = await api.fetchDraftContent(progress.requestId)
+  if (!result.success || !result.data) {
+    setStatus(result.message || "Failed to fetch draft content", "error")
+    generationProgress.classList.add("hidden")
+    generateBtn.disabled = false
+    return
+  }
+
+  const draft = result.data
+  currentReviewRequestId = progress.requestId
+  currentReviewDocumentType = draft.documentType
+  currentReviewContent = draft.content
+
+  // Hide generation progress, show review form
+  generationProgress.classList.add("hidden")
+  documentReview.classList.remove("hidden")
+
+  // Set title based on document type
+  const docTypeLabel = draft.documentType === "resume" ? "resume" : "cover letter"
+  reviewTitle.textContent = draft.documentType === "resume" ? "Review Resume" : "Review Cover Letter"
+
+  // Render the editable content
+  renderReviewForm(draft.documentType, draft.content)
+
+  setStatus(`Review your ${docTypeLabel} before generating PDF`, "loading")
+}
+
+// Render the review form based on document type
+function renderReviewForm(documentType: "resume" | "coverLetter", content: ResumeContent | CoverLetterContent) {
+  if (documentType === "resume") {
+    renderResumeReviewForm(content as ResumeContent)
+  } else {
+    renderCoverLetterReviewForm(content as CoverLetterContent)
+  }
+  // Setup auto-resizing for all textareas after content is rendered
+  setupAutoResizeTextareas()
+}
+
+// Render resume review form
+function renderResumeReviewForm(content: ResumeContent) {
+  let html = `
+    <div class="review-field">
+      <div class="review-field-label">Professional Summary</div>
+      <textarea class="review-textarea" id="review-summary" rows="4">${escapeHtml(content.professionalSummary || "")}</textarea>
+    </div>
+  `
+
+  // Add experience sections with editable highlights
+  if (Array.isArray(content.experience) && content.experience.length > 0) {
+    html += `<div class="review-field-label">Experience Highlights</div>`
+    content.experience.forEach((exp, expIndex) => {
+      if (!exp) return
+      const role = exp.role || "Role"
+      const company = exp.company || "Company"
+      html += `
+        <div class="review-experience-group" data-exp-index="${expIndex}">
+          <div class="review-experience-header">${escapeHtml(role)} at ${escapeHtml(company)}</div>
+          <div class="review-highlights" id="review-highlights-${expIndex}">
+      `
+      if (Array.isArray(exp.highlights) && exp.highlights.length > 0) {
+        exp.highlights.forEach((highlight, hlIndex) => {
+          html += `
+            <div class="review-highlight-item">
+              <textarea class="review-textarea" data-exp="${expIndex}" data-hl="${hlIndex}" rows="2">${escapeHtml(highlight || "")}</textarea>
+            </div>
+          `
+        })
+      }
+      html += `
+          </div>
+        </div>
+      `
+    })
+  }
+
+  reviewContent.innerHTML = html
+}
+
+// Render cover letter review form
+function renderCoverLetterReviewForm(content: CoverLetterContent) {
+  let html = `
+    <div class="review-field">
+      <div class="review-field-label">Greeting</div>
+      <textarea class="review-textarea" id="review-greeting" rows="1">${escapeHtml(content.greeting || "")}</textarea>
+    </div>
+    <div class="review-field">
+      <div class="review-field-label">Opening Paragraph</div>
+      <textarea class="review-textarea" id="review-opening" rows="3">${escapeHtml(content.openingParagraph || "")}</textarea>
+    </div>
+  `
+
+  // Body paragraphs
+  if (Array.isArray(content.bodyParagraphs) && content.bodyParagraphs.length > 0) {
+    content.bodyParagraphs.forEach((para, index) => {
+      html += `
+        <div class="review-field">
+          <div class="review-field-label">Body Paragraph ${index + 1}</div>
+          <textarea class="review-textarea" id="review-body-${index}" rows="3">${escapeHtml(para || "")}</textarea>
+        </div>
+      `
+    })
+  }
+
+  html += `
+    <div class="review-field">
+      <div class="review-field-label">Closing Paragraph</div>
+      <textarea class="review-textarea" id="review-closing" rows="3">${escapeHtml(content.closingParagraph || "")}</textarea>
+    </div>
+    <div class="review-field">
+      <div class="review-field-label">Signature</div>
+      <textarea class="review-textarea" id="review-signature" rows="1">${escapeHtml(content.signature || "")}</textarea>
+    </div>
+  `
+
+  reviewContent.innerHTML = html
+}
+
+// Helper to escape HTML
+function escapeHtml(text: string): string {
+  const div = document.createElement("div")
+  div.textContent = text
+  return div.innerHTML
+}
+
+// Auto-resize a textarea to fit its content
+function autoResizeTextarea(textarea: HTMLTextAreaElement) {
+  // Reset height to auto to get the correct scrollHeight
+  textarea.style.height = "auto"
+  // Set height to scrollHeight (content height) with a minimum
+  const minHeight = 40 // Minimum height in pixels
+  const maxHeight = 300 // Maximum height in pixels
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)
+  textarea.style.height = `${newHeight}px`
+  // Show scrollbar if content exceeds max height
+  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+}
+
+// Setup auto-resize for all textareas in the review form
+function setupAutoResizeTextareas() {
+  const textareas = reviewContent.querySelectorAll<HTMLTextAreaElement>(".review-textarea")
+  textareas.forEach((textarea) => {
+    // Initial resize
+    autoResizeTextarea(textarea)
+    // Resize on input
+    textarea.addEventListener("input", () => autoResizeTextarea(textarea))
+  })
+}
+
+// Collect edited content from the form
+function collectReviewedContent(): ResumeContent | CoverLetterContent | null {
+  if (!currentReviewDocumentType || !currentReviewContent) return null
+
+  if (currentReviewDocumentType === "resume") {
+    return collectResumeContent(currentReviewContent as ResumeContent)
+  } else {
+    return collectCoverLetterContent(currentReviewContent as CoverLetterContent)
+  }
+}
+
+// Collect edited resume content
+function collectResumeContent(original: ResumeContent): ResumeContent {
+  const summaryEl = document.getElementById("review-summary") as HTMLTextAreaElement
+  const summary = summaryEl?.value || original.professionalSummary
+
+  // Collect updated highlights
+  const experience = original.experience.map((exp, expIndex) => {
+    const highlightEls = document.querySelectorAll(`textarea[data-exp="${expIndex}"]`) as NodeListOf<HTMLTextAreaElement>
+    const highlights = Array.from(highlightEls).map((el) => el.value.trim()).filter(Boolean)
+    // Always use collected highlights, even if empty (allows user to clear all)
+    return { ...exp, highlights }
+  })
+
+  return {
+    ...original,
+    professionalSummary: summary,
+    experience,
+  }
+}
+
+// Collect edited cover letter content
+function collectCoverLetterContent(original: CoverLetterContent): CoverLetterContent {
+  const greeting = (document.getElementById("review-greeting") as HTMLTextAreaElement)?.value || original.greeting
+  const openingParagraph = (document.getElementById("review-opening") as HTMLTextAreaElement)?.value || original.openingParagraph
+  const closingParagraph = (document.getElementById("review-closing") as HTMLTextAreaElement)?.value || original.closingParagraph
+  const signature = (document.getElementById("review-signature") as HTMLTextAreaElement)?.value || original.signature
+
+  // Collect body paragraphs
+  const bodyParagraphs: string[] = []
+  let i = 0
+  let bodyEl = document.getElementById(`review-body-${i}`) as HTMLTextAreaElement
+  while (bodyEl) {
+    const value = bodyEl.value.trim()
+    if (value) bodyParagraphs.push(value)
+    i++
+    bodyEl = document.getElementById(`review-body-${i}`) as HTMLTextAreaElement
+  }
+
+  // Always use collected paragraphs, even if empty (allows user to clear all)
+  return {
+    greeting,
+    openingParagraph,
+    bodyParagraphs,
+    closingParagraph,
+    signature,
+  }
+}
+
+// Submit the reviewed content
+async function submitReview() {
+  if (!currentReviewRequestId || !currentReviewDocumentType) {
+    setStatus("No review in progress", "error")
+    return
+  }
+
+  const editedContent = collectReviewedContent()
+  if (!editedContent) {
+    setStatus("Failed to collect reviewed content", "error")
+    return
+  }
+
+  setStatus("Submitting review...", "loading")
+  approveReviewBtn.disabled = true
+
+  try {
+    const result = await api.submitDocumentReview({
+      requestId: currentReviewRequestId,
+      documentType: currentReviewDocumentType,
+      content: editedContent,
+    })
+
+    if (result.success && result.data) {
+      // Hide review form
+      documentReview.classList.add("hidden")
+      currentReviewRequestId = null
+      currentReviewDocumentType = null
+      currentReviewContent = null
+
+      // Check if there's another review needed or if generation is complete
+      if (result.data.status === "awaiting_review") {
+        // Another document needs review - the IPC event will trigger
+        setStatus("Review submitted. Waiting for next document...", "loading")
+      } else if (result.data.status === "completed") {
+        handleGenerationProgress(result.data)
+      } else {
+        // Generation is continuing
+        generationProgress.classList.remove("hidden")
+        setStatus("Generating PDF...", "loading")
+      }
+    } else {
+      setStatus(result.message || "Failed to submit review", "error")
+      approveReviewBtn.disabled = false
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to submit review"
+    setStatus(message, "error")
+    approveReviewBtn.disabled = false
+  }
+}
+
+// Cancel the review
+function cancelReview() {
+  documentReview.classList.add("hidden")
+  generationProgress.classList.add("hidden")
+  generateBtn.disabled = false
+  currentReviewRequestId = null
+  currentReviewDocumentType = null
+  currentReviewContent = null
+  cleanupGenerationProgressListener()
+  // Reset workflow step to allow retry
+  setWorkflowStep("docs", "active")
+  setStatus("Review cancelled", "")
+}
+
 // Generate new document
 async function generateDocument() {
+  // Disable button immediately to prevent double-clicks
+  generateBtn.disabled = true
+
   if (!selectedJobMatchId) {
     setStatus("Select a job match first", "error")
+    generateBtn.disabled = false
     return
   }
 
   // Prevent concurrent generations - atomic check and set
   if (isGenerating) {
     setStatus("Generation already in progress", "error")
+    generateBtn.disabled = false
     return
   }
   isGenerating = true
@@ -884,7 +1191,6 @@ async function generateDocument() {
     generationProgress.classList.remove("hidden")
     generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
     setStatus("Generating documents...", "loading")
-    generateBtn.disabled = true
 
     // Subscribe to progress updates (clean up any existing listener first)
     cleanupGenerationProgressListener()
@@ -1081,13 +1387,6 @@ let unsubscribeAgentStatus: (() => void) | null = null
 let unsubscribeBrowserUrlChanged: (() => void) | null = null
 let isFormFillActive = false
 const agentOutputParser = new StreamingParser()
-
-// Escape HTML to prevent XSS in output
-function escapeHtml(text: string): string {
-  const div = document.createElement("div")
-  div.textContent = text
-  return div.innerHTML
-}
 
 // Update agent status display
 function updateAgentStatusUI(state: AgentSessionState) {
@@ -1468,6 +1767,13 @@ function initializeApp() {
   previewResumeBtn.addEventListener("click", previewResume)
   previewCoverLetterBtn.addEventListener("click", previewCoverLetter)
 
+  // Event listeners - Document Review buttons
+  approveReviewBtn.addEventListener("click", submitReview)
+  cancelReviewBtn.addEventListener("click", cancelReview)
+
+  // Subscribe to generation review events
+  unsubscribeGenerationReview = api.onGenerationAwaitingReview(handleGenerationAwaitingReview)
+
   // Listen for Ctrl+R global shortcut from main process
   // This ensures refresh works even when BrowserView has focus
   api.onRefreshJobMatches(() => {
@@ -1511,6 +1817,10 @@ async function init() {
 window.addEventListener("beforeunload", () => {
   cleanupGenerationProgressListener()
   cleanupAgentListeners()
+  if (unsubscribeGenerationReview) {
+    unsubscribeGenerationReview()
+    unsubscribeGenerationReview = null
+  }
 })
 
 // Wait for DOM to be ready before initializing

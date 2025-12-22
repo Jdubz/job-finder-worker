@@ -1,6 +1,26 @@
 import type Database from 'better-sqlite3'
-import type { GenerationStep, PersonalInfo } from '@shared/types'
+import type { GenerationStep, PersonalInfo, ResumeContent, CoverLetterContent } from '@shared/types'
 import { getDb } from '../../db/sqlite'
+import { logger } from '../../logger'
+
+/**
+ * Safely parse JSON with error handling.
+ * Returns null if parsing fails instead of throwing.
+ */
+function safeJsonParse<T>(json: string | null | undefined, fieldName: string): T | null {
+  if (!json) return null
+  try {
+    return JSON.parse(json) as T
+  } catch (err) {
+    logger.error({ fieldName, jsonPreview: json.slice(0, 100), err }, 'Failed to parse JSON field in generator request')
+    return null
+  }
+}
+
+export interface IntermediateResults {
+  resumeContent?: ResumeContent
+  coverLetterContent?: CoverLetterContent
+}
 
 export interface GeneratorRequestRecord {
   id: string
@@ -8,12 +28,13 @@ export interface GeneratorRequestRecord {
   job: Record<string, unknown>
   preferences?: Record<string, unknown> | null
   personalInfo?: PersonalInfo | null
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  status: 'pending' | 'processing' | 'awaiting_review' | 'completed' | 'failed'
   resumeUrl?: string | null
   coverLetterUrl?: string | null
   jobMatchId?: string | null
   createdBy?: string | null
   steps?: GenerationStep[] | null
+  intermediateResults?: IntermediateResults | null
   createdAt: string
   updatedAt: string
 }
@@ -41,6 +62,7 @@ interface GeneratorRequestRow {
   job_match_id: string | null
   created_by: string | null
   steps_json: string | null
+  intermediate_results_json: string | null
   created_at: string
   updated_at: string
 }
@@ -62,8 +84,8 @@ export class GeneratorWorkflowRepository {
     this.db
       .prepare(
         `INSERT INTO generator_requests
-         (id, generate_type, job_json, preferences_json, personal_info_json, status, resume_url, cover_letter_url, job_match_id, created_by, steps_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, generate_type, job_json, preferences_json, personal_info_json, status, resume_url, cover_letter_url, job_match_id, created_by, steps_json, intermediate_results_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
@@ -77,6 +99,7 @@ export class GeneratorWorkflowRepository {
         record.jobMatchId ?? null,
         record.createdBy ?? null,
         record.steps ? JSON.stringify(record.steps) : null,
+        record.intermediateResults ? JSON.stringify(record.intermediateResults) : null,
         now,
         now
       )
@@ -96,11 +119,12 @@ export class GeneratorWorkflowRepository {
     const mergedPrefs = this.mergeJsonField(updates.preferences, existing.preferences)
     const mergedPersonal = this.mergeJsonField(updates.personalInfo, existing.personalInfo)
     const mergedSteps = this.mergeJsonField(updates.steps, existing.steps)
+    const mergedIntermediate = this.mergeJsonField(updates.intermediateResults, existing.intermediateResults)
 
     this.db
       .prepare(
         `UPDATE generator_requests
-         SET status = ?, resume_url = ?, cover_letter_url = ?, job_match_id = ?, job_json = ?, preferences_json = ?, personal_info_json = ?, steps_json = ?, updated_at = ?
+         SET status = ?, resume_url = ?, cover_letter_url = ?, job_match_id = ?, job_json = ?, preferences_json = ?, personal_info_json = ?, steps_json = ?, intermediate_results_json = ?, updated_at = ?
          WHERE id = ?`
       )
       .run(
@@ -112,6 +136,7 @@ export class GeneratorWorkflowRepository {
         mergedPrefs,
         mergedPersonal,
         mergedSteps,
+        mergedIntermediate,
         new Date().toISOString(),
         id
       )
@@ -204,18 +229,22 @@ export class GeneratorWorkflowRepository {
   }
 
   private mapRequest(row: GeneratorRequestRow): GeneratorRequestRecord {
+    // job is required - use safe parse but provide fallback
+    const job = safeJsonParse<Record<string, unknown>>(row.job_json, 'job') ?? {}
+
     return {
       id: row.id,
       generateType: row.generate_type as GeneratorRequestRecord['generateType'],
-      job: JSON.parse(row.job_json),
-      preferences: row.preferences_json ? JSON.parse(row.preferences_json) : null,
-      personalInfo: row.personal_info_json ? (JSON.parse(row.personal_info_json) as PersonalInfo) : null,
+      job,
+      preferences: safeJsonParse<Record<string, unknown>>(row.preferences_json, 'preferences'),
+      personalInfo: safeJsonParse<PersonalInfo>(row.personal_info_json, 'personalInfo'),
       status: row.status as GeneratorRequestRecord['status'],
       resumeUrl: row.resume_url,
       coverLetterUrl: row.cover_letter_url,
       jobMatchId: row.job_match_id,
       createdBy: row.created_by,
-      steps: row.steps_json ? (JSON.parse(row.steps_json) as GenerationStep[]) : null,
+      steps: safeJsonParse<GenerationStep[]>(row.steps_json, 'steps'),
+      intermediateResults: safeJsonParse<IntermediateResults>(row.intermediate_results_json, 'intermediateResults'),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }

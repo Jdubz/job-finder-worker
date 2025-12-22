@@ -12,6 +12,15 @@ import type {
   ListJobMatchesResponse,
   JobListingRecord,
   TimestampLike,
+  ResumeContent,
+  CoverLetterContent,
+  DraftContentResponse,
+} from "@shared/types"
+import {
+  draftContentResponseSchema,
+  submitReviewResponseSchema,
+  resumeContentSchema,
+  coverLetterContentSchema,
 } from "@shared/types"
 
 // Mock fetch for API calls
@@ -1129,5 +1138,443 @@ describe("Job Match Status Badge Rendering", () => {
     expect(getScoreClass(69)).toBe("low")
     expect(getScoreClass(50)).toBe("low")
     expect(getScoreClass(0)).toBe("low")
+  })
+})
+
+// ============================================================================
+// Document Review Workflow Tests
+// ============================================================================
+
+describe("Document Review Workflow", () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+  })
+
+  const mockResumeContent: ResumeContent = {
+    personalInfo: {
+      name: "John Doe",
+      title: "Software Engineer",
+      summary: "Experienced developer",
+      contact: {
+        email: "john@example.com",
+        location: "San Francisco, CA",
+      },
+    },
+    professionalSummary: "10+ years of experience in full-stack development.",
+    experience: [
+      {
+        company: "Acme Corp",
+        role: "Senior Engineer",
+        startDate: "2020-01",
+        endDate: null,
+        highlights: ["Led team of 5", "Improved performance by 40%"],
+      },
+    ],
+    skills: [{ category: "Languages", items: ["TypeScript", "Python"] }],
+    education: [{ institution: "MIT", degree: "BS", field: "Computer Science" }],
+  }
+
+  const mockCoverLetterContent: CoverLetterContent = {
+    greeting: "Dear Hiring Manager,",
+    openingParagraph: "I am excited to apply for the Software Engineer position.",
+    bodyParagraphs: [
+      "I have extensive experience building scalable applications.",
+      "My background aligns well with your needs.",
+    ],
+    closingParagraph: "I look forward to discussing this opportunity.",
+    signature: "Best regards,\nJohn Doe",
+  }
+
+  describe("Draft Content Fetching", () => {
+    it("should fetch resume draft content and validate against schema", async () => {
+      const mockDraftResponse = {
+        success: true,
+        data: {
+          requestId: "req-123",
+          documentType: "resume",
+          content: mockResumeContent,
+          status: "awaiting_review",
+        } satisfies DraftContentResponse,
+      }
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockDraftResponse),
+      })
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/req-123/draft")
+      const data = await res.json()
+
+      expect(data.success).toBe(true)
+
+      // Validate response matches shared schema
+      const parsed = draftContentResponseSchema.safeParse(data.data)
+      expect(parsed.success).toBe(true)
+      if (parsed.success) {
+        expect(parsed.data.documentType).toBe("resume")
+        expect(parsed.data.status).toBe("awaiting_review")
+      }
+    })
+
+    it("should fetch cover letter draft content and validate against schema", async () => {
+      const mockDraftResponse = {
+        success: true,
+        data: {
+          requestId: "req-456",
+          documentType: "coverLetter",
+          content: mockCoverLetterContent,
+          status: "awaiting_review",
+        } satisfies DraftContentResponse,
+      }
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockDraftResponse),
+      })
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/req-456/draft")
+      const data = await res.json()
+
+      expect(data.success).toBe(true)
+
+      const parsed = draftContentResponseSchema.safeParse(data.data)
+      expect(parsed.success).toBe(true)
+      if (parsed.success) {
+        expect(parsed.data.documentType).toBe("coverLetter")
+      }
+    })
+
+    it("should handle 404 when no draft is available", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ success: false, error: { code: "NOT_FOUND", message: "No draft content" } }),
+      })
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/non-existent/draft")
+      expect(res.ok).toBe(false)
+      expect(res.status).toBe(404)
+    })
+
+    it("should validate resume content structure", () => {
+      const parsed = resumeContentSchema.safeParse(mockResumeContent)
+      expect(parsed.success).toBe(true)
+      if (parsed.success) {
+        expect(parsed.data.personalInfo.name).toBe("John Doe")
+        expect(parsed.data.experience).toHaveLength(1)
+      }
+    })
+
+    it("should validate cover letter content structure", () => {
+      const parsed = coverLetterContentSchema.safeParse(mockCoverLetterContent)
+      expect(parsed.success).toBe(true)
+      if (parsed.success) {
+        expect(parsed.data.greeting).toBe("Dear Hiring Manager,")
+        expect(parsed.data.bodyParagraphs).toHaveLength(2)
+      }
+    })
+  })
+
+  describe("Review Submission", () => {
+    it("should submit edited resume content", async () => {
+      const mockSubmitResponse = {
+        success: true,
+        data: {
+          nextStep: "render-pdf",
+          status: "processing",
+          steps: [
+            { id: "review-resume", name: "Review Resume", description: "Review content", status: "completed" },
+            { id: "render-pdf", name: "Render PDF", description: "Create PDF", status: "pending" },
+          ],
+          resumeUrl: null,
+          coverLetterUrl: null,
+        },
+      }
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSubmitResponse),
+      })
+
+      const editedContent: ResumeContent = {
+        ...mockResumeContent,
+        professionalSummary: "Updated summary by user during review",
+      }
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/req-123/submit-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentType: "resume",
+          content: editedContent,
+        }),
+      })
+
+      const data = await res.json()
+      expect(data.success).toBe(true)
+
+      // Validate response matches shared schema
+      const parsed = submitReviewResponseSchema.safeParse(data.data)
+      expect(parsed.success).toBe(true)
+      if (parsed.success) {
+        expect(parsed.data.status).toBe("processing")
+        expect(parsed.data.nextStep).toBe("render-pdf")
+      }
+    })
+
+    it("should submit edited cover letter content", async () => {
+      const mockSubmitResponse = {
+        success: true,
+        data: {
+          nextStep: "render-pdf",
+          status: "processing",
+          steps: [],
+          resumeUrl: null,
+          coverLetterUrl: null,
+        },
+      }
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSubmitResponse),
+      })
+
+      const editedContent: CoverLetterContent = {
+        ...mockCoverLetterContent,
+        openingParagraph: "Edited opening paragraph by user",
+      }
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/req-456/submit-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentType: "coverLetter",
+          content: editedContent,
+        }),
+      })
+
+      const data = await res.json()
+      expect(data.success).toBe(true)
+    })
+
+    it("should handle 400 for invalid content", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: () =>
+          Promise.resolve({
+            success: false,
+            error: { code: "INVALID_REQUEST", message: "Validation error" },
+          }),
+      })
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/req-123/submit-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentType: "resume",
+          content: { invalid: "content" },
+        }),
+      })
+
+      expect(res.ok).toBe(false)
+      expect(res.status).toBe(400)
+    })
+
+    it("should handle 404 when request not awaiting review", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () =>
+          Promise.resolve({
+            success: false,
+            error: { code: "NOT_FOUND", message: "Request not awaiting review" },
+          }),
+      })
+
+      const res = await fetch("http://localhost:3000/api/generator/requests/completed-req/submit-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentType: "resume",
+          content: mockResumeContent,
+        }),
+      })
+
+      expect(res.ok).toBe(false)
+      expect(res.status).toBe(404)
+    })
+  })
+
+  describe("Review Workflow Integration", () => {
+    it("should complete full review workflow for resume", async () => {
+      // Step 1: Generation returns awaiting_review
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              requestId: "gen-review-1",
+              status: "awaiting_review",
+              nextStep: "review-resume",
+              steps: [
+                { id: "generate-resume", name: "Generate Resume", status: "completed" },
+                { id: "review-resume", name: "Review Resume", status: "completed" },
+                { id: "render-pdf", name: "Render PDF", status: "pending" },
+              ],
+            },
+          }),
+      })
+
+      // Step 2: Fetch draft content
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              requestId: "gen-review-1",
+              documentType: "resume",
+              content: mockResumeContent,
+              status: "awaiting_review",
+            },
+          }),
+      })
+
+      // Step 3: Submit review
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              nextStep: "render-pdf",
+              status: "processing",
+              steps: [],
+            },
+          }),
+      })
+
+      // Step 4: Continue to render-pdf
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              requestId: "gen-review-1",
+              status: "completed",
+              nextStep: null,
+              resumeUrl: "/api/generator/artifacts/resume.pdf",
+              steps: [
+                { id: "generate-resume", status: "completed" },
+                { id: "review-resume", status: "completed" },
+                { id: "render-pdf", status: "completed" },
+              ],
+            },
+          }),
+      })
+
+      // Execute workflow
+      const stepRes = await fetch("http://localhost:3000/api/generator/step/gen-review-1", { method: "POST" })
+      const stepData = await stepRes.json()
+      expect(stepData.data.status).toBe("awaiting_review")
+
+      const draftRes = await fetch("http://localhost:3000/api/generator/requests/gen-review-1/draft")
+      const draftData = await draftRes.json()
+      expect(draftData.data.documentType).toBe("resume")
+
+      const submitRes = await fetch("http://localhost:3000/api/generator/requests/gen-review-1/submit-review", {
+        method: "POST",
+        body: JSON.stringify({ documentType: "resume", content: mockResumeContent }),
+      })
+      const submitData = await submitRes.json()
+      expect(submitData.data.nextStep).toBe("render-pdf")
+
+      const finalRes = await fetch("http://localhost:3000/api/generator/step/gen-review-1", { method: "POST" })
+      const finalData = await finalRes.json()
+      expect(finalData.data.status).toBe("completed")
+      expect(finalData.data.resumeUrl).toContain("resume.pdf")
+    })
+
+    it("should handle generation with both document types", async () => {
+      // Both resume and cover letter should pause for review
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              requestId: "gen-both",
+              status: "awaiting_review",
+              steps: [
+                { id: "generate-resume", status: "completed" },
+                { id: "review-resume", status: "completed" },
+                { id: "generate-cover-letter", status: "pending" },
+              ],
+            },
+          }),
+      })
+
+      const res = await fetch("http://localhost:3000/api/generator/step/gen-both", { method: "POST" })
+      const data = await res.json()
+
+      expect(data.success).toBe(true)
+      expect(data.data.status).toBe("awaiting_review")
+    })
+  })
+
+  describe("Content Validation Edge Cases", () => {
+    it("should reject resume with missing required fields", () => {
+      const invalidResume = {
+        personalInfo: {
+          name: "John",
+          // missing title, summary, contact
+        },
+        professionalSummary: "Summary",
+        experience: [],
+      }
+
+      const parsed = resumeContentSchema.safeParse(invalidResume)
+      expect(parsed.success).toBe(false)
+    })
+
+    it("should reject cover letter with missing paragraphs", () => {
+      const invalidCoverLetter = {
+        greeting: "Hello",
+        openingParagraph: "Opening",
+        // missing bodyParagraphs, closingParagraph, signature
+      }
+
+      const parsed = coverLetterContentSchema.safeParse(invalidCoverLetter)
+      expect(parsed.success).toBe(false)
+    })
+
+    it("should accept resume with optional fields omitted", () => {
+      const minimalResume: ResumeContent = {
+        personalInfo: {
+          name: "John",
+          title: "Engineer",
+          summary: "Summary",
+          contact: { email: "john@test.com" },
+        },
+        professionalSummary: "Professional summary text",
+        experience: [],
+        // skills and education are optional
+      }
+
+      const parsed = resumeContentSchema.safeParse(minimalResume)
+      expect(parsed.success).toBe(true)
+    })
+
+    it("should accept cover letter with empty body paragraphs array", () => {
+      const coverLetter: CoverLetterContent = {
+        greeting: "Hello",
+        openingParagraph: "Opening",
+        bodyParagraphs: [], // Empty is valid
+        closingParagraph: "Closing",
+        signature: "Signature",
+      }
+
+      const parsed = coverLetterContentSchema.safeParse(coverLetter)
+      expect(parsed.success).toBe(true)
+    })
   })
 })

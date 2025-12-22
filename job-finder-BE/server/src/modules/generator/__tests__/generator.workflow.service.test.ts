@@ -131,6 +131,8 @@ class InMemoryRepo {
       coverLetterUrl: record.coverLetterUrl ?? null,
       jobMatchId: record.jobMatchId ?? null,
       createdBy: record.createdBy ?? null,
+      steps: record.steps ?? null,
+      intermediateResults: record.intermediateResults ?? null,
       createdAt: now,
       updatedAt: now
     }
@@ -191,7 +193,7 @@ class FakeContentItemRepository {
       id: '1',
       parentId: null,
       order: 0,
-      title: 'Previous Company',
+      title: 'Acme Corp',
       role: 'Senior Developer',
       location: 'Remote',
       website: 'https://example.com',
@@ -199,6 +201,7 @@ class FakeContentItemRepository {
       endDate: null,
       description: 'Worked on various projects',
       skills: ['JavaScript', 'TypeScript', 'Node.js'],
+      aiContext: 'work',
       createdAt: new Date(),
       updatedAt: new Date(),
       createdBy: 'test@example.com',
@@ -322,7 +325,7 @@ const mockCoverLetterContent = {
     expect(result?.steps[0].status).toBe('completed')
   })
 
-  it('runNextStep generates resume and stores artifact/url', async () => {
+  it('runNextStep generates resume content and stores in intermediateResults', async () => {
     const service = createService()
     const { requestId } = await service.createRequest(payload)
     // complete collect-data
@@ -330,21 +333,25 @@ const mockCoverLetterContent = {
     const resumeResult = await service.runNextStep(requestId)
 
     expect(resumeResult?.steps.find((s) => s.id === 'generate-resume')?.status).toBe('completed')
+    // Resume content is stored in intermediateResults, URL is set after render-pdf
     const request = repo.getRequest(requestId)
-    expect(request?.resumeUrl).toBe('http://example.com/resume.pdf')
-    expect(repo.listArtifacts(requestId)).toHaveLength(1)
+    expect(request?.intermediateResults?.resumeContent).toEqual(mockResumeContent)
+    // URL is null until render-pdf step completes
+    expect(request?.resumeUrl).toBeNull()
   })
 
-  it('runNextStep generates cover letter and stores artifact/url', async () => {
+  it('runNextStep generates cover letter content and stores in intermediateResults', async () => {
     const service = createService()
     const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
     await service.runNextStep(requestId) // collect-data
     const coverResult = await service.runNextStep(requestId)
 
     expect(coverResult?.steps.find((s) => s.id === 'generate-cover-letter')?.status).toBe('completed')
+    // Cover letter content is stored in intermediateResults, URL is set after render-pdf
     const request = repo.getRequest(requestId)
-    expect(request?.coverLetterUrl).toBe('http://example.com/resume.pdf')
-    expect(repo.listArtifacts(requestId)).toHaveLength(1)
+    expect(request?.intermediateResults?.coverLetterContent).toEqual(mockCoverLetterContent)
+    // URL is null until render-pdf step completes
+    expect(request?.coverLetterUrl).toBeNull()
   })
 
   it('invokes AgentManager for resume generation with document task type', async () => {
@@ -365,5 +372,191 @@ const mockCoverLetterContent = {
 
     const agentInstance = (service as any).agentManager
     expect(typeof agentInstance?.execute).toBe('function')
+  })
+
+  describe('review workflow', () => {
+    it('pauses at review-resume step with awaiting_review status', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      const reviewResult = await service.runNextStep(requestId) // review-resume
+
+      expect(reviewResult?.status).toBe('awaiting_review')
+      expect(reviewResult?.stepCompleted).toBe('review-resume')
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('awaiting_review')
+    })
+
+    it('pauses at review-cover-letter step with awaiting_review status', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      const reviewResult = await service.runNextStep(requestId) // review-cover-letter
+
+      expect(reviewResult?.status).toBe('awaiting_review')
+      expect(reviewResult?.stepCompleted).toBe('review-cover-letter')
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('awaiting_review')
+    })
+
+    it('getDraftContent returns resume content when awaiting review', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume (sets awaiting_review)
+
+      const draft = service.getDraftContent(requestId)
+
+      expect(draft).not.toBeNull()
+      expect(draft?.requestId).toBe(requestId)
+      expect(draft?.documentType).toBe('resume')
+      expect(draft?.status).toBe('awaiting_review')
+      expect(draft?.content).toEqual(mockResumeContent)
+    })
+
+    it('getDraftContent returns cover letter content when awaiting review', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+
+      const draft = service.getDraftContent(requestId)
+
+      expect(draft).not.toBeNull()
+      expect(draft?.documentType).toBe('coverLetter')
+      expect(draft?.content).toEqual(mockCoverLetterContent)
+    })
+
+    it('getDraftContent returns null when request not awaiting review', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data (still processing)
+
+      const draft = service.getDraftContent(requestId)
+      expect(draft).toBeNull()
+    })
+
+    it('getDraftContent returns null for non-existent request', () => {
+      const service = createService()
+      const draft = service.getDraftContent('non-existent-id')
+      expect(draft).toBeNull()
+    })
+
+    it('submitReview updates content and continues to render-pdf step', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+
+      const editedContent = {
+        ...mockResumeContent,
+        professionalSummary: 'Edited summary by user'
+      }
+
+      const result = await service.submitReview(requestId, 'resume', editedContent)
+
+      expect(result).not.toBeNull()
+      expect(result?.status).toBe('processing')
+
+      // Check the edited content was stored
+      const request = repo.getRequest(requestId)
+      expect(request?.intermediateResults?.resumeContent?.professionalSummary).toBe('Edited summary by user')
+    })
+
+    it('submitReview returns null when request not awaiting review', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data (still processing)
+
+      const result = await service.submitReview(requestId, 'resume', mockResumeContent)
+      expect(result).toBeNull()
+    })
+
+    it('submitReview returns null for non-existent request', async () => {
+      const service = createService()
+      const result = await service.submitReview('non-existent-id', 'resume', mockResumeContent)
+      expect(result).toBeNull()
+    })
+
+    it('completes full resume workflow through review', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+
+      // Submit review
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      // render-pdf should be the next step after submitReview runs runNextStep
+      const renderResult = await service.runNextStep(requestId)
+      expect(renderResult?.steps.find((s) => s.id === 'render-pdf')?.status).toBe('completed')
+
+      // Workflow should be complete
+      const finalResult = await service.runNextStep(requestId)
+      expect(finalResult?.status).toBe('completed')
+    })
+
+    it('completes full cover letter workflow through review', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+
+      // Submit review
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+
+      // render-pdf
+      const renderResult = await service.runNextStep(requestId)
+      expect(renderResult?.steps.find((s) => s.id === 'render-pdf')?.status).toBe('completed')
+
+      // Complete
+      const finalResult = await service.runNextStep(requestId)
+      expect(finalResult?.status).toBe('completed')
+    })
+
+    it('handles both document types in sequence for generateType=both', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'both' })
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+
+      // Submit resume review
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      await service.runNextStep(requestId) // generate-cover-letter
+      const coverReviewResult = await service.runNextStep(requestId) // review-cover-letter
+
+      expect(coverReviewResult?.status).toBe('awaiting_review')
+
+      // Submit cover letter review
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+
+      // render-pdf
+      await service.runNextStep(requestId)
+
+      // Complete
+      const finalResult = await service.runNextStep(requestId)
+      expect(finalResult?.status).toBe('completed')
+    })
   })
 })

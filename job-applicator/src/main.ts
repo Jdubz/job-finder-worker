@@ -71,7 +71,7 @@ import type {
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
-import type { JobMatchWithListing } from "@shared/types"
+import type { JobMatchWithListing, ResumeContent, CoverLetterContent } from "@shared/types"
 import {
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
@@ -92,6 +92,8 @@ import {
   fetchDocuments,
   startGeneration,
   executeGenerationStep,
+  fetchDraftContent,
+  submitDocumentReview,
   submitJobToQueue,
   getApiUrl,
 } from "./api-client.js"
@@ -175,6 +177,154 @@ const TOOL_SERVER_HEALTH_TIMEOUT_MS = 3000
 
 // Maximum steps for generation workflow (prevent infinite loops)
 const MAX_GENERATION_STEPS = 20
+
+/**
+ * Result of executing generation steps
+ */
+interface StepExecutionResult {
+  success: boolean
+  data?: GenerationProgress
+  message?: string
+}
+
+/**
+ * Execute remaining generation steps until completion, failure, or awaiting review.
+ * This is a shared function used by both run-generation and submit-document-review handlers.
+ */
+async function executeRemainingSteps(
+  requestId: string,
+  initialNextStep: string | null | undefined,
+  initialSteps: GenerationStep[],
+  initialResumeUrl?: string | null,
+  initialCoverLetterUrl?: string | null
+): Promise<StepExecutionResult> {
+  let nextStep = initialNextStep
+  let currentSteps = initialSteps
+  let resumeUrl = initialResumeUrl
+  let coverLetterUrl = initialCoverLetterUrl
+  let stepCount = 0
+
+  while (nextStep && stepCount < MAX_GENERATION_STEPS) {
+    stepCount++
+
+    // Update step status to in_progress
+    currentSteps = currentSteps.map((s) =>
+      s.id === nextStep ? { ...s, status: "in_progress" as const } : s
+    )
+
+    // Send progress update
+    if (mainWindow) {
+      mainWindow.webContents.send("generation-progress", {
+        requestId,
+        status: "processing",
+        steps: currentSteps,
+        currentStep: nextStep,
+        resumeUrl,
+        coverLetterUrl,
+      })
+    }
+
+    logger.info(`Executing step: ${nextStep}`)
+    const stepResult = await executeGenerationStep(requestId)
+
+    // Check for failure
+    if (stepResult.status === "failed") {
+      return {
+        success: false,
+        message: stepResult.error || "Generation step failed",
+        data: {
+          requestId,
+          status: "failed",
+          steps: stepResult.steps || currentSteps,
+          error: stepResult.error,
+        },
+      }
+    }
+
+    // Check for awaiting_review status - pause and notify renderer
+    if (stepResult.status === "awaiting_review") {
+      logger.info("Generation paused for review")
+
+      if (stepResult.steps) {
+        currentSteps = stepResult.steps
+      }
+
+      if (mainWindow) {
+        mainWindow.webContents.send("generation-awaiting-review", {
+          requestId,
+          status: "awaiting_review",
+          steps: currentSteps,
+          resumeUrl: stepResult.resumeUrl,
+          coverLetterUrl: stepResult.coverLetterUrl,
+        })
+      }
+
+      return {
+        success: true,
+        data: {
+          requestId,
+          status: "awaiting_review",
+          steps: currentSteps,
+          resumeUrl: stepResult.resumeUrl,
+          coverLetterUrl: stepResult.coverLetterUrl,
+        },
+      }
+    }
+
+    // Update state from step result
+    if (stepResult.steps) {
+      currentSteps = stepResult.steps
+    }
+    if (stepResult.resumeUrl) {
+      resumeUrl = stepResult.resumeUrl
+    }
+    if (stepResult.coverLetterUrl) {
+      coverLetterUrl = stepResult.coverLetterUrl
+    }
+    nextStep = stepResult.nextStep
+
+    logger.info(`Step completed, next: ${nextStep || "done"}`)
+
+    // Send progress update
+    if (mainWindow) {
+      mainWindow.webContents.send("generation-progress", {
+        requestId,
+        status: nextStep ? "processing" : "completed",
+        steps: currentSteps,
+        currentStep: nextStep,
+        resumeUrl,
+        coverLetterUrl,
+      })
+    }
+  }
+
+  // Safety check: if we hit max steps but nextStep is still set
+  if (nextStep && stepCount >= MAX_GENERATION_STEPS) {
+    logger.error(`Generation exceeded max steps (${MAX_GENERATION_STEPS})`)
+    return {
+      success: false,
+      message: `Generation exceeded maximum steps (${MAX_GENERATION_STEPS}). This may indicate a backend issue.`,
+      data: {
+        requestId,
+        status: "failed",
+        steps: currentSteps,
+        error: "Exceeded maximum generation steps",
+      },
+    }
+  }
+
+  logger.info("Generation completed successfully")
+  return {
+    success: true,
+    data: {
+      requestId,
+      status: "completed",
+      steps: currentSteps,
+      resumeUrl: resumeUrl ?? undefined,
+      coverLetterUrl: coverLetterUrl ?? undefined,
+    },
+  }
+}
 
 // Global state
 let mainWindow: BrowserWindow | null = null
@@ -959,129 +1109,109 @@ ipcMain.handle(
   async (
     _event: IpcMainInvokeEvent,
     options: { jobMatchId: string; type: "resume" | "coverLetter" | "both" }
-  ): Promise<{
-    success: boolean
-    data?: GenerationProgress
-    message?: string
-  }> => {
+  ): Promise<StepExecutionResult> => {
     try {
       // Start generation using typed API client
       logger.info("Starting document generation...")
       const startResult = await startGeneration(options)
       const requestId = startResult.requestId
-      let nextStep = startResult.nextStep
-      let currentSteps: GenerationStep[] = startResult.steps || []
-      let resumeUrl = startResult.resumeUrl
-      let coverLetterUrl = startResult.coverLetterUrl
 
-      logger.info(`Generation started: ${requestId}, next step: ${nextStep}`)
+      logger.info(`Generation started: ${requestId}, next step: ${startResult.nextStep}`)
 
       // Send initial progress to renderer
       if (mainWindow) {
         mainWindow.webContents.send("generation-progress", {
           requestId,
           status: "processing",
-          steps: currentSteps,
-          currentStep: nextStep,
-          resumeUrl,
-          coverLetterUrl,
+          steps: startResult.steps || [],
+          currentStep: startResult.nextStep,
+          resumeUrl: startResult.resumeUrl,
+          coverLetterUrl: startResult.coverLetterUrl,
         })
       }
 
-      // Execute steps sequentially until complete (with safety limit)
-      let stepCount = 0
-      while (nextStep !== null && nextStep !== undefined && nextStep !== "" && stepCount < MAX_GENERATION_STEPS) {
-        stepCount++
-        // Update step status to in_progress
-        currentSteps = currentSteps.map((s) =>
-          s.id === nextStep ? { ...s, status: "in_progress" as const } : s
-        )
+      // Execute remaining steps using shared function
+      return await executeRemainingSteps(
+        requestId,
+        startResult.nextStep,
+        startResult.steps || [],
+        startResult.resumeUrl,
+        startResult.coverLetterUrl
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("Generation error:", message)
+      return { success: false, message }
+    }
+  }
+)
 
-        // Send progress update
+// Fetch draft content for document review
+ipcMain.handle(
+  "fetch-draft-content",
+  async (_event: IpcMainInvokeEvent, requestId: string) => {
+    try {
+      const draft = await fetchDraftContent(requestId)
+      return { success: true, data: draft }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("Failed to fetch draft content:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+// Submit document review and continue generation
+ipcMain.handle(
+  "submit-document-review",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: {
+      requestId: string
+      documentType: "resume" | "coverLetter"
+      content: ResumeContent | CoverLetterContent
+    }
+  ): Promise<StepExecutionResult> => {
+    try {
+      logger.info(`Submitting document review for ${options.documentType}`)
+
+      // Submit the review
+      const stepResult = await submitDocumentReview(
+        options.requestId,
+        options.documentType,
+        options.content
+      )
+
+      // If still awaiting review (e.g., for both documents), return that status immediately
+      if (stepResult.status === "awaiting_review") {
         if (mainWindow) {
-          mainWindow.webContents.send("generation-progress", {
-            requestId,
-            status: "processing",
-            steps: currentSteps,
-            currentStep: nextStep,
-            resumeUrl,
-            coverLetterUrl,
+          mainWindow.webContents.send("generation-awaiting-review", {
+            requestId: options.requestId,
+            status: "awaiting_review",
+            steps: stepResult.steps,
           })
         }
-
-        logger.info(`Executing step: ${nextStep}`)
-        const stepResult = await executeGenerationStep(requestId)
-
-        // Check for failure
-        if (stepResult.status === "failed") {
-          return {
-            success: false,
-            message: stepResult.error || "Generation step failed",
-            data: {
-              requestId,
-              status: "failed",
-              steps: stepResult.steps || currentSteps,
-              error: stepResult.error,
-            },
-          }
-        }
-
-        // Update state from step result
-        if (stepResult.steps) {
-          currentSteps = stepResult.steps
-        }
-        if (stepResult.resumeUrl) {
-          resumeUrl = stepResult.resumeUrl
-        }
-        if (stepResult.coverLetterUrl) {
-          coverLetterUrl = stepResult.coverLetterUrl
-        }
-        nextStep = stepResult.nextStep
-
-        logger.info(`Step completed, next: ${nextStep || "done"}`)
-
-        // Send progress update
-        if (mainWindow) {
-          mainWindow.webContents.send("generation-progress", {
-            requestId,
-            status: nextStep ? "processing" : "completed",
-            steps: currentSteps,
-            currentStep: nextStep,
-            resumeUrl,
-            coverLetterUrl,
-          })
-        }
-      }
-
-      // Safety check: if we hit max steps but nextStep is still set, something went wrong
-      if (nextStep && stepCount >= MAX_GENERATION_STEPS) {
-        logger.error(`Generation exceeded max steps (${MAX_GENERATION_STEPS})`)
         return {
-          success: false,
-          message: `Generation exceeded maximum steps (${MAX_GENERATION_STEPS}). This may indicate a backend issue.`,
+          success: true,
           data: {
-            requestId,
-            status: "failed",
-            steps: currentSteps,
-            error: "Exceeded maximum generation steps",
+            requestId: options.requestId,
+            status: "awaiting_review",
+            steps: stepResult.steps || [],
           },
         }
       }
 
-      logger.info("Generation completed successfully")
-      return {
-        success: true,
-        data: {
-          requestId,
-          status: "completed",
-          steps: currentSteps,
-          resumeUrl,
-          coverLetterUrl,
-        },
-      }
+      // Continue executing remaining steps using shared function
+      return await executeRemainingSteps(
+        options.requestId,
+        stepResult.nextStep,
+        stepResult.steps || [],
+        stepResult.resumeUrl,
+        stepResult.coverLetterUrl
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      logger.error("Generation error:", message)
+      logger.error("Submit review error:", message)
       return { success: false, message }
     }
   }
