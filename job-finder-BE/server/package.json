@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.0.45",
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@deepgram/sdk": "^4.11.3",
     "@google/gemini-cli": "^0.16.0",
     "@google/generative-ai": "^0.24.1",
     "@openai/codex": "^0.58.0",

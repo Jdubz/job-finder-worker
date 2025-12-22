@@ -5,6 +5,7 @@ import { router } from "@/router"
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import ErrorBoundary from "@/components/error/ErrorBoundary"
 import { RestartOverlay } from "@/components/system/RestartOverlay"
+import { ChatWidget } from "@/components/chat-widget/ChatWidget"
 
 function App() {
   const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID
@@ -19,6 +20,7 @@ function App() {
           <EntityModalProvider>
             <RestartOverlay />
             <RouterProvider router={router} />
+            <ChatWidget />
           </EntityModalProvider>
         </AuthProvider>
       </GoogleOAuthProvider>
