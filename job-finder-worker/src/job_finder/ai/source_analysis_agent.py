@@ -17,6 +17,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from string import Template
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -229,7 +230,7 @@ you are confident the issue is systemic and unfixable without manual interventio
 These domains are known job platforms. If a URL contains one of these, it's likely
 either an aggregator or a company board hosted on that aggregator:
 
-{known_aggregators}
+$known_aggregators
 
 ### Your Task
 
@@ -268,7 +269,10 @@ def _build_analysis_prompt(
         f"- {domain}: {desc}" for domain, desc in sorted(KNOWN_AGGREGATORS.items())
     )
 
-    context = SYSTEM_CONTEXT.format(known_aggregators=aggregators_text)
+    # Use string.Template (with $variable syntax) instead of str.format() to avoid
+    # conflicts with JSON curly braces in the template. This prevents KeyError if
+    # someone adds JSON examples like {"limit": 50} to SYSTEM_CONTEXT.
+    context = Template(SYSTEM_CONTEXT).substitute(known_aggregators=aggregators_text)
 
     # Build the specific analysis request
     prompt_parts = [
