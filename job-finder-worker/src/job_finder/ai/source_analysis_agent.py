@@ -133,7 +133,7 @@ Workday is complex because companies use highly variable board names:
 - Company name + suffix: insuletcareers, Vernova_ExternalSite
 - Locale variants: en-US/Search
 
-**Request Body**: {"limit": 50, "offset": 0}
+**Request Body**: {{"limit": 50, "offset": 0}}
 
 **Response**: response_path=jobPostings
 - fields: title=title, url=externalPath, location=locationsText, posted_date=postedOn
@@ -142,16 +142,16 @@ Workday is complex because companies use highly variable board names:
 
 **Example Config**:
 ```json
-{
+{{
   "type": "api",
   "url": "https://gevernova.wd5.myworkdayjobs.com/wday/cxs/gevernova/Vernova_ExternalSite/jobs",
   "method": "POST",
-  "post_body": {"limit": 50, "offset": 0},
+  "post_body": {{"limit": 50, "offset": 0}},
   "response_path": "jobPostings",
   "base_url": "https://gevernova.wd5.myworkdayjobs.com/Vernova_ExternalSite",
-  "headers": {"Content-Type": "application/json"},
-  "fields": {"title": "title", "url": "externalPath", "location": "locationsText", "posted_date": "postedOn"}
-}
+  "headers": {{"Content-Type": "application/json"}},
+  "fields": {{"title": "title", "url": "externalPath", "location": "locationsText", "posted_date": "postedOn"}}
+}}
 ```
 
 When you see a myworkdayjobs.com URL, extract the tenant and board from the URL path.
@@ -396,7 +396,7 @@ CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - Make sure `type` is api|rss|html; include response_path for APIs (e.g., jobs or jobPostings).
 - Include pagination hints only when supported (Workday/Greenhouse offset+limit).
 - Do NOT output auth-gated or CAPTCHA-protected endpoints (LinkedIn/Indeed/Glassdoor/ZipRecruiter) or single-job URLs.
-- For Workday: use the /wday/cxs/{{tenant}}/{{board}}/jobs POST endpoint with {"limit":50,"offset":0}; response_path=jobPostings; fields: title, url=externalPath, location=locationsText, posted_date=postedOn. CRITICAL: include base_url (https://{{tenant}}.wd{{N}}.myworkdayjobs.com/{{board}}) for relative externalPath URLs.
+- For Workday: use the /wday/cxs/{{tenant}}/{{board}}/jobs POST endpoint with {{"limit":50,"offset":0}}; response_path=jobPostings; fields: title, url=externalPath, location=locationsText, posted_date=postedOn. CRITICAL: include base_url (https://{{tenant}}.wd{{N}}.myworkdayjobs.com/{{board}}) for relative externalPath URLs.
 - For Greenhouse: https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs.
 - For Lever: https://api.lever.co/v0/postings/{{slug}}?mode=json.
 - For Ashby: https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs.
