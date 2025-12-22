@@ -3,11 +3,9 @@ import { createClient, type DeepgramClient } from '@deepgram/sdk'
 import { Readable } from 'node:stream'
 import { logger } from '../../logger'
 import { getChatContext, buildSystemPrompt } from './chat.prompts'
+import type { ChatMessage } from '@shared/types'
 
-export interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
+export type { ChatMessage }
 
 export class ChatService {
   private anthropic: Anthropic

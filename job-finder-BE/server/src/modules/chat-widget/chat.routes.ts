@@ -1,41 +1,24 @@
 import { Router } from 'express'
-import { z } from 'zod'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { rateLimit } from '../../middleware/rate-limit'
 import { getChatService } from './chat.service'
-import { ApiErrorCode } from '@shared/types'
-
-// Allowed MIME types for audio upload
-const ALLOWED_AUDIO_TYPES = [
-  'audio/webm',
-  'audio/webm;codecs=opus',
-  'audio/mp4',
-  'audio/ogg',
-  'audio/ogg;codecs=opus',
-  'audio/wav',
-  'audio/mpeg',
-]
-
-// Validation schemas with input sanitization
-const chatMessageSchema = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.string().trim().min(1).max(2000),
-})
-
-const chatRequestSchema = z.object({
-  messages: z.array(chatMessageSchema).min(1).max(50),
-})
-
-const ttsRequestSchema = z.object({
-  text: z.string().trim().min(1).max(5000),
-})
+import {
+  ApiErrorCode,
+  ALLOWED_AUDIO_TYPES,
+  CHAT_CONSTRAINTS,
+  chatMessageRequestSchema,
+  ttsRequestSchema,
+} from '@shared/types'
 
 export function buildChatWidgetRouter() {
   const router = Router()
 
-  // Rate limit: 30 requests per minute per IP
-  const chatRateLimit = rateLimit({ windowMs: 60_000, max: 30 })
+  // Rate limit based on shared constraints
+  const chatRateLimit = rateLimit({
+    windowMs: 60_000,
+    max: CHAT_CONSTRAINTS.RATE_LIMIT_PER_MINUTE,
+  })
 
   /**
    * POST /api/chat/message
@@ -47,7 +30,7 @@ export function buildChatWidgetRouter() {
     '/message',
     chatRateLimit,
     asyncHandler(async (req, res) => {
-      const parseResult = chatRequestSchema.safeParse(req.body)
+      const parseResult = chatMessageRequestSchema.safeParse(req.body)
       if (!parseResult.success) {
         res.status(400).json(
           failure(ApiErrorCode.INVALID_REQUEST, 'Invalid request', {
@@ -133,8 +116,8 @@ export function buildChatWidgetRouter() {
         return
       }
 
-      // Limit audio size to 10MB
-      if (audioBuffer.length > 10 * 1024 * 1024) {
+      // Limit audio size based on shared constraints
+      if (audioBuffer.length > CHAT_CONSTRAINTS.MAX_AUDIO_SIZE) {
         res
           .status(400)
           .json(failure(ApiErrorCode.INVALID_REQUEST, 'Audio file too large'))

@@ -1,4 +1,7 @@
 import { API_CONFIG } from '@/config/api'
+import type { ChatMessage } from '@shared/types'
+
+export type { ChatMessage }
 
 // Request timeout in milliseconds
 const CHAT_TIMEOUT = 60_000 // 60 seconds for streaming chat
@@ -36,10 +39,6 @@ function createTimeoutSignal(timeoutMs: number, externalSignal?: AbortSignal): A
   return controller.signal
 }
 
-export interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
 
 /**
  * Stream a chat response from the backend
