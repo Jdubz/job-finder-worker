@@ -32,6 +32,7 @@ export * from "./api/prompts.types"
 export * from "./api/company.types"
 export * from "./api/job-source.types"
 export * from "./api/applicator.types"
+export * from "./api/chat.types"
 
 // Type guards and utilities
 export * from "./guards"
