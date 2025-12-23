@@ -40,13 +40,14 @@ export const sttResponseSchema = z.object({
 
 /**
  * Schema for allowed audio MIME types
- * Uses z.union with z.literal for proper type safety instead of type assertion
+ * z.union requires at least 2 elements, so we destructure first two explicitly
  */
-const [firstAudioType, ...restAudioTypes] = ALLOWED_AUDIO_TYPES
+const [firstAudioType, secondAudioType, ...restAudioTypes] = ALLOWED_AUDIO_TYPES
 export const audioMimeTypeSchema = z.union([
   z.literal(firstAudioType),
+  z.literal(secondAudioType),
   ...restAudioTypes.map((type) => z.literal(type)),
-] as [z.ZodLiteral<string>, ...z.ZodLiteral<string>[]])
+] as [z.ZodLiteral<string>, z.ZodLiteral<string>, ...z.ZodLiteral<string>[]])
 
 // Export inferred types for runtime validation
 export type ChatMessageSchema = z.infer<typeof chatMessageSchema>
