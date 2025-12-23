@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { streamChat, speechToText, textToSpeech } from '../chat-client'
 import type { ChatMessage } from '@shared/types'
 
@@ -104,10 +104,9 @@ describe('chat-client', () => {
       ).rejects.toThrow('No response body')
     })
 
-    it('handles SSE error events silently', async () => {
-      // Note: The implementation catches all errors in the JSON parsing block,
-      // including intentional error events. This is a design choice to prevent
-      // malformed JSON from crashing the stream.
+    it('throws on SSE error events', async () => {
+      // The implementation now properly throws errors received from the server
+      // while still handling malformed JSON gracefully
       const sseData = 'data: {"error":"Service unavailable"}\n\n'
       const stream = new ReadableStream({
         start(controller) {
@@ -118,19 +117,16 @@ describe('chat-client', () => {
 
       mockFetch.mockResolvedValue({ ok: true, body: stream })
 
-      // The function should complete without throwing
-      const result = await streamChat(
-        [{ role: 'user', content: 'Hi' }],
-        () => {}
-      )
-
-      expect(result).toBe('')
+      // The function should throw the error from the SSE event
+      await expect(
+        streamChat([{ role: 'user', content: 'Hi' }], () => {})
+      ).rejects.toThrow('Service unavailable')
     })
 
     it('handles chunked SSE data correctly', async () => {
       // Simulate data arriving in multiple chunks
       const encoder = new TextEncoder()
-      let pushCount = 0
+      let chunkIndex = 0
       const chunks = [
         'data: {"te',
         'xt":"Hel',
@@ -140,9 +136,9 @@ describe('chat-client', () => {
 
       const stream = new ReadableStream({
         pull(controller) {
-          if (pushCount < chunks.length) {
-            controller.enqueue(encoder.encode(chunks[pushCount]))
-            pushCount++
+          if (chunkIndex < chunks.length) {
+            controller.enqueue(encoder.encode(chunks[chunkIndex]))
+            chunkIndex++
           } else {
             controller.close()
           }

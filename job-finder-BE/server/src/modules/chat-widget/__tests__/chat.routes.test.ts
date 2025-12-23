@@ -1,6 +1,6 @@
 import express from 'express'
 import request from 'supertest'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'node:stream'
 import { buildChatWidgetRouter } from '../chat.routes'
 import type { ChatMessage } from '@shared/types'

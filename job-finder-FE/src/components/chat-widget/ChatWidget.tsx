@@ -204,8 +204,8 @@ export function ChatWidget() {
               currentAudioRef.current = null
             })
           } catch (err) {
-            // TTS failed - log for debugging
-            console.warn('TTS failed:', err)
+            // TTS failed - log error for debugging
+            console.error('TTS failed:', err)
           }
         }
       } catch (error) {
@@ -228,7 +228,7 @@ export function ChatWidget() {
               : m
           )
         )
-        console.warn('Chat error:', error)
+        console.error('Chat error:', error)
       } finally {
         if (mountedRef.current) {
           setIsLoading(false)
@@ -266,23 +266,31 @@ export function ChatWidget() {
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
+      // Use a local variable to capture chunks for this recording session
+      // This prevents race conditions if multiple recordings happen quickly
+      const currentChunks: Blob[] = []
+      audioChunksRef.current = currentChunks
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data)
+          currentChunks.push(e.data)
         }
       }
 
       mediaRecorder.onstop = async () => {
+        // Clear event handlers to prevent stale callbacks
+        mediaRecorder.ondataavailable = null
+        mediaRecorder.onstop = null
         // Clean up stream
         stream.getTracks().forEach((track) => track.stop())
         if (mediaStreamRef.current === stream) {
           mediaStreamRef.current = null
         }
 
-        if (audioChunksRef.current.length === 0) return
+        if (currentChunks.length === 0) return
         if (!mountedRef.current) return
 
-        const audioBlob = new Blob(audioChunksRef.current, {
+        const audioBlob = new Blob(currentChunks, {
           type: mimeType || 'audio/webm',
         })
         setIsProcessingAudio(true)
@@ -293,7 +301,7 @@ export function ChatWidget() {
             sendMessage(text)
           }
         } catch (err) {
-          console.warn('STT failed:', err)
+          console.error('STT failed:', err)
         } finally {
           if (mountedRef.current) {
             setIsProcessingAudio(false)
@@ -304,7 +312,7 @@ export function ChatWidget() {
       mediaRecorder.start()
       setIsRecording(true)
     } catch (err) {
-      console.warn('Microphone access denied:', err)
+      console.error('Microphone access denied:', err)
     }
   }
 

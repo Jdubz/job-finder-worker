@@ -89,9 +89,12 @@ export function buildChatWidgetRouter() {
     '/stt',
     chatRateLimit,
     asyncHandler(async (req, res) => {
-      // Validate Content-Type
-      const contentType = req.headers['content-type']?.split(';')[0]?.trim()
-      if (!contentType || !ALLOWED_AUDIO_TYPES.some((t) => t.startsWith(contentType))) {
+      // Validate Content-Type - use exact matching for security
+      const contentType = req.headers['content-type']?.split(';')[0]?.trim()?.toLowerCase()
+      if (
+        !contentType ||
+        !ALLOWED_AUDIO_TYPES.some((t) => t.toLowerCase().split(';')[0] === contentType)
+      ) {
         res
           .status(400)
           .json(failure(ApiErrorCode.INVALID_REQUEST, 'Invalid audio format'))

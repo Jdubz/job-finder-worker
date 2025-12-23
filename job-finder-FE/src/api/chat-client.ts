@@ -22,6 +22,7 @@ function createTimeoutSignal(timeoutMs: number, externalSignal?: AbortSignal): A
   // If external signal aborts, abort ours too
   if (externalSignal) {
     if (externalSignal.aborted) {
+      clearTimeout(timeoutId)
       controller.abort(externalSignal.reason)
     } else {
       externalSignal.addEventListener('abort', () => {
@@ -89,17 +90,22 @@ export async function streamChat(
       const data = line.slice(6) // Remove 'data: ' prefix
       if (data === '[DONE]') continue
 
+      let parsed: { text?: string; error?: string }
       try {
-        const parsed = JSON.parse(data)
-        if (parsed.text) {
-          fullText += parsed.text
-          onChunk(parsed.text)
-        }
-        if (parsed.error) {
-          throw new Error(parsed.error)
-        }
-      } catch {
-        // Skip malformed JSON
+        parsed = JSON.parse(data)
+      } catch (parseError) {
+        // Skip malformed JSON but log for debugging
+        console.warn('Failed to parse SSE JSON data:', data, parseError)
+        continue
+      }
+
+      if (parsed.text) {
+        fullText += parsed.text
+        onChunk(parsed.text)
+      }
+
+      if (parsed.error) {
+        throw new Error(parsed.error)
       }
     }
   }

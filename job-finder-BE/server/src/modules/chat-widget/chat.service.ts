@@ -7,6 +7,11 @@ import type { ChatMessage } from '@shared/types'
 
 export type { ChatMessage }
 
+// Model configuration constants
+const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
+const DEEPGRAM_STT_MODEL = 'nova-2'
+const DEEPGRAM_TTS_MODEL = 'aura-asteria-en'
+
 export class ChatService {
   private anthropic: Anthropic
   private deepgram: DeepgramClient
@@ -39,7 +44,7 @@ export class ChatService {
 
       // Create streaming request
       const stream = this.anthropic.messages.stream({
-        model: 'claude-sonnet-4-20250514',
+        model: ANTHROPIC_MODEL,
         max_tokens: 1024,
         system: systemPrompt,
         messages: messages.map((m) => ({
@@ -71,7 +76,7 @@ export class ChatService {
       const { result } = await this.deepgram.listen.prerecorded.transcribeFile(
         audioBuffer,
         {
-          model: 'nova-2',
+          model: DEEPGRAM_STT_MODEL,
           smart_format: true,
           language: 'en',
         }
@@ -97,7 +102,7 @@ export class ChatService {
       const response = await this.deepgram.speak.request(
         { text },
         {
-          model: 'aura-asteria-en',
+          model: DEEPGRAM_TTS_MODEL,
           encoding: 'mp3',
         }
       )
