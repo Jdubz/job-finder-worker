@@ -45,13 +45,6 @@ export function buildApp() {
     })
   )
 
-  // Set Permissions-Policy header to allow microphone access for voice chat feature
-  // (Helmet v8 doesn't include permissionsPolicy, so we set it manually)
-  app.use((_, res, next) => {
-    res.setHeader('Permissions-Policy', 'microphone=(self)')
-    next()
-  })
-
   // Configure CORS with explicit allowed origins from environment or default for development
   const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
     ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
