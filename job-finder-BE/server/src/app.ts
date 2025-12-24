@@ -41,7 +41,7 @@ export function buildApp() {
   app.use(
     helmet({
       // Google Identity Services relies on popup postMessage, so loosen COOP accordingly.
-      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     })
   )
 

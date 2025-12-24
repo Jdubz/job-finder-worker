@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageCircle, X, Send, Mic, MicOff, Loader2 } from 'lucide-react'
+import { MessageCircle, X, Send, Mic, MicOff, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { streamChat, speechToText, textToSpeech } from '@/api/chat-client'
 import type { ChatMessage } from '@/api/chat-client'
+
+type ErrorType = 'mic_permission' | 'mic_unavailable' | 'stt_failed' | null
 
 interface UIMessage {
   id: string
@@ -52,6 +54,7 @@ export function ChatWidget() {
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingAudio, setIsProcessingAudio] = useState(false)
   const [voiceEnabled] = useState(isVoiceSupported)
+  const [error, setError] = useState<ErrorType>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -254,6 +257,9 @@ export function ChatWidget() {
   const startRecording = async () => {
     if (!voiceEnabled) return
 
+    // Clear any previous errors when attempting to record
+    setError(null)
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaStreamRef.current = stream
@@ -302,6 +308,9 @@ export function ChatWidget() {
           }
         } catch (err) {
           console.error('STT failed:', err)
+          if (mountedRef.current) {
+            setError('stt_failed')
+          }
         } finally {
           if (mountedRef.current) {
             setIsProcessingAudio(false)
@@ -312,7 +321,16 @@ export function ChatWidget() {
       mediaRecorder.start()
       setIsRecording(true)
     } catch (err) {
-      console.error('Microphone access denied:', err)
+      console.error('Microphone error:', err)
+      // Determine error type for user-facing message
+      if (
+        err instanceof Error &&
+        (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
+      ) {
+        setError('mic_permission')
+      } else {
+        setError('mic_unavailable')
+      }
     }
   }
 
@@ -383,6 +401,35 @@ export function ChatWidget() {
               </div>
             )}
           </div>
+
+          {/* Error Banner */}
+          {error && (
+            <div className="mx-4 mb-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-destructive">
+                  {{
+                    mic_permission:
+                      'Microphone access denied. Please allow microphone access in your browser settings and try again.',
+                    mic_unavailable:
+                      'No microphone found. Please connect a microphone and try again.',
+                    stt_failed:
+                      'Speech recognition failed. Please try again or type your message instead.',
+                  }[error]}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="shrink-0 h-6 w-6 text-destructive hover:text-destructive"
+                onClick={() => setError(null)}
+                aria-label="Dismiss error message"
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
 
           {/* Input */}
           <form onSubmit={handleSubmit} className="p-4 border-t shrink-0">
