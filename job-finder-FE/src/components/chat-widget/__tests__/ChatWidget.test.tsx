@@ -214,7 +214,7 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
-      expect(screen.getByRole('button', { name: /hold to speak/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /start recording/i })).toBeInTheDocument()
     })
 
     it('hides mic button when MediaRecorder is not supported', async () => {
@@ -224,7 +224,7 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
-      expect(screen.queryByRole('button', { name: /hold to speak/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /start recording/i })).not.toBeInTheDocument()
     })
 
     it('hides mic button when getUserMedia is not available', async () => {
@@ -234,7 +234,7 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
-      expect(screen.queryByRole('button', { name: /hold to speak/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /start recording/i })).not.toBeInTheDocument()
     })
   })
 
@@ -249,7 +249,7 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
-      expect(screen.getByRole('button', { name: /hold to speak/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /start recording/i })).toBeInTheDocument()
     })
 
     it('focuses input when chat opens', async () => {
