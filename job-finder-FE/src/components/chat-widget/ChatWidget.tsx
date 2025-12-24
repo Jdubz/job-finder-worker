@@ -321,16 +321,13 @@ export function ChatWidget() {
       mediaRecorder.start()
       setIsRecording(true)
     } catch (err) {
-      console.error('Microphone access denied:', err)
+      console.error('Microphone error:', err)
       // Determine error type for user-facing message
-      if (err instanceof Error) {
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setError('mic_permission')
-        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-          setError('mic_unavailable')
-        } else {
-          setError('mic_unavailable')
-        }
+      if (
+        err instanceof Error &&
+        (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
+      ) {
+        setError('mic_permission')
       } else {
         setError('mic_unavailable')
       }
@@ -411,21 +408,14 @@ export function ChatWidget() {
               <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-destructive">
-                  {error === 'mic_permission' && (
-                    <>
-                      Microphone access denied. Please allow microphone access in
-                      your browser settings and try again.
-                    </>
-                  )}
-                  {error === 'mic_unavailable' && (
-                    <>No microphone found. Please connect a microphone and try again.</>
-                  )}
-                  {error === 'stt_failed' && (
-                    <>
-                      Speech recognition failed. Please try again or type your
-                      message instead.
-                    </>
-                  )}
+                  {{
+                    mic_permission:
+                      'Microphone access denied. Please allow microphone access in your browser settings and try again.',
+                    mic_unavailable:
+                      'No microphone found. Please connect a microphone and try again.',
+                    stt_failed:
+                      'Speech recognition failed. Please try again or type your message instead.',
+                  }[error]}
                 </p>
               </div>
               <Button
@@ -434,6 +424,7 @@ export function ChatWidget() {
                 size="icon"
                 className="shrink-0 h-6 w-6 text-destructive hover:text-destructive"
                 onClick={() => setError(null)}
+                aria-label="Dismiss error message"
               >
                 <X className="w-3 h-3" />
               </Button>
