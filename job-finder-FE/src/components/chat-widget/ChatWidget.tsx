@@ -123,6 +123,20 @@ export function ChatWidget() {
     }
   }, [isOpen])
 
+  // Stop audio playback when read-back is disabled
+  useEffect(() => {
+    if (!readBackEnabled) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause()
+        currentAudioRef.current = null
+      }
+      if (currentAudioUrlRef.current) {
+        URL.revokeObjectURL(currentAudioUrlRef.current)
+        currentAudioUrlRef.current = null
+      }
+    }
+  }, [readBackEnabled])
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmedText = text.trim()

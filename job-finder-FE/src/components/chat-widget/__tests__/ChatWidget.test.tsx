@@ -232,6 +232,34 @@ describe('ChatWidget', () => {
       // TTS should not be called since read-back is disabled
       expect(mockTextToSpeech).not.toHaveBeenCalled()
     })
+
+    it('shows read-back toggle button in header', async () => {
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      expect(
+        screen.getByRole('button', { name: /enable voice read-back/i })
+      ).toBeInTheDocument()
+    })
+
+    it('toggles read-back state when button is clicked', async () => {
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      // Initially disabled
+      const toggleButton = screen.getByRole('button', { name: /enable voice read-back/i })
+      expect(toggleButton).toBeInTheDocument()
+
+      // Enable read-back
+      await user.click(toggleButton)
+
+      // Now should show disable option
+      expect(
+        screen.getByRole('button', { name: /disable voice read-back/i })
+      ).toBeInTheDocument()
+    })
   })
 
   describe('Voice Support Detection', () => {
