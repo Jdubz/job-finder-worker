@@ -189,7 +189,7 @@ describe('ChatWidget', () => {
       })
     })
 
-    it('calls textToSpeech after receiving response', async () => {
+    it('calls textToSpeech after receiving response when read-back is enabled', async () => {
       mockStreamChat.mockImplementation(async (_messages, onChunk) => {
         onChunk('Response text')
         return 'Response text'
@@ -199,12 +199,38 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
+      // Enable read-back (off by default)
+      await user.click(screen.getByRole('button', { name: /enable voice read-back/i }))
+
       const input = screen.getByPlaceholderText('Type a message...')
       await user.type(input, 'Hello{Enter}')
 
       await waitFor(() => {
         expect(mockTextToSpeech).toHaveBeenCalledWith('Response text')
       })
+    })
+
+    it('does not call textToSpeech when read-back is disabled', async () => {
+      mockStreamChat.mockImplementation(async (_messages, onChunk) => {
+        onChunk('Response text')
+        return 'Response text'
+      })
+
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      // Read-back is off by default, don't toggle it
+
+      const input = screen.getByPlaceholderText('Type a message...')
+      await user.type(input, 'Hello{Enter}')
+
+      await waitFor(() => {
+        expect(mockStreamChat).toHaveBeenCalled()
+      })
+
+      // TTS should not be called since read-back is disabled
+      expect(mockTextToSpeech).not.toHaveBeenCalled()
     })
   })
 
