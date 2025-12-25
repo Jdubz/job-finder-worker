@@ -52,17 +52,26 @@ export function buildChatWidgetRouter() {
       // Send initial comment to trigger streaming through Cloudflare
       res.write(':ok\n\n')
 
-      // Track client disconnect
+      // Track client disconnect via socket (not req.close which fires when body stream ends)
       let clientDisconnected = false
-      req.on('close', () => {
+      req.socket?.on('close', () => {
         clientDisconnected = true
+      })
+
+      // Also track if response is destroyed before completion
+      res.on('close', () => {
+        if (!res.writableEnded) {
+          clientDisconnected = true
+        }
       })
 
       try {
         const service = getChatService()
 
         for await (const chunk of service.streamChat(messages)) {
-          if (clientDisconnected) break
+          if (clientDisconnected) {
+            break
+          }
           res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`)
         }
 
@@ -71,6 +80,7 @@ export function buildChatWidgetRouter() {
         }
         res.end()
       } catch (error) {
+        console.error('[chat] Stream error:', error)
         if (!clientDisconnected) {
           // Send error as SSE event
           res.write(
