@@ -23,6 +23,10 @@ vi.mock('../../../middleware/rate-limit', () => ({
   rateLimit: vi.fn().mockImplementation(() => (_req: any, _res: any, next: any) => next()),
 }))
 
+vi.mock('../../../utils/async-handler', () => ({
+  asyncHandler: vi.fn().mockImplementation((handler: any) => handler),
+}))
+
 const createApp = () => {
   const app = express()
   app.use(express.json())
@@ -101,7 +105,7 @@ describe('Chat Widget Routes', () => {
         .send({ messages: [{ role: 'user', content: 'Hi' }] })
 
       expect(res.headers['content-type']).toContain('text/event-stream')
-      expect(res.headers['cache-control']).toBe('no-cache')
+      expect(res.headers['cache-control']).toBe('no-cache, no-transform')
       expect(res.headers['connection']).toBe('keep-alive')
     })
 

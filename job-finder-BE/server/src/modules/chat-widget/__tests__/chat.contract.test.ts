@@ -29,6 +29,10 @@ vi.mock('../../../middleware/rate-limit', () => ({
   rateLimit: vi.fn().mockImplementation(() => (_req: any, _res: any, next: any) => next()),
 }))
 
+vi.mock('../../../utils/async-handler', () => ({
+  asyncHandler: vi.fn().mockImplementation((handler: any) => handler),
+}))
+
 const createApp = () => {
   const app = express()
   app.use(express.json())
