@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageCircle, X, Send, Mic, MicOff, Loader2, AlertCircle } from 'lucide-react'
+import { MessageCircle, X, Send, Mic, Square, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { streamChat, speechToText, textToSpeech } from '@/api/chat-client'
@@ -53,12 +53,14 @@ export function ChatWidget() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingAudio, setIsProcessingAudio] = useState(false)
+  const [recordingDuration, setRecordingDuration] = useState(0)
   const [voiceEnabled] = useState(isVoiceSupported)
   const [error, setError] = useState<ErrorType>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -96,6 +98,12 @@ export function ChatWidget() {
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop())
         mediaStreamRef.current = null
+      }
+
+      // Clear recording timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+        recordingTimerRef.current = null
       }
     }
   }, [])
@@ -293,6 +301,13 @@ export function ChatWidget() {
           mediaStreamRef.current = null
         }
 
+        // Clear recording timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current)
+          recordingTimerRef.current = null
+        }
+        setRecordingDuration(0)
+
         if (currentChunks.length === 0) return
         if (!mountedRef.current) return
 
@@ -303,8 +318,16 @@ export function ChatWidget() {
 
         try {
           const text = await speechToText(audioBlob)
-          if (mountedRef.current && text.trim()) {
-            sendMessage(text)
+          if (mountedRef.current) {
+            if (text.trim()) {
+              // Put transcript in input for review instead of sending directly
+              setInputValue(text.trim())
+              // Focus input so user can review/edit
+              inputRef.current?.focus()
+            } else {
+              // Empty transcript - show feedback
+              setError('stt_failed')
+            }
           }
         } catch (err) {
           console.error('STT failed:', err)
@@ -320,6 +343,12 @@ export function ChatWidget() {
 
       mediaRecorder.start()
       setIsRecording(true)
+      setRecordingDuration(0)
+
+      // Start duration timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1)
+      }, 1000)
     } catch (err) {
       console.error('Microphone error:', err)
       // Determine error type for user-facing message
@@ -338,7 +367,24 @@ export function ChatWidget() {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
       setIsRecording(false)
+      // Timer is cleared in onstop handler
     }
+  }
+
+  // Toggle recording on click (click-to-start, click-to-stop)
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording()
+    } else {
+      startRecording()
+    }
+  }
+
+  // Format seconds as mm:ss
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   const togglePanel = () => setIsOpen((prev) => !prev)
@@ -368,7 +414,7 @@ export function ChatWidget() {
                 </p>
                 <p className="text-xs mt-2">
                   {voiceEnabled
-                    ? 'Try asking about my background or hold the mic to speak.'
+                    ? 'Try asking about my background, or click the mic to speak.'
                     : 'Try asking about my background.'}
                 </p>
               </div>
@@ -414,7 +460,7 @@ export function ChatWidget() {
                     mic_unavailable:
                       'No microphone found. Please connect a microphone and try again.',
                     stt_failed:
-                      'Speech recognition failed. Please try again or type your message instead.',
+                      "I didn't catch that. Please try speaking again or type your message.",
                   }[error]}
                 </p>
               </div>
@@ -431,31 +477,51 @@ export function ChatWidget() {
             </div>
           )}
 
+          {/* Recording/Transcribing Indicator */}
+          {(isRecording || isProcessingAudio) && (
+            <div className="mx-4 mb-2 p-3 bg-muted border rounded-md flex items-center gap-3">
+              {isRecording ? (
+                <>
+                  <div className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
+                  <span className="text-sm font-medium">
+                    Recording... {formatDuration(recordingDuration)}
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    Click mic to stop
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Transcribing...
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Input */}
           <form onSubmit={handleSubmit} className="p-4 border-t shrink-0">
             <div className="flex items-end gap-2">
-              {/* Voice Button - only show if voice is supported */}
+              {/* Voice Button - click to toggle recording */}
               {voiceEnabled && (
                 <Button
                   type="button"
                   variant={isRecording ? 'destructive' : 'outline'}
                   size="icon"
                   disabled={isLoading || isProcessingAudio}
-                  onMouseDown={startRecording}
-                  onMouseUp={stopRecording}
-                  onMouseLeave={isRecording ? stopRecording : undefined}
-                  onTouchStart={startRecording}
-                  onTouchEnd={stopRecording}
+                  onClick={toggleRecording}
                   className={cn(
                     'shrink-0 transition-all',
                     isRecording && 'animate-pulse'
                   )}
-                  aria-label={isRecording ? 'Stop recording' : 'Hold to speak'}
+                  aria-label={isRecording ? 'Stop recording' : 'Start recording'}
                 >
                   {isProcessingAudio ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : isRecording ? (
-                    <MicOff className="w-4 h-4" />
+                    <Square className="w-4 h-4 fill-current" />
                   ) : (
                     <Mic className="w-4 h-4" />
                   )}

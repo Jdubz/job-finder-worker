@@ -22,10 +22,11 @@ export function initSseStream(
 ): SseClient {
   const clientId = randomUUID()
 
+  // Set Cloudflare-compatible SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
-  res.setHeader('X-Accel-Buffering', 'no')
+  res.setHeader('X-Accel-Buffering', 'no') // For Nginx
   res.flushHeaders?.()
 
   const heartbeat = setInterval(() => {

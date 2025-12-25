@@ -42,12 +42,15 @@ export function buildChatWidgetRouter() {
 
       const { messages } = parseResult.data
 
-      // Set up SSE headers
+      // Set up SSE headers with Cloudflare-compatible settings
       res.setHeader('Content-Type', 'text/event-stream')
-      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Cache-Control', 'no-cache, no-transform')
       res.setHeader('Connection', 'keep-alive')
-      res.setHeader('X-Accel-Buffering', 'no')
+      res.setHeader('X-Accel-Buffering', 'no') // For Nginx
       res.flushHeaders?.()
+
+      // Send initial comment to trigger streaming through Cloudflare
+      res.write(':ok\n\n')
 
       // Track client disconnect
       let clientDisconnected = false
@@ -171,7 +174,6 @@ export function buildChatWidgetRouter() {
         const audioStream = await service.textToSpeech(text)
 
         res.setHeader('Content-Type', 'audio/mpeg')
-        res.setHeader('Transfer-Encoding', 'chunked')
 
         audioStream.pipe(res)
       } catch (error) {

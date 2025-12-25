@@ -23,7 +23,7 @@ export default defineConfig({
     allowOnly: false,
     maxConcurrency: 1,
     fileParallelism: false,
-    isolate: false,
+    isolate: true,
     sequence: {
       concurrent: false,
     },
