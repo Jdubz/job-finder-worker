@@ -47,7 +47,6 @@ export function buildChatWidgetRouter() {
       res.setHeader('Cache-Control', 'no-cache, no-transform')
       res.setHeader('Connection', 'keep-alive')
       res.setHeader('X-Accel-Buffering', 'no') // For Nginx
-      res.setHeader('Transfer-Encoding', 'chunked')
       res.flushHeaders?.()
 
       // Send initial comment to trigger streaming through Cloudflare
@@ -175,7 +174,6 @@ export function buildChatWidgetRouter() {
         const audioStream = await service.textToSpeech(text)
 
         res.setHeader('Content-Type', 'audio/mpeg')
-        res.setHeader('Transfer-Encoding', 'chunked')
 
         audioStream.pipe(res)
       } catch (error) {
