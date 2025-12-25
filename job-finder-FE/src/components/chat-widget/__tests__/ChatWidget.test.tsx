@@ -260,6 +260,53 @@ describe('ChatWidget', () => {
         screen.getByRole('button', { name: /disable voice read-back/i })
       ).toBeInTheDocument()
     })
+
+    it('stops playing audio and revokes URL when read-back is toggled off', async () => {
+      const mockPause = vi.fn()
+      const mockAudioInstance = {
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: mockPause,
+        onended: null,
+        onerror: null,
+      }
+      global.Audio = vi.fn().mockImplementation(() => mockAudioInstance) as any
+
+      mockStreamChat.mockImplementation(async (_messages, onChunk) => {
+        onChunk('Response text')
+        return 'Response text'
+      })
+      mockTextToSpeech.mockResolvedValue(new Blob(['audio']))
+
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      // Enable read-back
+      await user.click(screen.getByRole('button', { name: /enable voice read-back/i }))
+
+      // Send a message to trigger TTS playback
+      const input = screen.getByPlaceholderText('Type a message...')
+      await user.type(input, 'Hello{Enter}')
+
+      // Wait for TTS to be called and audio to start playing
+      await waitFor(() => {
+        expect(mockTextToSpeech).toHaveBeenCalledWith('Response text')
+      })
+
+      await waitFor(() => {
+        expect(mockAudioInstance.play).toHaveBeenCalled()
+      })
+
+      // Clear the revokeObjectURL mock to track only calls from toggle
+      vi.mocked(global.URL.revokeObjectURL).mockClear()
+
+      // Toggle read-back off
+      await user.click(screen.getByRole('button', { name: /disable voice read-back/i }))
+
+      // Audio should be paused and URL revoked
+      expect(mockPause).toHaveBeenCalled()
+      expect(global.URL.revokeObjectURL).toHaveBeenCalled()
+    })
   })
 
   describe('Voice Support Detection', () => {
