@@ -388,7 +388,8 @@ export function ChatWidget() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const togglePanel = () => setIsOpen((prev) => !prev)
+  const togglePanel = useCallback(() => setIsOpen((prev) => !prev), [])
+  const toggleReadBack = useCallback(() => setReadBackEnabled((prev) => !prev), [])
 
   return createPortal(
     <div className="fixed bottom-4 right-4 z-50">
@@ -405,7 +406,7 @@ export function ChatWidget() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setReadBackEnabled((prev) => !prev)}
+                onClick={toggleReadBack}
                 aria-label={readBackEnabled ? 'Disable voice read-back' : 'Enable voice read-back'}
                 title={readBackEnabled ? 'Voice read-back on' : 'Voice read-back off'}
               >
