@@ -3,7 +3,6 @@ import request from 'supertest'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'node:stream'
 import { buildChatWidgetRouter } from '../chat.routes'
-import type { ChatMessage } from '@shared/types'
 
 // Mock the chat service
 const mockStreamChat = vi.fn()
@@ -25,6 +24,14 @@ vi.mock('../../../middleware/rate-limit', () => ({
 
 vi.mock('../../../utils/async-handler', () => ({
   asyncHandler: vi.fn().mockImplementation((handler: any) => handler),
+}))
+
+vi.mock('../../../logger', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
 }))
 
 const createApp = () => {
@@ -150,6 +157,52 @@ describe('Chat Widget Routes', () => {
 
       // The endpoint should still return 200 (errors are sent as SSE events)
       expect(res.status).toBe(200)
+    })
+
+    it('streams multiple chunks to client', async () => {
+      mockStreamChat.mockImplementation(async function* () {
+        yield 'Hello'
+        yield ' world'
+        yield '!'
+      })
+
+      const res = await request(app)
+        .post('/chat/message')
+        .send({ messages: [{ role: 'user', content: 'Hi' }] })
+
+      expect(res.status).toBe(200)
+      // Response should contain all chunks
+      expect(res.text).toContain('data: {"text":"Hello"}')
+      expect(res.text).toContain('data: {"text":" world"}')
+      expect(res.text).toContain('data: {"text":"!"}')
+      expect(res.text).toContain('data: [DONE]')
+    })
+
+    it('sends initial SSE comment for Cloudflare compatibility', async () => {
+      mockStreamChat.mockImplementation(async function* () {
+        yield 'Test'
+      })
+
+      const res = await request(app)
+        .post('/chat/message')
+        .send({ messages: [{ role: 'user', content: 'Hi' }] })
+
+      // Should start with :ok comment
+      expect(res.text).toMatch(/^:ok\n\n/)
+    })
+
+    it('completes normally when socket closes after response ends', async () => {
+      mockStreamChat.mockImplementation(async function* () {
+        yield 'Response'
+      })
+
+      const res = await request(app)
+        .post('/chat/message')
+        .send({ messages: [{ role: 'user', content: 'Hi' }] })
+
+      // Normal completion should include DONE
+      expect(res.status).toBe(200)
+      expect(res.text).toContain('data: [DONE]')
     })
   })
 

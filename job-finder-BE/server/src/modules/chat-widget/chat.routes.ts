@@ -3,6 +3,7 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { rateLimit } from '../../middleware/rate-limit'
 import { getChatService } from './chat.service'
+import { logger } from '../../logger'
 import {
   ApiErrorCode,
   ALLOWED_AUDIO_TYPES,
@@ -53,13 +54,18 @@ export function buildChatWidgetRouter() {
       res.write(':ok\n\n')
 
       // Track client disconnect via socket (not req.close which fires when body stream ends)
+      // Use 'once' to prevent memory leaks since each listener only needs to fire once
       let clientDisconnected = false
-      req.socket?.on('close', () => {
-        clientDisconnected = true
-      })
+      if (req.socket) {
+        req.socket.once('close', () => {
+          clientDisconnected = true
+        })
+      } else {
+        logger.warn('[chat] Request socket is undefined; client disconnect via socket will not be tracked')
+      }
 
       // Also track if response is destroyed before completion
-      res.on('close', () => {
+      res.once('close', () => {
         if (!res.writableEnded) {
           clientDisconnected = true
         }
@@ -80,7 +86,7 @@ export function buildChatWidgetRouter() {
         }
         res.end()
       } catch (error) {
-        console.error('[chat] Stream error:', error)
+        logger.error({ err: error }, '[chat] Stream error')
         if (!clientDisconnected) {
           // Send error as SSE event
           res.write(
