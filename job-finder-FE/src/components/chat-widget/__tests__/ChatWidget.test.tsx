@@ -189,7 +189,7 @@ describe('ChatWidget', () => {
       })
     })
 
-    it('calls textToSpeech after receiving response', async () => {
+    it('calls textToSpeech after receiving response when read-back is enabled', async () => {
       mockStreamChat.mockImplementation(async (_messages, onChunk) => {
         onChunk('Response text')
         return 'Response text'
@@ -199,12 +199,113 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
+      // Enable read-back (off by default)
+      await user.click(screen.getByRole('button', { name: /enable voice read-back/i }))
+
       const input = screen.getByPlaceholderText('Type a message...')
       await user.type(input, 'Hello{Enter}')
 
       await waitFor(() => {
         expect(mockTextToSpeech).toHaveBeenCalledWith('Response text')
       })
+    })
+
+    it('does not call textToSpeech when read-back is disabled', async () => {
+      mockStreamChat.mockImplementation(async (_messages, onChunk) => {
+        onChunk('Response text')
+        return 'Response text'
+      })
+
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      // Read-back is off by default, don't toggle it
+
+      const input = screen.getByPlaceholderText('Type a message...')
+      await user.type(input, 'Hello{Enter}')
+
+      await waitFor(() => {
+        expect(mockStreamChat).toHaveBeenCalled()
+      })
+
+      // TTS should not be called since read-back is disabled
+      expect(mockTextToSpeech).not.toHaveBeenCalled()
+    })
+
+    it('shows read-back toggle button in header', async () => {
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      expect(
+        screen.getByRole('button', { name: /enable voice read-back/i })
+      ).toBeInTheDocument()
+    })
+
+    it('toggles read-back state when button is clicked', async () => {
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      // Initially disabled
+      const toggleButton = screen.getByRole('button', { name: /enable voice read-back/i })
+      expect(toggleButton).toBeInTheDocument()
+
+      // Enable read-back
+      await user.click(toggleButton)
+
+      // Now should show disable option
+      expect(
+        screen.getByRole('button', { name: /disable voice read-back/i })
+      ).toBeInTheDocument()
+    })
+
+    it('stops playing audio and revokes URL when read-back is toggled off', async () => {
+      const mockPause = vi.fn()
+      const mockAudioInstance = {
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: mockPause,
+        onended: null,
+        onerror: null,
+      }
+      global.Audio = vi.fn().mockImplementation(() => mockAudioInstance) as any
+
+      mockStreamChat.mockImplementation(async (_messages, onChunk) => {
+        onChunk('Response text')
+        return 'Response text'
+      })
+      mockTextToSpeech.mockResolvedValue(new Blob(['audio']))
+
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      // Enable read-back
+      await user.click(screen.getByRole('button', { name: /enable voice read-back/i }))
+
+      // Send a message to trigger TTS playback
+      const input = screen.getByPlaceholderText('Type a message...')
+      await user.type(input, 'Hello{Enter}')
+
+      // Wait for TTS to be called and audio to start playing
+      await waitFor(() => {
+        expect(mockTextToSpeech).toHaveBeenCalledWith('Response text')
+      })
+
+      await waitFor(() => {
+        expect(mockAudioInstance.play).toHaveBeenCalled()
+      })
+
+      // Clear the revokeObjectURL mock to track only calls from toggle
+      vi.mocked(global.URL.revokeObjectURL).mockClear()
+
+      // Toggle read-back off
+      await user.click(screen.getByRole('button', { name: /disable voice read-back/i }))
+
+      // Audio should be paused and URL revoked
+      expect(mockPause).toHaveBeenCalled()
+      expect(global.URL.revokeObjectURL).toHaveBeenCalled()
     })
   })
 

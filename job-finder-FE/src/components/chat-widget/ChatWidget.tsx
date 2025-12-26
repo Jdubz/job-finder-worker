@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageCircle, X, Send, Mic, Square, Loader2, AlertCircle } from 'lucide-react'
+import { MessageCircle, X, Send, Mic, Square, Loader2, AlertCircle, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { streamChat, speechToText, textToSpeech } from '@/api/chat-client'
@@ -55,6 +55,7 @@ export function ChatWidget() {
   const [isProcessingAudio, setIsProcessingAudio] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [voiceEnabled] = useState(isVoiceSupported)
+  const [readBackEnabled, setReadBackEnabled] = useState(false)
   const [error, setError] = useState<ErrorType>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -122,6 +123,20 @@ export function ChatWidget() {
     }
   }, [isOpen])
 
+  // Stop audio playback when read-back is disabled
+  useEffect(() => {
+    if (!readBackEnabled) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause()
+        currentAudioRef.current = null
+      }
+      if (currentAudioUrlRef.current) {
+        URL.revokeObjectURL(currentAudioUrlRef.current)
+        currentAudioUrlRef.current = null
+      }
+    }
+  }, [readBackEnabled])
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmedText = text.trim()
@@ -172,8 +187,8 @@ export function ChatWidget() {
           abortControllerRef.current.signal
         )
 
-        // Play TTS for response (only if still mounted)
-        if (fullResponse && mountedRef.current) {
+        // Play TTS for response (only if enabled and still mounted)
+        if (fullResponse && readBackEnabled && mountedRef.current) {
           try {
             // Stop any previously playing audio
             if (currentAudioRef.current) {
@@ -247,7 +262,7 @@ export function ChatWidget() {
         abortControllerRef.current = null
       }
     },
-    [messages, isLoading]
+    [messages, isLoading, readBackEnabled]
   )
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -387,7 +402,8 @@ export function ChatWidget() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const togglePanel = () => setIsOpen((prev) => !prev)
+  const togglePanel = useCallback(() => setIsOpen((prev) => !prev), [])
+  const toggleReadBack = useCallback(() => setReadBackEnabled((prev) => !prev), [])
 
   return createPortal(
     <div className="fixed bottom-4 right-4 z-50">
@@ -400,9 +416,24 @@ export function ChatWidget() {
               <h3 className="font-semibold">Career Assistant</h3>
               <p className="text-xs text-muted-foreground">Ask me anything</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={togglePanel}>
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleReadBack}
+                aria-label={readBackEnabled ? 'Disable voice read-back' : 'Enable voice read-back'}
+                title={readBackEnabled ? 'Voice read-back on' : 'Voice read-back off'}
+              >
+                {readBackEnabled ? (
+                  <Volume2 className="w-4 h-4" />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-muted-foreground" />
+                )}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={togglePanel}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Messages */}
