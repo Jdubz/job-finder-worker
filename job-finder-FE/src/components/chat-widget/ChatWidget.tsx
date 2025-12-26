@@ -474,6 +474,31 @@ export function ChatWidget() {
                     </ul>
                   </div>
                 )}
+
+                <div className="text-center text-[10px] text-muted-foreground/70 pt-2">
+                  Powered by{' '}
+                  <a
+                    href="https://www.anthropic.com/claude"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-foreground"
+                  >
+                    Claude
+                  </a>
+                  {voiceEnabled && (
+                    <>
+                      {' '}and{' '}
+                      <a
+                        href="https://deepgram.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-foreground"
+                      >
+                        Deepgram
+                      </a>
+                    </>
+                  )}
+                </div>
               </div>
             )}
             {messages.map((msg) => (
