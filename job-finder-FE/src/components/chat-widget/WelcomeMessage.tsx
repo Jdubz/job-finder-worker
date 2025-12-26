@@ -51,6 +51,7 @@ export function WelcomeMessage({ voiceEnabled }: WelcomeMessageProps) {
           className="underline hover:text-foreground"
         >
           Claude
+          <span className="sr-only"> (opens in new tab)</span>
         </a>
         {voiceEnabled && (
           <>
@@ -62,6 +63,7 @@ export function WelcomeMessage({ voiceEnabled }: WelcomeMessageProps) {
               className="underline hover:text-foreground"
             >
               Deepgram
+              <span className="sr-only"> (opens in new tab)</span>
             </a>
           </>
         )}
