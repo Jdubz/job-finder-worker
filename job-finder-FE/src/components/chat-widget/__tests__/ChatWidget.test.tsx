@@ -100,9 +100,8 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
-      expect(
-        screen.getByText(/I can answer questions about my experience and skills/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Hi! I'm Josh's career assistant/i)).toBeInTheDocument()
+      expect(screen.getByText(/Things I can help with/i)).toBeInTheDocument()
     })
   })
 
