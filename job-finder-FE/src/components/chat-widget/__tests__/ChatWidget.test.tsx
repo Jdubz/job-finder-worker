@@ -100,9 +100,29 @@ describe('ChatWidget', () => {
 
       await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
 
-      expect(
-        screen.getByText(/I can answer questions about my experience and skills/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Hi! I'm Josh's career assistant/i)).toBeInTheDocument()
+      expect(screen.getByText(/Things I can help with/i)).toBeInTheDocument()
+    })
+
+    it('shows voice features section when voice is supported', async () => {
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      expect(screen.getByText(/Voice features/i)).toBeInTheDocument()
+      expect(screen.getByText(/Click the speaker icon/i)).toBeInTheDocument()
+      expect(screen.getByText(/Click the mic button/i)).toBeInTheDocument()
+    })
+
+    it('hides voice features section when voice is not supported', async () => {
+      ;(global.MediaRecorder as any).isTypeSupported = vi.fn().mockReturnValue(false)
+
+      render(<ChatWidget />)
+
+      await user.click(screen.getByRole('button', { name: /open chat assistant/i }))
+
+      expect(screen.getByText(/Hi! I'm Josh's career assistant/i)).toBeInTheDocument()
+      expect(screen.queryByText(/Voice features/i)).not.toBeInTheDocument()
     })
   })
 

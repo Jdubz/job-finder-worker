@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { MessageCircle, X, Send, Mic, Square, Loader2, AlertCircle, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { WelcomeMessage } from './WelcomeMessage'
 import { cn } from '@/lib/utils'
 import { streamChat, speechToText, textToSpeech } from '@/api/chat-client'
 import type { ChatMessage } from '@/api/chat-client'
@@ -438,18 +439,7 @@ export function ChatWidget() {
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <p className="text-sm">
-                  Hi! I can answer questions about my experience and skills.
-                </p>
-                <p className="text-xs mt-2">
-                  {voiceEnabled
-                    ? 'Try asking about my background, or click the mic to speak.'
-                    : 'Try asking about my background.'}
-                </p>
-              </div>
-            )}
+            {messages.length === 0 && <WelcomeMessage voiceEnabled={voiceEnabled} />}
             {messages.map((msg) => (
               <div
                 key={msg.id}
