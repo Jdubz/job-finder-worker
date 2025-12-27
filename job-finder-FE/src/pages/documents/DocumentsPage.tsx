@@ -38,6 +38,7 @@ function getStatusBadge(status: GeneratorRequestRecord["status"]) {
   const variants: Record<typeof status, "default" | "secondary" | "destructive" | "outline"> = {
     pending: "outline",
     processing: "secondary",
+    awaiting_review: "secondary",
     completed: "default",
     failed: "destructive",
   }

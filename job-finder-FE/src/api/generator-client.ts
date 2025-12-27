@@ -71,7 +71,7 @@ export interface GeneratorRequestRecord {
   }
   preferences?: Record<string, unknown> | null
   personalInfo?: Record<string, unknown> | null
-  status: "pending" | "processing" | "completed" | "failed"
+  status: "pending" | "processing" | "awaiting_review" | "completed" | "failed"
   resumeUrl?: string | null
   coverLetterUrl?: string | null
   jobMatchId?: string | null
@@ -132,6 +132,64 @@ export interface ExecuteStepResponse {
   requestId: string
 }
 
+export type ReviewDocumentType = "resume" | "coverLetter"
+
+export interface DraftContentResponse {
+  requestId: string
+  documentType: ReviewDocumentType
+  content: ResumeContent | CoverLetterContent
+  status: "awaiting_review"
+}
+
+export interface ResumeContent {
+  personalInfo: {
+    name: string
+    title: string
+    summary: string
+    contact: {
+      email: string
+      location?: string
+      website?: string
+      linkedin?: string
+      github?: string
+    }
+  }
+  professionalSummary: string
+  experience: Array<{
+    role: string
+    company: string
+    location?: string
+    startDate: string
+    endDate: string | null
+    highlights: string[]
+    technologies?: string[]
+  }>
+  skills?: Array<{
+    category: string
+    items: string[]
+  }>
+  education?: Array<{
+    institution: string
+    degree: string
+    field?: string
+    startDate?: string
+    endDate?: string
+  }>
+}
+
+export interface CoverLetterContent {
+  greeting: string
+  openingParagraph: string
+  bodyParagraphs: string[]
+  closingParagraph: string
+  signature: string
+}
+
+export interface SubmitReviewRequest {
+  documentType: ReviewDocumentType
+  content: ResumeContent | CoverLetterContent
+}
+
 export class GeneratorClient extends BaseApiClient {
   constructor(baseUrl: string | (() => string) = () => API_CONFIG.generatorBaseUrl) {
     // Use longer timeout for AI generation (2 minutes) and fewer retries
@@ -187,6 +245,26 @@ export class GeneratorClient extends BaseApiClient {
    */
   async executeStep(requestId: string): Promise<ExecuteStepResponse> {
     return this.post<ExecuteStepResponse>(`/step/${requestId}`, {})
+  }
+
+  /**
+   * Get draft content awaiting review
+   * Returns null if no content is awaiting review
+   */
+  async getDraftContent(requestId: string): Promise<DraftContentResponse | null> {
+    try {
+      const response = await this.get<{ success: boolean; data: DraftContentResponse }>(`/requests/${requestId}/draft`)
+      return response.data
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Submit reviewed/edited content to continue generation
+   */
+  async submitReview(requestId: string, request: SubmitReviewRequest): Promise<ExecuteStepResponse> {
+    return this.post<ExecuteStepResponse>(`/requests/${requestId}/submit-review`, request)
   }
 }
 
