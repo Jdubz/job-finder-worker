@@ -142,26 +142,26 @@ export interface DraftContentResponse {
 }
 
 export interface ResumeContent {
-  personalInfo?: {
+  personalInfo: {
     name: string
-    title?: string
-    summary?: string
-    contact?: {
-      email?: string
+    title: string
+    summary: string
+    contact: {
+      email: string
       location?: string
       website?: string
       linkedin?: string
       github?: string
     }
   }
-  professionalSummary?: string
-  experience?: Array<{
+  professionalSummary: string
+  experience: Array<{
     role: string
     company: string
     location?: string
-    startDate?: string
-    endDate?: string
-    highlights?: string[]
+    startDate: string
+    endDate: string | null
+    highlights: string[]
     technologies?: string[]
   }>
   skills?: Array<{
@@ -170,7 +170,7 @@ export interface ResumeContent {
   }>
   education?: Array<{
     institution: string
-    degree?: string
+    degree: string
     field?: string
     startDate?: string
     endDate?: string
@@ -178,13 +178,11 @@ export interface ResumeContent {
 }
 
 export interface CoverLetterContent {
-  recipientName?: string
-  recipientTitle?: string
-  companyName: string
+  greeting: string
   openingParagraph: string
   bodyParagraphs: string[]
   closingParagraph: string
-  signature?: string
+  signature: string
 }
 
 export interface SubmitReviewRequest {

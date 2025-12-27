@@ -482,7 +482,10 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
               documentType={draftContent.documentType}
               content={draftContent.content}
               onSubmit={handleReviewSubmit}
-              onCancel={() => setDraftContent(null)}
+              onCancel={() => {
+                setDraftContent(null)
+                setCurrentRequestId(null)
+              }}
               isSubmitting={generating}
             />
           ) : (

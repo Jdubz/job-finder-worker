@@ -224,6 +224,23 @@ export function ResumeReviewForm({
         <ScrollArea className="h-[60vh] pr-4">
           <div className="space-y-4">
             <div>
+              <Label className="text-sm font-semibold">Greeting</Label>
+              {isEditing ? (
+                <Input
+                  value={coverLetter.greeting}
+                  onChange={(e) =>
+                    setEditedContent({ ...coverLetter, greeting: e.target.value })
+                  }
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-sm mt-1">{coverLetter.greeting}</p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div>
               <Label className="text-sm font-semibold">Opening Paragraph</Label>
               {isEditing ? (
                 <Textarea
@@ -279,6 +296,23 @@ export function ResumeReviewForm({
                 />
               ) : (
                 <p className="text-sm mt-1 whitespace-pre-wrap">{coverLetter.closingParagraph}</p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div>
+              <Label className="text-sm font-semibold">Signature</Label>
+              {isEditing ? (
+                <Input
+                  value={coverLetter.signature}
+                  onChange={(e) =>
+                    setEditedContent({ ...coverLetter, signature: e.target.value })
+                  }
+                  className="mt-1"
+                />
+              ) : (
+                <p className="text-sm mt-1">{coverLetter.signature}</p>
               )}
             </div>
           </div>
