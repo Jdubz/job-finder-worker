@@ -1,7 +1,10 @@
 -- Add 'awaiting_review' status to generator_requests table
 -- Required for the review step in the resume/cover letter generation workflow
+-- Note: generator_steps was dropped in migration 011, only generator_artifacts has FK to this table
 
 PRAGMA foreign_keys=off;
+
+BEGIN TRANSACTION;
 
 CREATE TABLE generator_requests_new (
   id TEXT PRIMARY KEY,
@@ -37,5 +40,7 @@ ALTER TABLE generator_requests_new RENAME TO generator_requests;
 CREATE INDEX IF NOT EXISTS idx_generator_requests_status ON generator_requests (status);
 CREATE INDEX IF NOT EXISTS idx_generator_requests_created_at ON generator_requests (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generator_requests_job_match_id ON generator_requests (job_match_id);
+
+COMMIT;
 
 PRAGMA foreign_keys=on;
