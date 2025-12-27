@@ -14,9 +14,13 @@ import {
   type GeneratorRequestRecord,
   type GenerationStep,
   type GenerateDocumentRequest,
+  type DraftContentResponse,
+  type ResumeContent,
+  type CoverLetterContent,
 } from "@/api/generator-client"
 import { jobMatchesClient } from "@/api"
 import { GenerationProgress } from "@/components/GenerationProgress"
+import { ResumeReviewForm } from "@/components/ResumeReviewForm"
 import { getAbsoluteArtifactUrl } from "@/config/api"
 import { toast } from "@/components/toast"
 
@@ -43,6 +47,8 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   const [resumeUrl, setResumeUrl] = useState<string | null>(null)
   const [coverLetterUrl, setCoverLetterUrl] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [draftContent, setDraftContent] = useState<DraftContentResponse | null>(null)
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   const companyInfo = localMatch.company?.about || localMatch.company?.culture || localMatch.company?.mission
 
   const handleStatusChange = async (status: "active" | "ignored" | "applied") => {
@@ -79,6 +85,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
     setSteps([])
     setResumeUrl(null)
     setCoverLetterUrl(null)
+    setDraftContent(null)
 
     try {
       const request: GenerateDocumentRequest = {
@@ -100,14 +107,26 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
         return
       }
 
+      setCurrentRequestId(start.data.requestId)
       setSteps(start.data.steps || [])
       if (start.data.resumeUrl) setResumeUrl(start.data.resumeUrl)
       if (start.data.coverLetterUrl) setCoverLetterUrl(start.data.coverLetterUrl)
 
       let nextStep = start.data.nextStep
       let currentSteps = start.data.steps || []
+      let currentStatus = start.data.status
 
       while (nextStep) {
+        // Check if we need to pause for review
+        if (currentStatus === "awaiting_review") {
+          const draft = await generatorClient.getDraftContent(start.data.requestId)
+          if (draft) {
+            setDraftContent(draft)
+            setGenerating(false)
+            return // Pause here - user will call handleReviewSubmit to continue
+          }
+        }
+
         setSteps(
           currentSteps.map((s) => (s.id === nextStep ? { ...s, status: "in_progress" } : s))
         )
@@ -126,7 +145,18 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
         }
         if (step.data.resumeUrl) setResumeUrl(step.data.resumeUrl)
         if (step.data.coverLetterUrl) setCoverLetterUrl(step.data.coverLetterUrl)
+        currentStatus = step.data.status
         nextStep = step.data.nextStep
+
+        // Check if this step resulted in awaiting_review
+        if (currentStatus === "awaiting_review") {
+          const draft = await generatorClient.getDraftContent(start.data.requestId)
+          if (draft) {
+            setDraftContent(draft)
+            setGenerating(false)
+            return // Pause here - user will call handleReviewSubmit to continue
+          }
+        }
       }
 
       toast.success({ title: "Documents ready" })
@@ -134,6 +164,84 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
     } catch (err) {
       console.error("Generation error", err)
       toast.error({ title: "Generation failed" })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleReviewSubmit = async (content: ResumeContent | CoverLetterContent) => {
+    if (!currentRequestId || !draftContent) return
+
+    setGenerating(true)
+    setDraftContent(null)
+
+    try {
+      const result = await generatorClient.submitReview(currentRequestId, {
+        documentType: draftContent.documentType,
+        content,
+      })
+
+      if (!result.success || result.data.status === "failed") {
+        toast.error({ title: "Review submission failed" })
+        setGenerating(false)
+        return
+      }
+
+      let currentSteps = result.data.steps || steps
+      setSteps(currentSteps)
+      if (result.data.resumeUrl) setResumeUrl(result.data.resumeUrl)
+      if (result.data.coverLetterUrl) setCoverLetterUrl(result.data.coverLetterUrl)
+
+      let nextStep = result.data.nextStep
+      let currentStatus = result.data.status
+
+      // Continue executing remaining steps
+      while (nextStep) {
+        if (currentStatus === "awaiting_review") {
+          const draft = await generatorClient.getDraftContent(currentRequestId)
+          if (draft) {
+            setDraftContent(draft)
+            setGenerating(false)
+            return
+          }
+        }
+
+        setSteps(
+          currentSteps.map((s) => (s.id === nextStep ? { ...s, status: "in_progress" } : s))
+        )
+
+        const step = await generatorClient.executeStep(currentRequestId)
+        if (!step.success || step.data.status === "failed") {
+          setSteps(step.data.steps || currentSteps)
+          toast.error({ title: "Generation failed" })
+          setGenerating(false)
+          return
+        }
+
+        if (step.data.steps) {
+          currentSteps = step.data.steps
+          setSteps(currentSteps)
+        }
+        if (step.data.resumeUrl) setResumeUrl(step.data.resumeUrl)
+        if (step.data.coverLetterUrl) setCoverLetterUrl(step.data.coverLetterUrl)
+        currentStatus = step.data.status
+        nextStep = step.data.nextStep
+
+        if (currentStatus === "awaiting_review") {
+          const draft = await generatorClient.getDraftContent(currentRequestId)
+          if (draft) {
+            setDraftContent(draft)
+            setGenerating(false)
+            return
+          }
+        }
+      }
+
+      toast.success({ title: "Documents ready" })
+      refreshDocuments()
+    } catch (err) {
+      console.error("Review submission error", err)
+      toast.error({ title: "Review submission failed" })
     } finally {
       setGenerating(false)
     }
@@ -369,6 +477,15 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           </ScrollArea>
         </TabsContent>
         <TabsContent value="documents" className="flex-1 min-h-0 mt-2 flex flex-col">
+          {draftContent ? (
+            <ResumeReviewForm
+              documentType={draftContent.documentType}
+              content={draftContent.content}
+              onSubmit={handleReviewSubmit}
+              onCancel={() => setDraftContent(null)}
+              isSubmitting={generating}
+            />
+          ) : (
           <div className="grid gap-4 md:grid-cols-2 h-full">
             <Card className="flex flex-col">
               <CardHeader className="pb-3">
@@ -469,6 +586,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
               </CardContent>
             </Card>
           </div>
+          )}
         </TabsContent>
       </Tabs>
 
