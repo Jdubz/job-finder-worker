@@ -68,7 +68,8 @@ describe("ResumeReviewForm", () => {
 
       expect(screen.getByText("Review Generated Resume")).toBeInTheDocument()
       expect(screen.getByText("Professional Summary")).toBeInTheDocument()
-      expect(screen.getByText(mockResumeContent.professionalSummary)).toBeInTheDocument()
+      // Summary is in an editable textarea
+      expect(screen.getByDisplayValue(mockResumeContent.professionalSummary)).toBeInTheDocument()
       expect(screen.getByText("Senior Developer")).toBeInTheDocument()
       expect(screen.getByText(/Tech Corp/)).toBeInTheDocument()
     })
@@ -107,7 +108,7 @@ describe("ResumeReviewForm", () => {
       expect(onCancel).toHaveBeenCalled()
     })
 
-    it("toggles edit mode when Edit Details is clicked", () => {
+    it("renders with editable fields by default", () => {
       const onSubmit = vi.fn()
       const onCancel = vi.fn()
 
@@ -120,9 +121,9 @@ describe("ResumeReviewForm", () => {
         />
       )
 
-      expect(screen.getByText("Edit Details")).toBeInTheDocument()
-      fireEvent.click(screen.getByText("Edit Details"))
-      expect(screen.getByText("Done Editing")).toBeInTheDocument()
+      // Editing is always enabled - textarea should be present
+      const summaryTextarea = screen.getByDisplayValue(mockResumeContent.professionalSummary)
+      expect(summaryTextarea.tagName.toLowerCase()).toBe("textarea")
     })
 
     it("disables buttons when isSubmitting is true", () => {
@@ -160,11 +161,12 @@ describe("ResumeReviewForm", () => {
 
       expect(screen.getByText("Review Generated Cover Letter")).toBeInTheDocument()
       expect(screen.getByText("Greeting")).toBeInTheDocument()
-      expect(screen.getByText(mockCoverLetterContent.greeting)).toBeInTheDocument()
+      // Content is in editable fields
+      expect(screen.getByDisplayValue(mockCoverLetterContent.greeting)).toBeInTheDocument()
       expect(screen.getByText("Opening Paragraph")).toBeInTheDocument()
-      expect(screen.getByText(mockCoverLetterContent.openingParagraph)).toBeInTheDocument()
+      expect(screen.getByDisplayValue(mockCoverLetterContent.openingParagraph)).toBeInTheDocument()
       expect(screen.getByText("Signature")).toBeInTheDocument()
-      expect(screen.getByText(mockCoverLetterContent.signature)).toBeInTheDocument()
+      expect(screen.getByDisplayValue(mockCoverLetterContent.signature)).toBeInTheDocument()
     })
 
     it("calls onSubmit with cover letter content", () => {
@@ -197,10 +199,7 @@ describe("ResumeReviewForm", () => {
         />
       )
 
-      // Enter edit mode
-      fireEvent.click(screen.getByText("Edit Details"))
-
-      // Find the greeting input and change it
+      // Fields are editable by default - find the greeting input and change it
       const greetingInput = screen.getByDisplayValue(mockCoverLetterContent.greeting)
       fireEvent.change(greetingInput, { target: { value: "Hello Hiring Team," } })
 

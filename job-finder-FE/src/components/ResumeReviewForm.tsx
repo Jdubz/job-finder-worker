@@ -26,7 +26,8 @@ export function ResumeReviewForm({
   isSubmitting = false,
 }: ResumeReviewFormProps) {
   const [editedContent, setEditedContent] = useState(content)
-  const [isEditing, setIsEditing] = useState(false)
+  // Editing is always enabled - users can directly modify content
+  const isEditing = true
 
   if (documentType === "resume") {
     const resume = editedContent as ResumeContent
@@ -176,23 +177,13 @@ export function ResumeReviewForm({
             </div>
           </ScrollArea>
 
-          <div className="flex justify-between items-center mt-4 pt-4 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(!isEditing)}
-              disabled={isSubmitting}
-            >
-              {isEditing ? "Done Editing" : "Edit Details"}
+          <div className="flex justify-end items-center mt-4 pt-4 border-t gap-2">
+            <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
             </Button>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Approve & Continue"}
-              </Button>
-            </div>
+            <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Approve & Continue"}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -318,23 +309,13 @@ export function ResumeReviewForm({
           </div>
         </ScrollArea>
 
-        <div className="flex justify-between items-center mt-4 pt-4 border-t">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditing(!isEditing)}
-            disabled={isSubmitting}
-          >
-            {isEditing ? "Done Editing" : "Edit Details"}
+        <div className="flex justify-end items-center mt-4 pt-4 border-t gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
           </Button>
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Approve & Continue"}
-            </Button>
-          </div>
+          <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
+            {isSubmitting ? "Submitting..." : "Approve & Continue"}
+          </Button>
         </div>
       </CardContent>
     </Card>
