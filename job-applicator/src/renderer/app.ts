@@ -1027,7 +1027,7 @@ function autoResizeTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = "auto"
   // Set height to scrollHeight (content height) with a minimum
   const minHeight = 40 // Minimum height in pixels
-  const maxHeight = 300 // Maximum height in pixels
+  const maxHeight = 400 // Maximum height in pixels (matches CSS .review-textarea max-height)
   const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)
   textarea.style.height = `${newHeight}px`
   // Show scrollbar if content exceeds max height
