@@ -913,13 +913,21 @@ async function handleGenerationAwaitingReview(progress: GenerationProgress) {
   currentReviewRequestId = progress.requestId
   currentReviewDocumentType = draft.documentType
   currentReviewContent = draft.content
+  log.info("handleGenerationAwaitingReview: State set", {
+    requestId: currentReviewRequestId,
+    documentType: currentReviewDocumentType,
+    hasContent: !!currentReviewContent
+  })
 
   // Hide generation progress, show review modal
   generationProgress.classList.add("hidden")
 
   // Hide BrowserView so modal overlay is visible (BrowserView renders on top of HTML)
-  await api.hideBrowserView()
+  log.info("handleGenerationAwaitingReview: Hiding BrowserView...")
+  const hideResult = await api.hideBrowserView()
+  log.info("handleGenerationAwaitingReview: hideBrowserView result", hideResult)
   reviewModalOverlay.classList.remove("hidden")
+  log.info("handleGenerationAwaitingReview: Modal shown")
 
   // Set title based on document type
   const docTypeLabel = draft.documentType === "resume" ? "resume" : "cover letter"
@@ -1113,17 +1121,22 @@ function collectCoverLetterContent(original: CoverLetterContent): CoverLetterCon
 
 // Submit the reviewed content
 async function submitReview() {
+  log.info("submitReview called", { currentReviewRequestId, currentReviewDocumentType })
+
   if (!currentReviewRequestId || !currentReviewDocumentType) {
+    log.error("submitReview: No review in progress", { currentReviewRequestId, currentReviewDocumentType })
     setStatus("No review in progress", "error")
     return
   }
 
   const editedContent = collectReviewedContent()
   if (!editedContent) {
+    log.error("submitReview: Failed to collect content")
     setStatus("Failed to collect reviewed content", "error")
     return
   }
 
+  log.info("submitReview: Submitting...", { documentType: currentReviewDocumentType })
   setStatus("Submitting review...", "loading")
   approveReviewBtn.disabled = true
 
@@ -1133,6 +1146,8 @@ async function submitReview() {
       documentType: currentReviewDocumentType,
       content: editedContent,
     })
+
+    log.info("submitReview: Got result", { success: result.success, status: result.data?.status, message: result.message })
 
     if (result.success && result.data) {
       // Hide review modal temporarily
@@ -1786,8 +1801,15 @@ function initializeApp() {
   previewCoverLetterBtn.addEventListener("click", previewCoverLetter)
 
   // Event listeners - Document Review buttons
-  approveReviewBtn.addEventListener("click", submitReview)
-  cancelReviewBtn.addEventListener("click", cancelReview)
+  log.info("Setting up review button event listeners")
+  approveReviewBtn.addEventListener("click", () => {
+    log.info("Approve button clicked!")
+    submitReview()
+  })
+  cancelReviewBtn.addEventListener("click", () => {
+    log.info("Cancel button clicked!")
+    cancelReview()
+  })
 
   // Subscribe to generation review events
   unsubscribeGenerationReview = api.onGenerationAwaitingReview(handleGenerationAwaitingReview)
