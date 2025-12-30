@@ -261,6 +261,10 @@ interface ElectronAPI {
   goBack: () => Promise<{ success: boolean; canGoBack: boolean; message?: string }>
   getNavigationState: () => Promise<{ url: string; canGoBack: boolean }>
 
+  // BrowserView control (for modal overlays)
+  hideBrowserView: () => Promise<{ success: boolean }>
+  showBrowserView: () => Promise<{ success: boolean }>
+
   // Form Fill API (MCP-based)
   fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) => Promise<{ success: boolean; message?: string }>
   stopFillForm: () => Promise<{ success: boolean }>
@@ -912,6 +916,9 @@ async function handleGenerationAwaitingReview(progress: GenerationProgress) {
 
   // Hide generation progress, show review modal
   generationProgress.classList.add("hidden")
+
+  // Hide BrowserView so modal overlay is visible (BrowserView renders on top of HTML)
+  await api.hideBrowserView()
   reviewModalOverlay.classList.remove("hidden")
 
   // Set title based on document type
@@ -1138,12 +1145,16 @@ async function submitReview() {
       // Check if there's another review needed or if generation is complete
       if (result.data.status === "awaiting_review") {
         // Another document needs review - trigger the handler directly
+        // (handleGenerationAwaitingReview will hide BrowserView again)
         setStatus("Review submitted. Loading next document...", "loading")
         handleGenerationAwaitingReview(result.data)
       } else if (result.data.status === "completed") {
+        // Restore BrowserView now that modal is closed
+        await api.showBrowserView()
         handleGenerationProgress(result.data)
       } else {
-        // Generation is continuing
+        // Generation is continuing - restore BrowserView
+        await api.showBrowserView()
         generationProgress.classList.remove("hidden")
         setStatus("Generating PDF...", "loading")
       }
@@ -1159,8 +1170,10 @@ async function submitReview() {
 }
 
 // Cancel the review
-function cancelReview() {
+async function cancelReview() {
   reviewModalOverlay.classList.add("hidden")
+  // Restore BrowserView now that modal is closed
+  await api.showBrowserView()
   generationProgress.classList.add("hidden")
   generateBtn.disabled = false
   currentReviewRequestId = null

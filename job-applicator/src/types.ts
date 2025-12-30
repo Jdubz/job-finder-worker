@@ -109,7 +109,7 @@ export interface JobExtraction {
 export interface DocumentInfo {
   id: string
   generateType: "resume" | "coverLetter" | "both"
-  status: "pending" | "processing" | "completed" | "failed"
+  status: "pending" | "processing" | "awaiting_review" | "completed" | "failed"
   resumeUrl?: string
   coverLetterUrl?: string
   createdAt: string
