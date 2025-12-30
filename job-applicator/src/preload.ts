@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getNavigationState: (): Promise<{ url: string; canGoBack: boolean }> =>
     ipcRenderer.invoke("get-navigation-state"),
 
+  // BrowserView control (for modal overlays)
+  hideBrowserView: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("hide-browser-view"),
+  showBrowserView: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("show-browser-view"),
+
   // Form Fill API (MCP-based)
   fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) =>
     ipcRenderer.invoke("fill-form", options),

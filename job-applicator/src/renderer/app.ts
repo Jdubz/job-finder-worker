@@ -261,6 +261,10 @@ interface ElectronAPI {
   goBack: () => Promise<{ success: boolean; canGoBack: boolean; message?: string }>
   getNavigationState: () => Promise<{ url: string; canGoBack: boolean }>
 
+  // BrowserView control (for modal overlays)
+  hideBrowserView: () => Promise<{ success: boolean }>
+  showBrowserView: () => Promise<{ success: boolean }>
+
   // Form Fill API (MCP-based)
   fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) => Promise<{ success: boolean; message?: string }>
   stopFillForm: () => Promise<{ success: boolean }>
@@ -909,10 +913,21 @@ async function handleGenerationAwaitingReview(progress: GenerationProgress) {
   currentReviewRequestId = progress.requestId
   currentReviewDocumentType = draft.documentType
   currentReviewContent = draft.content
+  log.info("handleGenerationAwaitingReview: State set", {
+    requestId: currentReviewRequestId,
+    documentType: currentReviewDocumentType,
+    hasContent: !!currentReviewContent
+  })
 
   // Hide generation progress, show review modal
   generationProgress.classList.add("hidden")
+
+  // Hide BrowserView so modal overlay is visible (BrowserView renders on top of HTML)
+  log.info("handleGenerationAwaitingReview: Hiding BrowserView...")
+  const hideResult = await api.hideBrowserView()
+  log.info("handleGenerationAwaitingReview: hideBrowserView result", hideResult)
   reviewModalOverlay.classList.remove("hidden")
+  log.info("handleGenerationAwaitingReview: Modal shown")
 
   // Set title based on document type
   const docTypeLabel = draft.documentType === "resume" ? "resume" : "cover letter"
@@ -1106,17 +1121,22 @@ function collectCoverLetterContent(original: CoverLetterContent): CoverLetterCon
 
 // Submit the reviewed content
 async function submitReview() {
+  log.info("submitReview called", { currentReviewRequestId, currentReviewDocumentType })
+
   if (!currentReviewRequestId || !currentReviewDocumentType) {
+    log.error("submitReview: No review in progress", { currentReviewRequestId, currentReviewDocumentType })
     setStatus("No review in progress", "error")
     return
   }
 
   const editedContent = collectReviewedContent()
   if (!editedContent) {
+    log.error("submitReview: Failed to collect content")
     setStatus("Failed to collect reviewed content", "error")
     return
   }
 
+  log.info("submitReview: Submitting...", { documentType: currentReviewDocumentType })
   setStatus("Submitting review...", "loading")
   approveReviewBtn.disabled = true
 
@@ -1126,6 +1146,8 @@ async function submitReview() {
       documentType: currentReviewDocumentType,
       content: editedContent,
     })
+
+    log.info("submitReview: Got result", { success: result.success, status: result.data?.status, message: result.message })
 
     if (result.success && result.data) {
       // Hide review modal temporarily
@@ -1138,14 +1160,19 @@ async function submitReview() {
       // Check if there's another review needed or if generation is complete
       if (result.data.status === "awaiting_review") {
         // Another document needs review - trigger the handler directly
+        // (handleGenerationAwaitingReview will hide BrowserView again)
         setStatus("Review submitted. Loading next document...", "loading")
-        handleGenerationAwaitingReview(result.data)
-      } else if (result.data.status === "completed") {
-        handleGenerationProgress(result.data)
+        await handleGenerationAwaitingReview(result.data)
       } else {
-        // Generation is continuing
-        generationProgress.classList.remove("hidden")
-        setStatus("Generating PDF...", "loading")
+        // Restore BrowserView now that modal is closed
+        await api.showBrowserView()
+        if (result.data.status === "completed") {
+          handleGenerationProgress(result.data)
+        } else {
+          // Generation is continuing
+          generationProgress.classList.remove("hidden")
+          setStatus("Generating PDF...", "loading")
+        }
       }
     } else {
       setStatus(result.message || "Failed to submit review", "error")
@@ -1159,8 +1186,10 @@ async function submitReview() {
 }
 
 // Cancel the review
-function cancelReview() {
+async function cancelReview() {
   reviewModalOverlay.classList.add("hidden")
+  // Restore BrowserView now that modal is closed
+  await api.showBrowserView()
   generationProgress.classList.add("hidden")
   generateBtn.disabled = false
   currentReviewRequestId = null
@@ -1773,8 +1802,15 @@ function initializeApp() {
   previewCoverLetterBtn.addEventListener("click", previewCoverLetter)
 
   // Event listeners - Document Review buttons
-  approveReviewBtn.addEventListener("click", submitReview)
-  cancelReviewBtn.addEventListener("click", cancelReview)
+  log.info("Setting up review button event listeners")
+  approveReviewBtn.addEventListener("click", () => {
+    log.info("Approve button clicked!")
+    submitReview()
+  })
+  cancelReviewBtn.addEventListener("click", () => {
+    log.info("Cancel button clicked!")
+    cancelReview()
+  })
 
   // Subscribe to generation review events
   unsubscribeGenerationReview = api.onGenerationAwaitingReview(handleGenerationAwaitingReview)

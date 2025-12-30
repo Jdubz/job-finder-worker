@@ -583,6 +583,30 @@ ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boole
   return { success: false, canGoBack: false, message: "No page to go back to" }
 })
 
+// Hide BrowserView (for showing modals that need to overlay the entire window)
+ipcMain.handle("hide-browser-view", async (): Promise<{ success: boolean }> => {
+  logger.info("hide-browser-view called")
+  if (!browserView) {
+    logger.warn("hide-browser-view: No browserView")
+    return { success: false }
+  }
+  browserView.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+  logger.info("hide-browser-view: BrowserView hidden")
+  return { success: true }
+})
+
+// Show BrowserView (restore after modal is closed)
+ipcMain.handle("show-browser-view", async (): Promise<{ success: boolean }> => {
+  logger.info("show-browser-view called")
+  if (!browserView || !mainWindow) {
+    logger.warn("show-browser-view: No browserView or mainWindow")
+    return { success: false }
+  }
+  updateBrowserViewBounds()
+  logger.info("show-browser-view: BrowserView restored")
+  return { success: true }
+})
+
 
 type PageFrameTreeNode = { frame: { id: string; url: string }; childFrames?: PageFrameTreeNode[] }
 
