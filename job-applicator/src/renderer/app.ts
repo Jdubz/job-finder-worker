@@ -1162,16 +1162,17 @@ async function submitReview() {
         // Another document needs review - trigger the handler directly
         // (handleGenerationAwaitingReview will hide BrowserView again)
         setStatus("Review submitted. Loading next document...", "loading")
-        handleGenerationAwaitingReview(result.data)
-      } else if (result.data.status === "completed") {
+        await handleGenerationAwaitingReview(result.data)
+      } else {
         // Restore BrowserView now that modal is closed
         await api.showBrowserView()
-        handleGenerationProgress(result.data)
-      } else {
-        // Generation is continuing - restore BrowserView
-        await api.showBrowserView()
-        generationProgress.classList.remove("hidden")
-        setStatus("Generating PDF...", "loading")
+        if (result.data.status === "completed") {
+          handleGenerationProgress(result.data)
+        } else {
+          // Generation is continuing
+          generationProgress.classList.remove("hidden")
+          setStatus("Generating PDF...", "loading")
+        }
       }
     } else {
       setStatus(result.message || "Failed to submit review", "error")
