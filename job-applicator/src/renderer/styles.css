@@ -1305,74 +1305,128 @@ select:focus {
 }
 
 /* ============================================================================
-   Document Review Form
+   Document Review Modal (Full-page overlay)
    ============================================================================ */
 
-.document-review {
-  background: #1e2a3a;
+.review-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.review-modal {
+  background: #1a1a2e;
   border: 1px solid #0f3460;
-  border-radius: 8px;
-  padding: 12px;
-  margin-top: 12px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 800px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.2s ease-out;
 }
 
-.review-header {
-  margin-bottom: 12px;
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.review-title {
-  font-size: 14px;
+.review-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #0f3460;
+  flex-shrink: 0;
+}
+
+.review-modal-title {
+  font-size: 20px;
   font-weight: 600;
   color: #e94560;
   margin-bottom: 4px;
 }
 
-.review-subtitle {
-  font-size: 11px;
+.review-modal-subtitle {
+  font-size: 13px;
   color: #9ca3af;
 }
 
-.review-content {
-  max-height: 300px;
+.review-modal-body {
+  flex: 1;
   overflow-y: auto;
+  padding: 24px;
+  min-height: 300px;
+}
+
+.review-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #0f3460;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.review-modal-footer .btn-approve {
+  padding: 10px 24px;
+  font-size: 14px;
+}
+
+.review-modal-footer .btn-cancel-review {
+  padding: 10px 20px;
+  font-size: 14px;
 }
 
 .review-field {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 
 .review-field-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #6b7280;
+  color: #9ca3af;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .review-field-readonly {
-  font-size: 12px;
-  color: #9ca3af;
-  padding: 6px 8px;
+  font-size: 14px;
+  color: #d1d5db;
+  padding: 10px 12px;
   background: #16213e;
-  border-radius: 4px;
+  border-radius: 6px;
   margin-bottom: 4px;
 }
 
 .review-textarea {
   width: 100%;
-  min-height: 40px;
-  max-height: 300px;
-  padding: 8px;
-  font-size: 12px;
+  min-height: 60px;
+  max-height: 400px;
+  padding: 12px;
+  font-size: 14px;
   font-family: inherit;
-  line-height: 1.4;
+  line-height: 1.5;
   background: #16213e;
   border: 1px solid #0f3460;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #eee;
-  resize: none; /* Auto-resize handles this */
-  overflow: hidden; /* Hidden until content exceeds max-height */
+  resize: vertical;
+  transition: border-color 0.15s;
 }
 
 .review-textarea:focus {
@@ -1380,37 +1434,34 @@ select:focus {
   border-color: #e94560;
 }
 
+.review-textarea:hover {
+  border-color: #1a4a7a;
+}
+
 .review-highlight-item {
   display: flex;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 
 .review-highlight-item textarea {
   flex: 1;
-  min-height: 40px;
+  min-height: 50px;
 }
 
 .review-experience-group {
-  margin-bottom: 16px;
-  padding: 10px;
+  margin-bottom: 20px;
+  padding: 16px;
   background: #16213e;
-  border-radius: 6px;
+  border-radius: 8px;
+  border: 1px solid #0f3460;
 }
 
 .review-experience-header {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #e94560;
-  margin-bottom: 8px;
-}
-
-.review-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #0f3460;
+  margin-bottom: 12px;
 }
 
 .btn-approve {

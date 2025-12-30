@@ -429,7 +429,7 @@ const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
 const workflowProgress = getElement<HTMLDivElement>("workflowProgress")
 const generationProgress = getElement<HTMLDivElement>("generationProgress")
 const generationSteps = getElement<HTMLDivElement>("generationSteps")
-const documentReview = getElement<HTMLDivElement>("documentReview")
+const reviewModalOverlay = getElement<HTMLDivElement>("reviewModalOverlay")
 const reviewTitle = getElement<HTMLHeadingElement>("reviewTitle")
 const reviewContent = getElement<HTMLDivElement>("reviewContent")
 const approveReviewBtn = getElement<HTMLButtonElement>("approveReviewBtn")
@@ -870,6 +870,9 @@ function handleGenerationProgress(progress: GenerationProgress) {
     generateBtn.disabled = false
     // Clean up the listener on failure too
     cleanupGenerationProgressListener()
+  } else if (progress.status === "awaiting_review") {
+    // Delegate to the review handler
+    handleGenerationAwaitingReview(progress)
   }
 }
 
@@ -907,9 +910,9 @@ async function handleGenerationAwaitingReview(progress: GenerationProgress) {
   currentReviewDocumentType = draft.documentType
   currentReviewContent = draft.content
 
-  // Hide generation progress, show review form
+  // Hide generation progress, show review modal
   generationProgress.classList.add("hidden")
-  documentReview.classList.remove("hidden")
+  reviewModalOverlay.classList.remove("hidden")
 
   // Set title based on document type
   const docTypeLabel = draft.documentType === "resume" ? "resume" : "cover letter"
@@ -1024,7 +1027,7 @@ function autoResizeTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = "auto"
   // Set height to scrollHeight (content height) with a minimum
   const minHeight = 40 // Minimum height in pixels
-  const maxHeight = 300 // Maximum height in pixels
+  const maxHeight = 400 // Maximum height in pixels (matches CSS .review-textarea max-height)
   const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)
   textarea.style.height = `${newHeight}px`
   // Show scrollbar if content exceeds max height
@@ -1125,16 +1128,18 @@ async function submitReview() {
     })
 
     if (result.success && result.data) {
-      // Hide review form
-      documentReview.classList.add("hidden")
+      // Hide review modal temporarily
+      reviewModalOverlay.classList.add("hidden")
+      approveReviewBtn.disabled = false
       currentReviewRequestId = null
       currentReviewDocumentType = null
       currentReviewContent = null
 
       // Check if there's another review needed or if generation is complete
       if (result.data.status === "awaiting_review") {
-        // Another document needs review - the IPC event will trigger
-        setStatus("Review submitted. Waiting for next document...", "loading")
+        // Another document needs review - trigger the handler directly
+        setStatus("Review submitted. Loading next document...", "loading")
+        handleGenerationAwaitingReview(result.data)
       } else if (result.data.status === "completed") {
         handleGenerationProgress(result.data)
       } else {
@@ -1155,7 +1160,7 @@ async function submitReview() {
 
 // Cancel the review
 function cancelReview() {
-  documentReview.classList.add("hidden")
+  reviewModalOverlay.classList.add("hidden")
   generationProgress.classList.add("hidden")
   generateBtn.disabled = false
   currentReviewRequestId = null

@@ -26,7 +26,6 @@ export function ResumeReviewForm({
   isSubmitting = false,
 }: ResumeReviewFormProps) {
   const [editedContent, setEditedContent] = useState(content)
-  const [isEditing, setIsEditing] = useState(false)
 
   if (documentType === "resume") {
     const resume = editedContent as ResumeContent
@@ -55,23 +54,17 @@ export function ResumeReviewForm({
               {/* Professional Summary */}
               <div>
                 <Label className="text-sm font-semibold">Professional Summary</Label>
-                {isEditing ? (
-                  <Textarea
-                    value={resume.professionalSummary || resume.personalInfo?.summary || ""}
-                    onChange={(e) =>
-                      setEditedContent({
-                        ...resume,
-                        professionalSummary: e.target.value,
-                      })
-                    }
-                    className="mt-1"
-                    rows={4}
-                  />
-                ) : (
-                  <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
-                    {resume.professionalSummary || resume.personalInfo?.summary || "No summary provided"}
-                  </p>
-                )}
+                <Textarea
+                  value={resume.professionalSummary || resume.personalInfo?.summary || ""}
+                  onChange={(e) =>
+                    setEditedContent({
+                      ...resume,
+                      professionalSummary: e.target.value,
+                    })
+                  }
+                  className="mt-1"
+                  rows={4}
+                />
               </div>
 
               <Separator />
@@ -99,21 +92,17 @@ export function ResumeReviewForm({
                           {exp.highlights.map((highlight, hIdx) => (
                             <li key={hIdx} className="text-sm flex items-start gap-2">
                               <span className="text-muted-foreground">•</span>
-                              {isEditing ? (
-                                <Input
-                                  value={highlight}
-                                  onChange={(e) => {
-                                    const newExp = [...(resume.experience || [])]
-                                    const newHighlights = [...(newExp[idx].highlights || [])]
-                                    newHighlights[hIdx] = e.target.value
-                                    newExp[idx] = { ...newExp[idx], highlights: newHighlights }
-                                    setEditedContent({ ...resume, experience: newExp })
-                                  }}
-                                  className="flex-1 h-7 text-sm"
-                                />
-                              ) : (
-                                <span>{highlight}</span>
-                              )}
+                              <Input
+                                value={highlight}
+                                onChange={(e) => {
+                                  const newExp = [...(resume.experience || [])]
+                                  const newHighlights = [...(newExp[idx].highlights || [])]
+                                  newHighlights[hIdx] = e.target.value
+                                  newExp[idx] = { ...newExp[idx], highlights: newHighlights }
+                                  setEditedContent({ ...resume, experience: newExp })
+                                }}
+                                className="flex-1 h-7 text-sm"
+                              />
                             </li>
                           ))}
                         </ul>
@@ -176,23 +165,13 @@ export function ResumeReviewForm({
             </div>
           </ScrollArea>
 
-          <div className="flex justify-between items-center mt-4 pt-4 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(!isEditing)}
-              disabled={isSubmitting}
-            >
-              {isEditing ? "Done Editing" : "Edit Details"}
+          <div className="flex justify-end items-center mt-4 pt-4 border-t gap-2">
+            <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
             </Button>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Approve & Continue"}
-              </Button>
-            </div>
+            <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Approve & Continue"}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -225,35 +204,27 @@ export function ResumeReviewForm({
           <div className="space-y-4">
             <div>
               <Label className="text-sm font-semibold">Greeting</Label>
-              {isEditing ? (
-                <Input
-                  value={coverLetter.greeting}
-                  onChange={(e) =>
-                    setEditedContent({ ...coverLetter, greeting: e.target.value })
-                  }
-                  className="mt-1"
-                />
-              ) : (
-                <p className="text-sm mt-1">{coverLetter.greeting}</p>
-              )}
+              <Input
+                value={coverLetter.greeting}
+                onChange={(e) =>
+                  setEditedContent({ ...coverLetter, greeting: e.target.value })
+                }
+                className="mt-1"
+              />
             </div>
 
             <Separator />
 
             <div>
               <Label className="text-sm font-semibold">Opening Paragraph</Label>
-              {isEditing ? (
-                <Textarea
-                  value={coverLetter.openingParagraph}
-                  onChange={(e) =>
-                    setEditedContent({ ...coverLetter, openingParagraph: e.target.value })
-                  }
-                  className="mt-1"
-                  rows={3}
-                />
-              ) : (
-                <p className="text-sm mt-1 whitespace-pre-wrap">{coverLetter.openingParagraph}</p>
-              )}
+              <Textarea
+                value={coverLetter.openingParagraph}
+                onChange={(e) =>
+                  setEditedContent({ ...coverLetter, openingParagraph: e.target.value })
+                }
+                className="mt-1"
+                rows={3}
+              />
             </div>
 
             <Separator />
@@ -263,19 +234,15 @@ export function ResumeReviewForm({
               <div className="space-y-3 mt-2">
                 {coverLetter.bodyParagraphs?.map((para, idx) => (
                   <div key={idx}>
-                    {isEditing ? (
-                      <Textarea
-                        value={para}
-                        onChange={(e) => {
-                          const newParas = [...(coverLetter.bodyParagraphs || [])]
-                          newParas[idx] = e.target.value
-                          setEditedContent({ ...coverLetter, bodyParagraphs: newParas })
-                        }}
-                        rows={3}
-                      />
-                    ) : (
-                      <p className="text-sm whitespace-pre-wrap">{para}</p>
-                    )}
+                    <Textarea
+                      value={para}
+                      onChange={(e) => {
+                        const newParas = [...(coverLetter.bodyParagraphs || [])]
+                        newParas[idx] = e.target.value
+                        setEditedContent({ ...coverLetter, bodyParagraphs: newParas })
+                      }}
+                      rows={3}
+                    />
                   </div>
                 ))}
               </div>
@@ -285,56 +252,38 @@ export function ResumeReviewForm({
 
             <div>
               <Label className="text-sm font-semibold">Closing Paragraph</Label>
-              {isEditing ? (
-                <Textarea
-                  value={coverLetter.closingParagraph}
-                  onChange={(e) =>
-                    setEditedContent({ ...coverLetter, closingParagraph: e.target.value })
-                  }
-                  className="mt-1"
-                  rows={3}
-                />
-              ) : (
-                <p className="text-sm mt-1 whitespace-pre-wrap">{coverLetter.closingParagraph}</p>
-              )}
+              <Textarea
+                value={coverLetter.closingParagraph}
+                onChange={(e) =>
+                  setEditedContent({ ...coverLetter, closingParagraph: e.target.value })
+                }
+                className="mt-1"
+                rows={3}
+              />
             </div>
 
             <Separator />
 
             <div>
               <Label className="text-sm font-semibold">Signature</Label>
-              {isEditing ? (
-                <Input
-                  value={coverLetter.signature}
-                  onChange={(e) =>
-                    setEditedContent({ ...coverLetter, signature: e.target.value })
-                  }
-                  className="mt-1"
-                />
-              ) : (
-                <p className="text-sm mt-1">{coverLetter.signature}</p>
-              )}
+              <Input
+                value={coverLetter.signature}
+                onChange={(e) =>
+                  setEditedContent({ ...coverLetter, signature: e.target.value })
+                }
+                className="mt-1"
+              />
             </div>
           </div>
         </ScrollArea>
 
-        <div className="flex justify-between items-center mt-4 pt-4 border-t">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditing(!isEditing)}
-            disabled={isSubmitting}
-          >
-            {isEditing ? "Done Editing" : "Edit Details"}
+        <div className="flex justify-end items-center mt-4 pt-4 border-t gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
           </Button>
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Approve & Continue"}
-            </Button>
-          </div>
+          <Button onClick={() => onSubmit(editedContent)} disabled={isSubmitting}>
+            {isSubmitting ? "Submitting..." : "Approve & Continue"}
+          </Button>
         </div>
       </CardContent>
     </Card>
