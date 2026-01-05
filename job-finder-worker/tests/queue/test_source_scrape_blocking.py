@@ -154,7 +154,11 @@ def test_transient_error_increments_failure_count(mock_scraper_cls, source_proce
     source_processor.process_scrape_source(item)
 
     # Should update config with incremented failure count
-    source_processor.sources_manager.update_source_config.assert_called()
+    source_processor.sources_manager.update_config.assert_called()
+    call_args = source_processor.sources_manager.update_config.call_args
+    assert call_args[0][0] == source_record["id"]
+    updated_config = call_args[0][1]
+    assert updated_config.get("consecutive_failures") == 1
 
     # Should NOT disable immediately (first failure)
     source_processor.sources_manager.disable_source_with_note.assert_not_called()

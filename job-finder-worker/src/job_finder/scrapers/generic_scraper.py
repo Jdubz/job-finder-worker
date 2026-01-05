@@ -83,17 +83,17 @@ AUTH_WALL_MARKERS = [
 ]
 
 
-def _detect_bot_protection(content: str) -> bool:
+def _detect_bot_protection(content: Optional[str]) -> bool:
     """Check if content contains bot protection markers."""
-    if not content:
+    if not isinstance(content, str) or not content:
         return False
     content_lower = content.lower()
     return any(marker in content_lower for marker in BOT_PROTECTION_MARKERS)
 
 
-def _detect_auth_wall(content: str) -> bool:
+def _detect_auth_wall(content: Optional[str]) -> bool:
     """Check if content contains authentication wall markers."""
-    if not content:
+    if not isinstance(content, str) or not content:
         return False
     content_lower = content.lower()
     return any(marker in content_lower for marker in AUTH_WALL_MARKERS)
@@ -143,12 +143,16 @@ def classify_http_error(
 
     elif status_code == 403:
         # Forbidden - could be bot protection, rate limit, or auth
-        # Without bot protection content, we can't be sure - treat as transient
-        # to avoid mislabeling
         if is_api:
             return ScrapeProtectedApiError(
                 url, f"HTTP 403: {reason} - API access denied", status_code
             )
+        # Without content, this is likely a hard block rather than transient rate limit
+        if not content:
+            return ScrapeBlockedError(
+                url, f"HTTP 403: {reason} - access forbidden (empty response)", status_code
+            )
+        # With content but no explicit bot/auth markers, treat as transient to avoid mislabeling
         return ScrapeTransientError(url, f"HTTP 403: {reason} - possibly rate limited", status_code)
 
     elif status_code == 404:
@@ -335,7 +339,7 @@ class GenericScraper:
             try:
                 content = response.text[:5000]  # Get content sample for analysis
             except Exception:
-                pass
+                pass  # Best-effort retrieval; continue with empty content if this fails
             raise classify_http_error(
                 self.config.url, response.status_code, response.reason, content, is_api=True
             ) from e
@@ -388,7 +392,7 @@ class GenericScraper:
                 try:
                     content = response.text[:5000]
                 except Exception:
-                    pass
+                    pass  # Best-effort retrieval; continue with empty content if this fails
                 raise classify_http_error(
                     self.config.url, response.status_code, response.reason, content, is_api=True
                 ) from e
@@ -481,7 +485,7 @@ class GenericScraper:
             try:
                 content = response.text[:5000]
             except Exception:
-                pass
+                pass  # Best-effort retrieval; continue with empty content if this fails
             raise classify_http_error(
                 self.config.url, response.status_code, response.reason, content, is_api=False
             ) from e
@@ -493,14 +497,14 @@ class GenericScraper:
         if feed.bozo and not feed.entries:
             blocked_reason = self._detect_blocked_response(content, feed.bozo_exception)
             if blocked_reason:
-                # Classify based on content analysis
+                # Classify based on content analysis (status_code=0 since no HTTP error)
                 if _detect_bot_protection(content):
-                    raise ScrapeBotProtectionError(self.config.url, blocked_reason)
+                    raise ScrapeBotProtectionError(self.config.url, blocked_reason, status_code=0)
                 elif _detect_auth_wall(content):
-                    raise ScrapeAuthError(self.config.url, blocked_reason)
+                    raise ScrapeAuthError(self.config.url, blocked_reason, status_code=0)
                 else:
                     # Default to config error for RSS (wrong URL, not a feed)
-                    raise ScrapeConfigError(self.config.url, blocked_reason)
+                    raise ScrapeConfigError(self.config.url, blocked_reason, status_code=0)
             # Log warning for non-blocking parse issues
             logger.warning(f"RSS feed has issues: {feed.bozo_exception}")
 
@@ -588,7 +592,7 @@ class GenericScraper:
                 try:
                     content = response.text[:5000]
                 except Exception:
-                    pass
+                    pass  # Best-effort retrieval; continue with empty content if this fails
                 raise classify_http_error(
                     self.config.url, response.status_code, response.reason, content, is_api=False
                 ) from e

@@ -240,6 +240,44 @@ class TestClassifyHttpError:
         )
         assert isinstance(error, ScrapeProtectedApiError)
 
+    def test_422_non_api_returns_config_error(self):
+        """HTTP 422 on non-API should return config error."""
+        error = classify_http_error(
+            url="https://example.com/jobs",
+            status_code=422,
+            reason="Unprocessable Entity",
+            content="",
+            is_api=False,
+        )
+        assert isinstance(error, ScrapeConfigError)
+        assert error.status_code == 422
+
+    def test_403_on_api_returns_protected_api_error(self):
+        """HTTP 403 on API endpoint should return protected API error."""
+        error = classify_http_error(
+            url="https://example.com/api",
+            status_code=403,
+            reason="Forbidden",
+            content="",
+            is_api=True,
+        )
+        assert isinstance(error, ScrapeProtectedApiError)
+        assert error.disable_tag == "protected_api"
+
+    def test_403_empty_content_returns_blocked_error(self):
+        """HTTP 403 with empty content should return generic blocked error."""
+        error = classify_http_error(
+            url="https://example.com/jobs",
+            status_code=403,
+            reason="Forbidden",
+            content="",
+        )
+        assert isinstance(error, ScrapeBlockedError)
+        # Should NOT be ScrapeBotProtectionError or ScrapeTransientError
+        assert not isinstance(error, ScrapeBotProtectionError)
+        assert not isinstance(error, ScrapeTransientError)
+        assert error.status_code == 403
+
     def test_unknown_status_returns_generic_error(self):
         """Unknown status codes should return generic ScrapeBlockedError."""
         error = classify_http_error(

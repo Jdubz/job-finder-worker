@@ -243,7 +243,7 @@ def discover_workday_board_from_careers_page(
                 if path:
                     # Get first path segment
                     board = path.split("/")[0]
-                    if board and board not in ("wday", "cxs", "jobs"):
+                    if board and board.lower() not in ("wday", "cxs", "jobs"):
                         logger.info(f"Discovered Workday board from redirect: {slug}/{board}")
                         return board
 
@@ -255,7 +255,7 @@ def discover_workday_board_from_careers_page(
             if matches:
                 # Return the first unique board name found
                 for board in matches:
-                    if board and board not in ("{{", "{{board}}"):
+                    if board and not board.startswith("{{"):
                         logger.info(f"Discovered Workday board from HTML: {slug}/{board}")
                         return board
 
@@ -270,9 +270,9 @@ def discover_workday_board_from_careers_page(
                 for board in js_matches:
                     if (
                         board
-                        and len(board) > 1
+                        and len(board) >= 1
                         and len(board) < 50
-                        and board not in ("wday", "cxs", slug)
+                        and board.lower() not in ("wday", "cxs", slug.lower())
                         and not board.startswith("{")
                     ):
                         logger.info(f"Discovered Workday board from JS: {slug}/{board}")
@@ -641,11 +641,11 @@ def probe_workday(
     board_variations = generate_workday_board_variations(slug)
 
     # If we discovered a board name, prioritize it at the front
-    if discovered_board and discovered_board not in board_variations:
-        board_variations.insert(0, discovered_board)
-    elif discovered_board:
-        # Move discovered board to front
-        board_variations.remove(discovered_board)
+    if discovered_board:
+        try:
+            board_variations.remove(discovered_board)
+        except ValueError:
+            pass  # Not in list, which is fine
         board_variations.insert(0, discovered_board)
 
     for wd_num in WORKDAY_SUBDOMAINS:

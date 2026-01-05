@@ -1665,7 +1665,7 @@ class SourceProcessor(BaseProcessor):
                 self.sources_manager.update_config(source_id, config)
 
         except Exception as e:
-            logger.debug("Failed to reset consecutive failures for %s: %s", source_id, e)
+            logger.warning("Failed to reset consecutive failures for %s: %s", source_id, e)
 
     # ============================================================
     # SOURCE RECOVERY
