@@ -204,6 +204,82 @@ def test_not_found_spawns_recovery_task(mock_scraper_cls, source_processor):
     source_processor.queue_manager.spawn_item_safely.assert_called_once()
 
 
+@patch("job_finder.job_queue.processors.source_processor.GenericScraper")
+def test_transient_error_threshold_disables_source(mock_scraper_cls, source_processor):
+    """After 3 consecutive transient errors, source should be disabled."""
+    transient_exc = ScrapeTransientError(
+        "https://example.com/api", "HTTP 503: Service Unavailable", 503
+    )
+    scraper_instance = Mock()
+    scraper_instance.scrape.side_effect = transient_exc
+    mock_scraper_cls.return_value = scraper_instance
+
+    # Source already at 2 consecutive failures (threshold is 3)
+    source_record = {
+        "id": "source-123",
+        "name": "Example API",
+        "sourceType": "api",
+        "config": {
+            "type": "api",
+            "url": "https://example.com/api",
+            "fields": {"title": "title", "url": "url"},
+            "consecutive_failures": 2,
+        },
+    }
+
+    source_processor.sources_manager.get_source_by_id.return_value = source_record
+
+    item = make_scrape_item(source_record["id"])
+    source_processor.process_scrape_source(item)
+
+    # Should update config with incremented failure count (now 3)
+    source_processor.sources_manager.update_config.assert_called()
+    call_args = source_processor.sources_manager.update_config.call_args
+    updated_config = call_args[0][1]
+    assert updated_config.get("consecutive_failures") == 3
+
+    # At threshold, should disable source
+    source_processor.sources_manager.disable_source_with_note.assert_called_once()
+    args, _ = source_processor.sources_manager.disable_source_with_note.call_args
+    assert args[0] == source_record["id"]
+    assert "transient" in args[1].lower() or "consecutive" in args[1].lower()
+
+
+@patch("job_finder.job_queue.processors.source_processor.GenericScraper")
+def test_successful_scrape_resets_consecutive_failures(mock_scraper_cls, source_processor):
+    """Successful scrape should reset consecutive_failures counter to 0."""
+    # Scraper returns jobs successfully
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = [
+        {"title": "Software Engineer", "url": "https://example.com/job1"}
+    ]
+    mock_scraper_cls.return_value = scraper_instance
+
+    # Source has accumulated failures from previous transient errors
+    source_record = {
+        "id": "source-123",
+        "name": "Example API",
+        "sourceType": "api",
+        "config": {
+            "type": "api",
+            "url": "https://example.com/api",
+            "fields": {"title": "title", "url": "url"},
+            "consecutive_failures": 2,
+        },
+    }
+
+    source_processor.sources_manager.get_source_by_id.return_value = source_record
+
+    item = make_scrape_item(source_record["id"])
+    source_processor.process_scrape_source(item)
+
+    # Should reset consecutive_failures to 0 after successful scrape
+    source_processor.sources_manager.update_config.assert_called()
+    call_args = source_processor.sources_manager.update_config.call_args
+    updated_config = call_args[0][1]
+    assert updated_config.get("consecutive_failures") == 0
+
+
 def test_scrape_skips_disabled_source(source_processor):
     """SCRAPE_SOURCE should respect disabled status and skip execution."""
     source_record = {

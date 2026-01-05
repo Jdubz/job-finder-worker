@@ -250,6 +250,8 @@ def discover_workday_board_from_careers_page(
             # Also try to find board name in HTML content
             html = response.text
             # Look for patterns like: /wday/cxs/{slug}/{board}/jobs
+            # NOTE: This regex assumes the standard Workday path structure.
+            # If Workday changes this layout, this pattern will need updating.
             pattern = rf"/wday/cxs/{re.escape(slug)}/([^/]+)/jobs"
             matches = re.findall(pattern, html)
             if matches:

@@ -580,9 +580,11 @@ class GenericScraper:
                 # Playwright render errors - analyze error message for classification
                 error_msg = str(exc).lower()
                 if "timeout" in error_msg:
-                    raise ScrapeTransientError(self.config.url, f"Render timeout: {exc}")
+                    raise ScrapeTransientError(
+                        self.config.url, f"Render timeout: {exc}", status_code=None
+                    ) from exc
                 else:
-                    raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}")
+                    raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}") from exc
         else:
             response = requests.get(url, headers=headers, timeout=30)
             try:
