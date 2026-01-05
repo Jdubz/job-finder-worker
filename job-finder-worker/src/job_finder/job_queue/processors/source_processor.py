@@ -26,7 +26,17 @@ from job_finder.ai.source_analysis_agent import (
     SourceClassification,
 )
 from job_finder.ai.response_parser import extract_json_from_response
-from job_finder.exceptions import DuplicateSourceError, QueueProcessingError, ScrapeBlockedError
+from job_finder.exceptions import (
+    DuplicateSourceError,
+    QueueProcessingError,
+    ScrapeBlockedError,
+    ScrapeAuthError,
+    ScrapeBotProtectionError,
+    ScrapeConfigError,
+    ScrapeNotFoundError,
+    ScrapeProtectedApiError,
+    ScrapeTransientError,
+)
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.models import (
@@ -1313,6 +1323,9 @@ class SourceProcessor(BaseProcessor):
                     source_id=source.get("id"),
                 )
 
+                # Reset consecutive failure counter on success
+                self._reset_consecutive_failures(source.get("id"))
+
                 jobs_found = len(jobs) if jobs else 0
                 if jobs_found > 0:
                     result_msg = f"Scraped {jobs_found} jobs, submitted {jobs_added} to queue"
@@ -1331,13 +1344,129 @@ class SourceProcessor(BaseProcessor):
                     },
                 )
 
+            except ScrapeBotProtectionError as blocked:
+                # Actual bot protection (Cloudflare, CAPTCHA, WAF): non-recoverable
+                logger.warning("Bot protection detected: %s - %s", source_name, blocked.reason)
+                self.sources_manager.disable_source_with_tags(
+                    source.get("id"),
+                    f"Bot protection detected: {blocked.reason}",
+                    tags=["anti_bot"],
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Bot protection detected: {blocked.reason}",
+                    error_details=traceback.format_exc(),
+                )
+
+            except ScrapeAuthError as auth_err:
+                # Authentication required: non-recoverable
+                logger.warning("Auth required for source: %s - %s", source_name, auth_err.reason)
+                self.sources_manager.disable_source_with_tags(
+                    source.get("id"),
+                    f"Authentication required: {auth_err.reason}",
+                    tags=["auth_required"],
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Auth required: {auth_err.reason}",
+                    error_details=traceback.format_exc(),
+                )
+
+            except ScrapeProtectedApiError as api_err:
+                # Protected API: non-recoverable
+                logger.warning("Protected API: %s - %s", source_name, api_err.reason)
+                self.sources_manager.disable_source_with_tags(
+                    source.get("id"),
+                    f"Protected API: {api_err.reason}",
+                    tags=["protected_api"],
+                )
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Protected API: {api_err.reason}",
+                    error_details=traceback.format_exc(),
+                )
+
+            except ScrapeConfigError as config_err:
+                # Config error (HTTP 400, wrong URL): recoverable, spawn recovery task
+                logger.warning("Config error for source: %s - %s", source_name, config_err.reason)
+                self.sources_manager.disable_source_with_note(
+                    source.get("id"),
+                    f"Config error: {config_err.reason}",
+                )
+                # Auto-spawn recovery task
+                self._spawn_recovery_task(item, source, config_err.reason)
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Config error (recovery task spawned): {config_err.reason}",
+                    error_details=traceback.format_exc(),
+                )
+
+            except ScrapeNotFoundError as not_found:
+                # Endpoint not found (404): recoverable, spawn recovery task
+                logger.warning("Endpoint not found: %s - %s", source_name, not_found.reason)
+                self.sources_manager.disable_source_with_note(
+                    source.get("id"),
+                    f"Endpoint not found: {not_found.reason}",
+                )
+                # Auto-spawn recovery task
+                self._spawn_recovery_task(item, source, not_found.reason)
+                self.queue_manager.update_status(
+                    item.id,
+                    QueueStatus.FAILED,
+                    f"Endpoint not found (recovery task spawned): {not_found.reason}",
+                    error_details=traceback.format_exc(),
+                )
+
+            except ScrapeTransientError as transient:
+                # Transient error (502, 503, timeout): retry before disabling
+                consecutive_failures = self._increment_consecutive_failures(source.get("id"))
+                max_failures = 3
+
+                if consecutive_failures >= max_failures:
+                    logger.warning(
+                        "Transient error exceeded retry limit (%d/%d): %s - %s",
+                        consecutive_failures,
+                        max_failures,
+                        source_name,
+                        transient.reason,
+                    )
+                    self.sources_manager.disable_source_with_note(
+                        source.get("id"),
+                        f"Disabled after {consecutive_failures} transient errors: {transient.reason}",
+                    )
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"Transient error (disabled after {consecutive_failures} failures): {transient.reason}",
+                        error_details=traceback.format_exc(),
+                    )
+                else:
+                    logger.info(
+                        "Transient error (%d/%d), will retry: %s - %s",
+                        consecutive_failures,
+                        max_failures,
+                        source_name,
+                        transient.reason,
+                    )
+                    # Mark as failed but don't disable - will be retried on next schedule
+                    self.queue_manager.update_status(
+                        item.id,
+                        QueueStatus.FAILED,
+                        f"Transient error ({consecutive_failures}/{max_failures} failures): {transient.reason}",
+                        error_details=traceback.format_exc(),
+                    )
+
             except ScrapeBlockedError as blocked:
-                # Anti-bot/HTTP block detected: disable source and mark item failed with note
+                # Generic blocked error (shouldn't reach here often with new hierarchy)
                 logger.warning("Source blocked: %s - %s", source_name, blocked.reason)
                 self.sources_manager.disable_source_with_note(
                     source.get("id"), f"Blocked during scrape: {blocked.reason}"
                 )
-                self._update_item_status(
+                self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
                     f"Source blocked: {blocked.reason}",
@@ -1360,7 +1489,7 @@ class SourceProcessor(BaseProcessor):
                         record_err,
                         exc_info=True,
                     )
-                self._update_item_status(
+                self.queue_manager.update_status(
                     item.id,
                     QueueStatus.FAILED,
                     f"Scraping failed: {str(scrape_error)}",
@@ -1416,6 +1545,127 @@ class SourceProcessor(BaseProcessor):
         except Exception as e:
             logger.warning("Self-heal failed for %s: %s", url, e)
             return None
+
+    # ============================================================
+    # ERROR RECOVERY HELPERS
+    # ============================================================
+
+    def _spawn_recovery_task(
+        self, current_item: JobQueueItem, source: Dict[str, Any], error_reason: str
+    ) -> Optional[str]:
+        """
+        Spawn a SOURCE_RECOVER task for a recoverable error.
+
+        This is called when a source fails with a recoverable error (e.g., 404, 400)
+        to automatically attempt recovery.
+
+        Args:
+            current_item: The current queue item that triggered the error
+            source: The source that failed
+            error_reason: Description of the error
+
+        Returns:
+            The spawned item ID, or None if spawning failed/was blocked
+        """
+        source_id = source.get("id")
+        source_name = source.get("name", "Unknown")
+
+        # Check if source has non-recoverable tags (shouldn't spawn recovery for these)
+        # Note: disabledTags is extracted to top level by _row_to_source
+        disabled_tags = source.get("disabledTags", [])
+        if disabled_tags:
+            logger.info(
+                "Skipping recovery spawn for %s: has non-recoverable tags %s",
+                source_name,
+                disabled_tags,
+            )
+            return None
+
+        config = source.get("config", {})
+        try:
+            spawned_id = self.queue_manager.spawn_item_safely(
+                current_item=current_item,
+                new_item_data={
+                    "type": QueueItemType.SOURCE_RECOVER,
+                    "source_id": source_id,
+                    "company_name": source.get("company_name"),
+                    "url": config.get("url") or source.get("url"),
+                    "source": "auto_recovery",
+                    "input": {
+                        "source_id": source_id,
+                        "error_reason": error_reason,
+                        "triggered_by": "scrape_error",
+                    },
+                },
+            )
+
+            if spawned_id:
+                logger.info(
+                    "Spawned SOURCE_RECOVER task %s for %s (error: %s)",
+                    spawned_id,
+                    source_name,
+                    error_reason[:100],
+                )
+            return spawned_id
+
+        except Exception as e:
+            logger.warning("Failed to spawn recovery task for %s: %s", source_name, e)
+            return None
+
+    def _increment_consecutive_failures(self, source_id: str) -> int:
+        """
+        Increment and return the consecutive failure count for a source.
+
+        This is used for transient errors to track how many times in a row
+        a source has failed, allowing retry logic before disabling.
+
+        The count is stored in the source's config.consecutive_failures field.
+        It is reset to 0 on successful scrape.
+
+        Args:
+            source_id: The source ID
+
+        Returns:
+            The new consecutive failure count
+        """
+        try:
+            source = self.sources_manager.get_source_by_id(source_id)
+            if not source:
+                return 1
+
+            config = source.get("config", {})
+            current_count = config.get("consecutive_failures", 0)
+            new_count = current_count + 1
+
+            # Update the config with new failure count
+            config["consecutive_failures"] = new_count
+            self.sources_manager.update_config(source_id, config)
+
+            return new_count
+
+        except Exception as e:
+            logger.warning("Failed to track consecutive failures for %s: %s", source_id, e)
+            return 1
+
+    def _reset_consecutive_failures(self, source_id: str) -> None:
+        """
+        Reset the consecutive failure count for a source after successful scrape.
+
+        Args:
+            source_id: The source ID
+        """
+        try:
+            source = self.sources_manager.get_source_by_id(source_id)
+            if not source:
+                return
+
+            config = source.get("config", {})
+            if config.get("consecutive_failures", 0) > 0:
+                config["consecutive_failures"] = 0
+                self.sources_manager.update_config(source_id, config)
+
+        except Exception as e:
+            logger.warning("Failed to reset consecutive failures for %s: %s", source_id, e)
 
     # ============================================================
     # SOURCE RECOVERY
@@ -1904,12 +2154,32 @@ Type: {source_type}
 
 ## CRITICAL: First determine if recovery is possible
 
-Look for these NON-RECOVERABLE issues:
-- **bot_protection**: Cloudflare challenge, CAPTCHA, "checking your browser", "Ray ID", WAF blocking
-- **auth_required**: Login page, "sign in to continue", OAuth redirect, session cookie required
-- **protected_api**: API returns 401/403/422, requires authentication token
+### HTTP Error Classification (IMPORTANT - Read Carefully)
 
-If you detect ANY of these issues, set can_recover=false and specify the disable_reason.
+**HTTP 400 (Bad Request)** → CONFIG ERROR, NOT bot protection
+- Cause: Wrong API parameters, invalid URL format, missing required fields, wrong site_id
+- Example: Workday returns 400 when the board name in the URL is wrong
+- Recovery: Find the correct URL or config parameters
+- CAN BE RECOVERED - do NOT set can_recover=false for 400 errors
+
+**HTTP 404 (Not Found)** → ENDPOINT MOVED, NOT bot protection
+- Cause: Company changed their careers page URL, removed board, renamed slug
+- Example: Lever board returns 404 if company removed their job board
+- Recovery: Search for new URL, try ATS probing with different slugs
+- CRITICAL: NEVER tag a 404 as bot_protection - it means "resource not found"
+
+**HTTP 502/503 (Server Error)** → TRANSIENT ERROR
+- Cause: Server overloaded, maintenance, deployment in progress
+- Recovery: Will be retried automatically
+- DO NOT disable for transient server errors
+
+Look for these NON-RECOVERABLE issues:
+- **bot_protection**: Cloudflare challenge page, CAPTCHA, "checking your browser", "Ray ID", WAF blocking
+  ONLY set this when actual protection markers are present in the content sample
+- **auth_required**: Login page with form, "sign in to continue", OAuth redirect, session cookie required
+- **protected_api**: API explicitly requires authentication token (not just HTTP 401/403 without context)
+
+If you detect ANY of these issues in the content sample, set can_recover=false and specify the disable_reason.
 
 If the content is a marketing/landing page with zero jobs, **use the search results to find the actual job board** (ATS API endpoints are preferred: Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Recruitee, Workable). Do not stop at the first failure—return the corrected URL and config when possible.
 

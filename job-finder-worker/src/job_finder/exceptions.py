@@ -4,6 +4,8 @@ This module defines domain-specific exceptions that provide clearer error
 handling and better context than generic Python exceptions.
 """
 
+from typing import Optional
+
 
 class JobFinderError(Exception):
     """Base exception for all job finder errors.
@@ -227,21 +229,169 @@ class ScraperError(JobFinderError):
 
 
 class ScrapeBlockedError(ScraperError):
-    """Raised when a scrape is blocked by anti-bot protection.
+    """Base class for scrape errors with HTTP status code tracking.
 
-    This error indicates that the source returned a non-job response,
-    typically an HTML captcha page, access denied page, or rate limit response
-    instead of the expected data (RSS feed, JSON API, etc.).
-
-    When caught, the source should be disabled with appropriate notes
-    to prevent repeated failed scrape attempts.
+    This error hierarchy allows different handling strategies based on error type:
+    - Bot protection: Non-recoverable, apply anti_bot tag
+    - Auth errors: Non-recoverable, apply auth_required tag
+    - Config errors: Recoverable, spawn recovery task
+    - Not found: Recoverable, spawn recovery task to find new URL
+    - Transient: Retry automatically before disabling
 
     Attributes:
-        source_url: The URL that was blocked
-        reason: Description of why the response appears to be blocked
+        source_url: The URL that failed
+        reason: Description of the error
+        status_code: HTTP status code if applicable
     """
 
-    def __init__(self, source_url: str, reason: str):
+    def __init__(self, source_url: str, reason: str, status_code: int = None):
         self.source_url = source_url
         self.reason = reason
-        super().__init__(f"Scrape blocked at {source_url}: {reason}")
+        self.status_code = status_code
+        super().__init__(f"Scrape error at {source_url}: {reason}")
+
+    @property
+    def is_recoverable(self) -> bool:
+        """Whether this error type is potentially recoverable."""
+        return True  # Base class assumes recoverable; subclasses override
+
+    @property
+    def should_auto_recover(self) -> bool:
+        """Whether to automatically spawn a recovery task."""
+        return False  # Base class doesn't auto-recover; subclasses override
+
+    @property
+    def disable_tag(self) -> Optional[str]:
+        """Tag to apply when disabling source, or None for no tag."""
+        return None
+
+
+class ScrapeBotProtectionError(ScrapeBlockedError):
+    """Raised when actual bot protection is detected (Cloudflare, CAPTCHA, WAF).
+
+    This is NON-RECOVERABLE. The source should be disabled with anti_bot tag.
+
+    Detection markers:
+    - Cloudflare challenge page ("checking your browser", "Ray ID")
+    - CAPTCHA/reCAPTCHA/hCaptcha
+    - WAF blocking (Sucuri, Incapsula, Akamai)
+    - "Access denied" with protection markers
+    """
+
+    @property
+    def is_recoverable(self) -> bool:
+        return False
+
+    @property
+    def disable_tag(self) -> str:
+        return "anti_bot"
+
+
+class ScrapeAuthError(ScrapeBlockedError):
+    """Raised when authentication is required (login wall, OAuth, 401).
+
+    This is NON-RECOVERABLE without credentials. Apply auth_required tag.
+
+    Detection markers:
+    - HTTP 401 Unauthorized
+    - Login form in response
+    - OAuth redirect
+    - "Sign in to continue" messages
+    """
+
+    @property
+    def is_recoverable(self) -> bool:
+        return False
+
+    @property
+    def disable_tag(self) -> str:
+        return "auth_required"
+
+
+class ScrapeConfigError(ScrapeBlockedError):
+    """Raised for configuration errors (HTTP 400, invalid params, wrong format).
+
+    This is RECOVERABLE. The URL or config parameters need to be fixed.
+    Should spawn a recovery task to find the correct configuration.
+
+    Common causes:
+    - Wrong API endpoint URL
+    - Missing required parameters
+    - Invalid request format
+    - Wrong site_id for Workday, etc.
+    """
+
+    @property
+    def is_recoverable(self) -> bool:
+        return True
+
+    @property
+    def should_auto_recover(self) -> bool:
+        return True
+
+
+class ScrapeNotFoundError(ScrapeBlockedError):
+    """Raised when endpoint is not found (HTTP 404).
+
+    This is RECOVERABLE. The careers page likely moved to a different URL.
+    Should spawn a recovery task to find the new location.
+
+    IMPORTANT: A 404 is NOT bot protection. It means:
+    - Company changed their careers page URL
+    - Company migrated to a different ATS
+    - Board/slug was renamed
+    - Job board was removed (company closed or stopped hiring)
+    """
+
+    @property
+    def is_recoverable(self) -> bool:
+        return True
+
+    @property
+    def should_auto_recover(self) -> bool:
+        return True
+
+
+class ScrapeTransientError(ScrapeBlockedError):
+    """Raised for transient server errors (HTTP 502, 503, 504, timeouts).
+
+    This should be RETRIED automatically before disabling.
+    Do not apply any disable tag - these are temporary issues.
+
+    Common causes:
+    - Server overloaded
+    - Deployment in progress
+    - Rate limiting (without explicit block)
+    - Network issues
+    - Maintenance window
+    """
+
+    def __init__(
+        self, source_url: str, reason: str, status_code: int = None, retry_after: int = None
+    ):
+        super().__init__(source_url, reason, status_code)
+        self.retry_after = retry_after  # Seconds to wait before retry, if provided
+
+    @property
+    def is_recoverable(self) -> bool:
+        return True
+
+    @property
+    def should_auto_recover(self) -> bool:
+        return False  # Retried automatically, not via recovery task
+
+
+class ScrapeProtectedApiError(ScrapeBlockedError):
+    """Raised when API requires authentication (HTTP 401/403/422 on API endpoint).
+
+    This is NON-RECOVERABLE for APIs that explicitly require auth tokens.
+    Different from general auth_required as it's specific to API endpoints.
+    """
+
+    @property
+    def is_recoverable(self) -> bool:
+        return False
+
+    @property
+    def disable_tag(self) -> str:
+        return "protected_api"
