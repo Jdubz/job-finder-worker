@@ -27,6 +27,13 @@ export interface AuthResult {
 const SESSION_COOKIE_NAME = "jf_session"
 
 /**
+ * Check if auth should be skipped (for local development with private IP bypass).
+ */
+function shouldSkipAuth(): boolean {
+  return process.env.JOB_FINDER_SKIP_AUTH === "true"
+}
+
+/**
  * Get the frontend URL for OAuth login.
  */
 function getLoginUrl(): string {
@@ -238,8 +245,15 @@ export async function logout(): Promise<void> {
 /**
  * Restore session from stored token.
  * Returns user info if session is valid, null otherwise.
+ * If JOB_FINDER_SKIP_AUTH=true, returns a local user (for private IP bypass).
  */
 export async function restoreSession(): Promise<AuthUser | null> {
+  // Skip auth for local development (backend bypasses auth for private IPs)
+  if (shouldSkipAuth()) {
+    logger.info("[Auth] Auth skipped (JOB_FINDER_SKIP_AUTH=true)")
+    return { email: "local@localhost", name: "Local User" }
+  }
+
   const token = getSessionToken()
   if (!token) {
     return null

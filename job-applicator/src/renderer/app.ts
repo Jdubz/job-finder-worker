@@ -704,8 +704,9 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
       documents = result.data
 
       // Filter documents with resume and cover letter URLs
-      const resumes = documents.filter((d) => d.resumeUrl && d.status === "completed")
-      const coverLetters = documents.filter((d) => d.coverLetterUrl && d.status === "completed")
+      // Note: Don't filter by status - documents with URLs are selectable regardless of workflow state
+      const resumes = documents.filter((d) => d.resumeUrl)
+      const coverLetters = documents.filter((d) => d.coverLetterUrl)
 
       // Populate resume dropdown with date + ID snippet
       resumeSelect.innerHTML = '<option value="">-- Select Resume --</option>' +
