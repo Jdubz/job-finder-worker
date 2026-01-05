@@ -177,6 +177,15 @@ def generate_workday_board_variations(slug: str) -> List[str]:
     variations.append(f"{slug.capitalize()}_ExternalSite")
     variations.append(f"{slug.upper()}_ExternalSite")
 
+    # Short board names (e.g., "Ext" for Autodesk)
+    variations.append("Ext")
+    variations.append("ext")
+    variations.append("Jobs")
+    variations.append("Career")
+    variations.append("External_Career")
+    variations.append("External_Careers")
+    variations.append("ExternalCareer")
+
     # en-US locale variant (seen in 3M)
     variations.append("en-US/Search")
 
@@ -190,6 +199,89 @@ def generate_workday_board_variations(slug: str) -> List[str]:
             unique.append(v)
 
     return unique
+
+
+def discover_workday_board_from_careers_page(
+    slug: str,
+    timeout: int = ATS_PROBE_TIMEOUT_SECONDS,
+) -> Optional[str]:
+    """Discover Workday board name by fetching the careers page and extracting it.
+
+    Workday careers pages often redirect to a URL containing the board name:
+    - https://company.wd1.myworkdayjobs.com/ redirects to
+    - https://company.wd1.myworkdayjobs.com/Ext (board is "Ext")
+
+    This function also parses the HTML for embedded board names in scripts/links.
+
+    Args:
+        slug: Company slug (tenant name)
+        timeout: Request timeout in seconds
+
+    Returns:
+        Board name if discovered, None otherwise
+    """
+    for wd_num in WORKDAY_SUBDOMAINS:
+        base_host = f"https://{slug}.{wd_num}.myworkdayjobs.com"
+
+        try:
+            # Make request and follow redirects
+            response = requests.get(
+                base_host,
+                timeout=timeout,
+                allow_redirects=True,
+                headers={"User-Agent": "JobFinderBot/1.0"},
+            )
+
+            if response.status_code != 200:
+                continue
+
+            # Check final URL for board name
+            final_url = response.url
+            if final_url != base_host and final_url.startswith(base_host):
+                # Extract board from path: /BoardName or /BoardName/something
+                path = final_url[len(base_host) :].strip("/")
+                if path:
+                    # Get first path segment
+                    board = path.split("/")[0]
+                    if board and board not in ("wday", "cxs", "jobs"):
+                        logger.info(f"Discovered Workday board from redirect: {slug}/{board}")
+                        return board
+
+            # Also try to find board name in HTML content
+            html = response.text
+            # Look for patterns like: /wday/cxs/{slug}/{board}/jobs
+            pattern = rf"/wday/cxs/{re.escape(slug)}/([^/]+)/jobs"
+            matches = re.findall(pattern, html)
+            if matches:
+                # Return the first unique board name found
+                for board in matches:
+                    if board and board not in ("{{", "{{board}}"):
+                        logger.info(f"Discovered Workday board from HTML: {slug}/{board}")
+                        return board
+
+            # Look for board in window.jobBoard or similar JS variables
+            js_patterns = [
+                r'boardName["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+                r'jobBoard["\']?\s*[:=]\s*["\']([^"\']+)["\']',
+                r'/([^/]+)/jobs["\']',
+            ]
+            for js_pattern in js_patterns:
+                js_matches = re.findall(js_pattern, html)
+                for board in js_matches:
+                    if (
+                        board
+                        and len(board) > 1
+                        and len(board) < 50
+                        and board not in ("wday", "cxs", slug)
+                        and not board.startswith("{")
+                    ):
+                        logger.info(f"Discovered Workday board from JS: {slug}/{board}")
+                        return board
+
+        except requests.exceptions.RequestException:
+            continue
+
+    return None
 
 
 def generate_slug_variations(name: str) -> List[str]:
@@ -542,8 +634,19 @@ def probe_workday(
     Returns:
         ATSProbeResult with found=True if jobs are available
     """
+    # First, try to discover the board name from the careers page redirect
+    discovered_board = discover_workday_board_from_careers_page(slug, timeout)
+
     # Generate all board variations to try for this company
     board_variations = generate_workday_board_variations(slug)
+
+    # If we discovered a board name, prioritize it at the front
+    if discovered_board and discovered_board not in board_variations:
+        board_variations.insert(0, discovered_board)
+    elif discovered_board:
+        # Move discovered board to front
+        board_variations.remove(discovered_board)
+        board_variations.insert(0, discovered_board)
 
     for wd_num in WORKDAY_SUBDOMAINS:
         # Create session and establish cookies for this subdomain

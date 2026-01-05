@@ -206,12 +206,50 @@ verify which provider actually belongs to the company in question.
 ### When to Disable Sources
 
 Always disable with clear notes explaining WHY:
-- Bot protection detected (403, Cloudflare, etc.)
-- Authentication required
+- Bot protection detected (Cloudflare, CAPTCHA, WAF - see HTTP Error Guide below)
+- Authentication required (login wall, OAuth redirect)
 - DNS resolution failure
 - URL is a single job listing
 - URL is an ATS provider's own site
 - No discoverable API/RSS/HTML/JS-rendered endpoint for jobs
+
+### HTTP Error Classification Guide (CRITICAL)
+
+When analyzing fetch results, classify errors correctly. DO NOT mislabel errors!
+
+**HTTP 400 (Bad Request)** → Config error, NOT bot protection
+- Cause: Wrong API parameters, invalid URL format, missing required fields, wrong site_id
+- Example: Workday returns 400 when the board name in the URL is wrong
+- Recovery: Find the correct URL or config parameters
+- Tag: None (recoverable)
+
+**HTTP 401 (Unauthorized)** → Authentication required
+- Cause: API requires auth token, session expired
+- Recovery: Not possible without credentials
+- Tag: auth_required
+
+**HTTP 403 (Forbidden)** → ANALYZE CONTENT before tagging
+- If content contains Cloudflare/CAPTCHA markers → bot_protection
+- If content shows login form → auth_required
+- If just "Access Denied" with no markers → could be rate limit (transient, retry later)
+- Tag: Depends on content analysis
+
+**HTTP 404 (Not Found)** → Endpoint moved, NOT bot protection
+- Cause: Company changed their careers page URL, removed board, renamed slug
+- Example: Lever board returns 404 if company removed their job board
+- Recovery: Search for new URL, try ATS probing with different slugs
+- Tag: None (recoverable)
+- CRITICAL: Never tag a 404 as "anti_bot" - it means "resource not found"
+
+**HTTP 502/503 (Server Error)** → Transient, retry later
+- Cause: Server overloaded, maintenance, deployment in progress
+- Recovery: Retry automatically
+- Tag: None
+
+**Timeout Errors** → Transient or JS rendering issue
+- Cause: Network issues, server slow, or page requires longer render time
+- Recovery: Retry with longer timeout or requires_js configuration
+- Tag: None
 
 ### Non-Recoverable Issues (disabled_tags)
 

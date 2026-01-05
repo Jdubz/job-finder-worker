@@ -13,7 +13,15 @@ import json
 import requests
 from bs4 import BeautifulSoup
 
-from job_finder.exceptions import ScrapeBlockedError
+from job_finder.exceptions import (
+    ScrapeBlockedError,
+    ScrapeAuthError,
+    ScrapeBotProtectionError,
+    ScrapeConfigError,
+    ScrapeNotFoundError,
+    ScrapeProtectedApiError,
+    ScrapeTransientError,
+)
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.scrapers.text_sanitizer import (
@@ -31,6 +39,150 @@ DEFAULT_HEADERS = {
     "User-Agent": "JobFinderBot/1.0",
     "Accept": "application/json, text/html, */*",
 }
+
+# Bot protection markers (Cloudflare, CAPTCHA, WAF, etc.)
+BOT_PROTECTION_MARKERS = [
+    "cf-browser-verification",
+    "checking your browser",
+    "challenge-platform",
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "ray id:",
+    "cloudflare",
+    "sucuri",
+    "incapsula",
+    "ddos protection",
+    "bot protection",
+    "access denied by security",
+    "automated access",
+    "please verify you are human",
+    "akamai",
+    "distil_r_blocked",
+    "perimeterx",
+]
+
+# Authentication wall markers
+# NOTE: These should be specific phrases that indicate the page REQUIRES login,
+# not just mentions of login (e.g., a login link in the header)
+AUTH_WALL_MARKERS = [
+    "sign in to continue",
+    "log in to continue",
+    "login required",
+    "please sign in",
+    "please log in",
+    "authentication required",
+    "you must be logged in",
+    "you need to log in",
+    "access denied. please log in",
+    'type="password"',  # Password input field
+    'name="password"',  # Password input field
+    "sso redirect",
+    "redirect_uri=",  # OAuth redirect parameter
+    "response_type=code",  # OAuth authorization
+]
+
+
+def _detect_bot_protection(content: str) -> bool:
+    """Check if content contains bot protection markers."""
+    if not content:
+        return False
+    content_lower = content.lower()
+    return any(marker in content_lower for marker in BOT_PROTECTION_MARKERS)
+
+
+def _detect_auth_wall(content: str) -> bool:
+    """Check if content contains authentication wall markers."""
+    if not content:
+        return False
+    content_lower = content.lower()
+    return any(marker in content_lower for marker in AUTH_WALL_MARKERS)
+
+
+def classify_http_error(
+    url: str, status_code: int, reason: str, content: str = "", is_api: bool = False
+) -> ScrapeBlockedError:
+    """
+    Classify an HTTP error into the appropriate exception type.
+
+    This function analyzes both the HTTP status code and response content
+    to determine the real cause of the error.
+
+    Args:
+        url: The URL that returned the error
+        status_code: HTTP status code
+        reason: HTTP reason phrase
+        content: Response content (for content analysis)
+        is_api: Whether this is an API endpoint (affects 401/403 handling)
+
+    Returns:
+        Appropriate ScrapeBlockedError subclass
+    """
+    # First check content for bot protection (overrides status code logic)
+    if content and _detect_bot_protection(content):
+        return ScrapeBotProtectionError(
+            url, f"Bot protection detected (HTTP {status_code})", status_code
+        )
+
+    # Check content for auth wall
+    if content and _detect_auth_wall(content):
+        return ScrapeAuthError(url, f"Authentication required (HTTP {status_code})", status_code)
+
+    # Status code based classification
+    if status_code == 400:
+        # Bad Request - config error (wrong params, invalid format)
+        return ScrapeConfigError(url, f"HTTP 400: {reason} - config error", status_code)
+
+    elif status_code == 401:
+        # Unauthorized - auth required
+        if is_api:
+            return ScrapeProtectedApiError(
+                url, f"HTTP 401: {reason} - API auth required", status_code
+            )
+        return ScrapeAuthError(url, f"HTTP 401: {reason} - authentication required", status_code)
+
+    elif status_code == 403:
+        # Forbidden - could be bot protection, rate limit, or auth
+        # Without bot protection content, we can't be sure - treat as transient
+        # to avoid mislabeling
+        if is_api:
+            return ScrapeProtectedApiError(
+                url, f"HTTP 403: {reason} - API access denied", status_code
+            )
+        return ScrapeTransientError(url, f"HTTP 403: {reason} - possibly rate limited", status_code)
+
+    elif status_code == 404:
+        # Not Found - endpoint moved or removed (NOT bot protection!)
+        return ScrapeNotFoundError(url, f"HTTP 404: {reason} - endpoint not found", status_code)
+
+    elif status_code == 410:
+        # Gone - resource permanently removed
+        return ScrapeNotFoundError(url, f"HTTP 410: {reason} - resource removed", status_code)
+
+    elif status_code == 422:
+        # Unprocessable Entity - usually API validation error
+        if is_api:
+            return ScrapeProtectedApiError(
+                url, f"HTTP 422: {reason} - API validation failed", status_code
+            )
+        return ScrapeConfigError(url, f"HTTP 422: {reason} - validation error", status_code)
+
+    elif status_code == 429:
+        # Too Many Requests - rate limiting (transient)
+        retry_after = None  # Could extract from Retry-After header if available
+        return ScrapeTransientError(
+            url, f"HTTP 429: {reason} - rate limited", status_code, retry_after
+        )
+
+    elif status_code in (500, 502, 503, 504):
+        # Server errors - transient
+        return ScrapeTransientError(
+            url, f"HTTP {status_code}: {reason} - server error", status_code
+        )
+
+    else:
+        # Unknown status - generic error
+        return ScrapeBlockedError(url, f"HTTP {status_code}: {reason}", status_code)
 
 
 class GenericScraper:
@@ -178,9 +330,14 @@ class GenericScraper:
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
-            # Treat hard HTTP failures as blocking so the runner can disable the source
-            raise ScrapeBlockedError(
-                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            # Classify HTTP error properly based on status and content
+            content = ""
+            try:
+                content = response.text[:5000]  # Get content sample for analysis
+            except Exception:
+                pass
+            raise classify_http_error(
+                self.config.url, response.status_code, response.reason, content, is_api=True
             ) from e
         data = response.json()
 
@@ -227,8 +384,13 @@ class GenericScraper:
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
-                raise ScrapeBlockedError(
-                    self.config.url, f"HTTP {response.status_code}: {response.reason}"
+                content = ""
+                try:
+                    content = response.text[:5000]
+                except Exception:
+                    pass
+                raise classify_http_error(
+                    self.config.url, response.status_code, response.reason, content, is_api=True
                 ) from e
 
             data = response.json()
@@ -315,8 +477,13 @@ class GenericScraper:
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
-            raise ScrapeBlockedError(
-                self.config.url, f"HTTP {response.status_code}: {response.reason}"
+            content = ""
+            try:
+                content = response.text[:5000]
+            except Exception:
+                pass
+            raise classify_http_error(
+                self.config.url, response.status_code, response.reason, content, is_api=False
             ) from e
 
         content = response.text
@@ -326,7 +493,14 @@ class GenericScraper:
         if feed.bozo and not feed.entries:
             blocked_reason = self._detect_blocked_response(content, feed.bozo_exception)
             if blocked_reason:
-                raise ScrapeBlockedError(self.config.url, blocked_reason)
+                # Classify based on content analysis
+                if _detect_bot_protection(content):
+                    raise ScrapeBotProtectionError(self.config.url, blocked_reason)
+                elif _detect_auth_wall(content):
+                    raise ScrapeAuthError(self.config.url, blocked_reason)
+                else:
+                    # Default to config error for RSS (wrong URL, not a feed)
+                    raise ScrapeConfigError(self.config.url, blocked_reason)
             # Log warning for non-blocking parse issues
             logger.warning(f"RSS feed has issues: {feed.bozo_exception}")
 
@@ -399,14 +573,24 @@ class GenericScraper:
                 )
                 soup = BeautifulSoup(result.html, "html.parser")
             except RuntimeError as exc:
-                raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}") from exc
+                # Playwright render errors - analyze error message for classification
+                error_msg = str(exc).lower()
+                if "timeout" in error_msg:
+                    raise ScrapeTransientError(self.config.url, f"Render timeout: {exc}")
+                else:
+                    raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}")
         else:
             response = requests.get(url, headers=headers, timeout=30)
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
-                raise ScrapeBlockedError(
-                    self.config.url, f"HTTP {response.status_code}: {response.reason}"
+                content = ""
+                try:
+                    content = response.text[:5000]
+                except Exception:
+                    pass
+                raise classify_http_error(
+                    self.config.url, response.status_code, response.reason, content, is_api=False
                 ) from e
 
             soup = BeautifulSoup(response.text, "html.parser")
