@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from job_finder.exceptions import (
-    ScrapeBlockedError,
     ScrapeBotProtectionError,
     ScrapeTransientError,
     ScrapeConfigError,
