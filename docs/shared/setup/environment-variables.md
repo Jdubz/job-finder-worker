@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-09
+> Last Updated: 2026-01-06
 
 This document consolidates the environment variables for the job-finder-bot. Replace secrets through your secure secret management workflow; do not commit plaintext secrets.
 
@@ -50,6 +50,15 @@ fall back to CLI interface when available (e.g., `gemini/api` → `gemini/cli`).
 - `VITE_GOOGLE_CLIENT_ID` - Google OAuth client ID (frontend)
 - `VITE_ENVIRONMENT` - Environment name (development, staging, production)
 - `VITE_SENTRY_DSN` - Sentry error tracking DSN
+
+## Job Applicator Configuration
+
+**Electron desktop app settings.**
+
+- `JOB_FINDER_API_URL` - Backend API URL (default: `http://localhost:3000/api`)
+- `JOB_FINDER_FRONTEND_URL` - Frontend URL for OAuth login popup (derived from API URL if not set)
+- `JOB_FINDER_SKIP_AUTH` - Skip OAuth authentication for local development (`true` or `1`). Use when running with local backend that bypasses auth for private IPs. **Do not use in production.**
+- `GENERATOR_ARTIFACTS_DIR` - Local directory for generated documents (if unset, downloads from API)
 
 ## Worker Configuration
 
@@ -113,6 +122,19 @@ SELENIUM_HEADLESS=true
 # GOOGLE_API_KEY=your-gemini-key        # Only for gemini/api
 # CLI-only auth
 # CLAUDE_CODE_OAUTH_TOKEN=your-claude-code-token
+```
+
+### Job Applicator (.env)
+
+```env
+# For local development with local prod backend
+JOB_FINDER_API_URL=http://localhost:3000/api
+JOB_FINDER_SKIP_AUTH=true
+GENERATOR_ARTIFACTS_DIR=/srv/job-finder/artifacts
+
+# For production backend (remote)
+# JOB_FINDER_API_URL=https://job-finder-api.joshwentworth.com
+# JOB_FINDER_FRONTEND_URL=https://job-finder.joshwentworth.com
 ```
 
 ## Configuration Management
