@@ -77,6 +77,7 @@ ATS_PROVIDERS = {
             "url": "jobUrl",
             "location": "location",
             "description": "descriptionHtml",
+            "posted_date": "publishedAt",
         },
     },
     "smartrecruiters": {
@@ -88,6 +89,7 @@ ATS_PROVIDERS = {
             "url": "ref",
             "location": "location.city",
             "description": "jobAd.sections.companyDescription.text",
+            "posted_date": "releasedDate",
         },
     },
     "recruitee": {
@@ -99,6 +101,7 @@ ATS_PROVIDERS = {
             "url": "careers_url",
             "location": "location",
             "description": "description",
+            "posted_date": "published_at",
         },
     },
     "breezy": {
