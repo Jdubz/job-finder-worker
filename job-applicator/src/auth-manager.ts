@@ -30,7 +30,7 @@ const SESSION_COOKIE_NAME = "jf_session"
  * Check if auth should be skipped (for local development with private IP bypass).
  */
 function shouldSkipAuth(): boolean {
-  return process.env.JOB_FINDER_SKIP_AUTH === "true"
+  return ["true", "1"].includes(String(process.env.JOB_FINDER_SKIP_AUTH).toLowerCase())
 }
 
 /**
@@ -272,8 +272,14 @@ export async function restoreSession(): Promise<AuthUser | null> {
 
 /**
  * Get authentication headers for API requests.
+ * Returns empty headers when auth is skipped (backend bypasses auth for private IPs).
  */
 export function getAuthHeaders(): Record<string, string> {
+  // Skip auth headers for local development (backend bypasses auth for private IPs)
+  if (shouldSkipAuth()) {
+    return {}
+  }
+
   const token = getSessionToken()
   if (!token) {
     return {}
