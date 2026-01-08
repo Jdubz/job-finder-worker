@@ -1547,3 +1547,148 @@ class TestServerSideFiltering:
         assert (
             "company_name=A%26B" in url or "company_name=A&B" not in url.split("?")[1].split("&")[0]
         )
+
+
+class TestNormalizeDateTimestamps:
+    """Tests for _normalize_date millisecond timestamp handling."""
+
+    @pytest.fixture
+    def scraper(self):
+        """Create a scraper instance for testing."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+        )
+        return GenericScraper(config)
+
+    def test_normalize_date_seconds_timestamp(self, scraper):
+        """Test that 10-digit second timestamps are handled correctly."""
+        # Jan 1, 2024 00:00:00 UTC
+        result = scraper._normalize_date(1704067200)
+        assert result == "2024-01-01T00:00:00+00:00"
+
+    def test_normalize_date_milliseconds_timestamp_int(self, scraper):
+        """Test that 13-digit millisecond timestamps (int) are converted correctly."""
+        # Lever API timestamp: 1752761621698 ms = July 17, 2025
+        result = scraper._normalize_date(1752761621698)
+        assert "2025-07-17" in result
+
+    def test_normalize_date_milliseconds_timestamp_float(self, scraper):
+        """Test that 13-digit millisecond timestamps (float) are converted correctly."""
+        # Same timestamp as float
+        result = scraper._normalize_date(1752761621698.0)
+        assert "2025-07-17" in result
+
+    def test_normalize_date_boundary_10_digit(self, scraper):
+        """Test timestamp at exactly 10 digits (max seconds timestamp before ms detection)."""
+        # 9999999999 seconds = Nov 20, 2286 - should be treated as seconds
+        result = scraper._normalize_date(9999999999)
+        assert "2286" in result
+
+    def test_normalize_date_boundary_11_digit(self, scraper):
+        """Test timestamp at exactly 11 digits (min value treated as milliseconds)."""
+        # 10000000000 = should be treated as milliseconds = 10000000 seconds
+        # 10000000 seconds from epoch = April 26, 1970
+        result = scraper._normalize_date(10000000000)
+        assert "1970" in result
+
+    def test_normalize_date_none(self, scraper):
+        """Test that None returns empty string."""
+        assert scraper._normalize_date(None) == ""
+
+    def test_normalize_date_string_iso(self, scraper):
+        """Test ISO format string passes through."""
+        result = scraper._normalize_date("2025-01-15T10:30:00Z")
+        # Should parse and return ISO format
+        assert "2025-01-15" in result
+
+    def test_normalize_date_string_common_format(self, scraper):
+        """Test common date string format."""
+        result = scraper._normalize_date("January 15, 2025")
+        assert "2025-01-15" in result
+
+
+class TestRssFieldNormalization:
+    """Tests for _rss_access RSS field name normalization."""
+
+    @pytest.fixture
+    def scraper(self):
+        """Create a scraper instance for testing."""
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/feed.rss",
+            fields={"title": "title", "url": "link"},
+        )
+        return GenericScraper(config)
+
+    def test_rss_access_pubDate_normalized(self, scraper):
+        """Test that pubDate is normalized to published."""
+        entry = Mock()
+        entry.published = "Mon, 14 Apr 2025 00:00:00 +0000"
+        # Ensure pubDate attribute doesn't exist (like real feedparser)
+        del entry.pubDate
+
+        result = scraper._rss_access(entry, "pubDate")
+        assert result == "Mon, 14 Apr 2025 00:00:00 +0000"
+
+    def test_rss_access_pubdate_lowercase(self, scraper):
+        """Test that lowercase pubdate is also normalized."""
+        entry = Mock()
+        entry.published = "Mon, 14 Apr 2025 00:00:00 +0000"
+
+        result = scraper._rss_access(entry, "pubdate")
+        assert result == "Mon, 14 Apr 2025 00:00:00 +0000"
+
+    def test_rss_access_dc_date(self, scraper):
+        """Test that dc:date is normalized to published."""
+        entry = Mock()
+        entry.published = "2025-04-14T00:00:00Z"
+
+        result = scraper._rss_access(entry, "dc:date")
+        assert result == "2025-04-14T00:00:00Z"
+
+    def test_rss_access_guid_normalized(self, scraper):
+        """Test that guid is normalized to id."""
+        entry = Mock()
+        entry.id = "https://example.com/job/123"
+        # Ensure guid attribute doesn't exist
+        if hasattr(entry, "guid"):
+            del entry.guid
+
+        result = scraper._rss_access(entry, "guid")
+        assert result == "https://example.com/job/123"
+
+    def test_rss_access_direct_attribute(self, scraper):
+        """Test that non-mapped attributes are accessed directly."""
+        entry = Mock()
+        entry.title = "Software Engineer"
+
+        result = scraper._rss_access(entry, "title")
+        assert result == "Software Engineer"
+
+    def test_rss_access_fallback_for_posted_date(self, scraper):
+        """Test fallback chain for posted_date field."""
+        # Use spec to prevent Mock from returning mock objects for undefined attrs
+        entry = Mock(spec=["published", "updated", "created"])
+        entry.published = None
+        entry.updated = "2025-04-14T00:00:00Z"
+        entry.created = None
+
+        # When accessing posted_date and published is None, should fall back to updated
+        result = scraper._rss_access(entry, "posted_date")
+        assert result == "2025-04-14T00:00:00Z"
+
+    def test_rss_access_missing_attribute(self, scraper):
+        """Test that missing attributes return None."""
+        entry = Mock(spec=[])  # Empty spec means no attributes
+
+        result = scraper._rss_access(entry, "nonexistent")
+        assert result is None
+
+    def test_rss_to_feedparser_map_is_class_constant(self):
+        """Test that _RSS_TO_FEEDPARSER_MAP is defined as a class constant."""
+        assert hasattr(GenericScraper, "_RSS_TO_FEEDPARSER_MAP")
+        assert isinstance(GenericScraper._RSS_TO_FEEDPARSER_MAP, dict)
+        assert "pubDate" in GenericScraper._RSS_TO_FEEDPARSER_MAP
+        assert GenericScraper._RSS_TO_FEEDPARSER_MAP["pubDate"] == "published"

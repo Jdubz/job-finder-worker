@@ -209,6 +209,15 @@ class GenericScraper:
         jobs = scraper.scrape()
     """
 
+    # Feedparser normalizes RSS element names to standard attribute names.
+    # Map common RSS field names to their feedparser equivalents.
+    _RSS_TO_FEEDPARSER_MAP = {
+        "pubDate": "published",
+        "pubdate": "published",
+        "dc:date": "published",
+        "guid": "id",
+    }
+
     def __init__(self, config: SourceConfig):
         """
         Initialize generic scraper.
@@ -1391,17 +1400,23 @@ class GenericScraper:
         """
         Access feedparser entry attributes.
 
-        Handles common RSS field names and fallbacks.
+        Handles common RSS field names and fallbacks. Feedparser normalizes
+        RSS element names (e.g., pubDate -> published), so we map common
+        RSS field names to their feedparser equivalents using the class
+        constant _RSS_TO_FEEDPARSER_MAP.
 
         Args:
             entry: Feedparser entry
-            path: Attribute name
+            path: Attribute name (may be RSS element name or feedparser name)
 
         Returns:
             Attribute value or None
         """
-        # Direct attribute access
-        value = getattr(entry, path, None)
+        # Normalize path if it's a raw RSS element name
+        normalized_path = self._RSS_TO_FEEDPARSER_MAP.get(path, path)
+
+        # Direct attribute access with normalized path
+        value = getattr(entry, normalized_path, None)
 
         # Handle common fallbacks
         if value is None:
@@ -1410,14 +1425,15 @@ class GenericScraper:
                 "description": ["summary", "content"],
                 "url": ["link", "id"],
                 "posted_date": ["published", "updated", "created"],
+                "published": ["updated", "created"],  # Fallback for date fields
             }
-            for fallback in fallbacks.get(path, []):
+            for fallback in fallbacks.get(normalized_path, []):
                 value = getattr(entry, fallback, None)
                 if value is not None:
                     break
 
             # Handle content list
-            if value is None and path in ("description", "content"):
+            if value is None and normalized_path in ("description", "content"):
                 content = getattr(entry, "content", None)
                 if content and isinstance(content, list) and len(content) > 0:
                     value = content[0].get("value")
@@ -1513,7 +1529,8 @@ class GenericScraper:
         Normalize date value to ISO format string.
 
         Handles:
-            - Unix timestamps (int/float)
+            - Unix timestamps in seconds (int/float)
+            - Unix timestamps in milliseconds (11+ digit int/float)
             - ISO format strings
             - Various date string formats
 
@@ -1529,7 +1546,15 @@ class GenericScraper:
         # Unix timestamp
         if isinstance(value, (int, float)):
             try:
-                dt = datetime.fromtimestamp(value, tz=timezone.utc)
+                # Heuristic to detect millisecond timestamps: if a numeric timestamp
+                # is >= 10,000,000,000 (11+ digits), we assume it's in milliseconds.
+                # A 10-digit timestamp in seconds can represent dates up to year 2286,
+                # so this is a reasonable assumption for job posting dates.
+                # Examples: 1752761621698 (ms) vs 1704067200 (s)
+                timestamp = float(value)
+                if timestamp >= 10_000_000_000:
+                    timestamp = timestamp / 1000.0
+                dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                 return dt.isoformat()
             except (ValueError, OSError):
                 return ""

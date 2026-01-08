@@ -21,14 +21,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Loader2, Search, Briefcase } from "lucide-react"
+import { AlertCircle, Loader2, Search, Briefcase, X } from "lucide-react"
 import { ROUTES } from "@/types/routes"
 import type { JobMatchWithListing } from "@shared/types"
 import { logger } from "@/services/logging"
 import { toDate, formatDate, normalizeDateValue } from "@/utils/dateFormat"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { getScoreColor, SCORE_THRESHOLDS } from "@/lib/score-utils"
+import { toast } from "@/components/toast"
 
 export function JobApplicationsPage() {
   const { user } = useAuth()
@@ -46,6 +57,11 @@ export function JobApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<string>("updated")
   const [statusFilter, setStatusFilter] = useState<"active" | "ignored" | "applied" | "all">("active")
+
+  // Ignore confirmation dialog state
+  const [ignoreDialogOpen, setIgnoreDialogOpen] = useState(false)
+  const [matchToIgnore, setMatchToIgnore] = useState<JobMatchWithListing | null>(null)
+  const [isIgnoring, setIsIgnoring] = useState(false)
 
   // Fetch stats from server
   const fetchStats = useCallback(async () => {
@@ -195,6 +211,32 @@ export function JobApplicationsPage() {
     })
   }
 
+  const handleIgnoreClick = (e: React.MouseEvent, match: JobMatchWithListing) => {
+    e.stopPropagation() // Prevent row click from opening modal
+    setMatchToIgnore(match)
+    setIgnoreDialogOpen(true)
+  }
+
+  const handleConfirmIgnore = async () => {
+    if (!matchToIgnore?.id) return
+
+    setIsIgnoring(true)
+    try {
+      const updated = await jobMatchesClient.updateStatus(matchToIgnore.id, "ignored")
+      setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+      toast.success({ title: "Match ignored" })
+      // Refresh stats after status change
+      fetchStats()
+    } catch (err) {
+      console.error("Failed to ignore match:", err)
+      toast.error({ title: "Could not ignore match" })
+    } finally {
+      setIsIgnoring(false)
+      setIgnoreDialogOpen(false)
+      setMatchToIgnore(null)
+    }
+  }
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
@@ -335,11 +377,12 @@ export function JobApplicationsPage() {
             <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Job Title</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead className="hidden md:table-cell">Location</TableHead>
-                  <TableHead className="hidden lg:table-cell">Posted</TableHead>
-                  <TableHead className="text-center">Score</TableHead>
+                  <TableHead className="w-[40%] min-w-[200px]">Job Title</TableHead>
+                  <TableHead className="w-[20%] max-w-[180px]">Company</TableHead>
+                  <TableHead className="hidden md:table-cell w-[15%] max-w-[140px]">Location</TableHead>
+                  <TableHead className="hidden lg:table-cell w-[10%]">Posted</TableHead>
+                  <TableHead className="text-center w-[8%]">Score</TableHead>
+                  <TableHead className="w-[7%] text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -349,13 +392,16 @@ export function JobApplicationsPage() {
                     className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                     onClick={() => handleRowClick(match)}
                   >
-                    <TableCell className="max-w-[150px] sm:max-w-[200px]">
-                      <div className="font-medium truncate">{match.listing.title}</div>
-                    </TableCell>
                     <TableCell>
+                      <div className="font-medium truncate" title={match.listing.title}>
+                        {match.listing.title}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-[180px]">
                       <button
                         type="button"
-                        className="text-blue-600 hover:underline text-left"
+                        className="text-blue-600 hover:underline text-left truncate block max-w-full"
+                        title={match.listing.companyName}
                         onClick={(e) => {
                           e.stopPropagation()
                           openModal({
@@ -367,18 +413,34 @@ export function JobApplicationsPage() {
                         {match.listing.companyName}
                       </button>
                       {/* Show location on mobile as secondary text */}
-                      <div className="md:hidden text-xs text-muted-foreground mt-0.5">
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5 truncate">
                         {match.listing.location || ""}
                       </div>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {match.listing.location || "—"}
+                    <TableCell className="hidden md:table-cell text-muted-foreground max-w-[140px]">
+                      <span className="truncate block" title={match.listing.location || undefined}>
+                        {match.listing.location || "—"}
+                      </span>
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell text-muted-foreground">
+                    <TableCell className="hidden lg:table-cell text-muted-foreground whitespace-nowrap">
                       {formatDate(match.listing.postedDate)}
                     </TableCell>
                     <TableCell className="text-center">
                       <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {match.status !== "ignored" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          title="Ignore this match"
+                          onClick={(e) => handleIgnoreClick(e, match)}
+                        >
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Ignore</span>
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -388,6 +450,41 @@ export function JobApplicationsPage() {
         </CardContent>
       </Card>
 
+      {/* Ignore Confirmation Dialog */}
+      <AlertDialog open={ignoreDialogOpen} onOpenChange={setIgnoreDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ignore this match?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {matchToIgnore && (
+                <>
+                  <span className="font-medium text-foreground">{matchToIgnore.listing.title}</span>
+                  {" at "}
+                  <span className="font-medium text-foreground">{matchToIgnore.listing.companyName}</span>
+                  {" will be moved to your ignored list. You can restore it later from the Ignored filter."}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isIgnoring}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmIgnore}
+              disabled={isIgnoring}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isIgnoring ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Ignoring...
+                </>
+              ) : (
+                "Ignore"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
