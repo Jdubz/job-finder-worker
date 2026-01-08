@@ -209,6 +209,15 @@ class GenericScraper:
         jobs = scraper.scrape()
     """
 
+    # Feedparser normalizes RSS element names to standard attribute names.
+    # Map common RSS field names to their feedparser equivalents.
+    _RSS_TO_FEEDPARSER_MAP = {
+        "pubDate": "published",
+        "pubdate": "published",
+        "dc:date": "published",
+        "guid": "id",
+    }
+
     def __init__(self, config: SourceConfig):
         """
         Initialize generic scraper.
@@ -1393,7 +1402,8 @@ class GenericScraper:
 
         Handles common RSS field names and fallbacks. Feedparser normalizes
         RSS element names (e.g., pubDate -> published), so we map common
-        RSS field names to their feedparser equivalents.
+        RSS field names to their feedparser equivalents using the class
+        constant _RSS_TO_FEEDPARSER_MAP.
 
         Args:
             entry: Feedparser entry
@@ -1402,18 +1412,8 @@ class GenericScraper:
         Returns:
             Attribute value or None
         """
-        # Feedparser normalizes RSS element names to standard attribute names.
-        # Map common RSS field names to their feedparser equivalents.
-        rss_to_feedparser = {
-            "pubDate": "published",
-            "pubdate": "published",
-            "dc:date": "published",
-            "updated": "updated",
-            "guid": "id",
-        }
-
         # Normalize path if it's a raw RSS element name
-        normalized_path = rss_to_feedparser.get(path, path)
+        normalized_path = self._RSS_TO_FEEDPARSER_MAP.get(path, path)
 
         # Direct attribute access with normalized path
         value = getattr(entry, normalized_path, None)
@@ -1530,7 +1530,7 @@ class GenericScraper:
 
         Handles:
             - Unix timestamps in seconds (int/float)
-            - Unix timestamps in milliseconds (13+ digit int)
+            - Unix timestamps in milliseconds (11+ digit int/float)
             - ISO format strings
             - Various date string formats
 
@@ -1546,12 +1546,14 @@ class GenericScraper:
         # Unix timestamp
         if isinstance(value, (int, float)):
             try:
-                # Detect millisecond timestamps (13+ digits, typical range for 2000-2100)
-                # Timestamps in seconds for year 2000+ are ~946684800 (10 digits)
-                # Timestamps in milliseconds are 13+ digits (e.g., 1752761621698)
-                timestamp = value
-                if isinstance(value, int) and value > 9999999999:  # > 10 digits = milliseconds
-                    timestamp = value / 1000.0
+                # Heuristic to detect millisecond timestamps: if a numeric timestamp
+                # is >= 10,000,000,000 (11+ digits), we assume it's in milliseconds.
+                # A 10-digit timestamp in seconds can represent dates up to year 2286,
+                # so this is a reasonable assumption for job posting dates.
+                # Examples: 1752761621698 (ms) vs 1704067200 (s)
+                timestamp = float(value)
+                if timestamp >= 10_000_000_000:
+                    timestamp = timestamp / 1000.0
                 dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                 return dt.isoformat()
             except (ValueError, OSError):
