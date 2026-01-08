@@ -1391,17 +1391,32 @@ class GenericScraper:
         """
         Access feedparser entry attributes.
 
-        Handles common RSS field names and fallbacks.
+        Handles common RSS field names and fallbacks. Feedparser normalizes
+        RSS element names (e.g., pubDate -> published), so we map common
+        RSS field names to their feedparser equivalents.
 
         Args:
             entry: Feedparser entry
-            path: Attribute name
+            path: Attribute name (may be RSS element name or feedparser name)
 
         Returns:
             Attribute value or None
         """
-        # Direct attribute access
-        value = getattr(entry, path, None)
+        # Feedparser normalizes RSS element names to standard attribute names.
+        # Map common RSS field names to their feedparser equivalents.
+        rss_to_feedparser = {
+            "pubDate": "published",
+            "pubdate": "published",
+            "dc:date": "published",
+            "updated": "updated",
+            "guid": "id",
+        }
+
+        # Normalize path if it's a raw RSS element name
+        normalized_path = rss_to_feedparser.get(path, path)
+
+        # Direct attribute access with normalized path
+        value = getattr(entry, normalized_path, None)
 
         # Handle common fallbacks
         if value is None:
@@ -1410,14 +1425,15 @@ class GenericScraper:
                 "description": ["summary", "content"],
                 "url": ["link", "id"],
                 "posted_date": ["published", "updated", "created"],
+                "published": ["updated", "created"],  # Fallback for date fields
             }
-            for fallback in fallbacks.get(path, []):
+            for fallback in fallbacks.get(normalized_path, []):
                 value = getattr(entry, fallback, None)
                 if value is not None:
                     break
 
             # Handle content list
-            if value is None and path in ("description", "content"):
+            if value is None and normalized_path in ("description", "content"):
                 content = getattr(entry, "content", None)
                 if content and isinstance(content, list) and len(content) > 0:
                     value = content[0].get("value")
@@ -1513,7 +1529,8 @@ class GenericScraper:
         Normalize date value to ISO format string.
 
         Handles:
-            - Unix timestamps (int/float)
+            - Unix timestamps in seconds (int/float)
+            - Unix timestamps in milliseconds (13+ digit int)
             - ISO format strings
             - Various date string formats
 
@@ -1529,7 +1546,13 @@ class GenericScraper:
         # Unix timestamp
         if isinstance(value, (int, float)):
             try:
-                dt = datetime.fromtimestamp(value, tz=timezone.utc)
+                # Detect millisecond timestamps (13+ digits, typical range for 2000-2100)
+                # Timestamps in seconds for year 2000+ are ~946684800 (10 digits)
+                # Timestamps in milliseconds are 13+ digits (e.g., 1752761621698)
+                timestamp = value
+                if isinstance(value, int) and value > 9999999999:  # > 10 digits = milliseconds
+                    timestamp = value / 1000.0
+                dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                 return dt.isoformat()
             except (ValueError, OSError):
                 return ""
