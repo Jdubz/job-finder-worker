@@ -20,6 +20,10 @@ type QueueItemRow = {
   completed_at: string | null
   result_message: string | null
   error_details: string | null
+  // Retry tracking fields
+  retry_count: number | null
+  max_retries: number | null
+  last_error_category: string | null
 }
 
 export type NewQueueItem = Omit<QueueItem, 'id' | 'created_at' | 'updated_at'> & {
@@ -87,6 +91,10 @@ const buildQueueItem = (row: QueueItemRow): QueueItem => {
     metadata: (input.metadata as any) ?? undefined,
     result_message: row.result_message ?? undefined,
     error_details: row.error_details ?? undefined,
+    // Retry tracking
+    retry_count: row.retry_count ?? 0,
+    max_retries: row.max_retries ?? 3,
+    last_error_category: (row.last_error_category as QueueItem['last_error_category']) ?? undefined,
     created_at: parseTimestamp(row.created_at) ?? new Date(),
     updated_at: parseTimestamp(row.updated_at) ?? new Date(),
     processed_at: parseTimestamp(row.processed_at) ?? undefined,
@@ -314,6 +322,7 @@ export class JobQueueRepository {
       success: 0,
       failed: 0,
       skipped: 0,
+      blocked: 0,
       total: 0
     }
 
@@ -334,6 +343,9 @@ export class JobQueueRepository {
         case 'skipped':
           stats.skipped = row.count
           break
+        case 'blocked':
+          stats.blocked = row.count
+          break
         default:
           break
       }
@@ -341,6 +353,118 @@ export class JobQueueRepository {
     })
 
     return stats
+  }
+
+  /**
+   * Unblock all BLOCKED items, resetting them to PENDING.
+   * Optionally filter by error category.
+   * @param errorCategory Optional filter for specific error category (e.g., 'resource')
+   * @returns Number of items unblocked
+   */
+  unblockAll(errorCategory?: string): number {
+    const now = new Date().toISOString()
+
+    let result
+    if (errorCategory) {
+      result = this.db
+        .prepare(
+          `UPDATE job_queue
+           SET status = 'pending',
+               retry_count = 0,
+               processed_at = NULL,
+               completed_at = NULL,
+               error_details = NULL,
+               updated_at = ?
+           WHERE status = 'blocked' AND last_error_category = ?`
+        )
+        .run(now, errorCategory)
+    } else {
+      result = this.db
+        .prepare(
+          `UPDATE job_queue
+           SET status = 'pending',
+               retry_count = 0,
+               processed_at = NULL,
+               completed_at = NULL,
+               error_details = NULL,
+               updated_at = ?
+           WHERE status = 'blocked'`
+        )
+        .run(now)
+    }
+
+    return result.changes
+  }
+
+  /**
+   * Unblock a specific BLOCKED item, resetting it to PENDING.
+   * @param id Queue item ID to unblock
+   * @returns True if the item was unblocked, false otherwise
+   */
+  unblockItem(id: string): boolean {
+    const now = new Date().toISOString()
+    const result = this.db
+      .prepare(
+        `UPDATE job_queue
+         SET status = 'pending',
+             retry_count = 0,
+             processed_at = NULL,
+             completed_at = NULL,
+             error_details = NULL,
+             updated_at = ?
+         WHERE id = ? AND status = 'blocked'`
+      )
+      .run(now, id)
+    return result.changes > 0
+  }
+
+  /**
+   * Get orphaned job listings (listings without job_matches and no active queue item).
+   * These are jobs that were partially processed but never completed analysis.
+   */
+  getOrphanedListings(limit = 100): Array<{
+    id: string
+    url: string
+    title: string
+    company_name: string
+    created_at: string
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT jl.id, jl.url, jl.title, jl.company_name, jl.created_at
+         FROM job_listings jl
+         LEFT JOIN job_matches jm ON jm.job_listing_id = jl.id
+         LEFT JOIN job_queue jq ON jq.url = jl.url
+           AND jq.status IN ('pending', 'processing', 'blocked')
+         WHERE jm.id IS NULL AND jq.id IS NULL
+         ORDER BY jl.created_at DESC
+         LIMIT ?`
+      )
+      .all(limit) as Array<{
+      id: string
+      url: string
+      title: string
+      company_name: string
+      created_at: string
+    }>
+    return rows
+  }
+
+  /**
+   * Get count of orphaned job listings.
+   */
+  getOrphanedListingsCount(): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) as count
+         FROM job_listings jl
+         LEFT JOIN job_matches jm ON jm.job_listing_id = jl.id
+         LEFT JOIN job_queue jq ON jq.url = jl.url
+           AND jq.status IN ('pending', 'processing', 'blocked')
+         WHERE jm.id IS NULL AND jq.id IS NULL`
+      )
+      .get() as { count: number }
+    return row.count
   }
 
   private buildFilters(options: {

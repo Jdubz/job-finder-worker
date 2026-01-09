@@ -14,7 +14,12 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from job_finder.exceptions import DuplicateQueueItemError, StorageError
+from job_finder.exceptions import (
+    DuplicateQueueItemError,
+    ErrorCategory,
+    StorageError,
+    categorize_error,
+)
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.job_queue.notifier import QueueEventNotifier
@@ -379,6 +384,7 @@ class QueueManager:
             QueueStatus.SUCCESS,
             QueueStatus.FAILED,
             QueueStatus.SKIPPED,
+            QueueStatus.BLOCKED,
         ):
             item.completed_at = now_dt
 
@@ -495,6 +501,232 @@ class QueueManager:
         success = result.rowcount > 0
         if success:
             logger.info("Reset queue item %s to pending for retry", item_id)
+        return success
+
+    # --------------------------------------------------------------------- #
+    # INTELLIGENT FAILURE HANDLING
+    # --------------------------------------------------------------------- #
+
+    def handle_item_failure(
+        self,
+        item_id: str,
+        error: Exception,
+        error_message: str,
+    ) -> QueueStatus:
+        """
+        Handle item failure with intelligent retry logic.
+
+        Categorizes the error and determines the appropriate action:
+        - TRANSIENT errors: Auto-retry up to max_retries, then FAILED
+        - RESOURCE errors: Set to BLOCKED status for manual unblock
+        - PERMANENT/UNKNOWN errors: Immediate FAILED status
+
+        Args:
+            item_id: The queue item ID
+            error: The exception that occurred
+            error_message: Human-readable error message
+
+        Returns:
+            The final QueueStatus set on the item
+        """
+        category = categorize_error(error)
+        item = self.get_item(item_id)
+
+        if not item:
+            logger.error("handle_item_failure: item %s not found", item_id)
+            return QueueStatus.FAILED
+
+        if category == ErrorCategory.TRANSIENT:
+            if item.retry_count < item.max_retries:
+                # Increment retry count and reset to PENDING for auto-retry
+                self._increment_retry(item_id, category, error_message)
+                logger.info(
+                    "Item %s will retry (attempt %d/%d): %s",
+                    item_id,
+                    item.retry_count + 1,
+                    item.max_retries,
+                    error_message,
+                )
+                return QueueStatus.PENDING
+            else:
+                # Max retries exceeded - mark as permanently failed
+                final_msg = f"Max retries ({item.max_retries}) exceeded: {error_message}"
+                self.update_status(
+                    item_id,
+                    QueueStatus.FAILED,
+                    result_message=final_msg,
+                    error_details=final_msg,
+                )
+                logger.warning("Item %s failed after %d retries", item_id, item.max_retries)
+                return QueueStatus.FAILED
+
+        elif category == ErrorCategory.RESOURCE:
+            # Block item - requires manual unblock when resources available
+            self._set_blocked(item_id, category, error_message)
+            logger.warning("Item %s blocked: %s", item_id, error_message)
+            return QueueStatus.BLOCKED
+
+        else:
+            # PERMANENT or UNKNOWN - immediate failure, no retry
+            self.update_status(
+                item_id,
+                QueueStatus.FAILED,
+                result_message=error_message,
+                error_details=error_message,
+            )
+            logger.warning("Item %s failed (permanent): %s", item_id, error_message)
+            return QueueStatus.FAILED
+
+    def _increment_retry(
+        self,
+        item_id: str,
+        category: ErrorCategory,
+        error_message: str,
+    ) -> None:
+        """Increment retry count and reset status to PENDING for auto-retry."""
+        now = _iso(_utcnow())
+        with sqlite_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE job_queue
+                SET retry_count = retry_count + 1,
+                    last_error_category = ?,
+                    status = ?,
+                    processed_at = NULL,
+                    completed_at = NULL,
+                    error_details = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (category.value, QueueStatus.PENDING.value, error_message, now, item_id),
+            )
+        self._notify_item_updated(item_id)
+
+    def _set_blocked(
+        self,
+        item_id: str,
+        category: ErrorCategory,
+        error_message: str,
+    ) -> None:
+        """Set item to BLOCKED status with error category."""
+        now = _iso(_utcnow())
+        with sqlite_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE job_queue
+                SET status = ?,
+                    last_error_category = ?,
+                    error_details = ?,
+                    completed_at = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    QueueStatus.BLOCKED.value,
+                    category.value,
+                    error_message,
+                    now,
+                    now,
+                    item_id,
+                ),
+            )
+        self._notify_item_updated(item_id)
+
+    def unblock_items(self, error_category: Optional[str] = None) -> int:
+        """
+        Unblock BLOCKED items, resetting them to PENDING.
+
+        Optionally filter by error category to only unblock specific types of failures.
+        Resets retry_count to 0 to give items a fresh start.
+
+        Args:
+            error_category: Optional filter for specific error category (e.g., 'resource')
+
+        Returns:
+            Number of items unblocked
+        """
+        now = _iso(_utcnow())
+
+        if error_category:
+            with sqlite_connection(self.db_path) as conn:
+                result = conn.execute(
+                    """
+                    UPDATE job_queue
+                    SET status = ?,
+                        retry_count = 0,
+                        processed_at = NULL,
+                        completed_at = NULL,
+                        error_details = NULL,
+                        updated_at = ?
+                    WHERE status = ? AND last_error_category = ?
+                    """,
+                    (
+                        QueueStatus.PENDING.value,
+                        now,
+                        QueueStatus.BLOCKED.value,
+                        error_category,
+                    ),
+                )
+        else:
+            with sqlite_connection(self.db_path) as conn:
+                result = conn.execute(
+                    """
+                    UPDATE job_queue
+                    SET status = ?,
+                        retry_count = 0,
+                        processed_at = NULL,
+                        completed_at = NULL,
+                        error_details = NULL,
+                        updated_at = ?
+                    WHERE status = ?
+                    """,
+                    (QueueStatus.PENDING.value, now, QueueStatus.BLOCKED.value),
+                )
+
+        count = result.rowcount
+        if count > 0:
+            logger.info(
+                "Unblocked %d items%s",
+                count,
+                f" (category: {error_category})" if error_category else "",
+            )
+            # Notify about bulk update (no individual notifications for efficiency)
+            if self.notifier:
+                self.notifier.send_event(
+                    "queue.bulk_update",
+                    {"action": "unblock", "count": count, "category": error_category},
+                )
+        return count
+
+    def unblock_item(self, item_id: str) -> bool:
+        """
+        Unblock a specific BLOCKED item, resetting it to PENDING.
+
+        Args:
+            item_id: The queue item ID to unblock
+
+        Returns:
+            True if the item was unblocked, False otherwise
+        """
+        now = _iso(_utcnow())
+        with sqlite_connection(self.db_path) as conn:
+            result = conn.execute(
+                """
+                UPDATE job_queue
+                SET status = ?,
+                    retry_count = 0,
+                    processed_at = NULL,
+                    completed_at = NULL,
+                    error_details = NULL,
+                    updated_at = ?
+                WHERE id = ? AND status = ?
+                """,
+                (QueueStatus.PENDING.value, now, item_id, QueueStatus.BLOCKED.value),
+            )
+        success = result.rowcount > 0
+        if success:
+            logger.info("Unblocked queue item %s", item_id)
+            self._notify_item_updated(item_id)
         return success
 
     def delete_item(self, item_id: str) -> bool:

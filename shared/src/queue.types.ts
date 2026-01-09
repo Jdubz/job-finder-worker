@@ -22,19 +22,19 @@ export const QUEUE_STATUSES = [
   "success",
   "failed",
   "skipped",
-  "needs_review"
+  "blocked"
 ] as const
 
 /**
  * Queue item status lifecycle:
- * pending → processing → success/failed/skipped
+ * pending → processing → success/failed/skipped/blocked
  *
  * - pending: In queue, waiting to be processed
  * - processing: Currently being processed
- * - skipped: Skipped (duplicate or stop list blocked)
+ * - skipped: Skipped (duplicate, stop list blocked, or below threshold)
+ * - blocked: Waiting for resources (no agents, quota exhausted) - manual unblock required
  * - success: Successfully processed and saved to job-matches
- * - failed: Processing error occurred (terminal)
- * - needs_review: Human review required before proceeding
+ * - failed: Processing error occurred (terminal - permanent error or max retries exceeded)
  */
 export type QueueStatus = (typeof QUEUE_STATUSES)[number]
 
@@ -141,6 +141,12 @@ export interface QueueItem {
   output?: Record<string, unknown> | null // Task results/telemetry (scraped data, pipeline state, stats, etc.)
   result_message?: string | null
   error_details?: string | null
+
+  // Retry tracking (for intelligent failure handling)
+  retry_count?: number // Number of retry attempts made (default: 0)
+  max_retries?: number // Maximum retries before permanent failure (default: 3)
+  last_error_category?: "transient" | "permanent" | "resource" | "unknown" | null
+
   created_at: TimestampLike
   updated_at: TimestampLike
   processed_at?: TimestampLike | null
@@ -182,6 +188,7 @@ export interface QueueStats {
   success: number
   failed: number
   skipped: number
+  blocked: number
   total: number
 }
 

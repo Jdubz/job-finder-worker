@@ -4,7 +4,25 @@ This module defines domain-specific exceptions that provide clearer error
 handling and better context than generic Python exceptions.
 """
 
+from enum import Enum
 from typing import Optional
+
+
+class ErrorCategory(str, Enum):
+    """
+    Classification of errors for intelligent retry logic.
+
+    Used by the queue system to determine how to handle failures:
+    - TRANSIENT: Auto-retry up to max_retries (network, rate limits, 502/503/504)
+    - PERMANENT: Immediate FAILED status, no retry (validation, auth, missing data)
+    - RESOURCE: Set BLOCKED status, requires manual unblock (no agents, quota exhausted)
+    - UNKNOWN: Default for unclassified errors, treated as PERMANENT
+    """
+
+    TRANSIENT = "transient"
+    PERMANENT = "permanent"
+    RESOURCE = "resource"
+    UNKNOWN = "unknown"
 
 
 class JobFinderError(Exception):
@@ -93,7 +111,10 @@ class QuotaExhaustedError(AIProviderError):
     Attributes:
         provider: The AI provider that hit the quota limit
         reset_info: Optional info about when quota resets (e.g., "midnight Pacific")
+        error_category: RESOURCE - requires manual unblock when all agents exhausted
     """
+
+    error_category = ErrorCategory.RESOURCE
 
     def __init__(self, message: str, provider: str = "unknown", reset_info: str = None):
         self.provider = provider
@@ -115,7 +136,10 @@ class TransientError(AIProviderError):
 
     Attributes:
         provider: The AI provider that experienced the transient error
+        error_category: TRANSIENT - auto-retry with exponential backoff
     """
+
+    error_category = ErrorCategory.TRANSIENT
 
     def __init__(self, message: str, provider: str = "unknown"):
         self.provider = provider
@@ -126,7 +150,7 @@ class NoAgentsAvailableError(AIProviderError):
     """Raised when no agents are available to handle a task.
 
     This is a critical error that should stop queue processing.
-    The current task should be reset to pending and the queue stopped
+    The current task should be set to BLOCKED status and the queue stopped
     until agents are re-enabled or budget is reset.
 
     Examples:
@@ -137,7 +161,10 @@ class NoAgentsAvailableError(AIProviderError):
     Attributes:
         task_type: The agent task type that had no available agents
         tried_agents: List of agent IDs that were checked
+        error_category: RESOURCE - requires manual unblock when agents available
     """
+
+    error_category = ErrorCategory.RESOURCE
 
     def __init__(self, message: str, task_type: str = "unknown", tried_agents: list = None):
         self.task_type = task_type
@@ -153,9 +180,12 @@ class ExtractionError(JobFinderError):
     - AI returned invalid JSON
     - AI returned empty response
     - Required fields missing from extraction
+
+    Attributes:
+        error_category: PERMANENT - data issue, no point retrying
     """
 
-    pass
+    error_category = ErrorCategory.PERMANENT
 
 
 class StorageError(JobFinderError):
@@ -276,7 +306,12 @@ class ScrapeBotProtectionError(ScrapeBlockedError):
     - CAPTCHA/reCAPTCHA/hCaptcha
     - WAF blocking (Sucuri, Incapsula, Akamai)
     - "Access denied" with protection markers
+
+    Attributes:
+        error_category: PERMANENT - cannot bypass bot protection
     """
+
+    error_category = ErrorCategory.PERMANENT
 
     @property
     def is_recoverable(self) -> bool:
@@ -297,7 +332,12 @@ class ScrapeAuthError(ScrapeBlockedError):
     - Login form in response
     - OAuth redirect
     - "Sign in to continue" messages
+
+    Attributes:
+        error_category: PERMANENT - requires credentials we don't have
     """
+
+    error_category = ErrorCategory.PERMANENT
 
     @property
     def is_recoverable(self) -> bool:
@@ -364,7 +404,12 @@ class ScrapeTransientError(ScrapeBlockedError):
     - Rate limiting (without explicit block)
     - Network issues
     - Maintenance window
+
+    Attributes:
+        error_category: TRANSIENT - auto-retry with exponential backoff
     """
+
+    error_category = ErrorCategory.TRANSIENT
 
     def __init__(
         self, source_url: str, reason: str, status_code: int = None, retry_after: int = None
@@ -386,7 +431,12 @@ class ScrapeProtectedApiError(ScrapeBlockedError):
 
     This is NON-RECOVERABLE for APIs that explicitly require auth tokens.
     Different from general auth_required as it's specific to API endpoints.
+
+    Attributes:
+        error_category: PERMANENT - requires API credentials we don't have
     """
+
+    error_category = ErrorCategory.PERMANENT
 
     @property
     def is_recoverable(self) -> bool:
@@ -395,3 +445,48 @@ class ScrapeProtectedApiError(ScrapeBlockedError):
     @property
     def disable_tag(self) -> str:
         return "protected_api"
+
+
+def categorize_error(exc: Exception) -> ErrorCategory:
+    """
+    Categorize an exception for intelligent retry logic.
+
+    This function determines how the queue system should handle a failure:
+    - TRANSIENT: Auto-retry up to max_retries
+    - PERMANENT: Immediate FAILED status, no retry
+    - RESOURCE: Set BLOCKED status, requires manual unblock
+    - UNKNOWN: Treated as PERMANENT (fail-safe)
+
+    Args:
+        exc: The exception to categorize
+
+    Returns:
+        ErrorCategory indicating how to handle the failure
+
+    Examples:
+        >>> categorize_error(TransientError("timeout"))
+        ErrorCategory.TRANSIENT
+
+        >>> categorize_error(NoAgentsAvailableError("no agents"))
+        ErrorCategory.RESOURCE
+
+        >>> categorize_error(ValueError("bad data"))
+        ErrorCategory.UNKNOWN
+    """
+    # Check if exception has explicit error_category
+    if hasattr(exc, "error_category"):
+        return exc.error_category
+
+    # Categorize common Python exceptions
+    if isinstance(exc, (TimeoutError, ConnectionError, ConnectionResetError)):
+        return ErrorCategory.TRANSIENT
+
+    if isinstance(exc, (OSError,)) and getattr(exc, "errno", None) in (
+        110,  # ETIMEDOUT
+        111,  # ECONNREFUSED
+        113,  # EHOSTUNREACH
+    ):
+        return ErrorCategory.TRANSIENT
+
+    # Default to UNKNOWN for unclassified errors
+    return ErrorCategory.UNKNOWN

@@ -121,22 +121,22 @@ class QueueStatus(str, Enum):
     Status of queue item processing.
 
     TypeScript equivalent: QueueStatus in queue.types.ts
-    Lifecycle: pending → processing → success/failed/skipped
+    Lifecycle: pending → processing → success/failed/skipped/blocked
 
     - PENDING: In queue, waiting to be processed
     - PROCESSING: Currently being processed
-    - SKIPPED: Skipped (duplicate or stop list blocked)
-    - NEEDS_REVIEW: Human review required before proceeding
+    - SKIPPED: Skipped (duplicate, stop list blocked, or below threshold)
+    - BLOCKED: Waiting for resources (no agents, quota exhausted) - manual unblock required
     - SUCCESS: Successfully processed and saved to job-matches
-    - FAILED: Processing error occurred (terminal)
+    - FAILED: Processing error occurred (terminal - permanent error or max retries exceeded)
     """
 
     PENDING = "pending"
     PROCESSING = "processing"
     SKIPPED = "skipped"
+    BLOCKED = "blocked"
     FAILED = "failed"
     SUCCESS = "success"
-    NEEDS_REVIEW = "needs_review"
 
 
 # QueueSource type - matches TypeScript literal type
@@ -240,6 +240,14 @@ class JobQueueItem(BaseModel):
     result_message: Optional[str] = None
     error_details: Optional[str] = None
 
+    # Retry tracking (for intelligent failure handling)
+    retry_count: int = Field(default=0, description="Number of retry attempts made")
+    max_retries: int = Field(default=3, description="Maximum retries before permanent failure")
+    last_error_category: Optional[str] = Field(
+        default=None,
+        description="Classification of the last error: transient, permanent, resource, unknown",
+    )
+
     # Scheduling / routing
     url: Optional[str] = None  # canonical per-type URL used for dedupe/filters
     tracking_id: str = Field(default_factory=lambda: str(__import__("uuid").uuid4()))
@@ -337,6 +345,9 @@ class JobQueueItem(BaseModel):
             "output": json.dumps(output_payload),
             "result_message": self.result_message,
             "error_details": self.error_details,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "last_error_category": self.last_error_category,
             "created_at": self._dt(self.created_at),
             "updated_at": self._dt(self.updated_at),
             "processed_at": self._dt(self.processed_at),
@@ -399,5 +410,8 @@ class JobQueueItem(BaseModel):
             tracking_id=record.get("tracking_id", ""),
             result_message=record.get("result_message"),
             error_details=record.get("error_details"),
+            retry_count=record.get("retry_count", 0),
+            max_retries=record.get("max_retries", 3),
+            last_error_category=record.get("last_error_category"),
             metadata=input_data.get("metadata"),
         )
