@@ -46,7 +46,7 @@ type KnownPayload =
  *
  * Supported providers:
  * - claude.cli: Uses CLAUDE_CODE_OAUTH_TOKEN
- * - gemini.api: Uses GEMINI_API_KEY, GOOGLE_API_KEY, or Vertex AI ADC
+ * - gemini.api: Uses GEMINI_API_KEY or GOOGLE_API_KEY (API key auth only)
  */
 function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
   if (!configuredOptions) return []
@@ -59,15 +59,14 @@ function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['op
     reason: claudeCliEnabled ? undefined : 'CLAUDE_CODE_OAUTH_TOKEN not set'
   }
 
-  // Gemini API - check GEMINI_API_KEY, GOOGLE_API_KEY, or Vertex AI ADC (GOOGLE_APPLICATION_CREDENTIALS)
+  // Gemini API - check GEMINI_API_KEY or GOOGLE_API_KEY (backend uses @google/generative-ai with API keys)
   const geminiApiEnabled = !!(
     process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GOOGLE_APPLICATION_CREDENTIALS
+    process.env.GOOGLE_API_KEY
   )
   availability['gemini/api'] = {
     enabled: geminiApiEnabled,
-    reason: geminiApiEnabled ? undefined : 'GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS not set'
+    reason: geminiApiEnabled ? undefined : 'GEMINI_API_KEY or GOOGLE_API_KEY not set'
   }
 
   return configuredOptions.map((provider) => ({

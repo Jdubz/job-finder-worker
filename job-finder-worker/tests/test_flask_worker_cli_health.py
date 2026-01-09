@@ -22,13 +22,18 @@ class TestCheckCliHealth:
 
         self.check_cli_health = check_cli_health
 
-    def test_both_agents_checked(self):
+    def test_both_agents_checked(self, tmp_path):
         """Test that both claude and gemini agents are checked."""
+        # Create a mock service account file for Vertex AI
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
+
         with patch.dict(
             "os.environ",
             {
                 "CLAUDE_CODE_OAUTH_TOKEN": "test-token-thats-long-enough-to-pass",
-                "GEMINI_API_KEY": "test-api-key-long-enough",
+                "GOOGLE_CLOUD_PROJECT": "test-project",
+                "GOOGLE_APPLICATION_CREDENTIALS": str(creds_file),
             },
         ):
             result = self.check_cli_health()
@@ -82,7 +87,11 @@ class TestClaudeCLIConfigCheck:
 
 
 class TestGeminiAPIConfigCheck:
-    """Tests for Gemini API config-based health check."""
+    """Tests for Gemini API (Vertex AI) config-based health check.
+
+    The worker uses Vertex AI for Gemini API access, which requires
+    GOOGLE_CLOUD_PROJECT and Application Default Credentials (ADC).
+    """
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -94,29 +103,13 @@ class TestGeminiAPIConfigCheck:
 
         self._check_gemini_api_config = _check_gemini_api_config
 
-    def test_healthy_with_gemini_api_key(self):
-        """Test Gemini returns healthy when GEMINI_API_KEY is set."""
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-api-key-long-enough"}, clear=True):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is True
-            assert "API key configured" in result["message"]
-
-    def test_healthy_with_google_api_key(self):
-        """Test Gemini returns healthy when GOOGLE_API_KEY is set."""
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-api-key-long-enough"}, clear=True):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is True
-            assert "API key configured" in result["message"]
-
-    def test_unhealthy_api_key_too_short(self):
-        """Test Gemini returns unhealthy when API key is too short."""
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "short"}, clear=True):
+    def test_unhealthy_without_project(self):
+        """Test Gemini returns unhealthy when GOOGLE_CLOUD_PROJECT is not set."""
+        with patch.dict("os.environ", {}, clear=True):
             result = self._check_gemini_api_config()
 
             assert result["healthy"] is False
-            assert "invalid" in result["message"].lower()
+            assert "GOOGLE_CLOUD_PROJECT" in result["message"]
 
     def test_healthy_with_vertex_ai_service_account(self, tmp_path):
         """Test Gemini returns healthy with Vertex AI and service account file."""
@@ -154,47 +147,33 @@ class TestGeminiAPIConfigCheck:
 
     def test_healthy_with_vertex_ai_adc(self):
         """Test Gemini returns healthy with Vertex AI ADC."""
-        mock_google_auth = MagicMock()
-        mock_google_auth.default.return_value = (MagicMock(), "test-project")
-
         with (
-            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=True),
-            patch.dict("sys.modules", {"google.auth": mock_google_auth}),
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
+            patch("google.auth.default", return_value=(MagicMock(), "test-project")),
         ):
-            # Re-import to pick up the mocked module
-            import importlib
-
-            from job_finder import flask_worker
-
-            importlib.reload(flask_worker)
-            result = flask_worker._check_gemini_api_config()
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is True
             assert "ADC" in result["message"]
 
     def test_unhealthy_vertex_ai_no_adc(self):
         """Test Gemini returns unhealthy when ADC fails."""
-        mock_google_auth = MagicMock()
-        mock_google_auth.default.side_effect = Exception("No credentials")
-
         with (
-            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=True),
-            patch.dict("sys.modules", {"google.auth": mock_google_auth}),
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
+            patch("google.auth.default", side_effect=Exception("No credentials")),
         ):
-            import importlib
-
-            from job_finder import flask_worker
-
-            importlib.reload(flask_worker)
-            result = flask_worker._check_gemini_api_config()
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is False
             assert "ADC not configured" in result["message"]
 
-    def test_unhealthy_no_credentials(self):
-        """Test Gemini returns unhealthy when no credentials available."""
-        with patch.dict("os.environ", {}, clear=True):
+    def test_unhealthy_project_but_no_adc(self):
+        """Test Gemini returns unhealthy when project is set but ADC is missing."""
+        with (
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
+            patch("google.auth.default", side_effect=Exception("No credentials")),
+        ):
             result = self._check_gemini_api_config()
 
             assert result["healthy"] is False
-            assert "not configured" in result["message"]
+            assert "ADC not configured" in result["message"]

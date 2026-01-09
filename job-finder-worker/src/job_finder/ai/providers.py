@@ -254,21 +254,18 @@ def _check_cli_auth(provider: str) -> Tuple[bool, str]:
 
 
 def _check_gemini_api_auth() -> Tuple[bool, str]:
-    """Check if Gemini API authentication is available.
+    """Check if Gemini API (Vertex AI) authentication is available.
 
-    Supports two auth methods:
-    1. API key via GEMINI_API_KEY or GOOGLE_API_KEY environment variables
-    2. Vertex AI with ADC (requires GOOGLE_CLOUD_PROJECT and ADC credentials)
+    The worker uses Vertex AI for Gemini API access, which requires:
+    - GOOGLE_CLOUD_PROJECT: GCP project ID
+    - Application Default Credentials (ADC) via one of:
+      - GOOGLE_APPLICATION_CREDENTIALS pointing to service account JSON
+      - gcloud auth application-default login
+      - GCE/Cloud Run metadata server (when running on GCP)
     """
-    # Check for API key first (simpler approach)
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if api_key:
-        return True, ""
-
-    # Fall back to Vertex AI with ADC
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
     if not project:
-        return False, "missing_env:GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT"
+        return False, "missing_env:GOOGLE_CLOUD_PROJECT"
 
     # Check for credentials using google-auth library (handles all ADC scenarios:
     # service account files, gcloud auth, metadata server in GCP environments)

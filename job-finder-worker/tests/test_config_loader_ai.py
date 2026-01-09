@@ -100,7 +100,7 @@ class TestConfigLoaderAISettings:
                     },
                     "authRequirements": {
                         "type": "api",
-                        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+                        "requiredEnv": ["GOOGLE_CLOUD_PROJECT"],
                     },
                 }
             },
@@ -309,7 +309,7 @@ class TestConfigLoaderIntegration:
                     },
                     "authRequirements": {
                         "type": "api",
-                        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+                        "requiredEnv": ["GOOGLE_CLOUD_PROJECT"],
                     },
                 }
             },

@@ -111,7 +111,7 @@ class TestCompanyPipeline:
                         "worker": {"enabled": True, "reason": None},
                         "backend": {"enabled": True, "reason": None},
                     },
-                    "authRequirements": {"type": "api", "requiredEnv": ["GEMINI_API_KEY"]},
+                    "authRequirements": {"type": "api", "requiredEnv": ["GOOGLE_CLOUD_PROJECT"]},
                 }
             },
             "taskFallbacks": {

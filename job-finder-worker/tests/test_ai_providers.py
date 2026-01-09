@@ -348,34 +348,34 @@ class TestClaudeCLIProvider:
 
 
 class TestAuthHelpers:
-    """Test authentication helper functions."""
+    """Test authentication helper functions.
 
-    def test_check_gemini_api_auth_with_api_key(self):
-        """Should detect GEMINI_API_KEY."""
-        from job_finder.ai.providers import _check_gemini_api_auth
+    Note: Gemini API uses Vertex AI which requires GOOGLE_CLOUD_PROJECT and ADC.
+    """
 
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
-            available, reason = _check_gemini_api_auth()
-            assert available is True
-            assert reason == ""
-
-    def test_check_gemini_api_auth_with_google_api_key(self):
-        """Should detect GOOGLE_API_KEY."""
-        from job_finder.ai.providers import _check_gemini_api_auth
-
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=True):
-            available, reason = _check_gemini_api_auth()
-            assert available is True
-            assert reason == ""
-
-    def test_check_gemini_api_auth_missing(self):
-        """Should return False when no credentials available."""
+    def test_check_gemini_api_auth_missing_project(self):
+        """Should return False when GOOGLE_CLOUD_PROJECT is not set."""
         from job_finder.ai.providers import _check_gemini_api_auth
 
         with patch.dict("os.environ", {}, clear=True):
             available, reason = _check_gemini_api_auth()
             assert available is False
-            assert "missing_env" in reason or "missing_credentials" in reason
+            assert "GOOGLE_CLOUD_PROJECT" in reason
+
+    def test_check_gemini_api_auth_with_adc(self):
+        """Should return True when GOOGLE_CLOUD_PROJECT and ADC are available."""
+        # Mock google.auth.default() to succeed
+        mock_default = MagicMock(return_value=(MagicMock(), "test-project"))
+
+        with (
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=True),
+            patch("google.auth.default", mock_default),
+        ):
+            from job_finder.ai.providers import _check_gemini_api_auth
+
+            available, reason = _check_gemini_api_auth()
+            assert available is True
+            assert reason == ""
 
     def test_check_cli_auth_with_oauth_token(self):
         """Should detect CLAUDE_CODE_OAUTH_TOKEN."""
@@ -394,13 +394,14 @@ class TestAuthHelpers:
             assert available is False
             assert "CLAUDE_CODE_OAUTH_TOKEN" in hint
 
-    def test_auth_status_gemini_api(self):
-        """Should check Gemini API auth correctly."""
+    def test_auth_status_gemini_api_missing_project(self):
+        """Should check Gemini API auth correctly - requires GOOGLE_CLOUD_PROJECT."""
         from job_finder.ai.providers import auth_status
 
-        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+        with patch.dict("os.environ", {}, clear=True):
             available, reason = auth_status("gemini", "api")
-            assert available is True
+            assert available is False
+            assert "GOOGLE_CLOUD_PROJECT" in reason
 
     def test_auth_status_claude_cli(self):
         """Should check Claude CLI auth correctly."""

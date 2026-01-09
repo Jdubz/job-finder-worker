@@ -175,67 +175,55 @@ def _check_claude_cli_config() -> Dict[str, Any]:
 def _check_gemini_api_config() -> Dict[str, Any]:
     """Check Gemini API auth by inspecting environment variables.
 
-    Gemini API supports two authentication methods:
-    1. API key via GEMINI_API_KEY or GOOGLE_API_KEY
-    2. Vertex AI with ADC (requires GOOGLE_CLOUD_PROJECT)
+    The worker uses Vertex AI for Gemini API access, which requires:
+    - GOOGLE_CLOUD_PROJECT: GCP project ID
+    - Application Default Credentials (ADC) via one of:
+      - GOOGLE_APPLICATION_CREDENTIALS pointing to service account JSON
+      - gcloud auth application-default login
+      - GCE/Cloud Run metadata server (when running on GCP)
 
     This is a lightweight check that doesn't make API calls.
     """
-    # Check for direct API key first (simplest auth method)
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if api_key:
-        if len(api_key.strip()) > 10:
+    project = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        return {
+            "healthy": False,
+            "message": "Gemini API (Vertex AI) not configured: GOOGLE_CLOUD_PROJECT not set",
+        }
+
+    # Vertex AI requires ADC - try to detect if credentials are available
+    creds_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds_file:
+        if Path(creds_file).exists():
             return {
                 "healthy": True,
-                "message": "API key configured",
+                "message": f"Vertex AI configured (service account: {project})",
             }
         return {
             "healthy": False,
-            "message": "Gemini API key appears invalid (too short)",
+            "message": f"Vertex AI service account file not found: {creds_file}",
         }
 
-    # Check for Vertex AI setup
-    project = os.getenv("GOOGLE_CLOUD_PROJECT")
-    if project:
-        # Vertex AI requires ADC - try to detect if credentials are available
-        # Check for common credential indicators
-        creds_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if creds_file:
-            if Path(creds_file).exists():
-                return {
-                    "healthy": True,
-                    "message": f"Vertex AI configured (service account: {project})",
-                }
-            return {
-                "healthy": False,
-                "message": f"Vertex AI service account file not found: {creds_file}",
-            }
+    # ADC might still work via gcloud or metadata server
+    # Check if google-auth can find default credentials
+    try:
+        import google.auth
 
-        # ADC might still work via gcloud or metadata server
-        # Check if google-auth can find default credentials
-        try:
-            import google.auth
-
-            google.auth.default()
-            return {
-                "healthy": True,
-                "message": f"Vertex AI configured (ADC: {project})",
-            }
-        except ImportError:
-            return {
-                "healthy": False,
-                "message": "Vertex AI requires google-auth package",
-            }
-        except Exception:
-            return {
-                "healthy": False,
-                "message": "Vertex AI ADC not configured (run 'gcloud auth application-default login')",
-            }
-
-    return {
-        "healthy": False,
-        "message": "Gemini API not configured: set GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT",
-    }
+        google.auth.default()
+        return {
+            "healthy": True,
+            "message": f"Vertex AI configured (ADC: {project})",
+        }
+    except ImportError:
+        return {
+            "healthy": False,
+            "message": "Vertex AI requires google-auth package",
+        }
+    except Exception:
+        return {
+            "healthy": False,
+            "message": "Vertex AI ADC not configured (run 'gcloud auth application-default login')",
+        }
 
 
 def check_cli_health() -> Dict[str, Dict[str, Any]]:
@@ -244,7 +232,7 @@ def check_cli_health() -> Dict[str, Dict[str, Any]]:
     Supported agents: claude.cli, gemini.api
 
     Claude CLI uses environment-based checks (CLAUDE_CODE_OAUTH_TOKEN).
-    Gemini API checks for API key or Vertex AI ADC credentials.
+    Gemini API (via Vertex AI) checks for GOOGLE_CLOUD_PROJECT and ADC credentials.
 
     Both checks avoid running commands or consuming API quota.
     """

@@ -5,7 +5,7 @@ fallback chains, budget enforcement, and error handling.
 
 Supported agents:
 - claude.cli: Claude Code CLI (requires CLAUDE_CODE_OAUTH_TOKEN)
-- gemini.api: Google Gemini API (requires GOOGLE_API_KEY or GEMINI_API_KEY)
+- gemini.api: Google Gemini API via Vertex AI (requires GOOGLE_CLOUD_PROJECT + ADC)
 """
 
 import pytest
@@ -64,12 +64,14 @@ def make_agent_config(
 class TestAgentManagerExecute:
     """Test AgentManager.execute() method."""
 
+    @patch("job_finder.ai.agent_manager.auth_status")
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_executes_first_available_agent(self, mock_get_provider):
+    def test_executes_first_available_agent(self, mock_get_provider, mock_auth_status):
         """Should use first enabled agent in fallback chain."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "test response"
         mock_get_provider.return_value = lambda model: mock_provider
+        mock_auth_status.return_value = (True, "")  # Auth passes
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
@@ -90,12 +92,14 @@ class TestAgentManagerExecute:
         assert result.agent_id == "gemini.api"
         mock_provider.generate.assert_called_once()
 
+    @patch("job_finder.ai.agent_manager.auth_status")
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_skips_disabled_agents(self, mock_get_provider):
+    def test_skips_disabled_agents(self, mock_get_provider, mock_auth_status):
         """Should skip disabled agents and use next in chain."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "from claude"
         mock_get_provider.return_value = lambda model: mock_provider
+        mock_auth_status.return_value = (True, "")  # Auth passes
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
@@ -118,12 +122,14 @@ class TestAgentManagerExecute:
 
         assert result.agent_id == "claude.cli"
 
+    @patch("job_finder.ai.agent_manager.auth_status")
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_skips_over_budget_agents(self, mock_get_provider):
+    def test_skips_over_budget_agents(self, mock_get_provider, mock_auth_status):
         """Should skip agents over budget and disable them."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "from claude"
         mock_get_provider.return_value = lambda model: mock_provider
+        mock_auth_status.return_value = (True, "")  # Auth passes
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
@@ -145,12 +151,14 @@ class TestAgentManagerExecute:
             "gemini.api", "worker", enabled=False, reason="quota_exhausted: daily budget reached"
         )
 
+    @patch("job_finder.ai.agent_manager.auth_status")
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_increments_usage_after_success(self, mock_get_provider):
+    def test_increments_usage_after_success(self, mock_get_provider, mock_auth_status):
         """Should increment usage after successful execution."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "success"
         mock_get_provider.return_value = lambda model: mock_provider
+        mock_auth_status.return_value = (True, "")  # Auth passes
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
@@ -165,12 +173,14 @@ class TestAgentManagerExecute:
             "gemini.api", "gemini-2.0-flash"
         )
 
+    @patch("job_finder.ai.agent_manager.auth_status")
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_disables_agent_on_error(self, mock_get_provider):
+    def test_disables_agent_on_error(self, mock_get_provider, mock_auth_status):
         """Should disable agent and break on AIProviderError."""
         mock_provider = MagicMock()
         mock_provider.generate.side_effect = AIProviderError("API rate limit")
         mock_get_provider.return_value = lambda model: mock_provider
+        mock_auth_status.return_value = (True, "")  # Auth passes
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
@@ -193,8 +203,9 @@ class TestAgentManagerExecute:
             "gemini.api", "worker", enabled=False, reason="error: API rate limit"
         )
 
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_continues_to_next_agent_on_quota_exhausted(self, mock_get_provider):
+    def test_continues_to_next_agent_on_quota_exhausted(self, mock_get_provider, mock_auth):
         """Should continue to next agent when QuotaExhaustedError is raised."""
         # First agent raises QuotaExhaustedError, second succeeds
         gemini_provider = MagicMock()
@@ -283,8 +294,9 @@ class TestAgentManagerExecute:
         assert "gemini.api" in exc_info.value.tried_agents
         assert "claude.cli" in exc_info.value.tried_agents
 
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_uses_model_override(self, mock_get_provider):
+    def test_uses_model_override(self, mock_get_provider, mock_auth):
         """Should use model_override when provided."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "response"
@@ -413,8 +425,9 @@ class TestAgentManagerExecute:
 class TestAgentManagerBudgetEnforcement:
     """Test budget enforcement logic."""
 
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_budget_check_happens_before_call(self, mock_get_provider):
+    def test_budget_check_happens_before_call(self, mock_get_provider, mock_auth):
         """Budget should be checked BEFORE calling the agent, accounting for model cost."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "response"
@@ -435,8 +448,9 @@ class TestAgentManagerBudgetEnforcement:
         # Provider should NOT have been called since budget was exceeded
         mock_provider.generate.assert_not_called()
 
+    @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
     @patch("job_finder.ai.agent_manager._get_provider_class")
-    def test_reads_fresh_config_each_call(self, mock_get_provider):
+    def test_reads_fresh_config_each_call(self, mock_get_provider, mock_auth):
         """Should read config fresh on each execute call."""
         mock_provider = MagicMock()
         mock_provider.generate.return_value = "response"
