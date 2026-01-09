@@ -1348,7 +1348,7 @@ let activeClaudeProcess: ReturnType<typeof spawn> | null = null
 /**
  * Kill the active Claude CLI process if running
  * Uses process group kill to ensure all child processes are terminated
- * (e.g., codex spawns a child process that would otherwise be orphaned)
+ * (CLI processes may spawn child processes that would otherwise be orphaned)
  */
 function killActiveClaudeProcess(reason: string): void {
   if (!activeClaudeProcess) return

@@ -144,9 +144,9 @@ export const mockWorkerSettings: WorkerSettings = {
 
 export const mockAISettings: AISettings = {
   agents: {
-    "gemini.cli": {
+    "gemini.api": {
       provider: "gemini",
-      interface: "cli",
+      interface: "api",
       defaultModel: "gemini-2.0-flash",
       dailyBudget: 100,
       dailyUsage: 25,
@@ -155,15 +155,14 @@ export const mockAISettings: AISettings = {
         backend: { enabled: true, reason: null },
       },
       authRequirements: {
-        type: "cli",
+        type: "api",
         requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        requiredFiles: ["~/.gemini/settings.json"],
       },
     },
-    "codex.cli": {
-      provider: "codex",
+    "claude.cli": {
+      provider: "claude",
       interface: "cli",
-      defaultModel: "gpt-4o",
+      defaultModel: "claude-sonnet-4-5-latest",
       dailyBudget: 50,
       dailyUsage: 50,
       runtimeState: {
@@ -172,19 +171,18 @@ export const mockAISettings: AISettings = {
       },
       authRequirements: {
         type: "cli",
-        requiredEnv: ["OPENAI_API_KEY"],
-        requiredFiles: ["~/.codex/auth.json"],
+        requiredEnv: ["CLAUDE_CODE_OAUTH_TOKEN"],
       },
     },
   },
   taskFallbacks: {
-    extraction: ["gemini.cli", "codex.cli"],
-    analysis: ["gemini.cli"],
-    document: ["codex.cli", "gemini.cli"],
+    extraction: ["gemini.api", "claude.cli"],
+    analysis: ["claude.cli", "gemini.api"],
+    document: ["claude.cli", "gemini.api"],
   },
   modelRates: {
     "gemini-2.0-flash": 0.5,
-    "gpt-4o": 1,
+    "claude-sonnet-4-5-latest": 1,
   },
   options: [],
 }
@@ -307,7 +305,7 @@ export const mockGenerateResumeRequest = {
   companyName: mockJobListing.company,
   jobUrl: mockJobListing.url,
   preferences: {
-    provider: "openai",
+    provider: "claude",
     tone: "professional",
     includeProjects: true,
   },
@@ -327,7 +325,7 @@ export const mockGenerateCoverLetterRequest = {
   jobTitle: mockJobListing.title,
   companyName: mockJobListing.company,
   preferences: {
-    provider: "openai",
+    provider: "claude",
     tone: "confident",
   },
 }

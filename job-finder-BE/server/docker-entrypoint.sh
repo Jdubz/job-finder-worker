@@ -10,28 +10,24 @@ else
   find /data ! -user node -exec chown node:node {} + || true
 fi
 
-# Codex CLI auth (bind mounted from host; use codex-safe wrapper for flock serialization)
-# If auth.json already exists (typical for bind mounts), keep it to avoid slow reseed;
-# still fail fast if missing.
-echo "=== Codex CLI Setup ==="
-if [ -f /home/node/.codex/auth.json ]; then
-    echo "✓ codex auth.json present (bind mount from host)"
-    echo "  Using codex-safe wrapper for flock serialization"
+# Claude CLI auth check (uses CLAUDE_CODE_OAUTH_TOKEN env var)
+# Note: Only claude.cli is supported for CLI interface. gemini.api uses the Google Generative AI SDK.
+echo "=== Claude CLI Setup ==="
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
+    echo "✓ CLAUDE_CODE_OAUTH_TOKEN is set"
 else
-    echo "ERROR: codex auth.json not found"
-    echo "  Ensure ~/.codex is bind-mounted from host"
-    exit 1
+    echo "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set"
+    echo "  Claude CLI will not be available for document generation"
 fi
-echo "=== End Codex Setup ==="
+echo "=== End Claude Setup ==="
 
-# Gemini CLI auth (bind mounted from host)
-echo "=== Gemini CLI Setup ==="
-if [ -f /home/node/.gemini/oauth_creds.json ]; then
-    echo "✓ gemini oauth_creds.json present (bind mount from host)"
+# Gemini API auth check (uses GEMINI_API_KEY or GOOGLE_API_KEY)
+echo "=== Gemini API Setup ==="
+if [ -n "${GEMINI_API_KEY}" ] || [ -n "${GOOGLE_API_KEY}" ]; then
+    echo "✓ Gemini API key is set"
 else
-    echo "ERROR: gemini oauth_creds.json not found"
-    echo "  Ensure ~/.gemini is bind-mounted from host"
-    exit 1
+    echo "WARNING: GEMINI_API_KEY/GOOGLE_API_KEY not set"
+    echo "  Gemini API will not be available"
 fi
 echo "=== End Gemini Setup ==="
 

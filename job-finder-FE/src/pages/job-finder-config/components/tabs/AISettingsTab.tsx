@@ -77,9 +77,7 @@ type AISettingsTabProps = {
 }
 
 const PROVIDER_LABELS: Record<AIProviderType, string> = {
-  codex: "Codex CLI (OpenAI Pro)",
-  claude: "Claude (Anthropic)",
-  openai: "OpenAI API",
+  claude: "Claude CLI",
   gemini: "Google Gemini",
 }
 

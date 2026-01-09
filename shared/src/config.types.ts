@@ -31,7 +31,7 @@ export interface PromptConfig {
 // -----------------------------------------------------------
 
 /** Supported AI providers */
-export type AIProviderType = "codex" | "claude" | "openai" | "gemini"
+export type AIProviderType = "claude" | "gemini"
 
 /** Interface types for connecting to providers */
 export type AIInterfaceType = "cli" | "api"
@@ -39,7 +39,7 @@ export type AIInterfaceType = "cli" | "api"
 /** Agent task types - abstract categories describing the nature of AI work */
 export type AgentTaskType = "extraction" | "analysis" | "document"
 
-/** Agent ID format: "{provider}.{interface}" (e.g., "gemini.cli", "codex.cli") */
+/** Agent ID format: "{provider}.{interface}" (e.g., "claude.cli", "gemini.api") */
 export type AgentId = `${AIProviderType}.${AIInterfaceType}`
 
 /**
@@ -98,7 +98,7 @@ export interface AgentConfig {
 
 /** AI Settings with agent manager configuration */
 export interface AISettings {
-  /** Configured agents keyed by agent ID (e.g., "gemini.cli", "codex.cli") */
+  /** Configured agents keyed by agent ID (e.g., "claude.cli", "gemini.api") */
   agents: Partial<Record<AgentId, AgentConfig>>
 
   /** Fallback chains per task type - ordered list of agent IDs to try */

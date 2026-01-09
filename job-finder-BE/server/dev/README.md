@@ -9,21 +9,29 @@ cd job-finder-BE/server
 make dev-setup
 make dev-clone-db-scp SCP_SRC=user@host:/srv/job-finder/data/jobfinder.db
 
-# Copy auth credentials to seed directories (required for AI generation)
-mkdir -p .dev/codex-seed/.codex .dev/gemini-seed/.gemini
-cp ~/.codex/auth.json .dev/codex-seed/.codex/
-cp ~/.gemini/oauth_creds.json .dev/gemini-seed/.gemini/ 2>/dev/null || true
-
 make dev-up
 make dev-validate
 ```
 
 ## What this does
 - Clones the prod SQLite DB into `.dev/data/` (gitignored).
-- Starts the production API container with Codex credentials bind-mounted at `/home/node/.codex`.
+- Starts the production API container with AI credentials from env vars.
 - Runs real `/api/generator/start` + `/api/generator/step/:id` requests against the container.
 - Verifies artifacts land on disk and captures container logs.
 - Optional hot-reload profile mounts local source for rapid iteration.
+
+## AI Credentials
+
+Set the following in your `.env.dev` file:
+
+```bash
+# Claude CLI (for claude.cli agent)
+CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+
+# Gemini API (for gemini.api agent)
+GOOGLE_API_KEY=your-api-key
+# or GEMINI_API_KEY=your-api-key
+```
 
 ## Directory Structure
 
@@ -45,16 +53,6 @@ job-finder-BE/server/
     ├── payloads/             # Additional test payloads
     └── README.md             # This file
 ```
-
-## Codex Credential Mounting
-
-Both API and worker containers mount Codex credentials identically:
-- **Source:** `~/.codex` (host)
-- **Target:** `/home/node/.codex` (container)
-- **User:** `node` (uid 1000)
-- **Mount type:** Bind mount (read-write for token refresh)
-
-This prevents session files from being locked by root.
 
 ## Available Commands
 
@@ -93,8 +91,8 @@ PROD_SSH_HOST=prod-server ./dev/clone-prod-db.sh
 ## Troubleshooting
 
 - **TLS/Connection errors**: Ensure container image includes `ca-certificates`.
-- **Auth issues**: Refresh host Codex login (`codex logout && codex login`).
-- **Permission issues**: Ensure `~/.codex` is owned by your user.
+- **Auth issues**: Check your API keys in `.env.dev`.
+- **Permission issues**: Ensure your user has UID 1000 to match container's node user.
 
 ## Cleanup
 

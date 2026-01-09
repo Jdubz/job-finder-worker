@@ -130,7 +130,7 @@ export interface GenerationProgress {
 // CLI Types (app-specific)
 // ============================================================================
 
-export type CliProvider = "claude" | "codex" | "gemini"
+export type CliProvider = "claude" | "gemini"
 
 // ============================================================================
 // Workflow Types (app-specific)

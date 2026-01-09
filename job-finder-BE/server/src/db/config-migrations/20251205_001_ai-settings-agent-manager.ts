@@ -51,15 +51,6 @@ type NewAISettings = {
 const DEFAULT_MODEL_RATES: Record<string, number> = {
   // "default" = CLI uses its configured default (cost 1.0)
   'default': 1.0,
-  // OpenAI/Codex - use production model names
-  'gpt-4o': 1.0,
-  'gpt-4o-mini': 0.5,
-  'gpt-4.1': 1.0,
-  'gpt-4.1-mini': 0.5,
-  'o1': 2.0,
-  'o1-mini': 1.0,
-  'o3': 2.5,
-  'o3-mini': 1.5,
   // Claude - short aliases (auto-update within version, not across versions)
   'claude-opus-4-5': 1.0,
   'claude-sonnet-4-5': 1.0,
@@ -78,19 +69,10 @@ const DEFAULT_MODEL_RATES: Record<string, number> = {
  * Default provider options with available models.
  * CLI interfaces include "default" option to use CLI's configured default model.
  * Models are ordered newest/most-capable first within each category.
+ *
+ * Supported agents: claude.cli, gemini.api
  */
 const DEFAULT_PROVIDER_OPTIONS = [
-  {
-    value: 'codex',
-    interfaces: [
-      {
-        value: 'cli',
-        // "default" = CLI uses its configured default (auto-updates with CLI)
-        models: ['default', 'o3', 'o3-mini', 'o1', 'o1-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
-        enabled: true,
-      },
-    ],
-  },
   {
     value: 'claude',
     interfaces: [
@@ -100,34 +82,11 @@ const DEFAULT_PROVIDER_OPTIONS = [
         models: ['default', 'claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4-0'],
         enabled: true,
       },
-      {
-        value: 'api',
-        // API requires explicit model - no "default" option
-        models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4-0'],
-        enabled: true,
-      },
-    ],
-  },
-  {
-    value: 'openai',
-    interfaces: [
-      {
-        value: 'api',
-        // API requires explicit model - no "default" option
-        models: ['o3', 'o3-mini', 'o1', 'o1-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
-        enabled: true,
-      },
     ],
   },
   {
     value: 'gemini',
     interfaces: [
-      {
-        value: 'cli',
-        // "default" = CLI uses its configured default (auto-updates with CLI)
-        models: ['default', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-        enabled: true,
-      },
       {
         value: 'api',
         // API requires explicit model - no "default" option
@@ -149,13 +108,10 @@ function makeAgentId(provider: AIProviderType, iface: AIInterfaceType): AgentId 
 }
 
 function authRequirementsFor(provider: AIProviderType, iface: AIInterfaceType): AgentAuthRequirements {
+  // Supported agents: claude.cli, gemini.api
   const map: Partial<Record<AgentId, AgentAuthRequirements>> = {
-    'codex.cli': { type: 'cli', requiredEnv: ['OPENAI_API_KEY'], requiredFiles: ['~/.codex/auth.json'] },
-    'gemini.cli': { type: 'cli', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'], requiredFiles: ['~/.gemini/settings.json'] },
-    'gemini.api': { type: 'api', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'] },
     'claude.cli': { type: 'cli', requiredEnv: ['CLAUDE_CODE_OAUTH_TOKEN'] },
-    'claude.api': { type: 'api', requiredEnv: ['ANTHROPIC_API_KEY'] },
-    'openai.api': { type: 'api', requiredEnv: ['OPENAI_API_KEY'] },
+    'gemini.api': { type: 'api', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'] },
   }
   const key = makeAgentId(provider, iface)
   if (!map[key]) {
@@ -241,37 +197,14 @@ export function up(db: Database.Database): void {
 
   if (!row) {
     // Create default new structure
+    // Supported agents: claude.cli, gemini.api
     const defaultSettings: NewAISettings = {
       agents: {
-        'gemini.cli': {
-          provider: 'gemini',
-          interface: 'cli',
-          defaultModel: 'default',
-          dailyBudget: 100,
-          dailyUsage: 0,
-          runtimeState: {
-            worker: { enabled: true, reason: null },
-            backend: { enabled: true, reason: null },
-          },
-          authRequirements: authRequirementsFor('gemini', 'cli'),
-        },
-        'codex.cli': {
-          provider: 'codex',
-          interface: 'cli',
-          defaultModel: 'default',
-          dailyBudget: 100,
-          dailyUsage: 0,
-          runtimeState: {
-            worker: { enabled: true, reason: null },
-            backend: { enabled: true, reason: null },
-          },
-          authRequirements: authRequirementsFor('codex', 'cli'),
-        },
         'claude.cli': {
           provider: 'claude',
           interface: 'cli',
           defaultModel: 'default',
-          dailyBudget: 50,
+          dailyBudget: 100,
           dailyUsage: 0,
           runtimeState: {
             worker: { enabled: true, reason: null },
@@ -279,11 +212,23 @@ export function up(db: Database.Database): void {
           },
           authRequirements: authRequirementsFor('claude', 'cli'),
         },
+        'gemini.api': {
+          provider: 'gemini',
+          interface: 'api',
+          defaultModel: 'gemini-2.5-flash',
+          dailyBudget: 100,
+          dailyUsage: 0,
+          runtimeState: {
+            worker: { enabled: true, reason: null },
+            backend: { enabled: true, reason: null },
+          },
+          authRequirements: authRequirementsFor('gemini', 'api'),
+        },
       },
       taskFallbacks: {
-        extraction: ['gemini.cli', 'codex.cli', 'claude.cli'],
-        analysis: ['gemini.cli', 'codex.cli', 'claude.cli'],
-        document: ['codex.cli', 'claude.cli', 'gemini.cli'],
+        extraction: ['claude.cli', 'gemini.api'],
+        analysis: ['claude.cli', 'gemini.api'],
+        document: ['claude.cli', 'gemini.api'],
       },
       modelRates: DEFAULT_MODEL_RATES,
       // documentGenerator is deprecated - provider selection uses taskFallbacks['document']

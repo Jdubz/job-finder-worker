@@ -2,6 +2,10 @@
 
 Tests the AgentManager class which handles AI agent selection,
 fallback chains, budget enforcement, and error handling.
+
+Supported agents:
+- claude.cli: Claude Code CLI (requires CLAUDE_CODE_OAUTH_TOKEN)
+- gemini.api: Google Gemini API (requires GOOGLE_API_KEY or GEMINI_API_KEY)
 """
 
 import pytest
@@ -25,14 +29,14 @@ def make_ai_settings(
     return {
         "agents": agents or {},
         "taskFallbacks": task_fallbacks or {"extraction": [], "analysis": [], "document": []},
-        "modelRates": model_rates or {"gpt-4o": 1.0, "gemini-2.0-flash": 0.5},
+        "modelRates": model_rates or {"claude-sonnet-4-5-latest": 1.0, "gemini-2.0-flash": 0.5},
         "options": [],
     }
 
 
 def make_agent_config(
     provider="gemini",
-    interface="cli",
+    interface="api",
     model="gemini-2.0-flash",
     daily_budget=100,
     daily_usage=0,
@@ -70,10 +74,12 @@ class TestAgentManagerExecute:
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(),
-                "codex.cli": make_agent_config(provider="codex"),
+                "gemini.api": make_agent_config(),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
@@ -81,58 +87,62 @@ class TestAgentManagerExecute:
 
         assert isinstance(result, AgentResult)
         assert result.text == "test response"
-        assert result.agent_id == "gemini.cli"
+        assert result.agent_id == "gemini.api"
         mock_provider.generate.assert_called_once()
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
     def test_skips_disabled_agents(self, mock_get_provider):
         """Should skip disabled agents and use next in chain."""
         mock_provider = MagicMock()
-        mock_provider.generate.return_value = "from codex"
+        mock_provider.generate.return_value = "from claude"
         mock_get_provider.return_value = lambda model: mock_provider
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(
+                "gemini.api": make_agent_config(
                     runtime_state={
                         "worker": {"enabled": False, "reason": "error: test"},
                         "backend": {"enabled": True, "reason": None},
                     }
                 ),
-                "codex.cli": make_agent_config(provider="codex"),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
         result = manager.execute("extraction", "test prompt")
 
-        assert result.agent_id == "codex.cli"
+        assert result.agent_id == "claude.cli"
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
     def test_skips_over_budget_agents(self, mock_get_provider):
         """Should skip agents over budget and disable them."""
         mock_provider = MagicMock()
-        mock_provider.generate.return_value = "from codex"
+        mock_provider.generate.return_value = "from claude"
         mock_get_provider.return_value = lambda model: mock_provider
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(daily_budget=10, daily_usage=10),
-                "codex.cli": make_agent_config(provider="codex"),
+                "gemini.api": make_agent_config(daily_budget=10, daily_usage=10),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
         result = manager.execute("extraction", "test prompt")
 
-        assert result.agent_id == "codex.cli"
+        assert result.agent_id == "claude.cli"
         # Should have disabled the over-budget agent
         config_loader.update_agent_status.assert_called_with(
-            "gemini.cli", "worker", enabled=False, reason="quota_exhausted: daily budget reached"
+            "gemini.api", "worker", enabled=False, reason="quota_exhausted: daily budget reached"
         )
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
@@ -144,15 +154,15 @@ class TestAgentManagerExecute:
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
-            agents={"gemini.cli": make_agent_config()},
-            task_fallbacks={"extraction": ["gemini.cli"]},
+            agents={"gemini.api": make_agent_config()},
+            task_fallbacks={"extraction": ["gemini.api"]},
         )
 
         manager = AgentManager(config_loader)
         manager.execute("extraction", "test prompt")
 
         config_loader.increment_agent_usage.assert_called_once_with(
-            "gemini.cli", "gemini-2.0-flash"
+            "gemini.api", "gemini-2.0-flash"
         )
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
@@ -165,10 +175,12 @@ class TestAgentManagerExecute:
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(),
-                "codex.cli": make_agent_config(provider="codex"),
+                "gemini.api": make_agent_config(),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
@@ -178,7 +190,7 @@ class TestAgentManagerExecute:
 
         # Should disable the failed agent with error reason
         config_loader.update_agent_status.assert_called_with(
-            "gemini.cli", "worker", enabled=False, reason="error: API rate limit"
+            "gemini.api", "worker", enabled=False, reason="error: API rate limit"
         )
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
@@ -190,42 +202,44 @@ class TestAgentManagerExecute:
             "Gemini quota exhausted", provider="gemini"
         )
 
-        codex_provider = MagicMock()
-        codex_provider.generate.return_value = "success from codex"
+        claude_provider = MagicMock()
+        claude_provider.generate.return_value = "success from claude"
 
         def get_provider(provider, interface):
             if provider == "gemini":
                 return lambda model: gemini_provider
-            return lambda model: codex_provider
+            return lambda model: claude_provider
 
         mock_get_provider.side_effect = get_provider
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(),
-                "codex.cli": make_agent_config(provider="codex"),
+                "gemini.api": make_agent_config(),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
         result = manager.execute("extraction", "test prompt")
 
         # Should have succeeded with second agent
-        assert result.agent_id == "codex.cli"
-        assert result.text == "success from codex"
+        assert result.agent_id == "claude.cli"
+        assert result.text == "success from claude"
 
         # First agent should be disabled with quota reason
         config_loader.update_agent_status.assert_any_call(
-            "gemini.cli", "worker", enabled=False, reason="quota_exhausted: Gemini quota exhausted"
+            "gemini.api", "worker", enabled=False, reason="quota_exhausted: Gemini quota exhausted"
         )
 
     def test_raises_when_no_fallback_chain(self):
         """Should raise NoAgentsAvailableError when no fallback chain configured."""
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
-            agents={"gemini.cli": make_agent_config()},
+            agents={"gemini.api": make_agent_config()},
             task_fallbacks={"extraction": []},  # Empty chain
         )
 
@@ -241,21 +255,23 @@ class TestAgentManagerExecute:
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(
+                "gemini.api": make_agent_config(
                     runtime_state={
                         "worker": {"enabled": False, "reason": "error: test"},
                         "backend": {"enabled": True, "reason": None},
                     }
                 ),
-                "codex.cli": make_agent_config(
-                    provider="codex",
+                "claude.cli": make_agent_config(
+                    provider="claude",
+                    interface="cli",
+                    model="claude-sonnet-4-5-latest",
                     runtime_state={
                         "worker": {"enabled": False, "reason": "quota_exhausted: test"},
                         "backend": {"enabled": True, "reason": None},
                     },
                 ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
@@ -264,8 +280,8 @@ class TestAgentManagerExecute:
             manager.execute("extraction", "test prompt")
 
         assert exc_info.value.task_type == "extraction"
-        assert "gemini.cli" in exc_info.value.tried_agents
-        assert "codex.cli" in exc_info.value.tried_agents
+        assert "gemini.api" in exc_info.value.tried_agents
+        assert "claude.cli" in exc_info.value.tried_agents
 
     @patch("job_finder.ai.agent_manager._get_provider_class")
     def test_uses_model_override(self, mock_get_provider):
@@ -276,15 +292,15 @@ class TestAgentManagerExecute:
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
-            agents={"gemini.cli": make_agent_config(model="gemini-2.0-flash")},
-            task_fallbacks={"extraction": ["gemini.cli"]},
+            agents={"gemini.api": make_agent_config(model="gemini-2.0-flash")},
+            task_fallbacks={"extraction": ["gemini.api"]},
         )
 
         manager = AgentManager(config_loader)
         result = manager.execute("extraction", "test prompt", model_override="gemini-1.5-pro")
 
         assert result.model == "gemini-1.5-pro"
-        config_loader.increment_agent_usage.assert_called_with("gemini.cli", "gemini-1.5-pro")
+        config_loader.increment_agent_usage.assert_called_with("gemini.api", "gemini-1.5-pro")
 
     @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
     @patch("job_finder.ai.agent_manager._get_provider_class")
@@ -300,8 +316,8 @@ class TestAgentManagerExecute:
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
-            agents={"gemini.cli": make_agent_config()},
-            task_fallbacks={"extraction": ["gemini.cli"]},
+            agents={"gemini.api": make_agent_config()},
+            task_fallbacks={"extraction": ["gemini.api"]},
         )
 
         manager = AgentManager(config_loader)
@@ -309,7 +325,7 @@ class TestAgentManagerExecute:
 
         # Should have succeeded after retry
         assert result.text == "success after retry"
-        assert result.agent_id == "gemini.cli"
+        assert result.agent_id == "gemini.api"
         # Should have called generate twice (initial + 1 retry)
         assert mock_provider.generate.call_count == 2
         # Agent should NOT be disabled (retries succeeded)
@@ -323,36 +339,38 @@ class TestAgentManagerExecute:
         # Fail all 3 attempts for gemini
         gemini_provider.generate.side_effect = TransientError("timeout", provider="gemini")
 
-        codex_provider = MagicMock()
-        codex_provider.generate.return_value = "success from codex"
+        claude_provider = MagicMock()
+        claude_provider.generate.return_value = "success from claude"
 
         def get_provider(provider, interface):
             if provider == "gemini":
                 return lambda model: gemini_provider
-            return lambda model: codex_provider
+            return lambda model: claude_provider
 
         mock_get_provider.side_effect = get_provider
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(),
-                "codex.cli": make_agent_config(provider="codex"),
+                "gemini.api": make_agent_config(),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
         result = manager.execute("extraction", "test prompt")
 
         # Should have succeeded with fallback agent
-        assert result.agent_id == "codex.cli"
-        assert result.text == "success from codex"
+        assert result.agent_id == "claude.cli"
+        assert result.text == "success from claude"
         # Gemini should have been called 3 times (initial + 2 retries)
         assert gemini_provider.generate.call_count == 3
         # First agent should be disabled after exhausting retries
         config_loader.update_agent_status.assert_called_with(
-            "gemini.cli", "worker", enabled=False, reason="error: timeout"
+            "gemini.api", "worker", enabled=False, reason="error: timeout"
         )
 
     @patch("job_finder.ai.agent_manager.auth_status", return_value=(True, ""))
@@ -362,17 +380,12 @@ class TestAgentManagerExecute:
         gemini_provider = MagicMock()
         gemini_provider.generate.side_effect = TransientError("timeout", provider="gemini")
 
-        codex_provider = MagicMock()
-        codex_provider.generate.side_effect = TransientError("timeout", provider="codex")
-
         claude_provider = MagicMock()
         claude_provider.generate.return_value = "success from claude"
 
         def get_provider(provider, interface):
             if provider == "gemini":
                 return lambda model: gemini_provider
-            elif provider == "codex":
-                return lambda model: codex_provider
             return lambda model: claude_provider
 
         mock_get_provider.side_effect = get_provider
@@ -380,21 +393,21 @@ class TestAgentManagerExecute:
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
             agents={
-                "gemini.cli": make_agent_config(),
-                "codex.cli": make_agent_config(provider="codex"),
-                "claude.cli": make_agent_config(provider="claude"),
+                "gemini.api": make_agent_config(),
+                "claude.cli": make_agent_config(
+                    provider="claude", interface="cli", model="claude-sonnet-4-5-latest"
+                ),
             },
-            task_fallbacks={"extraction": ["gemini.cli", "codex.cli", "claude.cli"]},
+            task_fallbacks={"extraction": ["gemini.api", "claude.cli"]},
         )
 
         manager = AgentManager(config_loader)
         result = manager.execute("extraction", "test prompt")
 
-        # Should have succeeded with third agent
+        # Should have succeeded with second agent
         assert result.agent_id == "claude.cli"
-        # Both gemini and codex should have been tried 3 times each
+        # Gemini should have been tried 3 times
         assert gemini_provider.generate.call_count == 3
-        assert codex_provider.generate.call_count == 3
 
 
 class TestAgentManagerBudgetEnforcement:
@@ -410,8 +423,8 @@ class TestAgentManagerBudgetEnforcement:
         config_loader = MagicMock()
         # Agent usage + cost (0.5 for gemini-2.0-flash) would exceed budget
         config_loader.get_ai_settings.return_value = make_ai_settings(
-            agents={"gemini.cli": make_agent_config(daily_budget=50, daily_usage=50)},
-            task_fallbacks={"extraction": ["gemini.cli"]},
+            agents={"gemini.api": make_agent_config(daily_budget=50, daily_usage=50)},
+            task_fallbacks={"extraction": ["gemini.api"]},
         )
 
         manager = AgentManager(config_loader)
@@ -431,8 +444,8 @@ class TestAgentManagerBudgetEnforcement:
 
         config_loader = MagicMock()
         config_loader.get_ai_settings.return_value = make_ai_settings(
-            agents={"gemini.cli": make_agent_config()},
-            task_fallbacks={"extraction": ["gemini.cli"]},
+            agents={"gemini.api": make_agent_config()},
+            task_fallbacks={"extraction": ["gemini.api"]},
         )
 
         manager = AgentManager(config_loader)
@@ -457,9 +470,9 @@ class TestNoAgentsAvailableError:
         error = NoAgentsAvailableError(
             "test message",
             task_type="extraction",
-            tried_agents=["gemini.cli", "codex.cli"],
+            tried_agents=["gemini.api", "claude.cli"],
         )
-        assert error.tried_agents == ["gemini.cli", "codex.cli"]
+        assert error.tried_agents == ["gemini.api", "claude.cli"]
 
     def test_message_is_accessible(self):
         """Should have accessible message."""

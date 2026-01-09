@@ -144,7 +144,7 @@ class AgentManager:
                 logger.warning(f"Agent {agent_id} missing provider/interface; skipping")
                 continue
 
-            # Best-effort: hydrate auth from host files (e.g., ~/.codex/auth.json)
+            # Best-effort: hydrate auth from host files (no-op for current providers)
             hydrate_auth_from_host_file(provider)
 
             auth_req = agent_config.get("authRequirements")

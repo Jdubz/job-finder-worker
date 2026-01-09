@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-09
+> Last Updated: 2026-01-09
 
 The document generator creates tailored resumes and cover letters using AI to customize content for specific job listings.
 
@@ -10,8 +10,8 @@ The document generator creates tailored resumes and cover letters using AI to cu
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Generate API   │────▶│  Codex CLI      │────▶│  PdfMake        │
-│  /generator     │     │  (OpenAI)       │     │  Service        │
+│  Generate API   │────▶│  AgentManager   │────▶│  PdfMake        │
+│  /generator     │     │  (AI Fallback)  │     │  Service        │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
         │                       │                       │
         ▼                       ▼                       ▼
@@ -30,7 +30,7 @@ The document generator creates tailored resumes and cover letters using AI to cu
 
 ### 2. AI Generation Phase
 - Builds prompt with job details + user experience
-- Sends to Codex CLI (OpenAI ChatGPT)
+- AgentManager selects provider from fallback chain (claude.cli, gemini.api)
 - AI returns JSON with customized highlights and summary
 
 ### 3. Data Merge Phase
@@ -59,7 +59,7 @@ The document generator creates tailored resumes and cover letters using AI to cu
 | `generator.workflow.service.ts` | Main orchestration logic |
 | `pdfmake.service.ts` | PDF rendering with pdfmake |
 | `prompts.ts` | AI prompt construction |
-| `cli-runner.ts` | Codex CLI execution |
+| `agent-manager.ts` | AI provider selection with fallback |
 | `storage.service.ts` | Artifact storage |
 
 ## Configuration
@@ -111,9 +111,10 @@ Use the validation harness in `job-finder-BE/server/validation/`:
 
 Output artifacts are in `volumes/artifacts/`.
 
-## Dependencies
+## AI Providers
 
-- **pdfmake** - PDF generation (no browser required)
-- **@openai/codex** - Codex CLI for AI generation
+Supported agents (via AgentManager):
+- **claude.cli** - Claude Code CLI (requires `CLAUDE_CODE_OAUTH_TOKEN`)
+- **gemini.api** - Google Gemini API (requires `GOOGLE_API_KEY` or `GEMINI_API_KEY`)
 
 Note: Legacy Handlebars/Puppeteer PDF generation was removed in favor of pdfmake for simpler, more reliable PDF creation without browser dependencies.

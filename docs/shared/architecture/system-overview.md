@@ -2,7 +2,7 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-09
+> Last Updated: 2026-01-09
 
 ## Overview
 
@@ -33,7 +33,7 @@ The Job Finder application is a containerized monorepo with three main services:
 │  │  - Python/Flask     │  │  - TypeScript definitions       │   │
 │  │  - Selenium         │  │  - API contracts                │   │
 │  │  - SQLAlchemy       │  │  - Data models                  │   │
-│  │  - Anthropic/OpenAI │  │  - Shared interfaces            │   │
+│  │  - Claude/Gemini AI │  │  - Shared interfaces            │   │
 │  └─────────────────────┘  └─────────────────────────────────┘   │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -65,7 +65,7 @@ The Job Finder application is a containerized monorepo with three main services:
 - **Framework**: Flask
 - **Database**: SQLAlchemy (SQLite)
 - **Scraping**: Selenium, BeautifulSoup
-- **AI Integration**: AgentManager with Gemini, Codex, Claude CLI providers
+- **AI Integration**: AgentManager with Claude CLI and Gemini API providers
 - **Data Processing**: pandas
 - **Scoring Engine**: Experience-weighted skill matching derived from content-items
 - **Profile Reducer**: Derives skills and experience years from content-items (work history)
@@ -87,15 +87,19 @@ The AgentManager centralizes AI provider selection with fallback chains, daily b
 ┌─────────────────────────────────────────────────────────────────┐
 │                       AgentManager                               │
 ├─────────────────────────────────────────────────────────────────┤
+│  Supported Agents:                                               │
+│    - claude.cli: Claude Code CLI (OAuth token)                  │
+│    - gemini.api: Google Gemini API (API key)                    │
+├─────────────────────────────────────────────────────────────────┤
 │  Task Types:                                                     │
 │    - extraction: Job details, company info, source discovery    │
 │    - analysis: Match scoring rationale, research synthesis      │
 │    - document: Resume/cover letter generation                   │
 ├─────────────────────────────────────────────────────────────────┤
 │  Fallback Chain (per task type):                                │
-│    taskFallbacks.extraction: [gemini.cli, codex.cli, claude.cli]│
-│    taskFallbacks.analysis: [codex.cli, gemini.cli, claude.cli]  │
-│    taskFallbacks.document: [codex.cli, claude.cli, gemini.cli]  │
+│    taskFallbacks.extraction: [gemini.api, claude.cli]           │
+│    taskFallbacks.analysis: [claude.cli, gemini.api]             │
+│    taskFallbacks.document: [claude.cli, gemini.api]             │
 ├─────────────────────────────────────────────────────────────────┤
 │  Per-Agent Config:                                              │
 │    - dailyBudget / dailyUsage (shared across scopes)            │
@@ -258,7 +262,7 @@ Production deployment via Docker Compose with 5 services:
 | Backend    | Express.js, TypeScript |
 | Database   | SQLite (better-sqlite3, SQLAlchemy) |
 | Worker     | Python, Flask, Selenium |
-| AI         | AgentManager (Gemini CLI, Codex CLI, Claude CLI) |
+| AI         | AgentManager (Claude CLI, Gemini API) |
 | Search     | Tavily, Brave (company enrichment) |
 | Auth       | Google OAuth |
 | Deployment | Docker Compose, Cloudflare |

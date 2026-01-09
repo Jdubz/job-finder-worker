@@ -319,9 +319,9 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
         ],
       },
       {
-        value: "openai",
+        value: "claude",
         interfaces: [
-          { value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] },
+          { value: "cli", enabled: true, models: ["claude-sonnet-4-5-latest"] },
         ],
       },
     ],
@@ -560,10 +560,10 @@ describe("Configuration flows", () => {
 
     await configClient.updateAISettings({
       agents: {
-        "openai.api": {
-          provider: "openai",
+        "gemini.api": {
+          provider: "gemini",
           interface: "api",
-          defaultModel: "gpt-4o-mini",
+          defaultModel: "gemini-2.0-flash",
           dailyBudget: 100,
           dailyUsage: 0,
           runtimeState: {
@@ -572,26 +572,26 @@ describe("Configuration flows", () => {
           },
           authRequirements: {
             type: "api",
-            requiredEnv: ["OPENAI_API_KEY"],
+            requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
           },
         },
       },
       taskFallbacks: {
-        extraction: ["openai.api"],
-        analysis: ["openai.api"],
-        document: ["openai.api"],
+        extraction: ["gemini.api"],
+        analysis: ["gemini.api"],
+        document: ["gemini.api"],
       },
-      modelRates: { "gpt-4o-mini": 0.5 },
+      modelRates: { "gemini-2.0-flash": 0.5 },
       options: [
         {
-          value: "openai",
-          interfaces: [{ value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] }],
+          value: "gemini",
+          interfaces: [{ value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] }],
         },
       ],
     })
     const aiSettings = await configClient.getAISettings()
-    expect(aiSettings?.agents?.["openai.api"]?.provider).toBe("openai")
-    expect(aiSettings?.agents?.["openai.api"]?.defaultModel).toBe("gpt-4o-mini")
+    expect(aiSettings?.agents?.["gemini.api"]?.provider).toBe("gemini")
+    expect(aiSettings?.agents?.["gemini.api"]?.defaultModel).toBe("gemini-2.0-flash")
 
     const personalInfo = await configClient.updatePersonalInfo(
       {

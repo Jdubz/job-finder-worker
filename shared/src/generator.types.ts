@@ -276,10 +276,9 @@ export interface GeneratorResponse {
       stage?:
         | "fetch_defaults"
         | "fetch_experience"
-        | "openai_resume"
-        | "openai_cover_letter"
-        | "openai_generation"
-        | "gemini_generation"
+        | "ai_resume"
+        | "ai_cover_letter"
+        | "ai_generation"
         | "pdf_generation"
         | "gcs_upload"
       details?: unknown

@@ -46,13 +46,8 @@ if [[ ! -s "$DEV_DIR/data/jobfinder.db" ]]; then
 fi
 
 echo "Starting dev stack (profile=$PROFILE)..."
-echo "Codex credentials: ~/.codex -> /home/node/.codex (bind mount)"
 $COMPOSE --profile "$PROFILE" up -d sqlite-migrator
 $COMPOSE --profile "$PROFILE" up -d "$SERVICE_NAME"
-
-# Verify codex credentials are accessible (bind mount, runs as node user uid 1000)
-echo "Verifying Codex credentials in container..."
-docker exec "$SERVICE_CONTAINER" ls -la /home/node/.codex || true
 
 # Health check
 HEALTH_URL="http://localhost:${API_PORT}/healthz"

@@ -1,6 +1,6 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-09
+> Last Updated: 2026-01-09
 
 # Job Finder Worker
 
@@ -18,7 +18,7 @@ Python worker service for job processing, company enrichment, and AI-powered ana
 │    - SourceProcessor: Job source discovery and scraping         │
 ├─────────────────────────────────────────────────────────────────┤
 │  AI Integration (via AgentManager):                             │
-│    - Fallback chain: gemini.cli → codex.cli → claude.cli        │
+│    - Supported agents: claude.cli, gemini.api                   │
 │    - Budget enforcement and per-scope enablement                │
 │    - Task types: extraction, analysis                           │
 ├─────────────────────────────────────────────────────────────────┤
@@ -78,9 +78,9 @@ Multi-source company enrichment:
 SQLITE_DB_PATH=/srv/job-finder/data/jobfinder.db
 
 # AI Providers (at least one required)
-GEMINI_API_KEY=...
-OPENAI_API_KEY=...
-CLAUDE_CODE_OAUTH_TOKEN=...
+CLAUDE_CODE_OAUTH_TOKEN=...  # For claude.cli agent
+GOOGLE_API_KEY=...           # For gemini.api agent
+# GEMINI_API_KEY=...         # Alternative to GOOGLE_API_KEY
 
 # Search APIs (for company enrichment)
 TAVILY_API_KEY=...
@@ -130,7 +130,7 @@ curl -s http://localhost:5555/health
 src/job_finder/
 ├── ai/
 │   ├── agent_manager.py      # AI provider orchestration
-│   ├── providers.py          # Provider implementations
+│   ├── providers.py          # Provider implementations (Claude CLI, Gemini API)
 │   └── search_client.py      # Tavily/Brave clients
 ├── job_queue/
 │   ├── processors/

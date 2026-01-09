@@ -13,11 +13,15 @@
  *
  * New structure:
  * {
- *   agents: { "gemini.cli": AgentConfig, "codex.cli": AgentConfig, ... }
- *   taskFallbacks: { extraction: ["gemini.cli", "codex.cli"], analysis: [...] }
- *   modelRates: { "gpt-4o": 1.0, "gemini-2.0-flash": 0.5, ... }
+ *   agents: { "claude.cli": AgentConfig, "gemini.api": AgentConfig }
+ *   taskFallbacks: { extraction: ["gemini.api", "claude.cli"], analysis: [...] }
+ *   modelRates: { "claude-sonnet-4-5-latest": 1.0, "gemini-2.0-flash": 0.5, ... }
  *   options: [...]
  * }
+ *
+ * Supported agents:
+ * - claude.cli: Claude Code CLI (requires CLAUDE_CODE_OAUTH_TOKEN)
+ * - gemini.api: Google Gemini API (requires GOOGLE_API_KEY or GEMINI_API_KEY)
  */
 
 import path from 'node:path'
@@ -60,12 +64,8 @@ type NewAISettings = {
 
 // Default model cost rates
 const DEFAULT_MODEL_RATES: Record<string, number> = {
-  'gpt-4o': 1.0,
-  'gpt-4o-mini': 0.5,
-  'gpt-4': 1.5,
-  'claude-3-opus': 1.5,
-  'claude-3-sonnet': 1.0,
-  'claude-3-haiku': 0.3,
+  'claude-sonnet-4-5-latest': 1.0,
+  'claude-sonnet-4-5-20250514': 1.0,
   'gemini-2.0-flash': 0.5,
   'gemini-1.5-pro': 1.0,
   'gemini-1.5-flash': 0.3,
@@ -108,12 +108,8 @@ function makeAgentId(provider: AIProviderType, iface: AIInterfaceType): AgentId 
 
 function authRequirementsFor(provider: AIProviderType, iface: AIInterfaceType): AgentAuthRequirements {
   const map: Partial<Record<AgentId, AgentAuthRequirements>> = {
-    'codex.cli': { type: 'cli', requiredEnv: ['OPENAI_API_KEY'], requiredFiles: ['~/.codex/auth.json'] },
-    'gemini.cli': { type: 'cli', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'], requiredFiles: ['~/.gemini/settings.json'] },
     'gemini.api': { type: 'api', requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'] },
     'claude.cli': { type: 'cli', requiredEnv: ['CLAUDE_CODE_OAUTH_TOKEN'] },
-    'claude.api': { type: 'api', requiredEnv: ['ANTHROPIC_API_KEY'] },
-    'openai.api': { type: 'api', requiredEnv: ['OPENAI_API_KEY'] },
   }
   return map[makeAgentId(provider, iface)] ?? { type: iface, requiredEnv: ['PATH'] }
 }
@@ -213,12 +209,12 @@ function main() {
   if (!row) {
     console.log('[migrate-ai-settings] No ai-settings config found; creating default structure.')
 
-    // Create a default new structure
+    // Create a default new structure with supported agents only
     const defaultSettings: NewAISettings = {
       agents: {
-        'gemini.cli': {
+        'gemini.api': {
           provider: 'gemini',
-          interface: 'cli',
+          interface: 'api',
           defaultModel: 'gemini-2.0-flash',
           dailyBudget: 100,
           dailyUsage: 0,
@@ -226,24 +222,12 @@ function main() {
             worker: { enabled: true, reason: null },
             backend: { enabled: true, reason: null },
           },
-          authRequirements: authRequirementsFor('gemini', 'cli'),
-        },
-        'codex.cli': {
-          provider: 'codex',
-          interface: 'cli',
-          defaultModel: 'gpt-4o',
-          dailyBudget: 100,
-          dailyUsage: 0,
-          runtimeState: {
-            worker: { enabled: true, reason: null },
-            backend: { enabled: true, reason: null },
-          },
-          authRequirements: authRequirementsFor('codex', 'cli'),
+          authRequirements: authRequirementsFor('gemini', 'api'),
         },
         'claude.cli': {
           provider: 'claude',
           interface: 'cli',
-          defaultModel: 'claude-sonnet-4-20250514',
+          defaultModel: 'claude-sonnet-4-5-latest',
           dailyBudget: 50,
           dailyUsage: 0,
           runtimeState: {
@@ -254,26 +238,22 @@ function main() {
         },
       },
       taskFallbacks: {
-        extraction: ['gemini.cli', 'codex.cli', 'claude.cli'],
-        analysis: ['gemini.cli', 'codex.cli', 'claude.cli'],
-        document: ['codex.cli', 'claude.cli', 'gemini.cli'],
+        extraction: ['gemini.api', 'claude.cli'],
+        analysis: ['claude.cli', 'gemini.api'],
+        document: ['claude.cli', 'gemini.api'],
       },
       modelRates: DEFAULT_MODEL_RATES,
       options: [
         {
           value: 'gemini',
-          label: 'Google Gemini',
           interfaces: [
-            { value: 'cli', enabled: true, models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
-            { value: 'api', enabled: false, reason: 'API key not configured', models: [] },
+            { value: 'api', enabled: true, models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
           ],
         },
         {
-          value: 'codex',
-          label: 'Codex CLI (OpenAI)',
+          value: 'claude',
           interfaces: [
-            { value: 'cli', enabled: true, models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4'] },
-            { value: 'api', enabled: false, reason: 'API key not configured', models: [] },
+            { value: 'cli', enabled: true, models: ['claude-sonnet-4-5-latest'] },
           ],
         },
       ],

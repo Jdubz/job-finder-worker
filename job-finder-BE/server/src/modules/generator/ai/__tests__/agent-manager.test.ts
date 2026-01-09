@@ -126,51 +126,55 @@ describe('AgentManager timeout retry logic', () => {
   })
 
   it('timeout on first agent does not break fallback chain', async () => {
+    // Use two CLI agents to test fallback behavior without API mocking complexity
     const mockAgent1 = createMockAgent({ provider: 'claude' })
-    const mockAgent2 = createMockAgent({ provider: 'gemini' })
+    const mockAgent2 = createMockAgent({ provider: 'claude', defaultModel: 'claude-backup' })
     const aiSettings = createMockAISettings(
       {
         'claude.cli': mockAgent1 as AgentConfig,
-        'gemini.cli': mockAgent2 as AgentConfig
+        'claude.backup': mockAgent2 as AgentConfig
       },
       {
-        extraction: ['claude.cli', 'gemini.cli'] as AgentId[],
-        analysis: ['claude.cli', 'gemini.cli'] as AgentId[],
-        document: ['claude.cli', 'gemini.cli'] as AgentId[]
+        extraction: ['claude.cli', 'claude.backup'] as AgentId[],
+        analysis: ['claude.cli', 'claude.backup'] as AgentId[],
+        document: ['claude.cli', 'claude.backup'] as AgentId[]
       }
     )
+    aiSettings.modelRates = { ...aiSettings.modelRates, 'claude-backup': 1.0 }
 
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
-    // First agent (claude) times out all 3 times, second agent (gemini) succeeds
+    // First agent (claude.cli) times out all 3 times, second agent (claude.backup) succeeds
     runProviderMock
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
       .mockResolvedValueOnce({ success: false, output: '', error: 'timeout', errorType: 'timeout' })
-      .mockResolvedValueOnce({ success: true, output: '{"result": "from gemini"}', error: undefined, errorType: undefined })
+      .mockResolvedValueOnce({ success: true, output: '{"result": "from backup"}', error: undefined, errorType: undefined })
 
     agentManager = new AgentManager(mockConfigRepo as any, mockLog, runProviderMock as any)
     const result = await agentManager.execute('extraction', 'test prompt')
 
-    expect(result.output).toBe('{"result": "from gemini"}')
-    expect(result.agentId).toBe('gemini.cli')
-    expect(runProviderMock).toHaveBeenCalledTimes(4) // 3 for claude + 1 for gemini
+    expect(result.output).toBe('{"result": "from backup"}')
+    expect(result.agentId).toBe('claude.backup')
+    expect(runProviderMock).toHaveBeenCalledTimes(4) // 3 for claude.cli + 1 for claude.backup
   })
 
   it('does not retry on quota exhausted error', async () => {
+    // Use two CLI agents to test quota handling without API mocking complexity
     const mockAgent = createMockAgent()
-    const mockAgent2 = createMockAgent({ provider: 'gemini' })
+    const mockAgent2 = createMockAgent({ provider: 'claude', defaultModel: 'claude-backup' })
     const aiSettings = createMockAISettings(
       {
         'claude.cli': mockAgent as AgentConfig,
-        'gemini.cli': mockAgent2 as AgentConfig
+        'claude.backup': mockAgent2 as AgentConfig
       },
       {
-        extraction: ['claude.cli', 'gemini.cli'] as AgentId[],
-        analysis: ['claude.cli', 'gemini.cli'] as AgentId[],
-        document: ['claude.cli', 'gemini.cli'] as AgentId[]
+        extraction: ['claude.cli', 'claude.backup'] as AgentId[],
+        analysis: ['claude.cli', 'claude.backup'] as AgentId[],
+        document: ['claude.cli', 'claude.backup'] as AgentId[]
       }
     )
+    aiSettings.modelRates = { ...aiSettings.modelRates, 'claude-backup': 1.0 }
 
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 
@@ -184,23 +188,25 @@ describe('AgentManager timeout retry logic', () => {
 
     expect(result.output).toBe('{"result": "success"}')
     // Should only call once for first agent (no retries for quota errors)
-    expect(runProviderMock).toHaveBeenCalledTimes(2) // 1 for claude (quota) + 1 for gemini
+    expect(runProviderMock).toHaveBeenCalledTimes(2) // 1 for claude.cli (quota) + 1 for claude.backup
   })
 
   it('stops fallback chain on auth errors', async () => {
+    // Use two CLI agents to test auth error handling
     const mockAgent = createMockAgent()
-    const mockAgent2 = createMockAgent({ provider: 'gemini' })
+    const mockAgent2 = createMockAgent({ provider: 'claude', defaultModel: 'claude-backup' })
     const aiSettings = createMockAISettings(
       {
         'claude.cli': mockAgent as AgentConfig,
-        'gemini.cli': mockAgent2 as AgentConfig
+        'claude.backup': mockAgent2 as AgentConfig
       },
       {
-        extraction: ['claude.cli', 'gemini.cli'] as AgentId[],
-        analysis: ['claude.cli', 'gemini.cli'] as AgentId[],
-        document: ['claude.cli', 'gemini.cli'] as AgentId[]
+        extraction: ['claude.cli', 'claude.backup'] as AgentId[],
+        analysis: ['claude.cli', 'claude.backup'] as AgentId[],
+        document: ['claude.cli', 'claude.backup'] as AgentId[]
       }
     )
+    aiSettings.modelRates = { ...aiSettings.modelRates, 'claude-backup': 1.0 }
 
     mockConfigRepo.get.mockReturnValue({ payload: aiSettings })
 

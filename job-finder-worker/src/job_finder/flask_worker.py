@@ -146,189 +146,111 @@ def _extract_email_from_jwt(id_token: str) -> Optional[str]:
         return None
 
 
-def _check_codex_config() -> Dict[str, Any]:
-    """Check Codex CLI auth by inspecting config files.
+def _check_claude_cli_config() -> Dict[str, Any]:
+    """Check Claude CLI auth by inspecting environment variables.
 
-    This avoids running 'codex login status' command.
-    We verify that auth credentials exist in ~/.codex/auth.json.
+    Claude CLI uses CLAUDE_CODE_OAUTH_TOKEN for authentication.
+    This is a lightweight check that doesn't run any CLI commands.
     """
-    codex_dir = Path.home() / ".codex"
-    auth_path = codex_dir / "auth.json"
+    oauth_token = os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
 
-    try:
-        with open(auth_path, "r", encoding="utf-8") as f:
-            auth = json.load(f)
+    if oauth_token:
+        # Token exists - check if it looks valid (has content)
+        if len(oauth_token.strip()) > 20:
+            return {
+                "healthy": True,
+                "message": "OAuth token configured",
+            }
+        return {
+            "healthy": False,
+            "message": "Claude CLI OAuth token appears invalid (too short)",
+        }
 
-        # Check for API key in file
-        if auth.get("OPENAI_API_KEY"):
+    return {
+        "healthy": False,
+        "message": "Claude CLI not configured: CLAUDE_CODE_OAUTH_TOKEN not set",
+    }
+
+
+def _check_gemini_api_config() -> Dict[str, Any]:
+    """Check Gemini API auth by inspecting environment variables.
+
+    Gemini API supports two authentication methods:
+    1. API key via GEMINI_API_KEY or GOOGLE_API_KEY
+    2. Vertex AI with ADC (requires GOOGLE_CLOUD_PROJECT)
+
+    This is a lightweight check that doesn't make API calls.
+    """
+    # Check for direct API key first (simplest auth method)
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if api_key:
+        if len(api_key.strip()) > 10:
             return {
                 "healthy": True,
                 "message": "API key configured",
             }
-
-        # Check for OAuth tokens
-        tokens = auth.get("tokens") or {}
-        if isinstance(tokens, dict) and tokens.get("refresh_token"):
-            # Try to extract email from id_token
-            id_token = tokens.get("id_token")
-            if id_token:
-                email = _extract_email_from_jwt(id_token)
-                if email:
-                    return {
-                        "healthy": True,
-                        "message": f"Authenticated as {email}",
-                    }
-
-            return {
-                "healthy": True,
-                "message": "OAuth credentials configured",
-            }
-
-        # Check for API key in environment
-        if os.getenv("OPENAI_API_KEY"):
-            return {
-                "healthy": True,
-                "message": "API key configured (from environment)",
-            }
-
         return {
             "healthy": False,
-            "message": "Codex CLI not authenticated: no credentials found",
+            "message": "Gemini API key appears invalid (too short)",
         }
 
-    except FileNotFoundError:
-        # If auth file doesn't exist, check for API key in environment
-        if os.getenv("OPENAI_API_KEY"):
-            return {
-                "healthy": True,
-                "message": "API key configured (from environment)",
-            }
-        return {
-            "healthy": False,
-            "message": "Codex CLI not configured: auth file not found",
-        }
-    except json.JSONDecodeError as exc:
-        return {
-            "healthy": False,
-            "message": f"Codex config file invalid: {exc}",
-        }
-    except Exception as exc:  # pragma: no cover - defensive
-        return {
-            "healthy": False,
-            "message": f"Failed to check Codex config: {exc}",
-        }
-
-
-def _check_gemini_config() -> Dict[str, Any]:
-    """Check Gemini CLI auth by inspecting config files.
-
-    This avoids launching the interactive CLI or consuming API quota.
-    We verify that auth was configured and credentials exist.
-    """
-    gemini_dir = Path.home() / ".gemini"
-    settings_path = gemini_dir / "settings.json"
-
-    # First, try to read and parse settings.json
-    try:
-        with open(settings_path, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-    except FileNotFoundError:
-        return {
-            "healthy": False,
-            "message": "Gemini CLI not configured: settings file not found",
-        }
-    except json.JSONDecodeError as exc:
-        return {
-            "healthy": False,
-            "message": f"Gemini settings file invalid: {exc}",
-        }
-    except Exception as exc:  # pragma: no cover - defensive
-        return {
-            "healthy": False,
-            "message": f"Failed to read Gemini settings: {exc}",
-        }
-
-    auth_type = settings.get("security", {}).get("auth", {}).get("selectedType")
-    if not auth_type:
-        return {
-            "healthy": False,
-            "message": "Gemini CLI not configured: no auth type selected",
-        }
-
-    # For OAuth auth types, verify credentials file exists with refresh token
-    if auth_type.startswith("oauth"):
-        creds_path = gemini_dir / "oauth_creds.json"
-        try:
-            with open(creds_path, "r", encoding="utf-8") as f:
-                creds = json.load(f)
-        except FileNotFoundError:
-            return {
-                "healthy": False,
-                "message": "Gemini OAuth credentials file not found",
-            }
-        except json.JSONDecodeError as exc:
-            return {
-                "healthy": False,
-                "message": f"Gemini OAuth credentials file invalid: {exc}",
-            }
-        except Exception as exc:  # pragma: no cover - defensive
-            return {
-                "healthy": False,
-                "message": f"Failed to read Gemini OAuth credentials: {exc}",
-            }
-
-        if not creds.get("refresh_token"):
-            return {
-                "healthy": False,
-                "message": "Gemini OAuth credentials missing refresh token",
-            }
-
-        # Check for active account
-        accounts_path = gemini_dir / "google_accounts.json"
-        try:
-            with open(accounts_path, "r", encoding="utf-8") as f:
-                accounts = json.load(f)
-            if accounts.get("active"):
+    # Check for Vertex AI setup
+    project = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if project:
+        # Vertex AI requires ADC - try to detect if credentials are available
+        # Check for common credential indicators
+        creds_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_file:
+            if Path(creds_file).exists():
                 return {
                     "healthy": True,
-                    "message": f"Authenticated as {accounts['active']}",
+                    "message": f"Vertex AI configured (service account: {project})",
                 }
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass  # Account file is optional
+            return {
+                "healthy": False,
+                "message": f"Vertex AI service account file not found: {creds_file}",
+            }
 
-        return {
-            "healthy": True,
-            "message": "OAuth credentials configured",
-        }
+        # ADC might still work via gcloud or metadata server
+        # Check if google-auth can find default credentials
+        try:
+            import google.auth
 
-    # For API key auth, check environment variables
-    if auth_type == "api-key":
-        has_key = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-        return {
-            "healthy": has_key,
-            "message": (
-                "API key configured" if has_key else "Gemini API key not found in environment"
-            ),
-        }
+            google.auth.default()
+            return {
+                "healthy": True,
+                "message": f"Vertex AI configured (ADC: {project})",
+            }
+        except ImportError:
+            return {
+                "healthy": False,
+                "message": "Vertex AI requires google-auth package",
+            }
+        except Exception:
+            return {
+                "healthy": False,
+                "message": "Vertex AI ADC not configured (run 'gcloud auth application-default login')",
+            }
 
-    # For other auth types (like gcloud), assume configured if settings exist
     return {
-        "healthy": True,
-        "message": f"Auth type '{auth_type}' configured",
+        "healthy": False,
+        "message": "Gemini API not configured: set GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT",
     }
 
 
 def check_cli_health() -> Dict[str, Dict[str, Any]]:
-    """Run lightweight auth/availability checks for agent CLIs.
+    """Run lightweight auth/availability checks for supported agents.
 
-    Both codex and gemini use config-file based checks to avoid:
-    - Running commands that might launch interactive terminals
-    - Consuming API quota
-    - Slow subprocess execution
+    Supported agents: claude.cli, gemini.api
+
+    Claude CLI uses environment-based checks (CLAUDE_CODE_OAUTH_TOKEN).
+    Gemini API checks for API key or Vertex AI ADC credentials.
+
+    Both checks avoid running commands or consuming API quota.
     """
     return {
-        "codex": _check_codex_config(),
-        "gemini": _check_gemini_config(),
+        "claude": _check_claude_cli_config(),
+        "gemini": _check_gemini_api_config(),
     }
 
 
@@ -789,7 +711,7 @@ def health():
 
 @app.route("/cli/health")
 def cli_health():
-    """Return health for CLI-based agents (codex, gemini)."""
+    """Return health for supported agents (claude.cli, gemini.api)."""
 
     return jsonify({"providers": check_cli_health()})
 

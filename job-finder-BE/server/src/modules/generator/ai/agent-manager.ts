@@ -7,6 +7,7 @@ import { ConfigRepository } from '../../config/config.repository'
 import { logger } from '../../../logger'
 import { runCliProvider, type CliProvider, type CliErrorType } from '../workflow/services/cli-runner'
 import { UserFacingError } from '../workflow/generator.workflow.service'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 type AgentExecutionResult = {
   output: string
@@ -194,9 +195,23 @@ export class AgentManager {
     prompt: string,
     model: string | undefined
   ): Promise<string> {
-    if (agent.interface !== 'cli') {
-      throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
+    if (agent.interface === 'cli') {
+      return this.runCliAgent(agent, agentId, prompt, model)
     }
+
+    if (agent.interface === 'api') {
+      return this.runApiAgent(agent, agentId, prompt, model)
+    }
+
+    throw new UserFacingError(`Interface ${agent.interface} not supported for generator tasks`)
+  }
+
+  private async runCliAgent(
+    agent: AgentConfig,
+    agentId: string,
+    prompt: string,
+    model: string | undefined
+  ): Promise<string> {
     const provider = agent.provider as CliProvider
     const result = await this.runProvider(prompt, provider, { model })
 
@@ -214,6 +229,53 @@ export class AgentManager {
     }
 
     return result.output
+  }
+
+  private async runApiAgent(
+    agent: AgentConfig,
+    agentId: string,
+    prompt: string,
+    model: string | undefined
+  ): Promise<string> {
+    // Only gemini.api is supported for API interface
+    if (agent.provider !== 'gemini') {
+      throw new UserFacingError(`API interface only supported for gemini provider, got ${agent.provider}`)
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    if (!apiKey) {
+      throw new AgentExecutionError('GEMINI_API_KEY or GOOGLE_API_KEY not set', agentId, 'auth')
+    }
+
+    const modelName = model || 'gemini-2.5-flash'
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey)
+      const generativeModel = genAI.getGenerativeModel({ model: modelName })
+
+      const result = await generativeModel.generateContent(prompt)
+      const response = result.response
+      const text = response.text()
+
+      if (!text) {
+        throw new AgentExecutionError('Gemini API returned empty response', agentId, 'other')
+      }
+
+      return text
+    } catch (err) {
+      if (err instanceof AgentExecutionError || err instanceof QuotaExhaustedError) {
+        throw err
+      }
+
+      const errorMsg = err instanceof Error ? err.message : 'Gemini API error'
+
+      // Check for quota errors
+      if (errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('rate limit')) {
+        throw new QuotaExhaustedError(errorMsg, agentId)
+      }
+
+      throw new AgentExecutionError(errorMsg, agentId, 'other')
+    }
   }
 
   private disableAgent(aiSettings: AISettings, agentId: AgentId, reason: string): void {

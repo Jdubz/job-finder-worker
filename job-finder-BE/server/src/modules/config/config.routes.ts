@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { execSync } from 'child_process'
 import type {
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
@@ -44,36 +43,32 @@ type KnownPayload =
 /**
  * Check provider availability based on API keys and CLI auth status.
  * Takes the configured options from DB and adds availability info.
+ *
+ * Supported providers:
+ * - claude.cli: Uses CLAUDE_CODE_OAUTH_TOKEN
+ * - gemini.api: Uses GEMINI_API_KEY, GOOGLE_API_KEY, or Vertex AI ADC
  */
 function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
   if (!configuredOptions) return []
   const availability: Record<string, { enabled: boolean; reason?: string }> = {}
 
-  // Codex CLI - check login status
-  let codexEnabled = false
-  let codexReason = 'CLI not installed or not authenticated'
-  try {
-    const result = execSync('codex login status 2>&1', { encoding: 'utf-8', timeout: 5000 })
-    codexEnabled = result.toLowerCase().includes('logged in')
-    if (!codexEnabled) {
-      codexReason = 'Not logged in - run `codex login`'
-    }
-  } catch {
-    codexReason = 'Codex CLI not available'
+  // Claude CLI - check CLAUDE_CODE_OAUTH_TOKEN
+  const claudeCliEnabled = !!process.env.CLAUDE_CODE_OAUTH_TOKEN
+  availability['claude/cli'] = {
+    enabled: claudeCliEnabled,
+    reason: claudeCliEnabled ? undefined : 'CLAUDE_CODE_OAUTH_TOKEN not set'
   }
-  availability['codex/cli'] = { enabled: codexEnabled, reason: codexEnabled ? undefined : codexReason }
 
-  // Claude API - check ANTHROPIC_API_KEY
-  const claudeEnabled = !!process.env.ANTHROPIC_API_KEY
-  availability['claude/api'] = { enabled: claudeEnabled, reason: claudeEnabled ? undefined : 'ANTHROPIC_API_KEY not set' }
-
-  // OpenAI API - check OPENAI_API_KEY
-  const openaiEnabled = !!process.env.OPENAI_API_KEY
-  availability['openai/api'] = { enabled: openaiEnabled, reason: openaiEnabled ? undefined : 'OPENAI_API_KEY not set' }
-
-  // Gemini API - check GOOGLE_API_KEY or GEMINI_API_KEY
-  const geminiEnabled = !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY)
-  availability['gemini/api'] = { enabled: geminiEnabled, reason: geminiEnabled ? undefined : 'GOOGLE_API_KEY or GEMINI_API_KEY not set' }
+  // Gemini API - check GEMINI_API_KEY, GOOGLE_API_KEY, or Vertex AI ADC (GOOGLE_APPLICATION_CREDENTIALS)
+  const geminiApiEnabled = !!(
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS
+  )
+  availability['gemini/api'] = {
+    enabled: geminiApiEnabled,
+    reason: geminiApiEnabled ? undefined : 'GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS not set'
+  }
 
   return configuredOptions.map((provider) => ({
     ...provider,

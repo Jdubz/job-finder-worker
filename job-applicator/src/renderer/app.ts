@@ -279,7 +279,7 @@ interface ElectronAPI {
     documentUrl?: string
     type?: "resume" | "coverLetter"
   }) => Promise<{ success: boolean; message: string; filePath?: string }>
-  submitJob: (provider: "claude" | "codex" | "gemini") => Promise<{ success: boolean; message: string }>
+  submitJob: (provider: "claude" | "gemini") => Promise<{ success: boolean; message: string }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   checkFileInput: () => Promise<{ hasFileInput: boolean; selector?: string }>
 
@@ -1718,7 +1718,7 @@ function previewCoverLetter() {
 
 // Submit job listing for analysis
 async function submitJob() {
-  const provider = agentProviderSelect.value as "claude" | "codex" | "gemini"
+  const provider = agentProviderSelect.value as "claude" | "gemini"
 
   try {
     setButtonsEnabled(false)

@@ -1,24 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { logger } from '../../../../logger'
 import { isAuthenticationError, isQuotaError } from './auth-error.util'
 
-/**
- * Get the codex command to use.
- * Prefers codex-safe wrapper (flock-based) to prevent OAuth refresh token races
- * when multiple containers share the same auth.json via bind mount.
- */
-function getCodexCommand(): string {
-  // Check if codex-safe wrapper is available
-  if (existsSync('/usr/local/bin/codex-safe')) {
-    return 'codex-safe'
-  }
-  return 'codex'
-}
-
-// Primary provider is 'codex' (OpenAI/ChatGPT)
-// Other providers are included for future support but not currently active
-export type CliProvider = 'codex' | 'gemini' | 'claude'
+// Only Claude CLI is supported for backend generator tasks
+export type CliProvider = 'claude'
 
 export type CliErrorType = 'quota' | 'auth' | 'timeout' | 'not_found' | 'other'
 
@@ -37,24 +22,13 @@ export interface CliRunOptions {
 
 const DEFAULT_TIMEOUT_MS = 120_000 // 2 minutes
 
-// CLI argument constants for maintainability
+// CLI argument constants for Claude CLI
 const CLI_FLAGS = {
-  // Common flags
   PRINT: '--print',
   MODEL: '--model',
-  // Codex-specific
-  CODEX_EXEC: 'exec',
-  CODEX_SKIP_GIT_CHECK: '--skip-git-repo-check',
-  CODEX_CD: '--cd',
-  CODEX_BYPASS_APPROVALS: '--dangerously-bypass-approvals-and-sandbox',
-  // Gemini-specific
-  GEMINI_OUTPUT: '--output',
-  GEMINI_OUTPUT_JSON: 'json',
-  // Note: Gemini CLI --prompt flag is deprecated, use positional argument instead
-  // Claude-specific
-  CLAUDE_OUTPUT_FORMAT: '--output-format',
-  CLAUDE_OUTPUT_JSON: 'json',
-  CLAUDE_SKIP_PERMISSIONS: '--dangerously-skip-permissions'
+  OUTPUT_FORMAT: '--output-format',
+  OUTPUT_JSON: 'json',
+  SKIP_PERMISSIONS: '--dangerously-skip-permissions'
   // Note: Claude CLI uses positional prompt argument, not a flag
 } as const
 
@@ -84,54 +58,23 @@ function sanitizeCliError(raw?: string): string {
 }
 
 function buildCommand(
-  provider: CliProvider,
+  _provider: CliProvider,
   prompt: string,
   model?: string
 ): { cmd: string; args: string[] } {
-  if (provider === 'codex') {
-    return {
-      cmd: getCodexCommand(),
-      // Skip Codex's git repo trust check because production containers don't include the .git folder
-      args: [
-        CLI_FLAGS.CODEX_EXEC,
-        CLI_FLAGS.CODEX_SKIP_GIT_CHECK,
-        CLI_FLAGS.CODEX_CD,
-        process.cwd(),
-        CLI_FLAGS.CODEX_BYPASS_APPROVALS,
-        prompt
-      ]
-    }
+  // Only Claude CLI is supported
+  const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.OUTPUT_FORMAT, CLI_FLAGS.OUTPUT_JSON]
+  if (model) {
+    args.push(CLI_FLAGS.MODEL, model)
   }
-  if (provider === 'gemini') {
-    const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.GEMINI_OUTPUT, CLI_FLAGS.GEMINI_OUTPUT_JSON]
-    if (model) {
-      args.push(CLI_FLAGS.MODEL, model)
-    }
-    // Gemini CLI --prompt flag is deprecated, use positional argument
-    args.push(prompt)
-    return {
-      cmd: 'gemini',
-      args
-    }
+  if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
+    args.push(CLI_FLAGS.SKIP_PERMISSIONS)
   }
-  if (provider === 'claude') {
-    const args: string[] = [CLI_FLAGS.PRINT, CLI_FLAGS.CLAUDE_OUTPUT_FORMAT, CLI_FLAGS.CLAUDE_OUTPUT_JSON]
-    if (model) {
-      args.push(CLI_FLAGS.MODEL, model)
-    }
-    if (process.env.CLAUDE_SKIP_PERMISSIONS !== 'false') {
-      args.push(CLI_FLAGS.CLAUDE_SKIP_PERMISSIONS)
-    }
-    // Claude CLI uses positional prompt argument, not a flag
-    args.push(prompt)
-    return {
-      cmd: 'claude',
-      args
-    }
-  }
+  // Claude CLI uses positional prompt argument, not a flag
+  args.push(prompt)
   return {
-    cmd: getCodexCommand(),
-    args: [CLI_FLAGS.CODEX_EXEC, CLI_FLAGS.CODEX_CD, process.cwd(), CLI_FLAGS.CODEX_BYPASS_APPROVALS, prompt]
+    cmd: 'claude',
+    args
   }
 }
 

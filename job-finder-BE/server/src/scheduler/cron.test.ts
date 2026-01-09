@@ -46,7 +46,7 @@ describe('cron - getWorkerCliHealth', () => {
 
   it('should return successful worker CLI health when fetch succeeds', async () => {
     const mockProviders = {
-      codex: { healthy: true, message: 'logged in as user@example.com' },
+      claude: { healthy: true, message: 'logged in as user@example.com' },
       gemini: { healthy: true, message: 'authenticated' }
     }
 
@@ -65,7 +65,7 @@ describe('cron - getWorkerCliHealth', () => {
 
   it('should handle response payload without providers wrapper', async () => {
     const mockProviders = {
-      codex: { healthy: true, message: 'logged in' },
+      claude: { healthy: true, message: 'logged in' },
       gemini: { healthy: false, message: 'not authenticated' }
     }
 

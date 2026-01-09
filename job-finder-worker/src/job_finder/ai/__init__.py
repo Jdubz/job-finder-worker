@@ -5,12 +5,8 @@ from job_finder.ai.extraction import JobExtractionResult, JobExtractor
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.ai.providers import (
     AIProvider,
-    ClaudeProvider,
     ClaudeCLIProvider,
-    CodexCLIProvider,
-    GeminiCLIProvider,
     GeminiProvider,
-    OpenAIProvider,
 )
 from job_finder.ai.search_client import (
     BraveSearchClient,
@@ -38,12 +34,8 @@ __all__ = [
     "JobExtractor",
     "JobExtractionResult",
     "AIProvider",
-    "ClaudeProvider",
     "ClaudeCLIProvider",
-    "CodexCLIProvider",
-    "GeminiCLIProvider",
     "GeminiProvider",
-    "OpenAIProvider",
     "SourceAnalysisAgent",
     "SourceAnalysisResult",
     "SourceClassification",

@@ -3,6 +3,8 @@
 Tests the get_ai_settings method of ConfigLoader which retrieves
 AI provider configuration.
 
+Supported agents: claude.cli, gemini.api
+
 Note: get_job_match was removed during hybrid scoring migration.
 Job matching now uses match-policy and prefilter-policy.title instead.
 """
@@ -41,25 +43,25 @@ class TestConfigLoaderAISettings:
         conn = sqlite3.connect(db_path)
         payload = {
             "agents": {
-                "claude.api": {
+                "claude.cli": {
                     "provider": "claude",
-                    "interface": "api",
-                    "defaultModel": "claude-sonnet-4-5-20250929",
+                    "interface": "cli",
+                    "defaultModel": "claude-sonnet-4-5-latest",
                     "dailyBudget": 100,
                     "dailyUsage": 0,
                     "runtimeState": {
                         "worker": {"enabled": True, "reason": None},
                         "backend": {"enabled": True, "reason": None},
                     },
-                    "authRequirements": {"type": "api", "requiredEnv": ["ANTHROPIC_API_KEY"]},
+                    "authRequirements": {"type": "cli", "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"]},
                 }
             },
             "taskFallbacks": {
-                "extraction": ["claude.api"],
-                "analysis": ["claude.api"],
-                "document": ["claude.api"],
+                "extraction": ["claude.cli"],
+                "analysis": ["claude.cli"],
+                "document": ["claude.cli"],
             },
-            "modelRates": {"claude-sonnet-4-5-20250929": 1.0},
+            "modelRates": {"claude-sonnet-4-5-latest": 1.0},
             "options": [],
         }
         conn.execute(
@@ -72,8 +74,8 @@ class TestConfigLoaderAISettings:
         loader = ConfigLoader(db_path)
         ai_settings = loader.get_ai_settings()
 
-        assert ai_settings["agents"]["claude.api"]["defaultModel"] == "claude-sonnet-4-5-20250929"
-        assert ai_settings["taskFallbacks"]["document"] == ["claude.api"]
+        assert ai_settings["agents"]["claude.cli"]["defaultModel"] == "claude-sonnet-4-5-latest"
+        assert ai_settings["taskFallbacks"]["document"] == ["claude.cli"]
 
     def test_get_ai_settings_missing_raises(self, db_path):
         """Should fail loudly when ai-settings is missing."""
@@ -86,29 +88,34 @@ class TestConfigLoaderAISettings:
         conn = sqlite3.connect(db_path)
         payload = {
             "agents": {
-                "openai.api": {
-                    "provider": "openai",
+                "gemini.api": {
+                    "provider": "gemini",
                     "interface": "api",
-                    "defaultModel": "gpt-4o",
+                    "defaultModel": "gemini-2.0-flash",
                     "dailyBudget": 100,
                     "dailyUsage": 0,
                     "runtimeState": {
                         "worker": {"enabled": True, "reason": None},
                         "backend": {"enabled": True, "reason": None},
                     },
-                    "authRequirements": {"type": "api", "requiredEnv": ["OPENAI_API_KEY"]},
+                    "authRequirements": {
+                        "type": "api",
+                        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+                    },
                 }
             },
             "taskFallbacks": {
-                "extraction": ["openai.api"],
-                "analysis": ["openai.api"],
-                "document": ["openai.api"],
+                "extraction": ["gemini.api"],
+                "analysis": ["gemini.api"],
+                "document": ["gemini.api"],
             },
-            "modelRates": {"gpt-4o": 1.0},
+            "modelRates": {"gemini-2.0-flash": 0.5},
             "options": [
                 {
-                    "value": "openai",
-                    "interfaces": [{"value": "api", "models": ["gpt-4o"], "enabled": True}],
+                    "value": "gemini",
+                    "interfaces": [
+                        {"value": "api", "models": ["gemini-2.0-flash"], "enabled": True}
+                    ],
                 }
             ],
         }
@@ -122,8 +129,8 @@ class TestConfigLoaderAISettings:
         loader = ConfigLoader(db_path)
         ai_settings = loader.get_ai_settings()
 
-        assert ai_settings["agents"]["openai.api"]["defaultModel"] == "gpt-4o"
-        assert ai_settings["taskFallbacks"]["document"] == ["openai.api"]
+        assert ai_settings["agents"]["gemini.api"]["defaultModel"] == "gemini-2.0-flash"
+        assert ai_settings["taskFallbacks"]["document"] == ["gemini.api"]
 
 
 # NOTE: TestConfigLoaderJobMatch was removed during hybrid scoring migration.
@@ -160,25 +167,25 @@ class TestConfigLoaderIntegration:
         # Insert both configs
         ai_payload = {
             "agents": {
-                "claude.api": {
+                "claude.cli": {
                     "provider": "claude",
-                    "interface": "api",
-                    "defaultModel": "claude-sonnet",
+                    "interface": "cli",
+                    "defaultModel": "claude-sonnet-4-5-latest",
                     "dailyBudget": 100,
                     "dailyUsage": 0,
                     "runtimeState": {
                         "worker": {"enabled": True, "reason": None},
                         "backend": {"enabled": True, "reason": None},
                     },
-                    "authRequirements": {"type": "api", "requiredEnv": ["ANTHROPIC_API_KEY"]},
+                    "authRequirements": {"type": "cli", "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"]},
                 },
             },
             "taskFallbacks": {
-                "extraction": ["claude.api"],
-                "analysis": ["claude.api"],
-                "document": ["claude.api"],
+                "extraction": ["claude.cli"],
+                "analysis": ["claude.cli"],
+                "document": ["claude.cli"],
             },
-            "modelRates": {"claude-sonnet": 1.0},
+            "modelRates": {"claude-sonnet-4-5-latest": 1.0},
             "options": [],
         }
         # Complete match-policy (all sections required, no defaults)
@@ -277,7 +284,7 @@ class TestConfigLoaderIntegration:
         match_policy = loader.get_match_policy()
 
         # Verify they are separate
-        assert ai_settings["agents"]["claude.api"]["provider"] == "claude"
+        assert ai_settings["agents"]["claude.cli"]["provider"] == "claude"
         assert match_policy["minScore"] == 60
 
         # AI settings should not have match-policy fields
@@ -290,25 +297,28 @@ class TestConfigLoaderIntegration:
         conn = sqlite3.connect(db_path)
         payload = {
             "agents": {
-                "openai.api": {
-                    "provider": "openai",
+                "gemini.api": {
+                    "provider": "gemini",
                     "interface": "api",
-                    "defaultModel": "gpt-4o",
+                    "defaultModel": "gemini-2.0-flash",
                     "dailyBudget": 100,
                     "dailyUsage": 0,
                     "runtimeState": {
                         "worker": {"enabled": True, "reason": None},
                         "backend": {"enabled": True, "reason": None},
                     },
-                    "authRequirements": {"type": "api", "requiredEnv": ["OPENAI_API_KEY"]},
+                    "authRequirements": {
+                        "type": "api",
+                        "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+                    },
                 }
             },
             "taskFallbacks": {
-                "extraction": ["openai.api"],
-                "analysis": ["openai.api"],
-                "document": ["openai.api"],
+                "extraction": ["gemini.api"],
+                "analysis": ["gemini.api"],
+                "document": ["gemini.api"],
             },
-            "modelRates": {"gpt-4o": 1.0},
+            "modelRates": {"gemini-2.0-flash": 0.5},
             "options": [],
         }
         conn.execute(

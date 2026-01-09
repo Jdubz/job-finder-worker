@@ -14,7 +14,7 @@ export const configListSchema = z.object({
 })
 
 const aiProviderSelectionSchema = z.object({
-  provider: z.enum(["codex", "claude", "openai", "gemini"]),
+  provider: z.enum(["claude", "gemini"]),
   interface: z.enum(["cli", "api"]),
   model: z.string(),
 })
@@ -27,7 +27,7 @@ const aiInterfaceOptionSchema = z.object({
 })
 
 const aiProviderOptionSchema = z.object({
-  value: z.enum(["codex", "claude", "openai", "gemini"]),
+  value: z.enum(["claude", "gemini"]),
   interfaces: z.array(aiInterfaceOptionSchema),
 })
 
@@ -43,7 +43,7 @@ const agentAuthRequirementsSchema = z.object({
 })
 
 const agentConfigSchema = z.object({
-  provider: z.enum(["codex", "claude", "openai", "gemini"]),
+  provider: z.enum(["claude", "gemini"]),
   interface: z.enum(["cli", "api"]),
   defaultModel: z.string(),
   dailyBudget: z.number(),

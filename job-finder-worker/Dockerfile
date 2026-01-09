@@ -1,8 +1,9 @@
 # Multi-stage build for Job Finder (production)
 
-# Stage 0: build Codex CLI and Gemini CLI without leaving npm in final image
+# Stage 0: build Claude CLI without leaving npm in final image
+# Note: Only claude.cli is supported for CLI interface. gemini.api uses the Google Generative AI SDK.
 FROM node:20-slim AS cli-builder
-RUN npm install -g @openai/codex@0.58.0 @google/gemini-cli@0.18.4 @anthropic-ai/claude-code@2.0.52
+RUN npm install -g @anthropic-ai/claude-code@2.0.52
 
 # Stage 1: build Python deps and install Playwright browsers
 FROM python:3.12-slim as builder
@@ -54,13 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user matching API container (node user, uid 1000)
-# This ensures codex session files have consistent ownership across containers
 RUN groupadd --gid 1000 node \
     && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
-
-# AI CLI config directories (mount from host for auth credentials)
-ENV CODEX_HOME=/home/node/.codex
-ENV GEMINI_HOME=/home/node/.gemini
 
 # Copy Python packages from builder to node user's home
 COPY --from=builder /root/.local /home/node/.local
@@ -68,23 +64,15 @@ COPY --from=builder /root/.local /home/node/.local
 # Copy Playwright browser cache from builder (Chromium installed via 'playwright install chromium')
 COPY --from=builder /root/.cache/ms-playwright /home/node/.cache/ms-playwright
 
-# Copy Codex CLI + minimal node runtime (no npm in final image)
+# Copy Claude CLI + minimal node runtime (no npm in final image)
+# Note: Only claude.cli is supported for CLI interface. gemini.api uses Vertex AI SDK.
 COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex /usr/local/lib/node_modules/@openai/codex
-COPY --from=cli-builder /usr/local/lib/node_modules/@openai/codex/vendor /usr/local/vendor
-RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@openai/codex/bin/codex.js "$@"\n' > /usr/local/bin/codex && chmod +x /usr/local/bin/codex
-
-# Copy Gemini CLI
-COPY --from=cli-builder /usr/local/lib/node_modules/@google/gemini-cli /usr/local/lib/node_modules/@google/gemini-cli
-RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@google/gemini-cli/dist/index.js "$@"\n' > /usr/local/bin/gemini && chmod +x /usr/local/bin/gemini
-
-# Copy Claude CLI
 COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
 RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
-# Create directories for AI CLIs and data with proper ownership
-RUN mkdir -p /home/node/.codex /home/node/.gemini /home/node/.cache /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /home/node/.local /home/node/.cache /data
+# Create directories for data with proper ownership
+RUN mkdir -p /home/node/.cache /data/sqlite \
+    && chown -R node:node /home/node/.local /home/node/.cache /data
 
 # Copy application code
 COPY src/ ./src/
@@ -94,12 +82,10 @@ COPY scripts/ ./scripts/
 # Copy entrypoint and helper scripts
 COPY docker/entrypoint.sh /app/entrypoint.sh
 COPY docker/run-now.sh /app/docker/run-now.sh
-COPY docker/codex-safe /usr/local/bin/codex-safe
 
 # Set proper permissions for scripts
 RUN chmod +x /app/entrypoint.sh && \
-    chmod +x /app/docker/run-now.sh && \
-    chmod +x /usr/local/bin/codex-safe
+    chmod +x /app/docker/run-now.sh
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH

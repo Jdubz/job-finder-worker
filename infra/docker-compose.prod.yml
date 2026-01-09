@@ -16,17 +16,14 @@
 # This copies the file to /srv/job-finder/ and recreates containers.
 # Watchtower only handles IMAGE updates, not compose file changes.
 #
-# CLI CREDENTIALS (Codex/Gemini):
-# -------------------------------
-# Both containers bind-mount ~/.codex and ~/.gemini directly from the host.
-# This means:
-#   - Host and containers share the same OAuth tokens (no sync needed)
-#   - The codex-safe wrapper (in the image) uses flock to prevent race conditions
-#   - UID 1000 on host matches the 'node' user in containers
+# AI CREDENTIALS:
+# ----------------
+# Supported agents:
+#   - claude.cli: Uses CLAUDE_CODE_OAUTH_TOKEN env var
+#   - gemini.api: Uses GOOGLE_API_KEY or GEMINI_API_KEY env var
 #
-# If Codex gets disabled with "refresh token already used" error:
-#   1. Run: codex logout && codex login
-#   2. Clear the disabled state in the UI (Config -> AI Settings)
+# Set API keys in the respective secrets/*.env files.
+# UID 1000 on host matches the 'node' user in containers.
 #
 # PRODUCTION PATHS:
 # -----------------
@@ -70,16 +67,6 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /logs
-      # CLI credentials: direct bind mount from host (UID 1000 matches container's node user)
-      - type: bind
-        source: ${CODEX_HOST_PATH:-/home/jdubz/.codex}
-        target: /home/node/.codex
-      - type: bind
-        source: ${GEMINI_HOST_PATH:-/home/jdubz/.gemini}
-        target: /home/node/.gemini
-    extra_hosts:
-      - "chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
-      - "www.chatgpt.com:${CHATGPT_IPV4:-104.18.32.47}"
     networks:
       - jobfinder
     labels:
@@ -98,23 +85,11 @@ services:
       SQLITE_DB_PATH: /data/sqlite/jobfinder.db
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
-      CODEX_CONFIG_SOURCE: /codex
       TZ: America/Los_Angeles
     volumes:
       - type: bind
         source: /srv/job-finder/data
         target: /data/sqlite
-      # CLI credentials: direct bind mount from host (UID 1000 matches container's node user)
-      - type: bind
-        source: ${CODEX_HOST_PATH:-/home/jdubz/.codex}
-        target: /home/node/.codex
-      - type: bind
-        source: ${GEMINI_HOST_PATH:-/home/jdubz/.gemini}
-        target: /home/node/.gemini
-      # Python/local bin for helper scripts (no cron jobs run here)
-      - type: bind
-        source: /srv/job-finder/codex/local-bin
-        target: /home/node/.local/bin
       - type: bind
         source: /srv/job-finder/logs
         target: /app/logs

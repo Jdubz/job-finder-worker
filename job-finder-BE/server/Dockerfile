@@ -28,20 +28,18 @@ ENV HUSKY=0
 ENV HUSKY_SKIP_INSTALL=1
 ENV TZ=America/Los_Angeles
 
-# AI CLI config directories (mount from host for auth credentials)
-ENV CODEX_HOME=/home/node/.codex
-ENV GEMINI_HOME=/home/node/.gemini
 # Chromium path for Playwright PDF generation
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Install gosu for dropping privileges, ca-certificates for TLS, chromium for PDF generation, npm update, and AI CLIs
+# Install gosu for dropping privileges, ca-certificates for TLS, chromium for PDF generation, npm update, and Claude CLI
+# Note: Only claude.cli is supported for CLI interface. gemini.api uses the Google Generative AI SDK.
 RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates chromium tzdata \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g npm@11.6.3 @openai/codex@0.63.0 @google/gemini-cli@0.18.4 @anthropic-ai/claude-code@2.0.52 \
+    && npm install -g npm@11.6.3 @anthropic-ai/claude-code@2.0.52 \
     && npm cache clean --force \
-    && mkdir -p /home/node/.codex /home/node/.gemini /data/artifacts /data/sqlite \
-    && chown -R node:node /home/node/.codex /home/node/.gemini /data
+    && mkdir -p /data/artifacts /data/sqlite \
+    && chown -R node:node /data
 
 COPY job-finder-BE/server/package.json job-finder-BE/server/package-lock.json ./
 RUN sed -i 's#file:../../shared#file:./shared#g; s#"../../shared"#"./shared"#g' package.json package-lock.json
@@ -50,11 +48,9 @@ COPY infra/sqlite ./infra/sqlite
 RUN rm package-lock.json && npm install --omit=dev --no-package-lock && npm rebuild better-sqlite3
 COPY --from=base /app/dist ./dist
 
-# Copy entrypoint script and codex-safe wrapper
+# Copy entrypoint script
 COPY job-finder-BE/server/docker-entrypoint.sh /usr/local/bin/
-COPY job-finder-BE/server/docker/codex-safe /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && chmod +x /usr/local/bin/codex-safe \
     && chown -R node:node /app
 
 # Entrypoint fixes volume permissions then drops to node user
