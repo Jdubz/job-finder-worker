@@ -20,48 +20,19 @@ chown -R node:node /data 2>/dev/null || true
 chown -R node:node /app/data 2>/dev/null || true
 chown -R node:node /app/logs 2>/dev/null || true
 
-# Codex CLI auth check
-echo "=== Codex CLI Setup ==="
-echo "CODEX_HOME=${CODEX_HOME:-/home/node/.codex}"
-if [ -d "/home/node/.codex" ]; then
-    chown -R node:node /home/node/.codex
-    echo "Codex config directory: EXISTS"
-    if [ -f "/home/node/.codex/auth.json" ]; then
-        echo "auth.json: EXISTS"
-        if gosu node codex login status 2>/dev/null; then
-            echo "✓ Codex authenticated"
-        else
-            echo "WARNING: Codex login status check failed"
-        fi
-    else
-        echo "WARNING: auth.json not found"
-    fi
+# AI Provider auth check
+echo "=== AI Provider Setup ==="
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    echo "✓ Claude CLI: CLAUDE_CODE_OAUTH_TOKEN is set"
 else
-    echo "WARNING: Codex directory not mounted"
+    echo "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set - Claude CLI will not work"
 fi
-echo "=== End Codex Setup ==="
-echo ""
-
-# Gemini CLI auth check
-echo "=== Gemini CLI Setup ==="
-echo "GEMINI_HOME=${GEMINI_HOME:-/home/node/.gemini}"
-if [ -d "/home/node/.gemini" ]; then
-    chown -R node:node /home/node/.gemini
-    echo "Gemini config directory: EXISTS"
-    if [ -f "/home/node/.gemini/oauth_creds.json" ]; then
-        echo "oauth_creds.json: EXISTS"
-        if gosu node gemini auth status 2>/dev/null; then
-            echo "✓ Gemini authenticated"
-        else
-            echo "WARNING: Gemini auth status check failed"
-        fi
-    else
-        echo "WARNING: oauth_creds.json not found"
-    fi
+if [ -n "${GEMINI_API_KEY:-}${GOOGLE_API_KEY:-}${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
+    echo "✓ Gemini API: credentials configured"
 else
-    echo "WARNING: Gemini directory not mounted"
+    echo "WARNING: No Gemini API credentials set (GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS)"
 fi
-echo "=== End Gemini Setup ==="
+echo "=== End AI Provider Setup ==="
 echo ""
 
 # Check database exists

@@ -59,7 +59,7 @@ describeIntegration("Generator API Integration", () => {
       const { preferences } = mockGenerateResumeRequest
 
       expect(preferences).toBeDefined()
-      expect(preferences?.provider).toBe("openai")
+      expect(preferences?.provider).toBe("claude")
       expect(preferences?.tone).toBe("professional")
       expect(preferences?.includeProjects).toBe(true)
     })
@@ -127,7 +127,7 @@ describeIntegration("Generator API Integration", () => {
     })
 
     it("should have valid AI provider options", () => {
-      const validProviders = ["openai", "gemini"]
+      const validProviders = ["claude", "gemini"]
       const provider = mockGenerateResumeRequest.preferences?.provider
 
       expect(provider).toBeDefined()

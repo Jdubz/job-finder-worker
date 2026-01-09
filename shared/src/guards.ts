@@ -121,7 +121,7 @@ export function isQueueItem(value: unknown): value is QueueItem {
  * Type guard for AIProviderType
  */
 export function isAIProviderType(value: unknown): value is AIProviderType {
-  return typeof value === "string" && ["codex", "claude", "openai", "gemini"].includes(value)
+  return typeof value === "string" && ["claude", "gemini"].includes(value)
 }
 
 /**
@@ -595,7 +595,7 @@ export function isGenerationType(value: unknown): value is GenerationType {
   return typeof value === "string" && ["resume", "coverLetter", "both"].includes(value)
 }
 
-// Note: isAIProviderType is defined above with config types (codex, claude, openai, gemini)
+// Note: isAIProviderType is defined above with config types (claude, gemini)
 // and covers all generator use cases
 
 /**

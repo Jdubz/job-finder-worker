@@ -1,4 +1,4 @@
-export type AgentCliProvider = 'codex' | 'gemini' | 'claude'
+export type AgentCliProvider = 'claude'
 
 export interface AgentCliStatus {
   healthy: boolean

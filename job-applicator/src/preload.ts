@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("upload-resume", options),
 
   // Job submission
-  submitJob: (provider: "claude" | "codex" | "gemini") => ipcRenderer.invoke("submit-job", provider),
+  submitJob: (provider: "claude" | "gemini") => ipcRenderer.invoke("submit-job", provider),
 
   // CDP status
   getCdpStatus: () => ipcRenderer.invoke("get-cdp-status"),

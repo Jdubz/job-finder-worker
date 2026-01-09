@@ -8,7 +8,7 @@
 import { vi } from "vitest"
 
 // Mock child_process.spawn to prevent any accidental AI CLI calls
-// The AI CLI tools (claude, codex, gemini) are invoked via spawn in main.ts
+// The AI CLI tools (claude, gemini) are invoked via spawn in main.ts
 vi.mock("child_process", () => ({
   spawn: vi.fn(() => {
     throw new Error(

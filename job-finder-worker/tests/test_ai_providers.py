@@ -1,217 +1,21 @@
 """Tests for AI provider classes.
 
-Tests individual provider classes (CodexCLIProvider, ClaudeProvider, etc.)
-for correct initialization, API key handling, and response parsing.
+Tests individual provider classes (GeminiProvider, ClaudeCLIProvider)
+for correct initialization, API/CLI handling, and response parsing.
+
+Supported agents: gemini.api, claude.cli
 
 Note: Tests for provider selection and fallback logic are in test_agent_manager.py.
-The create_provider_from_config function was removed in the AgentManager refactor.
 """
 
 import pytest
 from unittest.mock import patch, MagicMock
 
 from job_finder.ai.providers import (
-    ClaudeProvider,
-    CodexCLIProvider,
-    GeminiCLIProvider,
+    ClaudeCLIProvider,
     GeminiProvider,
-    OpenAIProvider,
 )
-from job_finder.exceptions import AIProviderError, QuotaExhaustedError
-
-
-class TestCodexCLIProvider:
-    """Test CodexCLIProvider behavior."""
-
-    def test_init_with_model(self):
-        """Should initialize with specified model."""
-        provider = CodexCLIProvider(model="gpt-5-codex")
-        assert provider.model == "gpt-5-codex"
-
-    def test_init_with_default_model(self):
-        """Should use default model when not specified."""
-        provider = CodexCLIProvider()
-        assert provider.model == "gpt-5-codex"
-
-    def test_init_with_timeout(self):
-        """Should accept custom timeout."""
-        provider = CodexCLIProvider(timeout=120)
-        assert provider.timeout == 120
-
-    @patch("subprocess.run")
-    def test_generate_success(self, mock_run):
-        """Should successfully parse agent message from codex exec JSONL."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="\n".join(
-                [
-                    '{"type":"turn.started"}',
-                    '{"type":"item.completed","item":{"type":"agent_message","text":"Test response"}}',
-                    '{"type":"turn.completed"}',
-                ]
-            ),
-            stderr="",
-        )
-
-        provider = CodexCLIProvider()
-        result = provider.generate("Test prompt")
-
-        assert result == "Test response"
-        mock_run.assert_called_once()
-
-    @patch("subprocess.run")
-    def test_generate_uses_correct_cli_command(self, mock_run, tmp_path):
-        """Should invoke 'codex exec --json' with cwd and model flags."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"type":"item.completed","item":{"type":"agent_message","text":"Test response"}}',
-            stderr="",
-        )
-
-        with patch.dict("os.environ", {"CODEX_WORKDIR": str(tmp_path)}):
-            provider = CodexCLIProvider(model="gpt-5-codex")
-            provider.generate("Test prompt")
-
-        cmd = mock_run.call_args[0][0]
-        assert cmd[:4] == ["codex", "exec", "--json", "--skip-git-repo-check"]
-        assert "--cd" in cmd and str(tmp_path) in cmd
-        assert "--model" in cmd and "gpt-5-codex" in cmd
-        assert cmd[-2:] == ["--", "Test prompt"]
-
-    @patch("subprocess.run")
-    def test_generate_retries_without_model_when_unsupported(self, mock_run):
-        """Retry without model flag when ChatGPT account rejects model."""
-        mock_run.side_effect = [
-            MagicMock(
-                returncode=1,
-                stdout="",
-                stderr="The 'gpt-4o' model is not supported when using Codex with a ChatGPT account.",
-            ),
-            MagicMock(
-                returncode=0,
-                stdout='{"type":"item.completed","item":{"type":"agent_message","text":"Fallback response"}}',
-                stderr="",
-            ),
-        ]
-
-        provider = CodexCLIProvider(model="gpt-4o")
-        result = provider.generate("Test prompt")
-
-        assert result == "Fallback response"
-        assert mock_run.call_count == 2
-
-    @patch("subprocess.run")
-    def test_generate_cli_error(self, mock_run):
-        """Should raise AIProviderError on CLI failure."""
-        mock_run.return_value = MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="Authentication required",
-        )
-
-        provider = CodexCLIProvider()
-
-        with pytest.raises(AIProviderError, match="Codex CLI failed"):
-            provider.generate("Test prompt")
-
-    @patch("subprocess.run")
-    def test_generate_timeout(self, mock_run):
-        """Should raise AIProviderError on timeout."""
-        import subprocess
-
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
-
-        provider = CodexCLIProvider()
-
-        with pytest.raises(AIProviderError, match="timed out"):
-            provider.generate("Test prompt")
-
-    @patch("subprocess.run")
-    def test_generate_empty_content_raises_error(self, mock_run):
-        """Should raise AIProviderError when CLI returns empty content."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"type":"turn.completed"}',
-            stderr="",
-        )
-
-        provider = CodexCLIProvider()
-
-        with pytest.raises(AIProviderError, match="no message content"):
-            provider.generate("Test prompt")
-
-    @patch("subprocess.run")
-    def test_generate_malformed_json_raises_error(self, mock_run):
-        """Should raise AIProviderError on malformed JSON response."""
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="not valid json",
-            stderr="",
-        )
-
-        provider = CodexCLIProvider()
-
-        with pytest.raises(AIProviderError, match="no message content"):
-            provider.generate("Test prompt")
-
-
-class TestClaudeProvider:
-    """Test ClaudeProvider behavior."""
-
-    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
-    @patch("job_finder.ai.providers.Anthropic")
-    def test_init_with_env_key(self, mock_anthropic):
-        """Should use API key from environment."""
-        provider = ClaudeProvider()
-        assert provider.api_key == "test-key"
-        mock_anthropic.assert_called_once_with(api_key="test-key")
-
-    @patch("job_finder.ai.providers.Anthropic")
-    def test_init_with_explicit_key(self, mock_anthropic):
-        """Should use explicitly provided API key."""
-        provider = ClaudeProvider(api_key="explicit-key")
-        assert provider.api_key == "explicit-key"
-        mock_anthropic.assert_called_once_with(api_key="explicit-key")
-
-    @patch.dict("os.environ", {}, clear=True)
-    def test_init_raises_without_key(self):
-        """Should raise error when no API key available."""
-        # Clear ANTHROPIC_API_KEY if it exists
-        import os
-
-        os.environ.pop("ANTHROPIC_API_KEY", None)
-
-        with pytest.raises(AIProviderError, match="API key must be provided"):
-            ClaudeProvider()
-
-    def test_init_with_model(self):
-        """Should use specified model."""
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-            with patch("job_finder.ai.providers.Anthropic"):
-                provider = ClaudeProvider(model="claude-3-opus")
-                assert provider.model == "claude-3-opus"
-
-
-class TestOpenAIProvider:
-    """Test OpenAIProvider behavior."""
-
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
-    @patch("job_finder.ai.providers.OpenAI")
-    def test_init_with_env_key(self, mock_openai):
-        """Should use API key from environment."""
-        provider = OpenAIProvider()
-        assert provider.api_key == "test-key"
-        mock_openai.assert_called_once_with(api_key="test-key")
-
-    @patch.dict("os.environ", {}, clear=True)
-    def test_init_raises_without_key(self):
-        """Should raise error when no API key available."""
-        import os
-
-        os.environ.pop("OPENAI_API_KEY", None)
-
-        with pytest.raises(AIProviderError, match="API key must be provided"):
-            OpenAIProvider()
+from job_finder.exceptions import AIProviderError, QuotaExhaustedError, TransientError
 
 
 class TestGeminiProvider:
@@ -261,6 +65,13 @@ class TestGeminiProvider:
 
         with pytest.raises(AIProviderError, match="GCP project must be provided"):
             GeminiProvider()
+
+    @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch("google.genai.Client")
+    def test_init_with_model(self, mock_client):
+        """Should accept custom model."""
+        provider = GeminiProvider(model="gemini-1.5-pro")
+        assert provider.model == "gemini-1.5-pro"
 
     @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})
     @patch("google.genai.Client")
@@ -341,71 +152,269 @@ class TestGeminiProvider:
             provider.generate("Say hello")
 
 
-class TestGeminiCLIProvider:
-    """Test GeminiCLIProvider behavior."""
+class TestClaudeCLIProvider:
+    """Test ClaudeCLIProvider behavior."""
 
     def test_init_with_model(self):
         """Should initialize with specified model."""
-        provider = GeminiCLIProvider(model="gemini-2.0-flash")
-        assert provider.model == "gemini-2.0-flash"
+        provider = ClaudeCLIProvider(model="sonnet")
+        assert provider.model == "sonnet"
+
+    def test_init_without_model(self):
+        """Should initialize without model (uses CLI default)."""
+        provider = ClaudeCLIProvider()
+        assert provider.model is None
 
     def test_init_with_timeout(self):
         """Should accept custom timeout."""
-        provider = GeminiCLIProvider(timeout=180)
+        provider = ClaudeCLIProvider(timeout=180)
         assert provider.timeout == 180
 
+    def test_init_default_timeout(self):
+        """Should use default timeout of 120s."""
+        provider = ClaudeCLIProvider()
+        assert provider.timeout == 120
+
     @patch("subprocess.run")
-    def test_generate_success(self, mock_run):
-        """Should parse JSON response from gemini CLI."""
+    def test_generate_success_with_text_field(self, mock_run):
+        """Should parse JSON response with text field."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"response": "Test response from Gemini"}',
+            stdout='{"text": "Test response from Claude"}',
             stderr="",
         )
 
-        provider = GeminiCLIProvider()
+        provider = ClaudeCLIProvider()
         result = provider.generate("Test prompt")
 
-        assert result == "Test response from Gemini"
+        assert result == "Test response from Claude"
+        mock_run.assert_called_once()
 
     @patch("subprocess.run")
-    def test_generate_handles_yolo_prefix(self, mock_run):
-        """Should handle 'YOLO mode...' prefix in output."""
+    def test_generate_success_with_completion_field(self, mock_run):
+        """Should parse JSON response with completion field."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='YOLO mode enabled\n{"response": "Test response"}',
+            stdout='{"completion": "Completion response"}',
             stderr="",
         )
 
-        provider = GeminiCLIProvider()
+        provider = ClaudeCLIProvider()
         result = provider.generate("Test prompt")
 
-        assert result == "Test response"
+        assert result == "Completion response"
 
     @patch("subprocess.run")
-    def test_generate_quota_exhausted(self, mock_run):
-        """Should raise QuotaExhaustedError when quota is exceeded."""
-        from job_finder.exceptions import QuotaExhaustedError
+    def test_generate_success_with_nested_output(self, mock_run):
+        """Should parse JSON response with output.text field."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"output": {"text": "Nested response"}}',
+            stderr="",
+        )
 
+        provider = ClaudeCLIProvider()
+        result = provider.generate("Test prompt")
+
+        assert result == "Nested response"
+
+    @patch("subprocess.run")
+    def test_generate_fallback_to_raw_output(self, mock_run):
+        """Should fall back to raw stdout when JSON has unknown structure."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"unknown_field": "value"}',
+            stderr="",
+        )
+
+        provider = ClaudeCLIProvider()
+        result = provider.generate("Test prompt")
+
+        assert result == '{"unknown_field": "value"}'
+
+    @patch("subprocess.run")
+    def test_generate_non_json_output(self, mock_run):
+        """Should handle plain text output (non-JSON)."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Plain text response",
+            stderr="",
+        )
+
+        provider = ClaudeCLIProvider()
+        result = provider.generate("Test prompt")
+
+        assert result == "Plain text response"
+
+    @patch("subprocess.run")
+    def test_generate_uses_correct_cli_command(self, mock_run):
+        """Should invoke 'claude --print --output-format json' with model."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"text": "Response"}',
+            stderr="",
+        )
+
+        provider = ClaudeCLIProvider(model="opus")
+        provider.generate("Test prompt")
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "claude"
+        assert "--print" in cmd
+        assert "--output-format" in cmd
+        assert "json" in cmd
+        assert "--model" in cmd
+        assert "opus" in cmd
+        assert "Test prompt" in cmd
+
+    @patch("subprocess.run")
+    def test_generate_without_model_flag(self, mock_run):
+        """Should not include --model flag when model is None."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"text": "Response"}',
+            stderr="",
+        )
+
+        provider = ClaudeCLIProvider()  # No model specified
+        provider.generate("Test prompt")
+
+        cmd = mock_run.call_args[0][0]
+        assert "--model" not in cmd
+
+    @patch("subprocess.run")
+    def test_generate_cli_error(self, mock_run):
+        """Should raise AIProviderError on CLI failure."""
         mock_run.return_value = MagicMock(
             returncode=1,
             stdout="",
-            stderr="Error: You have exhausted your daily quota",
+            stderr="Authentication required",
         )
 
-        provider = GeminiCLIProvider()
+        provider = ClaudeCLIProvider()
 
-        with pytest.raises(QuotaExhaustedError):
+        with pytest.raises(AIProviderError, match="Authentication required"):
+            provider.generate("Test prompt")
+
+    @patch("subprocess.run")
+    def test_generate_cli_error_uses_stdout_when_no_stderr(self, mock_run):
+        """Should use stdout for error when stderr is empty."""
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="Error in stdout",
+            stderr="",
+        )
+
+        provider = ClaudeCLIProvider()
+
+        with pytest.raises(AIProviderError, match="Error in stdout"):
             provider.generate("Test prompt")
 
     @patch("subprocess.run")
     def test_generate_timeout(self, mock_run):
-        """Should raise AIProviderError on timeout."""
+        """Should raise TransientError on timeout."""
         import subprocess
 
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="gemini", timeout=120)
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="claude", timeout=120)
 
-        provider = GeminiCLIProvider()
+        provider = ClaudeCLIProvider()
 
-        with pytest.raises(AIProviderError, match="timed out"):
+        with pytest.raises(TransientError, match="timed out"):
             provider.generate("Test prompt")
+
+    @patch("subprocess.run")
+    def test_generate_binary_not_found(self, mock_run):
+        """Should raise AIProviderError when claude binary not found."""
+        mock_run.side_effect = FileNotFoundError("claude not found")
+
+        provider = ClaudeCLIProvider()
+
+        with pytest.raises(AIProviderError, match="Claude CLI binary not found"):
+            provider.generate("Test prompt")
+
+    @patch("subprocess.run")
+    def test_generate_empty_output(self, mock_run):
+        """Should raise AIProviderError when CLI returns no output."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        provider = ClaudeCLIProvider()
+
+        with pytest.raises(AIProviderError, match="returned no output"):
+            provider.generate("Test prompt")
+
+
+class TestAuthHelpers:
+    """Test authentication helper functions.
+
+    Note: Gemini API uses Vertex AI which requires GOOGLE_CLOUD_PROJECT and ADC.
+    """
+
+    def test_check_gemini_api_auth_missing_project(self):
+        """Should return False when GOOGLE_CLOUD_PROJECT is not set."""
+        from job_finder.ai.providers import _check_gemini_api_auth
+
+        with patch.dict("os.environ", {}, clear=True):
+            available, reason = _check_gemini_api_auth()
+            assert available is False
+            assert "GOOGLE_CLOUD_PROJECT" in reason
+
+    def test_check_gemini_api_auth_with_adc(self):
+        """Should return True when GOOGLE_CLOUD_PROJECT and ADC are available."""
+        # Mock google.auth.default() to succeed
+        mock_default = MagicMock(return_value=(MagicMock(), "test-project"))
+
+        with (
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=True),
+            patch("google.auth.default", mock_default),
+        ):
+            from job_finder.ai.providers import _check_gemini_api_auth
+
+            available, reason = _check_gemini_api_auth()
+            assert available is True
+            assert reason == ""
+
+    def test_check_cli_auth_with_oauth_token(self):
+        """Should detect CLAUDE_CODE_OAUTH_TOKEN."""
+        from job_finder.ai.providers import _check_cli_auth
+
+        with patch.dict("os.environ", {"CLAUDE_CODE_OAUTH_TOKEN": "test-token"}):
+            available, hint = _check_cli_auth("claude")
+            assert available is True
+
+    def test_check_cli_auth_missing(self):
+        """Should return False when CLAUDE_CODE_OAUTH_TOKEN not set."""
+        from job_finder.ai.providers import _check_cli_auth
+
+        with patch.dict("os.environ", {}, clear=True):
+            available, hint = _check_cli_auth("claude")
+            assert available is False
+            assert "CLAUDE_CODE_OAUTH_TOKEN" in hint
+
+    def test_auth_status_gemini_api_missing_project(self):
+        """Should check Gemini API auth correctly - requires GOOGLE_CLOUD_PROJECT."""
+        from job_finder.ai.providers import auth_status
+
+        with patch.dict("os.environ", {}, clear=True):
+            available, reason = auth_status("gemini", "api")
+            assert available is False
+            assert "GOOGLE_CLOUD_PROJECT" in reason
+
+    def test_auth_status_claude_cli(self):
+        """Should check Claude CLI auth correctly."""
+        from job_finder.ai.providers import auth_status
+
+        with patch.dict("os.environ", {"CLAUDE_CODE_OAUTH_TOKEN": "test-token"}):
+            available, reason = auth_status("claude", "cli")
+            assert available is True
+
+    def test_auth_status_unsupported_agent(self):
+        """Should return False for unsupported agents."""
+        from job_finder.ai.providers import auth_status
+
+        available, reason = auth_status("openai", "api")
+        assert available is False
+        assert "unsupported_agent" in reason

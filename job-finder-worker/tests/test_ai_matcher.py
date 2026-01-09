@@ -113,12 +113,12 @@ class TestAnalyzeMatch:
         """
         from job_finder.exceptions import AIProviderError
 
-        mock_agent_manager.execute.side_effect = AIProviderError("Codex CLI failed")
+        mock_agent_manager.execute.side_effect = AIProviderError("Claude CLI failed")
 
         matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
 
         # Should raise AIProviderError, not return None
-        with pytest.raises(AIProviderError, match="Codex CLI failed"):
+        with pytest.raises(AIProviderError, match="Claude CLI failed"):
             matcher._analyze_match(sample_job)
 
     def test_analyze_match_extracts_from_markdown(

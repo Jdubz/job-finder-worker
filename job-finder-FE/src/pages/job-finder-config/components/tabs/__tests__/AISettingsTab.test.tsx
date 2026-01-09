@@ -30,9 +30,9 @@ vi.mock("lucide-react", async (importOriginal) => {
 describe("AISettingsTab", () => {
   const mockAISettings: AISettings = {
     agents: {
-      "gemini.cli": {
+      "gemini.api": {
         provider: "gemini",
-        interface: "cli",
+        interface: "api",
         defaultModel: "gemini-2.0-flash",
         dailyBudget: 100,
         dailyUsage: 25,
@@ -40,41 +40,38 @@ describe("AISettingsTab", () => {
           worker: { enabled: true, reason: null },
           backend: { enabled: true, reason: null },
         },
-        authRequirements: { type: "cli", requiredEnv: ["GEMINI_API_KEY"] },
+        authRequirements: { type: "api", requiredEnv: ["GEMINI_API_KEY"] },
       },
-      "codex.cli": {
-        provider: "codex",
+      "claude.cli": {
+        provider: "claude",
         interface: "cli",
-        defaultModel: "gpt-4o",
+        defaultModel: "default",
         dailyBudget: 50,
         dailyUsage: 50,
         runtimeState: {
           worker: { enabled: false, reason: "quota_exhausted: daily budget reached" },
           backend: { enabled: true, reason: null },
         },
-        authRequirements: { type: "cli", requiredEnv: ["OPENAI_API_KEY"] },
+        authRequirements: { type: "cli", requiredEnv: ["CLAUDE_CODE_OAUTH_TOKEN"] },
       },
     },
     taskFallbacks: {
-      extraction: ["gemini.cli", "codex.cli"],
-      analysis: ["codex.cli"],
-      document: ["codex.cli", "gemini.cli"],
+      extraction: ["gemini.api", "claude.cli"],
+      analysis: ["claude.cli"],
+      document: ["claude.cli", "gemini.api"],
     },
     modelRates: {
-      "gpt-4o": 1.0,
+      default: 1.0,
       "gemini-2.0-flash": 0.3,
     },
     options: [
       {
-        value: "codex",
-        interfaces: [{ value: "cli", enabled: true, models: ["gpt-4o"] }],
+        value: "claude",
+        interfaces: [{ value: "cli", enabled: true, models: ["default"] }],
       },
       {
         value: "gemini",
-        interfaces: [
-          { value: "cli", enabled: true, models: ["gemini-2.0-flash"] },
-          { value: "api", enabled: true, models: ["gemini-2.0-flash"] },
-        ],
+        interfaces: [{ value: "api", enabled: true, models: ["gemini-2.0-flash"] }],
       },
     ],
   }
@@ -103,8 +100,8 @@ describe("AISettingsTab", () => {
     render(<AISettingsTab {...defaultProps} />)
 
     // Check for agent display (provider labels)
-    expect(screen.getByText("Google Gemini (CLI (Command Line))")).toBeInTheDocument()
-    expect(screen.getByText("Codex CLI (OpenAI Pro) (CLI (Command Line))")).toBeInTheDocument()
+    expect(screen.getByText("Google Gemini (API (Direct))")).toBeInTheDocument()
+    expect(screen.getByText("Claude CLI (CLI (Command Line))")).toBeInTheDocument()
 
     // Check for quota exhausted badge
     expect(screen.getByText("Quota Exhausted")).toBeInTheDocument()
@@ -115,7 +112,7 @@ describe("AISettingsTab", () => {
 
     // Check for usage display
     expect(screen.getByText(/25 \/ 100/)).toBeInTheDocument() // gemini usage
-    expect(screen.getByText(/50 \/ 50/)).toBeInTheDocument() // codex usage
+    expect(screen.getByText(/50 \/ 50/)).toBeInTheDocument() // claude usage
   })
 
   it("renders fallback chain configuration", () => {
@@ -169,7 +166,7 @@ describe("AISettingsTab", () => {
   it("shows clear error button for agents with errors", () => {
     render(<AISettingsTab {...defaultProps} />)
 
-    // The codex.cli worker scope has a quota_exhausted reason, so Clear button should appear
+    // The claude.cli worker scope has a quota_exhausted reason, so Clear button should appear
     expect(screen.getByText("Clear")).toBeInTheDocument()
   })
 
@@ -207,7 +204,7 @@ describe("AISettingsTab", () => {
 
       // Check that model values are displayed (may appear multiple times in dropdowns and rates)
       expect(screen.getAllByText("gemini-2.0-flash").length).toBeGreaterThan(0)
-      expect(screen.getAllByText("gpt-4o").length).toBeGreaterThan(0)
+      expect(screen.getAllByText("default").length).toBeGreaterThan(0)
     })
 
     it("calls setAISettings with updated model when model is changed", async () => {
@@ -240,8 +237,8 @@ describe("AISettingsTab", () => {
         ...mockAISettings,
         agents: {
           ...mockAISettings.agents,
-          "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"]!,
+          "gemini.api": {
+            ...mockAISettings.agents["gemini.api"]!,
             dailyUsage: 0,
           } as AgentConfig,
         },
@@ -249,7 +246,7 @@ describe("AISettingsTab", () => {
 
       render(<AISettingsTab {...defaultProps} aiSettings={settingsWithZeroUsage} />)
 
-      // Only codex.cli has usage > 0, so only one reset button
+      // Only claude.cli has usage > 0, so only one reset button
       const resetButtons = screen.getAllByTitle("Reset daily usage")
       expect(resetButtons.length).toBe(1)
     })
@@ -260,7 +257,7 @@ describe("AISettingsTab", () => {
 
       render(<AISettingsTab {...defaultProps} setAISettings={setAISettings} />)
 
-      // Click the first reset button (for gemini.cli which has usage 25)
+      // Click the first reset button (for gemini.api which has usage 25)
       const resetButtons = screen.getAllByTitle("Reset daily usage")
       await user.click(resetButtons[0])
 
@@ -269,19 +266,19 @@ describe("AISettingsTab", () => {
       // Verify the updater function sets dailyUsage to 0
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      expect(result.agents["gemini.cli"].dailyUsage).toBe(0)
+      expect(result.agents["gemini.api"].dailyUsage).toBe(0)
     })
 
     it("does not show reset button when usage is 0", () => {
       const settingsWithAllZeroUsage: AISettings = {
         ...mockAISettings,
         agents: {
-          "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"]!,
+          "gemini.api": {
+            ...mockAISettings.agents["gemini.api"]!,
             dailyUsage: 0,
           } as AgentConfig,
-          "codex.cli": {
-            ...mockAISettings.agents["codex.cli"]!,
+          "claude.cli": {
+            ...mockAISettings.agents["claude.cli"]!,
             dailyUsage: 0,
           } as AgentConfig,
         },
@@ -298,7 +295,7 @@ describe("AISettingsTab", () => {
     it("shows clear button only for agents with errors", () => {
       render(<AISettingsTab {...defaultProps} />)
 
-      // Only codex.cli has a worker reason set, so only one Clear button
+      // Only claude.cli has a worker reason set, so only one Clear button
       const clearButtons = screen.getAllByText("Clear")
       expect(clearButtons.length).toBe(1)
     })
@@ -307,15 +304,15 @@ describe("AISettingsTab", () => {
       const settingsWithNoErrors: AISettings = {
         ...mockAISettings,
         agents: {
-          "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"]!,
+          "gemini.api": {
+            ...mockAISettings.agents["gemini.api"]!,
             runtimeState: {
               worker: { enabled: true, reason: null },
               backend: { enabled: true, reason: null },
             },
           } as AgentConfig,
-          "codex.cli": {
-            ...mockAISettings.agents["codex.cli"]!,
+          "claude.cli": {
+            ...mockAISettings.agents["claude.cli"]!,
             runtimeState: {
               worker: { enabled: true, reason: null },
               backend: { enabled: true, reason: null },
@@ -344,8 +341,8 @@ describe("AISettingsTab", () => {
       // Verify the updater function clears reason and enables the agent
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      expect(result.agents["codex.cli"].runtimeState.worker.enabled).toBe(true)
-      expect(result.agents["codex.cli"].runtimeState.worker.reason).toBeNull()
+      expect(result.agents["claude.cli"].runtimeState.worker.enabled).toBe(true)
+      expect(result.agents["claude.cli"].runtimeState.worker.reason).toBeNull()
     })
 
     it("shows error badge with correct variant for quota exhausted", () => {
@@ -360,8 +357,8 @@ describe("AISettingsTab", () => {
         ...mockAISettings,
         agents: {
           ...mockAISettings.agents,
-          "codex.cli": {
-            ...mockAISettings.agents["codex.cli"]!,
+          "claude.cli": {
+            ...mockAISettings.agents["claude.cli"]!,
             runtimeState: {
               worker: { enabled: false, reason: "error: API connection failed" },
               backend: { enabled: true, reason: null },
@@ -376,15 +373,15 @@ describe("AISettingsTab", () => {
     })
 
     it("shows detailed error panel for errors with multiline reasons", () => {
-      const multilineError = `error: Codex CLI failed (exit 1): {"type":"error","message":"MCP client failed"}
+      const multilineError = `error: Claude CLI failed (exit 1): {"type":"error","message":"MCP client failed"}
 {"type":"error","message":"Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again."}`
 
       const settingsWithDetailedError: AISettings = {
         ...mockAISettings,
         agents: {
           ...mockAISettings.agents,
-          "codex.cli": {
-            ...mockAISettings.agents["codex.cli"]!,
+          "claude.cli": {
+            ...mockAISettings.agents["claude.cli"]!,
             runtimeState: {
               worker: { enabled: false, reason: multilineError },
               backend: { enabled: true, reason: null },
@@ -403,15 +400,15 @@ describe("AISettingsTab", () => {
 
     it("expands error details when Show full error is clicked", async () => {
       const user = userEvent.setup()
-      const multilineError = `error: Codex CLI failed (exit 1): {"type":"error","message":"MCP client failed"}
+      const multilineError = `error: Claude CLI failed (exit 1): {"type":"error","message":"MCP client failed"}
 {"type":"error","message":"Your access token could not be refreshed"}`
 
       const settingsWithDetailedError: AISettings = {
         ...mockAISettings,
         agents: {
           ...mockAISettings.agents,
-          "codex.cli": {
-            ...mockAISettings.agents["codex.cli"]!,
+          "claude.cli": {
+            ...mockAISettings.agents["claude.cli"]!,
             runtimeState: {
               worker: { enabled: false, reason: multilineError },
               backend: { enabled: true, reason: null },
@@ -427,7 +424,7 @@ describe("AISettingsTab", () => {
       // After clicking, should show "Hide details" and the full error
       expect(screen.getByText("Hide details")).toBeInTheDocument()
       // The pre element with full error should be visible
-      expect(screen.getByText(/Codex CLI failed/)).toBeInTheDocument()
+      expect(screen.getByText(/Claude CLI failed/)).toBeInTheDocument()
     })
 
     it("does not show error panel for quota exhausted reasons", () => {
@@ -465,8 +462,8 @@ describe("AISettingsTab", () => {
       // Verify the updater function removes the agent from the chain
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      // First agent (gemini.cli) should be removed from extraction
-      expect(result.taskFallbacks.extraction).toEqual(["codex.cli"])
+      // First agent (gemini.api) should be removed from extraction
+      expect(result.taskFallbacks.extraction).toEqual(["claude.cli"])
     })
 
     it("removes correct agent when middle agent X is clicked", async () => {
@@ -483,8 +480,8 @@ describe("AISettingsTab", () => {
 
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      // Second agent (codex.cli) should be removed from extraction
-      expect(result.taskFallbacks.extraction).toEqual(["gemini.cli"])
+      // Second agent (claude.cli) should be removed from extraction
+      expect(result.taskFallbacks.extraction).toEqual(["gemini.api"])
     })
 
     it("shows empty chain message when all agents removed", () => {
@@ -514,7 +511,7 @@ describe("AISettingsTab", () => {
 
       // Find the switches - there should be 4 (worker/backend for each agent)
       const switches = screen.getAllByRole("switch")
-      // Index 2 corresponds to codex.cli worker scope (disabled with reason)
+      // Index 2 corresponds to claude.cli worker scope (disabled with reason)
       await user.click(switches[2])
 
       expect(setAISettings).toHaveBeenCalledTimes(1)
@@ -522,8 +519,8 @@ describe("AISettingsTab", () => {
       // Verify the updater clears reason when enabling
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      expect(result.agents["codex.cli"].runtimeState.worker.enabled).toBe(true)
-      expect(result.agents["codex.cli"].runtimeState.worker.reason).toBeNull()
+      expect(result.agents["claude.cli"].runtimeState.worker.enabled).toBe(true)
+      expect(result.agents["claude.cli"].runtimeState.worker.reason).toBeNull()
     })
 
     it("preserves reason when agent is toggled off", async () => {
@@ -532,8 +529,8 @@ describe("AISettingsTab", () => {
         ...mockAISettings,
         agents: {
           ...mockAISettings.agents,
-          "gemini.cli": {
-            ...mockAISettings.agents["gemini.cli"]!,
+          "gemini.api": {
+            ...mockAISettings.agents["gemini.api"]!,
             runtimeState: {
               worker: { enabled: true, reason: "some_status: previously set" },
               backend: { enabled: true, reason: null },
@@ -547,7 +544,7 @@ describe("AISettingsTab", () => {
 
       render(<AISettingsTab {...defaultProps} aiSettings={settingsWithReason} setAISettings={setAISettings} />)
 
-      // Find the switches and click the first one (gemini.cli worker which is enabled)
+      // Find the switches and click the first one (gemini.api worker which is enabled)
       const switches = screen.getAllByRole("switch")
       await user.click(switches[0])
 
@@ -556,9 +553,9 @@ describe("AISettingsTab", () => {
       // Verify the updater sets enabled to false but preserves reason
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(settingsWithReason)
-      expect(result.agents["gemini.cli"].runtimeState.worker.enabled).toBe(false)
+      expect(result.agents["gemini.api"].runtimeState.worker.enabled).toBe(false)
       // Reason should be preserved when disabling
-      expect(result.agents["gemini.cli"].runtimeState.worker.reason).toBe("some_status: previously set")
+      expect(result.agents["gemini.api"].runtimeState.worker.reason).toBe("some_status: previously set")
     })
   })
 
@@ -591,7 +588,7 @@ describe("AISettingsTab", () => {
       expect(setAISettings).toHaveBeenCalled()
       const updaterFn = setAISettings.mock.calls[0][0]
       const result = updaterFn(mockAISettings)
-      expect(result.agents["gemini.cli"].dailyBudget).toBe(200)
+      expect(result.agents["gemini.api"].dailyBudget).toBe(200)
     })
 
     it("resets to previous value on blur if input is zero", async () => {

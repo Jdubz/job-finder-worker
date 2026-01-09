@@ -507,7 +507,7 @@ export function SystemHealthPage() {
               )}
             </div>
             <CardDescription>
-              Authentication and availability checks for codex and gemini CLIs
+              Authentication and availability checks for Claude CLI and Gemini API
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

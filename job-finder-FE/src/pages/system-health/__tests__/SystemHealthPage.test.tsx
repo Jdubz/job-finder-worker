@@ -40,15 +40,14 @@ vi.mock("@/api/queue-client", () => ({
     }),
     getAgentCliHealth: vi.fn().mockResolvedValue({
       backend: {
-        openai: { healthy: true, message: "API key valid" },
-        anthropic: { healthy: true, message: "API key valid" },
+        claude: { healthy: true, message: "OAuth token valid" },
       },
       worker: {
         reachable: true,
         workerUrl: "http://localhost:8001",
         providers: {
-          codex: { healthy: true, message: "CLI ready" },
-          gemini: { healthy: true, message: "CLI ready" },
+          claude: { healthy: true, message: "CLI ready" },
+          gemini: { healthy: true, message: "API key valid" },
         },
       },
     }),

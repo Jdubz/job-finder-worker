@@ -52,7 +52,7 @@ function makeAgentManager() {
             closingParagraph: 'Thank you for your consideration.',
             signature: 'Test User'
           }),
-          agentId: 'gemini.cli',
+          agentId: 'gemini.api',
           model: 'gemini-2.0-flash'
         })
       }
@@ -77,7 +77,7 @@ function makeAgentManager() {
           skills: [{ category: 'Core', items: ['JS'] }],
           education: []
         }),
-        agentId: 'gemini.cli',
+        agentId: 'gemini.api',
         model: 'gemini-2.0-flash'
       })
     })

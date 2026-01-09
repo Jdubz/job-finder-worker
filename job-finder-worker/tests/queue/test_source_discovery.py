@@ -59,10 +59,10 @@ def mock_dependencies() -> Dict[str, Any]:
     config_loader = MagicMock()
     config_loader.get_ai_settings.return_value = {
         "agents": {
-            "codex.cli": {
-                "provider": "codex",
+            "claude.cli": {
+                "provider": "claude",
                 "interface": "cli",
-                "defaultModel": "gpt-4o",
+                "defaultModel": "default",
                 "dailyBudget": 100,
                 "dailyUsage": 0,
                 "runtimeState": {
@@ -71,16 +71,16 @@ def mock_dependencies() -> Dict[str, Any]:
                 },
                 "authRequirements": {
                     "type": "cli",
-                    "requiredEnv": ["PATH"],
+                    "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"],
                 },
             }
         },
         "taskFallbacks": {
-            "extraction": ["codex.cli"],
-            "analysis": ["codex.cli"],
-            "document": ["codex.cli"],
+            "extraction": ["claude.cli"],
+            "analysis": ["claude.cli"],
+            "document": ["claude.cli"],
         },
-        "modelRates": {"gpt-4o": 1.0},
+        "modelRates": {"default": 1.0},
         "options": [],
     }
     config_loader.get_title_filter.return_value = {

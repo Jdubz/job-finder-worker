@@ -46,11 +46,12 @@ vi.mock('../../../../logger', () => ({
   }
 }))
 
+type CliResult = { success: boolean; output: string; error?: string; errorType?: string }
 type RunCliProviderFn = (
   prompt: string,
-  provider: 'codex' | 'gemini' | 'claude',
+  provider: 'claude',
   options?: { model?: string; timeoutMs?: number }
-) => Promise<{ success: boolean; output: string; error?: string; errorType?: string }>
+) => Promise<CliResult>
 
 describe('cli-runner', () => {
   let runCliProvider: RunCliProviderFn
@@ -64,94 +65,6 @@ describe('cli-runner', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
-  })
-
-  describe('codex provider CLI arguments', () => {
-    it('builds correct command for codex without model', async () => {
-      await runCliProvider('test prompt', 'codex')
-
-      expect(spawnCalls).toHaveLength(1)
-      expect(spawnCalls[0].cmd).toBe('codex')
-      expect(spawnCalls[0].args).toEqual([
-        'exec',
-        '--skip-git-repo-check',
-        '--cd',
-        process.cwd(),
-        '--dangerously-bypass-approvals-and-sandbox',
-        'test prompt'
-      ])
-    })
-
-    it('builds correct command for codex with model (model is ignored for codex)', async () => {
-      await runCliProvider('test prompt', 'codex', { model: 'gpt-4o' })
-
-      expect(spawnCalls).toHaveLength(1)
-      expect(spawnCalls[0].cmd).toBe('codex')
-      // Codex doesn't use model flag - prompt is passed directly
-      expect(spawnCalls[0].args).toEqual([
-        'exec',
-        '--skip-git-repo-check',
-        '--cd',
-        process.cwd(),
-        '--dangerously-bypass-approvals-and-sandbox',
-        'test prompt'
-      ])
-    })
-
-    it('includes prompt as last argument for codex', async () => {
-      const longPrompt = 'Generate a detailed resume for a software engineer with 10 years of experience'
-      await runCliProvider(longPrompt, 'codex')
-
-      expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe(longPrompt)
-    })
-  })
-
-  describe('gemini provider CLI arguments', () => {
-    it('builds correct command for gemini without model', async () => {
-      await runCliProvider('test prompt', 'gemini')
-
-      expect(spawnCalls).toHaveLength(1)
-      expect(spawnCalls[0].cmd).toBe('gemini')
-      // Gemini CLI uses positional prompt argument (--prompt is deprecated)
-      expect(spawnCalls[0].args).toEqual([
-        '--print',
-        '--output',
-        'json',
-        'test prompt'
-      ])
-    })
-
-    it('builds correct command for gemini with model', async () => {
-      await runCliProvider('test prompt', 'gemini', { model: 'gemini-2.0-flash' })
-
-      expect(spawnCalls).toHaveLength(1)
-      expect(spawnCalls[0].cmd).toBe('gemini')
-      // Gemini CLI uses positional prompt argument (--prompt is deprecated)
-      expect(spawnCalls[0].args).toEqual([
-        '--print',
-        '--output',
-        'json',
-        '--model',
-        'gemini-2.0-flash',
-        'test prompt'
-      ])
-    })
-
-    it('uses positional argument for gemini CLI prompt (not --prompt flag)', async () => {
-      await runCliProvider('my prompt here', 'gemini')
-
-      // --prompt flag is deprecated, prompt should be last positional argument
-      expect(spawnCalls[0].args).not.toContain('--prompt')
-      expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe('my prompt here')
-    })
-
-    it('includes --print and --output json flags for gemini', async () => {
-      await runCliProvider('test', 'gemini')
-
-      expect(spawnCalls[0].args).toContain('--print')
-      expect(spawnCalls[0].args).toContain('--output')
-      expect(spawnCalls[0].args).toContain('json')
-    })
   })
 
   describe('claude provider CLI arguments', () => {
@@ -242,24 +155,15 @@ describe('cli-runner', () => {
     })
   })
 
-  describe('unknown provider fallback', () => {
-    it('falls back to codex for unknown providers', async () => {
-      await runCliProvider('test prompt', 'unknown-provider' as any)
-
-      expect(spawnCalls).toHaveLength(1)
-      expect(spawnCalls[0].cmd).toBe('codex')
-    })
-  })
-
   describe('CLI command structure validation', () => {
     it('passes shell: false to prevent shell injection', async () => {
-      await runCliProvider('test', 'codex')
+      await runCliProvider('test', 'claude')
 
       expect(spawnCalls[0].options).toMatchObject({ shell: false })
     })
 
     it('passes environment variables to child process', async () => {
-      await runCliProvider('test', 'codex')
+      await runCliProvider('test', 'claude')
 
       expect(spawnCalls[0].options).toMatchObject({ env: process.env })
     })
@@ -274,7 +178,7 @@ describe('cli-runner', () => {
 
     it('handles multiline prompts', async () => {
       const multilinePrompt = 'Line 1\nLine 2\nLine 3'
-      await runCliProvider(multilinePrompt, 'gemini')
+      await runCliProvider(multilinePrompt, 'claude')
 
       // Prompt is last positional argument
       expect(spawnCalls[0].args[spawnCalls[0].args.length - 1]).toBe(multilinePrompt)
@@ -295,24 +199,8 @@ describe('cli-runner', () => {
       expect(spawnCalls[0].args).toContain('claude-opus-4-20250514')
     })
 
-    it('adds --model flag when model is provided for gemini', async () => {
-      await runCliProvider('test', 'gemini', { model: 'gemini-1.5-pro' })
-
-      expect(spawnCalls[0].args).toContain('--model')
-      expect(spawnCalls[0].args).toContain('gemini-1.5-pro')
-    })
-
     it('model flag appears before prompt for claude', async () => {
       await runCliProvider('test', 'claude', { model: 'claude-sonnet-4-20250514' })
-
-      const modelIndex = spawnCalls[0].args.indexOf('--model')
-      // Prompt is last positional argument
-      const promptIndex = spawnCalls[0].args.length - 1
-      expect(modelIndex).toBeLessThan(promptIndex)
-    })
-
-    it('model flag appears before prompt for gemini', async () => {
-      await runCliProvider('test', 'gemini', { model: 'gemini-2.0-flash' })
 
       const modelIndex = spawnCalls[0].args.indexOf('--model')
       // Prompt is last positional argument

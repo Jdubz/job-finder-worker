@@ -208,13 +208,17 @@ Queue processing configuration.
 AI agent configuration with fallback chains and budget management.
 
 **Fields:**
-- `agents: Record<AgentId, AgentConfig>` - Configured agents keyed by ID (e.g., "gemini.cli", "codex.cli")
+- `agents: Record<AgentId, AgentConfig>` - Configured agents keyed by ID (e.g., "claude.cli", "gemini.api")
 - `taskFallbacks: Record<AgentTaskType, AgentId[]>` - Ordered fallback chains per task type
 - `modelRates: Record<string, number>` - Cost multiplier per model (default 1.0)
 - `options: AIProviderOption[]` - Provider availability metadata
 
+**Supported Agents:**
+- `claude.cli` - Claude Code CLI (requires `CLAUDE_CODE_OAUTH_TOKEN`)
+- `gemini.api` - Google Gemini API (requires `GOOGLE_API_KEY` or `GEMINI_API_KEY`)
+
 **Agent Types:**
-- `AgentId`: Format `{provider}.{interface}` (e.g., "gemini.cli", "codex.api")
+- `AgentId`: Format `{provider}.{interface}` (e.g., "claude.cli", "gemini.api")
 - `AgentTaskType`: "extraction" | "analysis" | "document"
 - `AgentConfig`: Contains enabled, reason, dailyBudget, dailyUsage, defaultModel
 

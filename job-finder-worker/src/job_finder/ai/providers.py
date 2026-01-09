@@ -1,20 +1,15 @@
 """AI provider abstractions for different LLM services.
 
 Provider configuration is managed via the ai-settings config entry.
-The selected provider/interface/model is used for all AI tasks.
+Supported agents: claude.cli, gemini.api
 """
 
 import json
 import logging
 import os
-import shutil
 import subprocess
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-
-from anthropic import Anthropic
-from openai import OpenAI
 
 from job_finder.exceptions import AIProviderError, QuotaExhaustedError, TransientError
 
@@ -52,74 +47,6 @@ class AIProvider(ABC):
             The generated text response.
         """
         pass
-
-
-class ClaudeProvider(AIProvider):
-    """Anthropic Claude provider (API interface)."""
-
-    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None):
-        """
-        Initialize Claude provider.
-
-        Args:
-            model: Model identifier (defaults to CLAUDE_DEFAULT_MODEL env or claude-3-opus).
-            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var).
-        """
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise AIProviderError(
-                "Anthropic API key must be provided or set in ANTHROPIC_API_KEY environment variable"
-            )
-
-        self.model = model or os.getenv("CLAUDE_DEFAULT_MODEL") or "claude-3-opus"
-        self.client = Anthropic(api_key=self.api_key)
-
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        """Generate a response using Claude."""
-        try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.content[0].text
-        except Exception as e:
-            raise AIProviderError(f"Claude API error: {str(e)}") from e
-
-
-class OpenAIProvider(AIProvider):
-    """OpenAI GPT provider (API interface)."""
-
-    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None):
-        """
-        Initialize OpenAI provider.
-
-        Args:
-            model: Model identifier (defaults to OPENAI_DEFAULT_MODEL env or gpt-4o).
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var).
-        """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            raise AIProviderError(
-                "OpenAI API key must be provided or set in OPENAI_API_KEY environment variable"
-            )
-
-        self.model = model or os.getenv("OPENAI_DEFAULT_MODEL") or "gpt-4o"
-        self.client = OpenAI(api_key=self.api_key)
-
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        """Generate a response using GPT."""
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            raise AIProviderError(f"OpenAI API error: {str(e)}") from e
 
 
 class GeminiProvider(AIProvider):
@@ -223,225 +150,6 @@ class GeminiProvider(AIProvider):
             raise AIProviderError(f"Gemini API error: {str(e)}") from e
 
 
-class GeminiCLIProvider(AIProvider):
-    """
-    Gemini CLI provider: uses the `gemini` CLI with Google account OAuth instead of API keys.
-
-    Requires the `gemini` binary on PATH and that the user is already authenticated
-    (via `gemini auth login`). Credentials are stored in ~/.gemini/oauth_creds.json.
-
-    The CLI is invoked with:
-    - `-o json` for structured JSON output
-    - `--yolo` to auto-approve all actions (no interactive prompts)
-    - Working directory set to /tmp to minimize context token usage
-    """
-
-    def __init__(self, model: Optional[str] = None, timeout: int = 120):
-        """
-        Initialize Gemini CLI provider.
-
-        Args:
-            model: Model identifier. If omitted, CLI uses its default (latest flash).
-            timeout: Command timeout in seconds (default 120s for longer responses).
-        """
-        self.model = model
-        self.timeout = timeout
-
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        """
-        Invoke gemini CLI and return the response text.
-
-        The CLI outputs JSON with a `response` field containing the LLM's text.
-        We run from /tmp to avoid scanning the current directory for context,
-        which significantly reduces token usage.
-        """
-        cmd = [
-            "gemini",
-            "-o",
-            "json",
-            "--yolo",
-        ]
-        if self.model:
-            cmd.extend(["-m", self.model])
-        cmd.append(prompt)
-
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                cwd="/tmp",  # Run from /tmp to minimize context tokens
-            )
-
-            # Parse JSON output
-            stdout = result.stdout.strip()
-
-            # Find the JSON object in the output (may have prefix text like "YOLO mode...")
-            json_start = stdout.find("{")
-            if json_start == -1:
-                if result.returncode != 0:
-                    error_output = result.stderr.strip() or stdout
-                    if _is_quota_exhausted(error_output):
-                        raise QuotaExhaustedError(
-                            "Gemini daily quota exhausted",
-                            provider="gemini",
-                            reset_info="midnight Pacific time",
-                        )
-                    raise AIProviderError(
-                        f"Gemini CLI failed (exit {result.returncode}): {error_output}"
-                    )
-                raise AIProviderError("Gemini CLI returned no JSON output")
-
-            json_str = stdout[json_start:]
-            try:
-                output = json.loads(json_str)
-            except json.JSONDecodeError as e:
-                raise AIProviderError(f"Gemini CLI returned invalid JSON: {e}") from e
-
-            # Check for error response
-            if "error" in output:
-                error_info = output["error"]
-                error_msg = error_info.get("message", str(error_info))
-                error_code = error_info.get("code", "unknown")
-                if _is_quota_exhausted(error_msg):
-                    raise QuotaExhaustedError(
-                        "Gemini daily quota exhausted",
-                        provider="gemini",
-                        reset_info="midnight Pacific time",
-                    )
-                raise AIProviderError(f"Gemini CLI error ({error_code}): {error_msg}")
-
-            # Extract response text
-            response_text = output.get("response")
-            if not response_text:
-                raise AIProviderError("Gemini CLI returned empty response")
-
-            return response_text
-
-        except subprocess.TimeoutExpired as exc:
-            raise TransientError(
-                f"Gemini CLI timed out after {self.timeout}s", provider="gemini"
-            ) from exc
-
-
-class CodexCLIProvider(AIProvider):
-    """
-    Codex CLI provider: uses the `codex` CLI (pro account session) instead of per-request API keys.
-
-    Requires the `codex` binary on PATH and that the user is already authenticated
-    (via `codex login`).
-
-    NOTE: The Codex CLI has recently removed the `api chat/completions` surface. We now call
-    `codex exec --json` and parse the streamed JSON events to retrieve the final agent message.
-    If model is omitted, the CLI uses its configured default from config.toml.
-
-    In containerized environments, use `codex-safe` wrapper (flock-based) to prevent OAuth
-    refresh token race conditions when multiple containers share the same auth.json.
-    """
-
-    def __init__(self, model: Optional[str] = None, timeout: int = 60):
-        """
-        Initialize Codex CLI provider.
-
-        Args:
-            model: Model identifier. If omitted, CLI uses its configured default.
-            timeout: Command timeout in seconds (default 60s).
-        """
-        self.model = model or os.getenv("CODEX_DEFAULT_MODEL") or "gpt-5-codex"
-        self.timeout = timeout
-
-    def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        """
-        Invoke codex exec and return the final agent message text.
-
-        We request JSONL output and scan for the last agent_message item. If the CLI rejects the
-        configured model for ChatGPT accounts, we retry once without a model flag to let Codex pick
-        the default from config.toml.
-        """
-
-        def run_codex(include_model: bool = True) -> subprocess.CompletedProcess:
-            workdir = os.getenv("CODEX_WORKDIR") or os.getcwd()
-            # Use codex-safe wrapper if available (flock serialization for shared auth.json)
-            # Falls back to bare codex if wrapper not found (e.g., local dev)
-            codex_bin = "codex-safe" if shutil.which("codex-safe") else "codex"
-            cmd = [
-                codex_bin,
-                "exec",
-                "--json",
-                "--skip-git-repo-check",
-                "--cd",
-                workdir,
-            ]
-            if include_model and self.model:
-                cmd.extend(["--model", self.model])
-            # Temperature/max_tokens not exposed in CLI; rely on prompt discipline.
-            cmd.extend(["--", prompt])
-            return subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-
-        def parse_stdout(stdout: str) -> str:
-            final_text = ""
-            for line in stdout.splitlines():
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-
-                if payload.get("type") in ("item.completed", "message.completed"):
-                    item = payload.get("item", {})
-                    item_type = item.get("type") or payload.get("item_type")
-                    text = item.get("text") or payload.get("text")
-                    if item_type in ("agent_message", "message", "final") and text:
-                        final_text = text
-                elif payload.get("type") == "turn.completed" and final_text:
-                    break
-
-            if not final_text:
-                raise AIProviderError("Codex CLI returned no message content")
-            return final_text
-
-        try:
-            result = run_codex(include_model=True)
-            if (
-                result.returncode != 0
-                and "not supported when using Codex with a ChatGPT account"
-                in (result.stderr + result.stdout)
-            ):
-                # Retry without model flag to fall back to CLI default (usually gpt-5-codex)
-                result = run_codex(include_model=False)
-
-            parsed_text = ""
-            parse_error: Optional[Exception] = None
-            try:
-                parsed_text = parse_stdout(result.stdout)
-            except Exception as exc:  # capture parse error but still evaluate exit code
-                parse_error = exc
-
-            if parsed_text:
-                return parsed_text
-
-            if result.returncode != 0:
-                raise AIProviderError(
-                    f"Codex CLI failed (exit {result.returncode}): {result.stderr.strip() or result.stdout.strip()}"
-                )
-
-            # If exit code succeeded but no text was parsed, surface parse error
-            if parse_error:
-                raise parse_error
-
-            raise AIProviderError("Codex CLI returned no message content")
-
-        except subprocess.TimeoutExpired as exc:
-            raise TransientError(
-                f"Codex CLI timed out after {self.timeout}s", provider="codex"
-            ) from exc
-
-
 class ClaudeCLIProvider(AIProvider):
     """Claude Code CLI provider (CLI interface)."""
 
@@ -515,40 +223,15 @@ class ClaudeCLIProvider(AIProvider):
 
 
 # Provider dispatch map: (provider, interface) -> provider class
+# Supported agents: claude.cli, gemini.api
 _PROVIDER_MAP: Dict[tuple, type] = {
-    ("codex", "cli"): CodexCLIProvider,
     ("claude", "cli"): ClaudeCLIProvider,
-    ("claude", "api"): ClaudeProvider,
-    ("openai", "api"): OpenAIProvider,
-    ("gemini", "api"): GeminiProvider,  # Uses Vertex AI with ADC
-    ("gemini", "cli"): GeminiCLIProvider,
-}
-
-# Map of API-based providers to their required environment variables
-# Note: gemini/api uses Vertex AI with ADC, not API keys
-_API_KEY_REQUIREMENTS: Dict[tuple, list] = {
-    ("claude", "api"): ["ANTHROPIC_API_KEY"],
-    ("openai", "api"): ["OPENAI_API_KEY"],
-}
-
-# Fallback interfaces for providers when API keys are missing
-_INTERFACE_FALLBACKS: Dict[str, str] = {
-    "gemini": "cli",  # gemini/api -> gemini/cli
-    # codex only has cli, claude/openai only have api (no fallback)
+    ("gemini", "api"): GeminiProvider,
 }
 
 
+# CLI auth configuration for Claude
 _CLI_AUTH_CONFIG: Dict[str, Dict[str, Any]] = {
-    "codex": {
-        "env_vars": ["OPENAI_API_KEY"],
-        "file_path": Path.home().joinpath(".codex", "auth.json"),
-        "hint": "OPENAI_API_KEY or ~/.codex/auth.json",
-    },
-    "gemini": {
-        "env_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        "file_path": Path.home().joinpath(".gemini", "settings.json"),
-        "hint": "GEMINI_API_KEY/GOOGLE_API_KEY or ~/.gemini/settings.json",
-    },
     "claude": {
         "env_vars": ["CLAUDE_CODE_OAUTH_TOKEN"],
         "file_path": None,
@@ -570,63 +253,16 @@ def _check_cli_auth(provider: str) -> Tuple[bool, str]:
     return env_ok or file_ok, cfg["hint"]
 
 
-def _check_api_key_available(provider: str, interface: str) -> bool:
-    """Check if the required API key(s) are available for this provider/interface."""
-    key = (provider, interface)
-    required_vars = _API_KEY_REQUIREMENTS.get(key)
-    if not required_vars:
-        return True  # CLI interfaces don't need API keys
-    # For providers that accept multiple keys (like gemini), any one is sufficient
-    return any(os.getenv(var) for var in required_vars)
+def _check_gemini_api_auth() -> Tuple[bool, str]:
+    """Check if Gemini API (Vertex AI) authentication is available.
 
-
-def _get_missing_api_key_names(provider: str, interface: str) -> list:
-    """Get the names of missing API keys for this provider/interface."""
-    key = (provider, interface)
-    required_vars = _API_KEY_REQUIREMENTS.get(key, [])
-    return [var for var in required_vars if not os.getenv(var)]
-
-
-def hydrate_auth_from_host_file(provider: str) -> None:
+    The worker uses Vertex AI for Gemini API access, which requires:
+    - GOOGLE_CLOUD_PROJECT: GCP project ID
+    - Application Default Credentials (ADC) via one of:
+      - GOOGLE_APPLICATION_CREDENTIALS pointing to service account JSON
+      - gcloud auth application-default login
+      - GCE/Cloud Run metadata server (when running on GCP)
     """
-    Best-effort attempt to populate required env vars from provider host files.
-
-    This is intentionally permissive: if a file is missing or unreadable we do
-    nothing and let normal auth_status checks handle the failure.
-    """
-    cfg = _CLI_AUTH_CONFIG.get(provider)
-    if not cfg:
-        return
-
-    file_path = cfg.get("file_path")
-    if not file_path or not file_path.exists():
-        return
-
-    try:
-        with file_path.open() as fh:
-            parsed = json.load(fh)
-    except (json.JSONDecodeError, OSError, PermissionError):
-        return
-
-    # Provider-specific key extraction
-    if provider == "codex":
-        candidate = parsed.get("openai_api_key") or parsed.get("api_key")
-        if candidate and not os.getenv("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = candidate
-    elif provider == "gemini":
-        candidate = parsed.get("api_key") or parsed.get("key")
-        for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
-            if candidate and not os.getenv(var):
-                os.environ[var] = candidate
-    elif provider == "claude":
-        candidate = parsed.get("token") or parsed.get("auth_token")
-        if candidate and not os.getenv("CLAUDE_CODE_OAUTH_TOKEN"):
-            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = candidate
-
-
-def _check_vertex_auth() -> Tuple[bool, str]:
-    """Check if Vertex AI authentication is available."""
-    # Check for GCP project
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
     if not project:
         return False, "missing_env:GOOGLE_CLOUD_PROJECT"
@@ -645,19 +281,30 @@ def _check_vertex_auth() -> Tuple[bool, str]:
         return False, "missing_credentials:ADC or GOOGLE_APPLICATION_CREDENTIALS"
 
 
+def hydrate_auth_from_host_file(provider: str) -> None:
+    """
+    Best-effort attempt to populate required env vars from provider host files.
+
+    This is intentionally permissive: if a file is missing or unreadable we do
+    nothing and let normal auth_status checks handle the failure.
+    """
+    # No host file hydration needed for supported providers:
+    # - claude.cli uses CLAUDE_CODE_OAUTH_TOKEN (no file)
+    # - gemini.api uses Vertex AI ADC (handled by google-auth)
+    pass
+
+
 def auth_status(provider: str, interface: str) -> Tuple[bool, str]:
     """Return (is_available, reason)."""
-    # Gemini API uses Vertex AI with ADC (not API keys)
+    # Gemini API supports API key or Vertex AI with ADC
     if provider == "gemini" and interface == "api":
-        return _check_vertex_auth()
+        return _check_gemini_api_auth()
 
-    if interface == "api":
-        if _check_api_key_available(provider, interface):
+    # Claude CLI uses OAuth token
+    if provider == "claude" and interface == "cli":
+        available, hint = _check_cli_auth(provider)
+        if available:
             return True, ""
-        missing = ",".join(_get_missing_api_key_names(provider, interface))
-        return False, f"missing_api_key:{missing}"
+        return False, f"missing_cli_auth:{hint}"
 
-    available, hint = _check_cli_auth(provider)
-    if available:
-        return True, ""
-    return False, f"missing_cli_auth:{hint}"
+    return False, f"unsupported_agent:{provider}.{interface}"

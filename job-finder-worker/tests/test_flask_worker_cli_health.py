@@ -1,7 +1,8 @@
-"""Tests for CLI health check functionality in flask_worker."""
+"""Tests for CLI health check functionality in flask_worker.
 
-import base64
-import json
+Supported agents: claude.cli, gemini.api
+"""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,333 +22,158 @@ class TestCheckCliHealth:
 
         self.check_cli_health = check_cli_health
 
-    def test_both_clis_checked(self):
-        """Test that both codex and gemini CLIs are checked."""
-        codex_auth = json.dumps({"tokens": {"refresh_token": "test"}})
-        gemini_settings = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
-        gemini_creds = json.dumps({"refresh_token": "test-token"})
-        gemini_accounts = json.dumps({"active": "user@gmail.com"})
+    def test_both_agents_checked(self, tmp_path):
+        """Test that both claude and gemini agents are checked."""
+        # Create a mock service account file for Vertex AI
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
 
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if ".codex/auth.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: codex_auth))
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: gemini_settings))
-            if "oauth_creds.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: gemini_creds))
-            if "google_accounts.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: gemini_accounts))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
+        with patch.dict(
+            "os.environ",
+            {
+                "CLAUDE_CODE_OAUTH_TOKEN": "test-token-thats-long-enough-to-pass",
+                "GOOGLE_CLOUD_PROJECT": "test-project",
+                "GOOGLE_APPLICATION_CREDENTIALS": str(creds_file),
+            },
+        ):
             result = self.check_cli_health()
 
-            assert "codex" in result
+            assert "claude" in result
             assert "gemini" in result
-            assert "healthy" in result["codex"]
-            assert "message" in result["codex"]
+            assert "healthy" in result["claude"]
+            assert "message" in result["claude"]
             assert "healthy" in result["gemini"]
             assert "message" in result["gemini"]
 
 
-class TestCodexConfigCheck:
-    """Tests for Codex config-based health check."""
+class TestClaudeCLIConfigCheck:
+    """Tests for Claude CLI config-based health check."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
         try:
-            from job_finder.flask_worker import _check_codex_config
+            from job_finder.flask_worker import _check_claude_cli_config
         except ModuleNotFoundError as exc:
             pytest.skip(f"flask not available: {exc}")
 
-        self._check_codex_config = _check_codex_config
+        self._check_claude_cli_config = _check_claude_cli_config
 
-    def test_healthy_oauth_with_email_in_jwt(self):
-        """Test Codex returns healthy when OAuth is configured with email in JWT."""
-        # Create a mock JWT with email in payload
-        payload = {"email": "user@example.com", "exp": 9999999999}
-        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
-        mock_id_token = f"header.{payload_b64}.signature"
-
-        auth_data = json.dumps(
-            {
-                "OPENAI_API_KEY": None,
-                "tokens": {"refresh_token": "rt_test", "id_token": mock_id_token},
-            }
-        )
-
-        def mock_open_files(path, *args, **kwargs):
-            if ".codex/auth.json" in str(path):
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_codex_config()
-
-            assert result["healthy"] is True
-            assert "user@example.com" in result["message"]
-
-    def test_healthy_oauth_without_email_in_jwt(self):
-        """Test Codex returns healthy when OAuth creds exist but JWT is invalid."""
-        auth_data = json.dumps(
-            {
-                "OPENAI_API_KEY": None,
-                "tokens": {"refresh_token": "rt_test", "id_token": "invalid.jwt.token"},
-            }
-        )
-
-        def mock_open_files(path, *args, **kwargs):
-            if ".codex/auth.json" in str(path):
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_codex_config()
-
-            assert result["healthy"] is True
-            assert "OAuth credentials configured" in result["message"]
-
-    def test_healthy_api_key_in_file(self):
-        """Test Codex returns healthy when API key is in auth file."""
-        auth_data = json.dumps({"OPENAI_API_KEY": "sk-test-key", "tokens": None})
-
-        def mock_open_files(path, *args, **kwargs):
-            if ".codex/auth.json" in str(path):
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_codex_config()
-
-            assert result["healthy"] is True
-            assert "API key configured" in result["message"]
-
-    def test_healthy_api_key_in_env(self):
-        """Test Codex returns healthy when API key is in environment."""
-        auth_data = json.dumps({"OPENAI_API_KEY": None, "tokens": {}})
-
-        def mock_open_files(path, *args, **kwargs):
-            if ".codex/auth.json" in str(path):
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with (
-            patch("builtins.open", mock_open_files),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
+    def test_healthy_with_oauth_token(self):
+        """Test Claude returns healthy when OAuth token is configured."""
+        with patch.dict(
+            "os.environ", {"CLAUDE_CODE_OAUTH_TOKEN": "a-valid-oauth-token-thats-long-enough"}
         ):
-            result = self._check_codex_config()
+            result = self._check_claude_cli_config()
 
             assert result["healthy"] is True
-            assert "environment" in result["message"]
+            assert "OAuth token configured" in result["message"]
 
-    def test_healthy_auth_file_missing_but_env_key(self):
-        """Test Codex returns healthy when auth file missing but API key in env."""
-        with (
-            patch("builtins.open", side_effect=FileNotFoundError("No such file")),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}),
-        ):
-            result = self._check_codex_config()
-
-            assert result["healthy"] is True
-            assert "environment" in result["message"]
-
-    def test_unhealthy_auth_file_missing_no_env(self):
-        """Test Codex returns unhealthy when auth file missing and no env var."""
-        with (
-            patch("builtins.open", side_effect=FileNotFoundError("No such file")),
-            patch.dict("os.environ", {}, clear=True),
-        ):
-            result = self._check_codex_config()
-
-            assert result["healthy"] is False
-            assert "auth file not found" in result["message"]
-
-    def test_unhealthy_no_credentials(self):
-        """Test Codex returns unhealthy when no credentials in auth file."""
-        auth_data = json.dumps({"OPENAI_API_KEY": None, "tokens": {}})
-
-        def mock_open_files(path, *args, **kwargs):
-            if ".codex/auth.json" in str(path):
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: auth_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files), patch.dict("os.environ", {}, clear=True):
-            result = self._check_codex_config()
-
-            assert result["healthy"] is False
-            assert "no credentials found" in result["message"]
-
-    def test_unhealthy_invalid_json(self):
-        """Test Codex returns unhealthy when config file has invalid JSON."""
-
-        def mock_open_files(path, *args, **kwargs):
-            return MagicMock(__enter__=lambda s: MagicMock(read=lambda: "invalid json{"))
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_codex_config()
+    def test_unhealthy_token_too_short(self):
+        """Test Claude returns unhealthy when token is too short."""
+        with patch.dict("os.environ", {"CLAUDE_CODE_OAUTH_TOKEN": "short"}):
+            result = self._check_claude_cli_config()
 
             assert result["healthy"] is False
             assert "invalid" in result["message"].lower()
 
+    def test_unhealthy_no_token(self):
+        """Test Claude returns unhealthy when no token is set."""
+        with patch.dict("os.environ", {}, clear=True):
+            result = self._check_claude_cli_config()
 
-class TestGeminiConfigCheck:
-    """Tests for Gemini config-based health check."""
+            assert result["healthy"] is False
+            assert "CLAUDE_CODE_OAUTH_TOKEN" in result["message"]
+
+
+class TestGeminiAPIConfigCheck:
+    """Tests for Gemini API (Vertex AI) config-based health check.
+
+    The worker uses Vertex AI for Gemini API access, which requires
+    GOOGLE_CLOUD_PROJECT and Application Default Credentials (ADC).
+    """
 
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
         try:
-            from job_finder.flask_worker import _check_gemini_config
+            from job_finder.flask_worker import _check_gemini_api_config
         except ModuleNotFoundError as exc:
             pytest.skip(f"flask not available: {exc}")
 
-        self._check_gemini_config = _check_gemini_config
+        self._check_gemini_api_config = _check_gemini_api_config
 
-    def test_healthy_oauth_with_active_account(self):
-        """Test Gemini returns healthy when OAuth is configured with active account."""
-        settings_data = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
-        creds_data = json.dumps({"refresh_token": "test-refresh-token"})
-        accounts_data = json.dumps({"active": "user@gmail.com"})
-
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            if "oauth_creds.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: creds_data))
-            if "google_accounts.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: accounts_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_gemini_config()
-
-            assert result["healthy"] is True
-            assert "user@gmail.com" in result["message"]
-
-    def test_healthy_oauth_without_accounts_file(self):
-        """Test Gemini returns healthy when OAuth creds exist but no accounts file."""
-        settings_data = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
-        creds_data = json.dumps({"refresh_token": "test-refresh-token"})
-
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            if "oauth_creds.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: creds_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_gemini_config()
-
-            assert result["healthy"] is True
-            assert "OAuth credentials configured" in result["message"]
-
-    def test_unhealthy_settings_file_missing(self):
-        """Test Gemini returns unhealthy when settings file is missing."""
-        with patch("builtins.open", side_effect=FileNotFoundError("No such file")):
-            result = self._check_gemini_config()
+    def test_unhealthy_without_project(self):
+        """Test Gemini returns unhealthy when GOOGLE_CLOUD_PROJECT is not set."""
+        with patch.dict("os.environ", {}, clear=True):
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is False
-            assert "settings file not found" in result["message"]
+            assert "GOOGLE_CLOUD_PROJECT" in result["message"]
 
-    def test_unhealthy_no_auth_type_selected(self):
-        """Test Gemini returns unhealthy when no auth type is selected."""
-        settings_data = json.dumps({"security": {}})
+    def test_healthy_with_vertex_ai_service_account(self, tmp_path):
+        """Test Gemini returns healthy with Vertex AI and service account file."""
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
 
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_gemini_config()
-
-            assert result["healthy"] is False
-            assert "no auth type selected" in result["message"]
-
-    def test_unhealthy_oauth_missing_refresh_token(self):
-        """Test Gemini returns unhealthy when OAuth creds are missing refresh token."""
-        settings_data = json.dumps({"security": {"auth": {"selectedType": "oauth-personal"}}})
-        creds_data = json.dumps({"access_token": "test-token"})  # No refresh_token
-
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            if "oauth_creds.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: creds_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_gemini_config()
-
-            assert result["healthy"] is False
-            assert "missing refresh token" in result["message"]
-
-    def test_healthy_api_key_with_env_var(self):
-        """Test Gemini returns healthy when API key auth with env var set."""
-        settings_data = json.dumps({"security": {"auth": {"selectedType": "api-key"}}})
-
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with (
-            patch("builtins.open", mock_open_files),
-            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
+        with patch.dict(
+            "os.environ",
+            {
+                "GOOGLE_CLOUD_PROJECT": "test-project",
+                "GOOGLE_APPLICATION_CREDENTIALS": str(creds_file),
+            },
+            clear=True,
         ):
-            result = self._check_gemini_config()
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is True
-            assert "API key configured" in result["message"]
+            assert "Vertex AI" in result["message"]
+            assert "test-project" in result["message"]
 
-    def test_unhealthy_api_key_without_env_var(self):
-        """Test Gemini returns unhealthy when API key auth but no env var."""
-        settings_data = json.dumps({"security": {"auth": {"selectedType": "api-key"}}})
-
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files), patch.dict("os.environ", {}, clear=True):
-            result = self._check_gemini_config()
+    def test_unhealthy_vertex_ai_missing_creds_file(self):
+        """Test Gemini returns unhealthy when service account file doesn't exist."""
+        with patch.dict(
+            "os.environ",
+            {
+                "GOOGLE_CLOUD_PROJECT": "test-project",
+                "GOOGLE_APPLICATION_CREDENTIALS": "/nonexistent/creds.json",
+            },
+            clear=True,
+        ):
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is False
-            assert "API key not found" in result["message"]
+            assert "not found" in result["message"]
 
-    def test_healthy_gcloud_auth_type(self):
-        """Test Gemini returns healthy for gcloud auth type."""
-        settings_data = json.dumps({"security": {"auth": {"selectedType": "gcloud"}}})
-
-        def mock_open_files(path, *args, **kwargs):
-            path_str = str(path)
-            if "settings.json" in path_str:
-                return MagicMock(__enter__=lambda s: MagicMock(read=lambda: settings_data))
-            raise FileNotFoundError(f"No such file: {path}")
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_gemini_config()
+    def test_healthy_with_vertex_ai_adc(self):
+        """Test Gemini returns healthy with Vertex AI ADC."""
+        with (
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
+            patch("google.auth.default", return_value=(MagicMock(), "test-project")),
+        ):
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is True
-            assert "gcloud" in result["message"]
+            assert "ADC" in result["message"]
 
-    def test_unhealthy_invalid_json(self):
-        """Test Gemini returns unhealthy when config file has invalid JSON."""
-
-        def mock_open_files(path, *args, **kwargs):
-            return MagicMock(__enter__=lambda s: MagicMock(read=lambda: "invalid json{"))
-
-        with patch("builtins.open", mock_open_files):
-            result = self._check_gemini_config()
+    def test_unhealthy_vertex_ai_no_adc(self):
+        """Test Gemini returns unhealthy when ADC fails."""
+        with (
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
+            patch("google.auth.default", side_effect=Exception("No credentials")),
+        ):
+            result = self._check_gemini_api_config()
 
             assert result["healthy"] is False
-            assert "invalid" in result["message"].lower()
+            assert "ADC not configured" in result["message"]
+
+    def test_unhealthy_project_but_no_adc(self):
+        """Test Gemini returns unhealthy when project is set but ADC is missing."""
+        with (
+            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
+            patch("google.auth.default", side_effect=Exception("No credentials")),
+        ):
+            result = self._check_gemini_api_config()
+
+            assert result["healthy"] is False
+            assert "ADC not configured" in result["message"]

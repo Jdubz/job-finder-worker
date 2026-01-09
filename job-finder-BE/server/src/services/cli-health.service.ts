@@ -1,230 +1,41 @@
-import { readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { AgentCliProvider, AgentCliStatus } from '@shared/types'
 import { logger } from '../logger'
 
 export type CliHealthMap = Record<AgentCliProvider, AgentCliStatus>
 
-// Both providers now use config-based checks
-const PROVIDERS: AgentCliProvider[] = ['codex', 'gemini']
+// Only Claude CLI is supported for backend generator tasks
+const PROVIDERS: AgentCliProvider[] = ['claude']
 
-interface CodexAuthFile {
-  OPENAI_API_KEY?: string | null
-  tokens?: {
-    refresh_token?: string
-    id_token?: string
-  }
-}
+async function checkClaudeConfig(): Promise<AgentCliStatus> {
+  // Claude CLI uses OAuth token from environment variable
+  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN
 
-interface GeminiSettings {
-  security?: {
-    auth?: {
-      selectedType?: string
-    }
-  }
-}
-
-interface GeminiOAuthCreds {
-  refresh_token?: string
-}
-
-interface GeminiAccounts {
-  active?: string
-}
-
-function extractEmailFromJwt(idToken: string): string | null {
-  try {
-    // JWT format: header.payload.signature - we need the payload
-    const parts = idToken.split('.')
-    if (parts.length !== 3) return null
-
-    // JWTs use base64url encoding (URL-safe base64 without padding)
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'))
-    return payload.email || null
-  } catch {
-    return null
-  }
-}
-
-async function checkCodexConfig(): Promise<AgentCliStatus> {
-  const codexDir = join(homedir(), '.codex')
-  const authPath = join(codexDir, 'auth.json')
-
-  try {
-    const authRaw = await readFile(authPath, 'utf-8')
-    const auth = JSON.parse(authRaw) as CodexAuthFile
-
-    // Check for API key in file
-    if (auth.OPENAI_API_KEY) {
-      return {
-        healthy: true,
-        message: 'API key configured'
-      }
-    }
-
-    // Check for API key in environment
-    if (process.env.OPENAI_API_KEY) {
-      return {
-        healthy: true,
-        message: 'API key configured (from environment)'
-      }
-    }
-
-    // Check for OAuth tokens
-    if (auth.tokens?.refresh_token) {
-      // Try to extract email from id_token
-      if (auth.tokens.id_token) {
-        const email = extractEmailFromJwt(auth.tokens.id_token)
-        if (email) {
-          return {
-            healthy: true,
-            message: `Authenticated as ${email}`
-          }
-        }
-      }
-
-      return {
-        healthy: true,
-        message: 'OAuth credentials configured'
-      }
-    }
-
-    return {
-      healthy: false,
-      message: 'Codex CLI not authenticated: no credentials found'
-    }
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException
-
-    // If auth file doesn't exist, check for API key in environment
-    if (err.code === 'ENOENT') {
-      if (process.env.OPENAI_API_KEY) {
-        return {
-          healthy: true,
-          message: 'API key configured (from environment)'
-        }
-      }
-      return {
-        healthy: false,
-        message: 'Codex CLI not configured: auth file not found'
-      }
-    }
-
-    logger.warn({ error: err.message }, 'Codex config check failed')
-    return {
-      healthy: false,
-      message: err.message || 'Failed to read Codex config'
-    }
-  }
-}
-
-async function checkGeminiConfig(): Promise<AgentCliStatus> {
-  const geminiDir = join(homedir(), '.gemini')
-  const settingsPath = join(geminiDir, 'settings.json')
-
-  // First, try to read and parse settings.json
-  let settings: GeminiSettings
-  try {
-    const settingsRaw = await readFile(settingsPath, 'utf-8')
-    settings = JSON.parse(settingsRaw) as GeminiSettings
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException
-    if (err.code === 'ENOENT') {
-      return {
-        healthy: false,
-        message: 'Gemini CLI not configured: settings file not found'
-      }
-    }
-    logger.warn({ error: err.message }, 'Gemini config check failed')
-    return {
-      healthy: false,
-      message: err.message || 'Failed to read Gemini settings'
-    }
-  }
-
-  const authType = settings?.security?.auth?.selectedType
-
-  if (!authType) {
-    return {
-      healthy: false,
-      message: 'Gemini CLI not configured: no auth type selected'
-    }
-  }
-
-  // For OAuth auth types, verify credentials file exists with refresh token
-  if (authType.startsWith('oauth')) {
-    const credsPath = join(geminiDir, 'oauth_creds.json')
-    let creds: GeminiOAuthCreds
-    try {
-      const credsRaw = await readFile(credsPath, 'utf-8')
-      creds = JSON.parse(credsRaw) as GeminiOAuthCreds
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException
-      if (err.code === 'ENOENT') {
-        return {
-          healthy: false,
-          message: 'Gemini OAuth credentials file not found'
-        }
-      }
-      logger.warn({ error: err.message }, 'Gemini OAuth credentials check failed')
-      return {
-        healthy: false,
-        message: err.message || 'Failed to read Gemini OAuth credentials'
-      }
-    }
-
-    if (!creds.refresh_token) {
-      return {
-        healthy: false,
-        message: 'Gemini OAuth credentials missing refresh token'
-      }
-    }
-
-    // Check for active account (optional file)
-    try {
-      const accountsPath = join(geminiDir, 'google_accounts.json')
-      const accountsRaw = await readFile(accountsPath, 'utf-8')
-      const accounts = JSON.parse(accountsRaw) as GeminiAccounts
-
-      if (accounts.active) {
-        return {
-          healthy: true,
-          message: `Authenticated as ${accounts.active}`
-        }
-      }
-    } catch {
-      // Accounts file is optional, ignore errors
-    }
-
+  if (oauthToken) {
     return {
       healthy: true,
-      message: 'OAuth credentials configured'
+      message: 'OAuth token configured'
     }
   }
 
-  // For API key auth, check environment variables
-  if (authType === 'api-key') {
-    const hasKey = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)
+  // Check for Claude API key as fallback indicator (though we use CLI)
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (apiKey) {
     return {
-      healthy: hasKey,
-      message: hasKey ? 'API key configured' : 'Gemini API key not found in environment'
+      healthy: true,
+      message: 'API key configured (CLI may use OAuth separately)'
     }
   }
 
-  // For other auth types (like gcloud), assume configured if settings exist
   return {
-    healthy: true,
-    message: `Auth type '${authType}' configured`
+    healthy: false,
+    message: 'Claude CLI not configured: CLAUDE_CODE_OAUTH_TOKEN not set'
   }
 }
 
 async function runCheck(provider: AgentCliProvider): Promise<AgentCliStatus> {
   switch (provider) {
-    case 'codex':
-      return checkCodexConfig()
-    case 'gemini':
-      return checkGeminiConfig()
+    case 'claude':
+      return checkClaudeConfig()
     default:
       return { healthy: false, message: `Unknown provider: ${provider}` }
   }
