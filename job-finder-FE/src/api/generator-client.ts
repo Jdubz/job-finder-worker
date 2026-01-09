@@ -25,14 +25,14 @@ function unwrapResponse<T>(payload: T | ApiEnvelope<T>): T {
 
 /**
  * Request payload for generating documents
- * IMPORTANT: Must match the backend schema in generator.ts (generateRequestSchema)
+ * IMPORTANT: Must match the backend schema in generator.workflow.routes.ts (generatorRequestSchema)
  *
  * The backend fetches personal info, experiences, and blurbs from SQLite automatically.
  * The frontend only needs to provide job details and preferences.
+ * Provider selection is handled automatically by the AgentManager based on task type.
  */
 export interface GenerateDocumentRequest {
   generateType: "resume" | "coverLetter" | "both"
-  provider?: "openai" | "gemini"
   job: {
     role: string
     company: string

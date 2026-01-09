@@ -251,7 +251,7 @@ class ConfigLoader:
         Get AI settings configuration.
 
         Returns the new agent manager structure:
-        - agents: Dict of agent configs keyed by agent ID (e.g., "gemini.cli")
+        - agents: Dict of agent configs keyed by agent ID (e.g., "claude.cli")
         - taskFallbacks: Dict of fallback chains per task type
         - modelRates: Dict of model cost rates
         - options: Provider availability metadata
@@ -378,7 +378,7 @@ class ConfigLoader:
         Increment an agent's daily usage counter.
 
         Args:
-            agent_id: The agent ID (e.g., "gemini.cli")
+            agent_id: The agent ID (e.g., "claude.cli")
             model: The model used (for cost rate lookup)
         """
         settings = self._get_config("ai-settings")
@@ -405,7 +405,7 @@ class ConfigLoader:
         Update an agent's enabled status and reason.
 
         Args:
-            agent_id: The agent ID (e.g., "gemini.cli")
+            agent_id: The agent ID (e.g., "claude.cli")
             enabled: Whether the agent should be enabled
             reason: Why the agent is disabled (None if enabled)
         """
