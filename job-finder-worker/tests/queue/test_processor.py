@@ -13,6 +13,8 @@ from job_finder.job_queue.models import (
 )
 from job_finder.job_queue.processor import QueueItemProcessor
 
+from tests.fixtures import MOCK_AI_SETTINGS
+
 
 @pytest.fixture
 def mock_managers():
@@ -26,31 +28,7 @@ def mock_managers():
         "requiredKeywords": ["engineer", "developer"],
         "excludedKeywords": [],
     }
-    config_loader.get_ai_settings.return_value = {
-        "agents": {
-            "gemini.api": {
-                "provider": "gemini",
-                "interface": "api",
-                "defaultModel": "gemini-2.0-flash",
-                "dailyBudget": 100,
-                "dailyUsage": 0,
-                "runtimeState": {
-                    "worker": {"enabled": True, "reason": None},
-                    "backend": {"enabled": True, "reason": None},
-                },
-                "authRequirements": {
-                    "type": "api",
-                    "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-                },
-            }
-        },
-        "taskFallbacks": {
-            "extraction": ["gemini.api"],
-            "analysis": ["gemini.api"],
-            "document": ["gemini.api"],
-        },
-        "modelRates": {"gemini-2.0-flash": 0.5},
-    }
+    config_loader.get_ai_settings.return_value = MOCK_AI_SETTINGS
     config_loader.get_prefilter_policy.return_value = {
         "title": {"requiredKeywords": [], "excludedKeywords": []},
         "freshness": {"maxAgeDays": 0},

@@ -22,6 +22,8 @@ from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.ai.matcher import JobMatchResult
 
+from tests.fixtures import MOCK_AI_SETTINGS
+
 
 def _apply_migrations(db_path: Path) -> None:
     """Apply all SQLite migrations to a fresh database."""
@@ -235,34 +237,7 @@ def test_queue_scrape_end_to_end(temp_db):
             "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "ai-settings",
-                json.dumps(
-                    {
-                        "agents": {
-                            "gemini.api": {
-                                "provider": "gemini",
-                                "interface": "api",
-                                "defaultModel": "gemini-2.0-flash",
-                                "dailyBudget": 100,
-                                "dailyUsage": 0,
-                                "runtimeState": {
-                                    "worker": {"enabled": True, "reason": None},
-                                    "backend": {"enabled": True, "reason": None},
-                                },
-                                "authRequirements": {
-                                    "type": "api",
-                                    "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-                                },
-                            }
-                        },
-                        "taskFallbacks": {
-                            "extraction": ["gemini.api"],
-                            "analysis": ["gemini.api"],
-                            "document": ["gemini.api"],
-                        },
-                        "modelRates": {"gemini-2.0-flash": 0.5},
-                        "options": [],
-                    }
-                ),
+                json.dumps(MOCK_AI_SETTINGS),
                 now_iso,
             ),
         )
