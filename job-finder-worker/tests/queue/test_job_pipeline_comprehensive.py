@@ -217,9 +217,9 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 json.dumps(
                     {
                         "agents": {
-                            "gemini.cli": {
+                            "gemini.api": {
                                 "provider": "gemini",
-                                "interface": "cli",
+                                "interface": "api",
                                 "defaultModel": "gemini-2.0-flash",
                                 "dailyBudget": 100,
                                 "dailyUsage": 0,
@@ -228,15 +228,15 @@ def test_job_pipeline_full_path(tmp_path: Path):
                                     "backend": {"enabled": True, "reason": None},
                                 },
                                 "authRequirements": {
-                                    "type": "cli",
-                                    "requiredEnv": ["PATH"],
+                                    "type": "api",
+                                    "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
                                 },
                             }
                         },
                         "taskFallbacks": {
-                            "extraction": ["gemini.cli"],
-                            "analysis": ["gemini.cli"],
-                            "document": ["gemini.cli"],
+                            "extraction": ["gemini.api"],
+                            "analysis": ["gemini.api"],
+                            "document": ["gemini.api"],
                         },
                         "modelRates": {"gemini-2.0-flash": 0.5},
                         "options": [],

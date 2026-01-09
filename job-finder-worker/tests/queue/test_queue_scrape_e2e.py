@@ -238,9 +238,9 @@ def test_queue_scrape_end_to_end(temp_db):
                 json.dumps(
                     {
                         "agents": {
-                            "gemini.cli": {
+                            "gemini.api": {
                                 "provider": "gemini",
-                                "interface": "cli",
+                                "interface": "api",
                                 "defaultModel": "gemini-2.0-flash",
                                 "dailyBudget": 100,
                                 "dailyUsage": 0,
@@ -249,15 +249,15 @@ def test_queue_scrape_end_to_end(temp_db):
                                     "backend": {"enabled": True, "reason": None},
                                 },
                                 "authRequirements": {
-                                    "type": "cli",
-                                    "requiredEnv": ["PATH"],
+                                    "type": "api",
+                                    "requiredEnv": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
                                 },
                             }
                         },
                         "taskFallbacks": {
-                            "extraction": ["gemini.cli"],
-                            "analysis": ["gemini.cli"],
-                            "document": ["gemini.cli"],
+                            "extraction": ["gemini.api"],
+                            "analysis": ["gemini.api"],
+                            "document": ["gemini.api"],
                         },
                         "modelRates": {"gemini-2.0-flash": 0.5},
                         "options": [],

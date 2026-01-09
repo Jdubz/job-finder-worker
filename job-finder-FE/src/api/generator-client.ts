@@ -32,7 +32,7 @@ function unwrapResponse<T>(payload: T | ApiEnvelope<T>): T {
  */
 export interface GenerateDocumentRequest {
   generateType: "resume" | "coverLetter" | "both"
-  provider?: "openai" | "gemini"
+  provider?: "claude" | "gemini"
   job: {
     role: string
     company: string
