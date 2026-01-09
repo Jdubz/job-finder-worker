@@ -332,9 +332,9 @@ export async function seedBaseConfigs(request: APIRequestContext) {
         ],
       },
       {
-        value: "openai",
+        value: "claude",
         interfaces: [
-          { value: "api", enabled: true, models: ["gpt-4o", "gpt-4o-mini"] },
+          { value: "cli", enabled: true, models: ["claude-sonnet-4-5", "claude-haiku-4-5"] },
         ],
       },
     ],
