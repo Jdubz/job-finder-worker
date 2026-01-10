@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Dialog } from "@/components/ui/dialog"
-import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle, Bug } from "lucide-react"
+import { AlertCircle, Activity, Loader2, Plus, Play, Pause, AlertTriangle, Bug, Unlock } from "lucide-react"
 import { StatPill } from "@/components/ui/stat-pill"
 import { ActiveQueueItem } from "./components/ActiveQueueItem"
 import { ScrapeJobDialog } from "@/components/queue/ScrapeJobDialog"
@@ -72,7 +72,7 @@ export function QueueManagementPage() {
 
       setActiveStatFilter(status)
 
-      if (status === "pending" || status === "processing") {
+      if (status === "pending" || status === "processing" || status === "blocked") {
         setActiveTab("pending")
         setCompletedStatusFilter("all")
       } else if (COMPLETED_STATUSES.includes(status as CompletedStatus)) {
@@ -98,20 +98,24 @@ export function QueueManagementPage() {
     setConfirmToggleOpen(false)
   }, [toggleProcessing])
 
-  // Filtered items - pending tab
+  // Filtered items - pending tab (includes pending, processing, and blocked)
   const pendingItems = useMemo(() => {
     return [...queueItems]
       .filter((item) => {
         if (!item.id) return false
-        const isPendingOrProcessing = item.status === "pending" || item.status === "processing"
-        if (!isPendingOrProcessing) return false
+        const isActive = item.status === "pending" || item.status === "processing" || item.status === "blocked"
+        if (!isActive) return false
         if (activeStatFilter === "pending" && item.status !== "pending") return false
         if (activeStatFilter === "processing" && item.status !== "processing") return false
+        if (activeStatFilter === "blocked" && item.status !== "blocked") return false
         return true
       })
       .sort((a, b) => {
         if (a.status === "processing" && b.status !== "processing") return -1
         if (b.status === "processing" && a.status !== "processing") return 1
+        // Sort blocked items after processing but before pending
+        if (a.status === "blocked" && b.status === "pending") return -1
+        if (b.status === "blocked" && a.status === "pending") return 1
         const aDate = normalizeDate(a.created_at)
         const bDate = normalizeDate(b.created_at)
         return aDate.getTime() - bDate.getTime()
@@ -204,6 +208,30 @@ export function QueueManagementPage() {
     }
   }
 
+  const handleUnblockItem = async (id: string) => {
+    try {
+      await queueClient.unblockQueueItem(id)
+      setAlert({ type: "success", message: "Item unblocked and queued for retry" })
+    } catch (err) {
+      logger.error("QueueManagement", "unblockItem", "Failed to unblock item", {
+        error: { type: "UnblockError", message: err instanceof Error ? err.message : String(err) },
+      })
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Failed to unblock queue item" })
+    }
+  }
+
+  const handleUnblockAll = async () => {
+    try {
+      const result = await queueClient.unblockAll()
+      setAlert({ type: "success", message: `${result.unblocked} items unblocked and queued for retry` })
+    } catch (err) {
+      logger.error("QueueManagement", "unblockAll", "Failed to unblock items", {
+        error: { type: "UnblockError", message: err instanceof Error ? err.message : String(err) },
+      })
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Failed to unblock queue items" })
+    }
+  }
+
   const formatRelativeTime = (date: unknown): string => {
     const parsed = normalizeDateValue(date)
     if (!parsed) return "—"
@@ -276,6 +304,17 @@ export function QueueManagementPage() {
             <Bug className="h-4 w-4 mr-2" />
             {showEventLog ? "Hide" : "Show"} SSE Log
           </Button>
+          {queueStats && queueStats.blocked > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleUnblockAll}
+              className="border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700"
+            >
+              <Unlock className="h-4 w-4 mr-2" />
+              Unblock All ({queueStats.blocked})
+            </Button>
+          )}
           {isProcessingEnabled !== null && (
             <Button
               size="sm"
@@ -355,8 +394,8 @@ export function QueueManagementPage() {
             <div className="flex items-center justify-between mb-4">
               <TabsList>
                 <TabsTrigger value="pending">
-                  Pending (
-                  {queueStats ? queueStats.pending + queueStats.processing : pendingItems.length})
+                  Active (
+                  {queueStats ? queueStats.pending + queueStats.processing + queueStats.blocked : pendingItems.length})
                 </TabsTrigger>
                 <TabsTrigger value="completed">
                   Completed (
@@ -409,6 +448,7 @@ export function QueueManagementPage() {
                   }
                   onCancel={handleCancelItem}
                   onRetry={handleRetryItem}
+                  onUnblock={handleUnblockItem}
                   formatRelativeTime={formatRelativeTime}
                 />
               )}
@@ -434,6 +474,7 @@ export function QueueManagementPage() {
                   onRowClick={(item) => openModal({ type: "jobQueueItem", item })}
                   onCancel={handleCancelItem}
                   onRetry={handleRetryItem}
+                  onUnblock={handleUnblockItem}
                   formatRelativeTime={formatRelativeTime}
                 />
               )}
@@ -586,6 +627,13 @@ function QueueStatsDisplay({
         tone="blue"
         active={activeFilter === "processing"}
         onClick={() => onFilterClick("processing")}
+      />
+      <StatPill
+        label="Blocked"
+        value={stats.blocked}
+        tone="amber"
+        active={activeFilter === "blocked"}
+        onClick={() => onFilterClick("blocked")}
       />
       <StatPill
         label="Failed"

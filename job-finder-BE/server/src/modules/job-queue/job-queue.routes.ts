@@ -320,6 +320,67 @@ export function buildJobQueueRouter() {
     })
   )
 
+  // Bulk unblock all blocked items
+  // NOTE: This route must be defined BEFORE /:id/unblock to prevent Express
+  // from matching '/unblock' as '/:id/unblock' with id="unblock"
+  router.post(
+    '/unblock',
+    requireRole('admin'),
+    asyncHandler((req, res) => {
+      const errorCategory = req.body.errorCategory as string | undefined
+      const count = service.unblockAll(errorCategory)
+      if (count > 0) {
+        broadcastQueueEvent('queue.bulk_update', { action: 'unblock', count, category: errorCategory })
+      }
+      res.json(success({ unblocked: count, message: `${count} items unblocked` }))
+    })
+  )
+
+  // Unblock a specific blocked item
+  router.post(
+    '/:id/unblock',
+    asyncHandler((req, res) => {
+      try {
+        const queueItem = service.unblockItem(req.params.id)
+        broadcastQueueEvent('item.updated', { queueItem })
+        res.json(success({ queueItem, message: 'Item unblocked and queued for retry' }))
+      } catch (error) {
+        res.status(400).json(
+          failure(
+            ApiErrorCode.INVALID_REQUEST,
+            error instanceof Error ? error.message : 'Unblock failed'
+          )
+        )
+      }
+    })
+  )
+
+  // Recover items stuck in PROCESSING state (likely due to worker crash)
+  router.post(
+    '/recover-stuck',
+    requireRole('admin'),
+    asyncHandler((req, res) => {
+      const timeoutMinutes = typeof req.body.timeoutMinutes === 'number' ? req.body.timeoutMinutes : 30
+      const count = service.recoverStuckProcessing(timeoutMinutes)
+      if (count > 0) {
+        broadcastQueueEvent('queue.bulk_update', { action: 'recover_stuck', count, timeoutMinutes })
+      }
+      res.json(success({ recovered: count, message: `${count} stuck items recovered` }))
+    })
+  )
+
+  // Get orphaned job listings (listings without job_matches and no active queue item)
+  router.get(
+    '/orphaned',
+    requireRole('admin'),
+    asyncHandler((req, res) => {
+      const limit = parseInt(req.query.limit as string) || 100
+      const listings = service.getOrphanedListings(limit)
+      const count = service.getOrphanedListingsCount()
+      res.json(success({ listings, count }))
+    })
+  )
+
   router.delete(
     '/:id',
     asyncHandler((req, res) => {

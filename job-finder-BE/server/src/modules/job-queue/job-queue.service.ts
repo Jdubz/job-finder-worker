@@ -228,4 +228,70 @@ export class JobQueueService {
   delete(id: string): void {
     this.repo.delete(id)
   }
+
+  /**
+   * Unblock a specific BLOCKED item, resetting it to PENDING.
+   * @param id Queue item ID to unblock
+   * @returns The updated queue item
+   * @throws Error if item not found or not blocked
+   */
+  unblockItem(id: string): QueueItem {
+    const existing = this.repo.getById(id)
+    if (!existing) {
+      throw new Error(`Queue item not found: ${id}`)
+    }
+
+    if (existing.status !== 'blocked') {
+      throw new Error('Only blocked items can be unblocked')
+    }
+
+    const success = this.repo.unblockItem(id)
+    if (!success) {
+      throw new Error('Failed to unblock item')
+    }
+
+    return this.repo.getById(id) as QueueItem
+  }
+
+  /**
+   * Unblock all BLOCKED items, resetting them to PENDING.
+   * @param errorCategory Optional filter for specific error category
+   * @returns Number of items unblocked
+   */
+  unblockAll(errorCategory?: string): number {
+    return this.repo.unblockAll(errorCategory)
+  }
+
+  /**
+   * Get orphaned job listings (listings without job_matches and no active queue item).
+   * @param limit Maximum number of listings to return
+   * @returns Array of orphaned job listings
+   */
+  getOrphanedListings(limit = 100): Array<{
+    id: string
+    url: string
+    title: string
+    company_name: string
+    created_at: string
+  }> {
+    return this.repo.getOrphanedListings(limit)
+  }
+
+  /**
+   * Get count of orphaned job listings.
+   * @returns Number of orphaned listings
+   */
+  getOrphanedListingsCount(): number {
+    return this.repo.getOrphanedListingsCount()
+  }
+
+  /**
+   * Recover items stuck in PROCESSING state for too long.
+   * These items likely failed silently (e.g., worker crash) and need to be reset.
+   * @param timeoutMinutes How long an item must be stuck before being recovered (default: 30)
+   * @returns Number of items recovered
+   */
+  recoverStuckProcessing(timeoutMinutes = 30): number {
+    return this.repo.recoverStuckProcessing(timeoutMinutes)
+  }
 }

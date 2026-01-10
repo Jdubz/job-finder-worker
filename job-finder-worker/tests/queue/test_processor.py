@@ -177,8 +177,8 @@ def test_process_item_without_id(processor, mock_managers):
 # Legacy company processing tests removed - see test_company_pipeline.py for granular pipeline tests
 
 
-def test_handle_failure_retry(processor, mock_managers):
-    """Test failure handling."""
+def test_handle_failure_delegates_to_queue_manager(processor, mock_managers):
+    """Test failure handling delegates to queue manager's handle_item_failure."""
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
@@ -187,16 +187,20 @@ def test_handle_failure_retry(processor, mock_managers):
         source="scraper",
     )
 
-    processor._handle_failure(item, "Test error")
+    # Create a generic exception (categorized as UNKNOWN -> FAILED)
+    error = Exception("Test error")
+    processor._handle_failure(item, error, "Test error")
 
-    # Should mark failed immediately
-    call_args = mock_managers["queue_manager"].update_status.call_args[0]
-    assert call_args[1] == QueueStatus.FAILED
-    assert "failed" in call_args[2].lower()
+    # Should delegate to queue_manager.handle_item_failure
+    mock_managers["queue_manager"].handle_item_failure.assert_called_once()
+    call_args = mock_managers["queue_manager"].handle_item_failure.call_args[0]
+    assert call_args[0] == "test-123"  # item_id
+    assert call_args[1] is error  # error object
+    assert call_args[2] == "Test error"  # error_message
 
 
-def test_handle_failure_max_retries(processor, mock_managers):
-    """Test failure handling marks item as failed."""
+def test_handle_failure_with_error_details(processor, mock_managers):
+    """Test failure handling includes error details when provided."""
     item = JobQueueItem(
         id="test-123",
         type=QueueItemType.JOB,
@@ -205,11 +209,14 @@ def test_handle_failure_max_retries(processor, mock_managers):
         source="scraper",
     )
 
-    processor._handle_failure(item, "Test error")
+    error = ValueError("Invalid value")
+    processor._handle_failure(item, error, "Validation failed", "Stack trace here")
 
-    call_args = mock_managers["queue_manager"].update_status.call_args[0]
-    assert call_args[1] == QueueStatus.FAILED
-    assert "failed" in call_args[2].lower()
+    # Should delegate to queue_manager.handle_item_failure
+    mock_managers["queue_manager"].handle_item_failure.assert_called_once()
+    call_args = mock_managers["queue_manager"].handle_item_failure.call_args[0]
+    assert call_args[0] == "test-123"
+    assert isinstance(call_args[1], ValueError)
 
 
 def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers, sample_job_item):
@@ -580,12 +587,12 @@ def test_process_scrape_error_handling(processor, mock_managers):
 
     processor.process_item(scrape_item)
 
-    # Should update to FAILED or PENDING for retry
-    call_args = mock_managers["queue_manager"].update_status.call_args_list
-    has_failure_or_retry = any(
-        call[0][1] in [QueueStatus.FAILED, QueueStatus.PENDING] for call in call_args
-    )
-    assert has_failure_or_retry
+    # Should delegate to handle_item_failure for error handling
+    mock_managers["queue_manager"].handle_item_failure.assert_called_once()
+    call_args = mock_managers["queue_manager"].handle_item_failure.call_args[0]
+    assert call_args[0] == "test-scrape-error"  # item_id
+    assert isinstance(call_args[1], Exception)  # error object
+    assert "Network error" in call_args[2]  # error_message
 
 
 def test_process_scrape_no_jobs_found(processor, mock_managers):

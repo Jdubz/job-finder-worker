@@ -134,6 +134,22 @@ export class QueueClient extends BaseApiClient {
     return response.data.queueItem
   }
 
+  async unblockQueueItem(id: string): Promise<QueueItem> {
+    const response = await this.post<ApiSuccessResponse<{ queueItem: QueueItem }>>(
+      `/queue/${id}/unblock`
+    )
+    return response.data.queueItem
+  }
+
+  async unblockAll(errorCategory?: string): Promise<{ unblocked: number }> {
+    const body = errorCategory ? { errorCategory } : {}
+    const response = await this.post<ApiSuccessResponse<{ unblocked: number }>>(
+      `/queue/unblock`,
+      body
+    )
+    return response.data
+  }
+
   async getStats(): Promise<GetQueueStatsResponse["stats"]> {
     const response = await this.get<ApiSuccessResponse<GetQueueStatsResponse>>(`/queue/stats`)
     return response.data.stats

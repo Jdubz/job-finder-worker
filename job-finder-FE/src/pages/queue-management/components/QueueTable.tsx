@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { RotateCcw, Trash2 } from "lucide-react"
+import { RotateCcw, Trash2, Unlock } from "lucide-react"
 import {
   getCompanyName,
   getDomain,
@@ -26,10 +26,11 @@ export interface QueueTableProps {
   onRowClick: (item: QueueItem) => void
   onCancel: (id: string) => void
   onRetry: (id: string) => void
+  onUnblock?: (id: string) => void
   formatRelativeTime: (date: unknown) => string
 }
 
-export function QueueTable({ items, onRowClick, onCancel, onRetry, formatRelativeTime }: QueueTableProps) {
+export function QueueTable({ items, onRowClick, onCancel, onRetry, onUnblock, formatRelativeTime }: QueueTableProps) {
   return (
     <Table className="rounded-lg border border-border/70 bg-card/60 shadow-sm">
       <TableHeader className="bg-muted/40">
@@ -89,6 +90,20 @@ export function QueueTable({ items, onRowClick, onCancel, onRetry, formatRelativ
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
+                  {item.status === "blocked" && item.id && onUnblock && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                      title="Unblock this task"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onUnblock(item.id as string)
+                      }}
+                    >
+                      <Unlock className="h-4 w-4" />
+                    </Button>
+                  )}
                   {item.status === "failed" && item.id && (
                     <Button
                       variant="ghost"

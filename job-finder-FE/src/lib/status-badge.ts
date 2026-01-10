@@ -10,6 +10,7 @@ const STATUS_MAP: Record<string, StatusTone> = {
   skipped: "warning",
   disabled: "warning",
   needs_review: "warning",
+  blocked: "warning",
 
   analyzing: "info",
   processing: "info",

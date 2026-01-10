@@ -34,6 +34,7 @@ export type QueueSseEventName =
   | "heartbeat"
   | "command.ack"
   | "command.error"
+  | "queue.bulk_update"
 
 /**
  * Event names sent from Worker to BE
@@ -132,6 +133,16 @@ export interface CommandErrorEventData {
   workerId?: string
 }
 
+/**
+ * Payload for 'queue.bulk_update' event - bulk queue operations
+ */
+export interface BulkUpdateEventData {
+  action: "unblock" | "recover_stuck"
+  count: number
+  category?: string
+  timeoutMinutes?: number
+}
+
 // ============================================================================
 // Worker Command Payloads
 // ============================================================================
@@ -163,6 +174,7 @@ export interface QueueEventDataMap {
   heartbeat: HeartbeatEventData
   "command.ack": CommandAckEventData
   "command.error": CommandErrorEventData
+  "queue.bulk_update": BulkUpdateEventData
 }
 
 // ============================================================================
@@ -272,6 +284,7 @@ export function isQueueSseEventName(name: string): name is QueueSseEventName {
     "heartbeat",
     "command.ack",
     "command.error",
+    "queue.bulk_update",
   ].includes(name)
 }
 

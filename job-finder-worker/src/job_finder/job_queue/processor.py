@@ -97,19 +97,26 @@ class QueueItemProcessor:
                 f"Error processing item {item.id}: {error_msg}\n{error_details}",
                 exc_info=True,
             )
-            self._handle_failure(item, error_msg, error_details)
+            self._handle_failure(item, e, error_msg, error_details)
 
     def _handle_failure(
         self,
         item: JobQueueItem,
+        error: Exception,
         error_message: str,
         error_details: Optional[str] = None,
     ) -> None:
         """
-        Handle item processing failure with retry logic.
+        Handle item processing failure with intelligent retry logic.
+
+        Uses error categorization to determine the appropriate action:
+        - TRANSIENT errors: Auto-retry up to max_retries
+        - RESOURCE errors: Set to BLOCKED status for manual unblock
+        - PERMANENT/UNKNOWN errors: Immediate FAILED status
 
         Args:
             item: Failed queue item
+            error: The exception that occurred
             error_message: Brief error description (shown in UI)
             error_details: Detailed error information including stack trace (for debugging)
         """
@@ -117,18 +124,16 @@ class QueueItemProcessor:
             logger.error("Cannot handle failure for item without ID")
             return
 
+        # Build detailed error context for debugging
         error_context = (
             f"Queue Item: {item.id}\n"
             f"Type: {item.type}\n"
             f"URL: {item.url}\n"
             f"Company: {item.company_name}\n\n"
         )
-
-        failed_msg = f"Processing failed: {error_message}"
-        failed_details = (
+        full_details = (
             f"{error_context}"
             f"Error: {error_message}\n\n"
-            f"Retries are disabled; investigate and resubmit if appropriate.\n\n"
             f"Troubleshooting:\n"
             f"1. Check if the URL is still valid\n"
             f"2. Review error details below for specific issues\n"
@@ -137,7 +142,16 @@ class QueueItemProcessor:
             f"{'Stack Trace:\n' + error_details if error_details else ''}"
         )
 
-        self.queue_manager.update_status(
-            item.id, QueueStatus.FAILED, failed_msg, error_details=failed_details
+        # Use intelligent failure handling from QueueManager (single update)
+        final_status = self.queue_manager.handle_item_failure(
+            item.id, error, error_message, error_details=full_details
         )
-        logger.error(f"Item {item.id} failed: {error_message}")
+
+        # Log based on the outcome
+        # Note: handle_item_failure already logs detailed retry info with correct count
+        if final_status == QueueStatus.PENDING:
+            logger.info(f"Item {item.id} queued for retry")
+        elif final_status == QueueStatus.BLOCKED:
+            logger.warning(f"Item {item.id} blocked: {error_message}")
+        else:
+            logger.error(f"Item {item.id} failed: {error_message}")

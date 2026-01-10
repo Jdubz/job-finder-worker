@@ -116,6 +116,7 @@ export const mockQueueStats: QueueStats = {
   success: 5,
   failed: 1,
   skipped: 0,
+  blocked: 0,
   total: 18,
 }
 
