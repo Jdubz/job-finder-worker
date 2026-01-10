@@ -368,34 +368,23 @@ export class JobQueueRepository {
   unblockAll(errorCategory?: string): number {
     const now = new Date().toISOString()
 
-    let result
+    let sql = `UPDATE job_queue
+      SET status = 'pending',
+          retry_count = 0,
+          processed_at = NULL,
+          completed_at = NULL,
+          error_details = NULL,
+          updated_at = ?
+      WHERE status = 'blocked'`
+
+    const params: (string | null)[] = [now]
+
     if (errorCategory) {
-      result = this.db
-        .prepare(
-          `UPDATE job_queue
-           SET status = 'pending',
-               retry_count = 0,
-               processed_at = NULL,
-               completed_at = NULL,
-               error_details = NULL,
-               updated_at = ?
-           WHERE status = 'blocked' AND last_error_category = ?`
-        )
-        .run(now, errorCategory)
-    } else {
-      result = this.db
-        .prepare(
-          `UPDATE job_queue
-           SET status = 'pending',
-               retry_count = 0,
-               processed_at = NULL,
-               completed_at = NULL,
-               error_details = NULL,
-               updated_at = ?
-           WHERE status = 'blocked'`
-        )
-        .run(now)
+      sql += ' AND last_error_category = ?'
+      params.push(errorCategory)
     }
+
+    const result = this.db.prepare(sql).run(...params)
 
     return result.changes
   }

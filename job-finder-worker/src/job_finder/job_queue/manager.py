@@ -652,41 +652,24 @@ class QueueManager:
         """
         now = _iso(_utcnow())
 
+        sql = """
+            UPDATE job_queue
+            SET status = ?,
+                retry_count = 0,
+                processed_at = NULL,
+                completed_at = NULL,
+                error_details = NULL,
+                updated_at = ?
+            WHERE status = ?
+        """
+        params: list = [QueueStatus.PENDING.value, now, QueueStatus.BLOCKED.value]
+
         if error_category:
-            with sqlite_connection(self.db_path) as conn:
-                result = conn.execute(
-                    """
-                    UPDATE job_queue
-                    SET status = ?,
-                        retry_count = 0,
-                        processed_at = NULL,
-                        completed_at = NULL,
-                        error_details = NULL,
-                        updated_at = ?
-                    WHERE status = ? AND last_error_category = ?
-                    """,
-                    (
-                        QueueStatus.PENDING.value,
-                        now,
-                        QueueStatus.BLOCKED.value,
-                        error_category,
-                    ),
-                )
-        else:
-            with sqlite_connection(self.db_path) as conn:
-                result = conn.execute(
-                    """
-                    UPDATE job_queue
-                    SET status = ?,
-                        retry_count = 0,
-                        processed_at = NULL,
-                        completed_at = NULL,
-                        error_details = NULL,
-                        updated_at = ?
-                    WHERE status = ?
-                    """,
-                    (QueueStatus.PENDING.value, now, QueueStatus.BLOCKED.value),
-                )
+            sql += " AND last_error_category = ?"
+            params.append(error_category)
+
+        with sqlite_connection(self.db_path) as conn:
+            result = conn.execute(sql, tuple(params))
 
         count = result.rowcount
         if count > 0:

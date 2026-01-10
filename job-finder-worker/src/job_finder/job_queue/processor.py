@@ -148,10 +148,9 @@ class QueueItemProcessor:
         )
 
         # Log based on the outcome
+        # Note: handle_item_failure already logs detailed retry info with correct count
         if final_status == QueueStatus.PENDING:
-            logger.info(
-                f"Item {item.id} will retry (attempt {item.retry_count + 1}/{item.max_retries})"
-            )
+            logger.info(f"Item {item.id} queued for retry")
         elif final_status == QueueStatus.BLOCKED:
             logger.warning(f"Item {item.id} blocked: {error_message}")
         else:
