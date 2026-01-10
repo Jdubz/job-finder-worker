@@ -320,6 +320,22 @@ export function buildJobQueueRouter() {
     })
   )
 
+  // Bulk unblock all blocked items
+  // NOTE: This route must be defined BEFORE /:id/unblock to prevent Express
+  // from matching '/unblock' as '/:id/unblock' with id="unblock"
+  router.post(
+    '/unblock',
+    requireRole('admin'),
+    asyncHandler((req, res) => {
+      const errorCategory = req.body.errorCategory as string | undefined
+      const count = service.unblockAll(errorCategory)
+      if (count > 0) {
+        broadcastQueueEvent('queue.bulk_update', { action: 'unblock', count, category: errorCategory })
+      }
+      res.json(success({ unblocked: count, message: `${count} items unblocked` }))
+    })
+  )
+
   // Unblock a specific blocked item
   router.post(
     '/:id/unblock',
@@ -336,20 +352,6 @@ export function buildJobQueueRouter() {
           )
         )
       }
-    })
-  )
-
-  // Bulk unblock all blocked items
-  router.post(
-    '/unblock',
-    requireRole('admin'),
-    asyncHandler((req, res) => {
-      const errorCategory = req.body.errorCategory as string | undefined
-      const count = service.unblockAll(errorCategory)
-      if (count > 0) {
-        broadcastQueueEvent('queue.bulk_update', { action: 'unblock', count, category: errorCategory })
-      }
-      res.json(success({ unblocked: count, message: `${count} items unblocked` }))
     })
   )
 

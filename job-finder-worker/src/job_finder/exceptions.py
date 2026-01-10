@@ -4,6 +4,8 @@ This module defines domain-specific exceptions that provide clearer error
 handling and better context than generic Python exceptions.
 """
 
+from __future__ import annotations
+
 from enum import Enum
 from typing import Optional
 

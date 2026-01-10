@@ -380,11 +380,12 @@ class QueueManager:
 
         if status == QueueStatus.PROCESSING:
             item.processed_at = now_dt
+        # BLOCKED is intentionally excluded - it's not a terminal state,
+        # items are waiting for manual intervention to resolve resource constraints
         if status in (
             QueueStatus.SUCCESS,
             QueueStatus.FAILED,
             QueueStatus.SKIPPED,
-            QueueStatus.BLOCKED,
         ):
             item.completed_at = now_dt
 
