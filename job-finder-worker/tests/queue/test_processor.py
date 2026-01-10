@@ -587,12 +587,12 @@ def test_process_scrape_error_handling(processor, mock_managers):
 
     processor.process_item(scrape_item)
 
-    # Should update to FAILED or PENDING for retry
-    call_args = mock_managers["queue_manager"].update_status.call_args_list
-    has_failure_or_retry = any(
-        call[0][1] in [QueueStatus.FAILED, QueueStatus.PENDING] for call in call_args
-    )
-    assert has_failure_or_retry
+    # Should delegate to handle_item_failure for error handling
+    mock_managers["queue_manager"].handle_item_failure.assert_called_once()
+    call_args = mock_managers["queue_manager"].handle_item_failure.call_args[0]
+    assert call_args[0] == "test-scrape-error"  # item_id
+    assert isinstance(call_args[1], Exception)  # error object
+    assert "Network error" in call_args[2]  # error_message
 
 
 def test_process_scrape_no_jobs_found(processor, mock_managers):

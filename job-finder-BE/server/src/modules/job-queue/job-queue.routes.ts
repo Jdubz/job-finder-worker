@@ -353,6 +353,20 @@ export function buildJobQueueRouter() {
     })
   )
 
+  // Recover items stuck in PROCESSING state (likely due to worker crash)
+  router.post(
+    '/recover-stuck',
+    requireRole('admin'),
+    asyncHandler((req, res) => {
+      const timeoutMinutes = typeof req.body.timeoutMinutes === 'number' ? req.body.timeoutMinutes : 30
+      const count = service.recoverStuckProcessing(timeoutMinutes)
+      if (count > 0) {
+        broadcastQueueEvent('queue.bulk_update', { action: 'recover_stuck', count, timeoutMinutes })
+      }
+      res.json(success({ recovered: count, message: `${count} stuck items recovered` }))
+    })
+  )
+
   // Get orphaned job listings (listings without job_matches and no active queue item)
   router.get(
     '/orphaned',

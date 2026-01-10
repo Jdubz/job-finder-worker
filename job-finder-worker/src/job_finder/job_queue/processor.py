@@ -124,8 +124,28 @@ class QueueItemProcessor:
             logger.error("Cannot handle failure for item without ID")
             return
 
-        # Use intelligent failure handling from QueueManager
-        final_status = self.queue_manager.handle_item_failure(item.id, error, error_message)
+        # Build detailed error context for debugging
+        error_context = (
+            f"Queue Item: {item.id}\n"
+            f"Type: {item.type}\n"
+            f"URL: {item.url}\n"
+            f"Company: {item.company_name}\n\n"
+        )
+        full_details = (
+            f"{error_context}"
+            f"Error: {error_message}\n\n"
+            f"Troubleshooting:\n"
+            f"1. Check if the URL is still valid\n"
+            f"2. Review error details below for specific issues\n"
+            f"3. Verify network connectivity and API credentials\n"
+            f"4. Check if the source website has changed structure\n\n"
+            f"{'Stack Trace:\n' + error_details if error_details else ''}"
+        )
+
+        # Use intelligent failure handling from QueueManager (single update)
+        final_status = self.queue_manager.handle_item_failure(
+            item.id, error, error_message, error_details=full_details
+        )
 
         # Log based on the outcome
         if final_status == QueueStatus.PENDING:
@@ -135,27 +155,4 @@ class QueueItemProcessor:
         elif final_status == QueueStatus.BLOCKED:
             logger.warning(f"Item {item.id} blocked: {error_message}")
         else:
-            # FAILED - provide detailed error context
-            error_context = (
-                f"Queue Item: {item.id}\n"
-                f"Type: {item.type}\n"
-                f"URL: {item.url}\n"
-                f"Company: {item.company_name}\n\n"
-            )
-            full_details = (
-                f"{error_context}"
-                f"Error: {error_message}\n\n"
-                f"Troubleshooting:\n"
-                f"1. Check if the URL is still valid\n"
-                f"2. Review error details below for specific issues\n"
-                f"3. Verify network connectivity and API credentials\n"
-                f"4. Check if the source website has changed structure\n\n"
-                f"{'Stack Trace:\n' + error_details if error_details else ''}"
-            )
-            # Update with full error details (handle_item_failure only set brief message)
-            self.queue_manager.update_status(
-                item.id,
-                QueueStatus.FAILED,
-                error_details=full_details,
-            )
             logger.error(f"Item {item.id} failed: {error_message}")

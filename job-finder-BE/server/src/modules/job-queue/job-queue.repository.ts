@@ -149,8 +149,9 @@ export class JobQueueRepository {
       INSERT INTO job_queue (
         id, type, status, url, tracking_id, parent_item_id,
         input, output, result_message, error_details,
+        retry_count, max_retries, last_error_category,
         created_at, updated_at, processed_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -164,6 +165,9 @@ export class JobQueueRepository {
       outputJson,
       data.result_message ?? null,
       data.error_details ?? null,
+      data.retry_count ?? 0,
+      data.max_retries ?? 3,
+      data.last_error_category ?? null,
       createdAt,
       updatedAt,
       processedAt,
@@ -416,6 +420,43 @@ export class JobQueueRepository {
       )
       .run(now, id)
     return result.changes > 0
+  }
+
+  /**
+   * Recover items stuck in PROCESSING state for too long.
+   * If the worker crashes while processing, items remain stuck.
+   * This method fails them so they can be retried or investigated.
+   * @param timeoutMinutes Minutes after which PROCESSING items are considered stuck
+   * @returns Number of items recovered (marked as failed)
+   */
+  recoverStuckProcessing(timeoutMinutes = 30): number {
+    const now = new Date()
+    const cutoff = new Date(now.getTime() - timeoutMinutes * 60 * 1000)
+    const cutoffIso = cutoff.toISOString()
+    const nowIso = now.toISOString()
+
+    const result = this.db
+      .prepare(
+        `UPDATE job_queue
+         SET status = 'failed',
+             result_message = ?,
+             error_details = ?,
+             last_error_category = 'unknown',
+             completed_at = ?,
+             updated_at = ?
+         WHERE status = 'processing'
+           AND processed_at IS NOT NULL
+           AND datetime(processed_at) < datetime(?)`
+      )
+      .run(
+        `Stuck in PROCESSING for over ${timeoutMinutes} minutes - worker may have crashed`,
+        `Item was in PROCESSING state since before ${cutoffIso}. This usually indicates the worker crashed during processing.`,
+        nowIso,
+        nowIso,
+        cutoffIso
+      )
+
+    return result.changes
   }
 
   /**

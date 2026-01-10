@@ -512,6 +512,7 @@ class QueueManager:
         item_id: str,
         error: Exception,
         error_message: str,
+        error_details: Optional[str] = None,
     ) -> QueueStatus:
         """
         Handle item failure with intelligent retry logic.
@@ -524,7 +525,8 @@ class QueueManager:
         Args:
             item_id: The queue item ID
             error: The exception that occurred
-            error_message: Human-readable error message
+            error_message: Human-readable error message (shown in UI result_message)
+            error_details: Optional detailed error info including stack trace
 
         Returns:
             The final QueueStatus set on the item
@@ -535,6 +537,9 @@ class QueueManager:
         if not item:
             logger.error("handle_item_failure: item %s not found", item_id)
             return QueueStatus.FAILED
+
+        # Use error_details if provided, otherwise fall back to error_message
+        details = error_details if error_details else error_message
 
         if category == ErrorCategory.TRANSIENT:
             if item.retry_count < item.max_retries:
@@ -555,7 +560,7 @@ class QueueManager:
                     item_id,
                     QueueStatus.FAILED,
                     result_message=final_msg,
-                    error_details=final_msg,
+                    error_details=details,
                 )
                 logger.warning("Item %s failed after %d retries", item_id, item.max_retries)
                 return QueueStatus.FAILED
@@ -572,7 +577,7 @@ class QueueManager:
                 item_id,
                 QueueStatus.FAILED,
                 result_message=error_message,
-                error_details=error_message,
+                error_details=details,
             )
             logger.warning("Item %s failed (permanent): %s", item_id, error_message)
             return QueueStatus.FAILED
@@ -728,6 +733,67 @@ class QueueManager:
             logger.info("Unblocked queue item %s", item_id)
             self._notify_item_updated(item_id)
         return success
+
+    def recover_stuck_processing(self, timeout_minutes: int = 30) -> int:
+        """
+        Recover items stuck in PROCESSING state for too long.
+
+        If the worker crashes while processing an item, the item remains in
+        PROCESSING state forever. This method fails such items so they can
+        be retried or investigated.
+
+        Args:
+            timeout_minutes: Minutes after which a PROCESSING item is considered stuck
+
+        Returns:
+            Number of items recovered (failed)
+        """
+        now = _utcnow()
+        cutoff = now - __import__("datetime").timedelta(minutes=timeout_minutes)
+        cutoff_iso = _iso(cutoff)
+        now_iso = _iso(now)
+
+        with sqlite_connection(self.db_path) as conn:
+            result = conn.execute(
+                """
+                UPDATE job_queue
+                SET status = ?,
+                    result_message = ?,
+                    error_details = ?,
+                    last_error_category = ?,
+                    completed_at = ?,
+                    updated_at = ?
+                WHERE status = ?
+                  AND processed_at IS NOT NULL
+                  AND datetime(processed_at) < datetime(?)
+                """,
+                (
+                    QueueStatus.FAILED.value,
+                    f"Stuck in PROCESSING for over {timeout_minutes} minutes - worker may have crashed",
+                    f"Item was in PROCESSING state since before {cutoff_iso}. "
+                    "This usually indicates the worker crashed during processing. "
+                    "Check worker logs for errors around the processed_at timestamp.",
+                    ErrorCategory.UNKNOWN.value,
+                    now_iso,
+                    now_iso,
+                    QueueStatus.PROCESSING.value,
+                    cutoff_iso,
+                ),
+            )
+
+        count = result.rowcount
+        if count > 0:
+            logger.warning(
+                "Recovered %d stuck PROCESSING items (timeout: %d minutes)",
+                count,
+                timeout_minutes,
+            )
+            if self.notifier:
+                self.notifier.send_event(
+                    "queue.bulk_update",
+                    {"action": "recover_stuck", "count": count, "timeout_minutes": timeout_minutes},
+                )
+        return count
 
     def delete_item(self, item_id: str) -> bool:
         with sqlite_connection(self.db_path) as conn:

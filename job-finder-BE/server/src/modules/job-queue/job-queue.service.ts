@@ -284,4 +284,14 @@ export class JobQueueService {
   getOrphanedListingsCount(): number {
     return this.repo.getOrphanedListingsCount()
   }
+
+  /**
+   * Recover items stuck in PROCESSING state for too long.
+   * These items likely failed silently (e.g., worker crash) and need to be reset.
+   * @param timeoutMinutes How long an item must be stuck before being recovered (default: 30)
+   * @returns Number of items recovered
+   */
+  recoverStuckProcessing(timeoutMinutes = 30): number {
+    return this.repo.recoverStuckProcessing(timeoutMinutes)
+  }
 }

@@ -473,9 +473,18 @@ def categorize_error(exc: Exception) -> ErrorCategory:
         >>> categorize_error(ValueError("bad data"))
         ErrorCategory.UNKNOWN
     """
-    # Check if exception has explicit error_category
+    # Check if exception has explicit error_category (and validate it)
     if hasattr(exc, "error_category"):
-        return exc.error_category
+        category = exc.error_category
+        # Validate the category is a valid ErrorCategory
+        if isinstance(category, ErrorCategory):
+            return category
+        # Handle string values that match ErrorCategory
+        if isinstance(category, str):
+            try:
+                return ErrorCategory(category)
+            except ValueError:
+                pass  # Invalid category string, fall through to other checks
 
     # Categorize common Python exceptions
     if isinstance(exc, (TimeoutError, ConnectionError, ConnectionResetError)):
@@ -488,5 +497,44 @@ def categorize_error(exc: Exception) -> ErrorCategory:
     ):
         return ErrorCategory.TRANSIENT
 
+    # Handle HTTP errors by inspecting status code
+    # Works with requests.HTTPError, httpx.HTTPStatusError, urllib.error.HTTPError
+    status_code = _get_http_status_code(exc)
+    if status_code is not None:
+        # 5xx server errors and some 4xx are transient (may succeed on retry)
+        if status_code in (408, 425, 429, 500, 502, 503, 504):
+            return ErrorCategory.TRANSIENT
+        # Client errors are permanent (won't succeed on retry)
+        if 400 <= status_code < 500:
+            return ErrorCategory.PERMANENT
+
     # Default to UNKNOWN for unclassified errors
     return ErrorCategory.UNKNOWN
+
+
+def _get_http_status_code(exc: Exception) -> int | None:
+    """
+    Extract HTTP status code from various HTTP exception types.
+
+    Supports:
+    - requests.HTTPError (has response.status_code)
+    - httpx.HTTPStatusError (has response.status_code)
+    - urllib.error.HTTPError (has code attribute)
+    - Exceptions with status_code attribute
+
+    Returns:
+        The HTTP status code, or None if not an HTTP error
+    """
+    # Direct status_code attribute
+    if hasattr(exc, "status_code"):
+        return exc.status_code
+
+    # urllib.error.HTTPError uses 'code' attribute
+    if hasattr(exc, "code") and isinstance(exc.code, int):
+        return exc.code
+
+    # requests/httpx HTTPError has response.status_code
+    if hasattr(exc, "response") and hasattr(exc.response, "status_code"):
+        return exc.response.status_code
+
+    return None

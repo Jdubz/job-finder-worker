@@ -49,6 +49,7 @@ export function useQueueStats({ enabled, queueItems }: UseQueueStatsOptions): Us
           success: queueItems.filter((i) => i.status === "success").length,
           failed: queueItems.filter((i) => i.status === "failed").length,
           skipped: queueItems.filter((i) => i.status === "skipped").length,
+          blocked: queueItems.filter((i) => i.status === "blocked").length,
         }
         setStats(fallbackStats)
         setUsingFallback(true)
