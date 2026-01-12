@@ -280,7 +280,7 @@ def _check_gemini_api_auth() -> Tuple[bool, str]:
     # Fall back to Vertex AI auth check
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
     if not project:
-        return False, "missing_env:GEMINI_API_KEY (or GOOGLE_CLOUD_PROJECT for Vertex AI)"
+        return False, "missing_env:GEMINI_API_KEY/GOOGLE_API_KEY and GOOGLE_CLOUD_PROJECT"
 
     # Check for ADC credentials (only needed for Vertex AI mode)
     try:
@@ -294,7 +294,7 @@ def _check_gemini_api_auth() -> Tuple[bool, str]:
         # User should use API key auth instead
         return False, "missing_env:GEMINI_API_KEY (or install google-auth for Vertex AI)"
     except DefaultCredentialsError:
-        return False, "missing_credentials:ADC not configured (use GEMINI_API_KEY instead)"
+        return False, "missing_credentials:ADC not configured (API key also not set)"
 
 
 def hydrate_auth_from_host_file(provider: str) -> None:

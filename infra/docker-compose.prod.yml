@@ -86,7 +86,7 @@ services:
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       TZ: America/Los_Angeles
-      # Vertex AI authentication via Firebase service account
+      # Vertex AI authentication via Firebase service account (optional, use GEMINI_API_KEY instead if not using Vertex AI)
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-admin.json
     volumes:
       - type: bind

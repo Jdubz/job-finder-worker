@@ -172,6 +172,7 @@ class AgentManager:
                     "missing_env:",  # Environment variable not set
                     "missing_cli_auth:",  # CLI auth not configured
                     "unsupported_agent:",  # Provider not implemented
+                    "missing_credentials:",  # Missing ADC or other required credentials
                 )
                 is_permanent = (
                     auth_reason.startswith(permanent_prefixes)
