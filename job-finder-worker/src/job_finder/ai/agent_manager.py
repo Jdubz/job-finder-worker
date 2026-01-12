@@ -166,10 +166,29 @@ class AgentManager:
 
             auth_ok, auth_reason = auth_status(provider, interface)
             if not auth_ok:
-                logger.info(
-                    f"Skipping agent {agent_id} ({provider}/{interface}): {auth_reason} "
-                    "(not disabling; auth may be refreshed automatically)"
+                # Distinguish between permanent and transient auth failures
+                # Permanent failures should disable the agent to avoid repeated checks
+                permanent_prefixes = (
+                    "missing_env:",  # Environment variable not set
+                    "missing_cli_auth:",  # CLI auth not configured
+                    "unsupported_agent:",  # Provider not implemented
                 )
+                is_permanent = (
+                    auth_reason.startswith(permanent_prefixes)
+                    or "not installed" in auth_reason  # Missing package
+                )
+
+                if is_permanent:
+                    logger.warning(
+                        f"Disabling agent {agent_id} ({provider}/{interface}): {auth_reason} "
+                        "(permanent auth failure)"
+                    )
+                    self._disable_agent(agent_id, active_scope, f"auth_failed: {auth_reason}")
+                else:
+                    logger.info(
+                        f"Skipping agent {agent_id} ({provider}/{interface}): {auth_reason} "
+                        "(not disabling; auth may be refreshed automatically)"
+                    )
                 errors.append((agent_id, auth_reason))
                 continue
 

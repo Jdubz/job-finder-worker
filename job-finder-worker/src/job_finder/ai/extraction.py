@@ -6,11 +6,11 @@ This data is then used by the deterministic ScoringEngine.
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, cast, get_args
 
 from job_finder.ai.extraction_prompts import build_extraction_prompt
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
@@ -286,14 +286,13 @@ class JobExtractor:
         if not response or not response.strip():
             raise ExtractionError("AI returned empty response")
 
-        # Try to extract JSON from response
-        json_match = re.search(r"\{[\s\S]*\}", response)
-        if not json_match:
+        # Use response_parser to handle markdown code blocks, envelope objects, etc.
+        json_str = extract_json_from_response(response)
+        if not json_str:
             raise ExtractionError(
                 f"No JSON found in AI response. Response preview: {response[:200]}"
             )
 
-        json_str = json_match.group()
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:

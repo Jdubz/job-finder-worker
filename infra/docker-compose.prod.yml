@@ -86,6 +86,8 @@ services:
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       TZ: America/Los_Angeles
+      # Vertex AI authentication via Firebase service account
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-admin.json
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -93,6 +95,11 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /app/logs
+      # Firebase service account for Vertex AI (Gemini API)
+      - type: bind
+        source: /srv/job-finder/secrets/firebase-admin.json
+        target: /secrets/firebase-admin.json
+        read_only: true
     networks:
       - jobfinder
     labels:
