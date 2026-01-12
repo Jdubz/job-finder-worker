@@ -280,7 +280,7 @@ def _check_gemini_api_auth() -> Tuple[bool, str]:
     # Fall back to Vertex AI auth check
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
     if not project:
-        return False, "missing_env:GEMINI_API_KEY or GOOGLE_API_KEY"
+        return False, "missing_env:GEMINI_API_KEY (or GOOGLE_CLOUD_PROJECT for Vertex AI)"
 
     # Check for ADC credentials (only needed for Vertex AI mode)
     try:
