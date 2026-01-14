@@ -342,12 +342,7 @@ class ConfigLoader:
                 enabled_value = scope_state.get("enabled")
                 # Accept bool or int (0/1) for SQLite compatibility
                 # Auto-correct invalid values to False and log warning
-                if isinstance(enabled_value, (bool, int)) and enabled_value in (
-                    True,
-                    False,
-                    0,
-                    1,
-                ):
+                if isinstance(enabled_value, bool) or enabled_value in (0, 1):
                     # Valid value - normalize to bool for consistency
                     scope_state["enabled"] = bool(enabled_value)
                 else:
@@ -359,7 +354,8 @@ class ConfigLoader:
                     scope_state["enabled"] = False
                     if not scope_state.get("reason"):
                         scope_state["reason"] = (
-                            f"auto-disabled: invalid enabled value {enabled_value}"
+                            f"auto-disabled: invalid enabled value "
+                            f"{type(enabled_value).__name__}:{enabled_value}"
                         )
                 reason = scope_state.get("reason")
                 if reason is not None and not isinstance(reason, str):
