@@ -89,6 +89,12 @@ export function RestartOverlay() {
       }
     }
 
+    // Helper to track message timing for heartbeat detection
+    // Must be defined before event listeners that use it
+    function updateMessageTime() {
+      lastMessageTime.current = Date.now()
+    }
+
     source.addEventListener("restarting", (event) => {
       updateMessageTime()
       try {
@@ -113,22 +119,24 @@ export function RestartOverlay() {
 
     // Handle SSE connection errors with modern best practices:
     // 1. Don't assume server is down on network errors (ERR_NETWORK_CHANGED)
-    // 2. Server sends heartbeats every 15s - only trigger overlay after 45s+ of silence
+    // 2. Server sends status events ~every 15s (SSE comment heartbeats don't trigger listeners)
+    //    Only actual events update lastMessageTime - 45s+ silence means stale connection
     // 3. Verify server is actually down before showing overlay
-    const HEARTBEAT_TIMEOUT_MS = 45_000 // 3x heartbeat interval
-    
+    const HEARTBEAT_TIMEOUT_MS = 45_000 // 3x expected event interval
+    const TRANSIENT_ERROR_GRACE_MS = 5_000 // Recent message = transient network error
+
     source.onerror = async () => {
       // If a restart is already in progress, ignore additional errors
       if (restartTriggered.current) return
-      
+
       const timeSinceLastMessage = Date.now() - lastMessageTime.current
-      
-      // If we recently received a message (< 5s), this is a transient network error
+
+      // If we recently received a message, this is a transient network error
       // (e.g., ERR_NETWORK_CHANGED from WiFi switch, VPN change, etc.)
       // Browser will auto-reconnect with exponential backoff - don't show overlay
-      if (timeSinceLastMessage < 5000) return
-      
-      // If no heartbeat for 45+ seconds, verify server health before showing overlay
+      if (timeSinceLastMessage < TRANSIENT_ERROR_GRACE_MS) return
+
+      // If no events for 45+ seconds, verify server health before showing overlay
       if (timeSinceLastMessage > HEARTBEAT_TIMEOUT_MS) {
         try {
           const res = await fetch(healthUrl, { cache: "no-store" })
@@ -143,15 +151,11 @@ export function RestartOverlay() {
       }
     }
 
-    // Update last message time on any message (heartbeats or real events)
-    const updateMessageTime = () => {
-      lastMessageTime.current = Date.now()
-    }
-
     // Reset state when connection is re-established
     source.onopen = () => {
       lastMessageTime.current = Date.now()
       // If we previously timed out and the modal is still showing, retry the reload
+      // Delay briefly to let the server stabilize (SSE may connect before /healthz is ready)
       if (!restartTriggered.current && stateRef.current.status === "waiting") {
         setTimeout(() => {
           if (!restartTriggered.current && stateRef.current.status === "waiting") {
