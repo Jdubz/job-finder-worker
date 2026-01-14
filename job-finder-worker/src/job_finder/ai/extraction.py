@@ -6,6 +6,7 @@ This data is then used by the deterministic ScoringEngine.
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, cast, get_args
 
@@ -292,6 +293,11 @@ class JobExtractor:
             raise ExtractionError(
                 f"No JSON found in AI response. Response preview: {response[:200]}"
             )
+
+        # Sanitize JSON - fix common AI model formatting issues
+        # Issue: Gemini returns "timezone": +1 which is invalid JSON (numbers can't start with +)
+        # Fix: Replace "+<digit>" with quoted strings for timezone field only
+        json_str = re.sub(r'"timezone"\s*:\s*\+(\d+(?:\.\d+)?)', r'"timezone": "+\1"', json_str)
 
         try:
             data = json.loads(json_str)
