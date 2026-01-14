@@ -339,9 +339,15 @@ class ConfigLoader:
                     raise InitializationError(
                         f"agent {agent_id} runtimeState.{scope} must be an object"
                     )
-                if not isinstance(scope_state.get("enabled"), bool):
+                enabled_value = scope_state.get("enabled")
+                if not isinstance(enabled_value, (bool, int)) or enabled_value not in (
+                    True,
+                    False,
+                    0,
+                    1,
+                ):
                     raise InitializationError(
-                        f"agent {agent_id} runtimeState.{scope}.enabled must be a boolean"
+                        f"agent {agent_id} runtimeState.{scope}.enabled must be a boolean (got {type(enabled_value).__name__}: {enabled_value})"
                     )
                 reason = scope_state.get("reason")
                 if reason is not None and not isinstance(reason, str):
