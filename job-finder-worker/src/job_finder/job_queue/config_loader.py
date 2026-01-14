@@ -340,15 +340,27 @@ class ConfigLoader:
                         f"agent {agent_id} runtimeState.{scope} must be an object"
                     )
                 enabled_value = scope_state.get("enabled")
-                if not isinstance(enabled_value, (bool, int)) or enabled_value not in (
+                # Accept bool or int (0/1) for SQLite compatibility
+                # Auto-correct invalid values to False and log warning
+                if isinstance(enabled_value, (bool, int)) and enabled_value in (
                     True,
                     False,
                     0,
                     1,
                 ):
-                    raise InitializationError(
-                        f"agent {agent_id} runtimeState.{scope}.enabled must be a boolean (got {type(enabled_value).__name__}: {enabled_value})"
+                    # Valid value - normalize to bool for consistency
+                    scope_state["enabled"] = bool(enabled_value)
+                else:
+                    # Invalid value - auto-correct to disabled
+                    logger.warning(
+                        f"agent {agent_id} runtimeState.{scope}.enabled has invalid value "
+                        f"{type(enabled_value).__name__}:{enabled_value}, auto-correcting to False"
                     )
+                    scope_state["enabled"] = False
+                    if not scope_state.get("reason"):
+                        scope_state["reason"] = (
+                            f"auto-disabled: invalid enabled value {enabled_value}"
+                        )
                 reason = scope_state.get("reason")
                 if reason is not None and not isinstance(reason, str):
                     raise InitializationError(
