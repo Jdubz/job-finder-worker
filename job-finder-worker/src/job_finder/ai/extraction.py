@@ -293,6 +293,13 @@ class JobExtractor:
                 f"No JSON found in AI response. Response preview: {response[:200]}"
             )
 
+        # Sanitize JSON - fix common AI model formatting issues
+        # Issue: Gemini returns "timezone": +1 which is invalid JSON (numbers can't start with +)
+        # Fix: Replace "+<digit>" with quoted strings to make valid JSON
+        import re
+
+        json_str = re.sub(r":\s*\+(\d+(?:\.\d+)?)", r': "\+\1"', json_str)
+
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
