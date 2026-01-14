@@ -44,6 +44,7 @@ export function RestartOverlay() {
   const lifecycleUrl = `${apiBase}/api/lifecycle/events`
 
   const restartTriggered = useRef(false)
+  const lastMessageTime = useRef(Date.now())
 
   useEffect(() => {
     if (typeof EventSource === "undefined") return
@@ -89,6 +90,7 @@ export function RestartOverlay() {
     }
 
     source.addEventListener("restarting", (event) => {
+      updateMessageTime()
       try {
         const data = JSON.parse((event as MessageEvent).data) as { reason?: string }
         void beginBlocking(data.reason)
@@ -100,36 +102,58 @@ export function RestartOverlay() {
     // The backend broadcasts a `ready` (and periodic `status`) event once it is accepting traffic again.
     // If polling failed due to a bad health URL or other transient issues, this acts as a second signal
     // to clear the overlay and reload when the API is definitively back online.
-    source.addEventListener("ready", (event) => handleLifecycleRecovery(event as MessageEvent))
-    source.addEventListener("status", (event) => handleLifecycleRecovery(event as MessageEvent))
+    source.addEventListener("ready", (event) => {
+      updateMessageTime()
+      handleLifecycleRecovery(event as MessageEvent)
+    })
+    source.addEventListener("status", (event) => {
+      updateMessageTime()
+      handleLifecycleRecovery(event as MessageEvent)
+    })
 
-    // Handle SSE connection errors - the server may have died without sending 'restarting'
-    // This catches cases where watchtower/docker kills the container abruptly
-    const CONSECUTIVE_ERROR_THRESHOLD = 2
-    let errorCount = 0
-    source.onerror = () => {
-      // If a restart is already in progress (polling), reset counter and ignore.
-      // This prevents re-triggering immediately if polling times out.
-      if (restartTriggered.current) {
-        errorCount = 0
-        return
-      }
-      errorCount++
-      // After consecutive errors, assume the server is down and trigger the restart flow
-      if (errorCount >= CONSECUTIVE_ERROR_THRESHOLD) {
-        void beginBlocking("connection-lost")
+    // Handle SSE connection errors with modern best practices:
+    // 1. Don't assume server is down on network errors (ERR_NETWORK_CHANGED)
+    // 2. Server sends heartbeats every 15s - only trigger overlay after 45s+ of silence
+    // 3. Verify server is actually down before showing overlay
+    const HEARTBEAT_TIMEOUT_MS = 45_000 // 3x heartbeat interval
+    
+    source.onerror = async () => {
+      // If a restart is already in progress, ignore additional errors
+      if (restartTriggered.current) return
+      
+      const timeSinceLastMessage = Date.now() - lastMessageTime.current
+      
+      // If we recently received a message (< 5s), this is a transient network error
+      // (e.g., ERR_NETWORK_CHANGED from WiFi switch, VPN change, etc.)
+      // Browser will auto-reconnect with exponential backoff - don't show overlay
+      if (timeSinceLastMessage < 5000) return
+      
+      // If no heartbeat for 45+ seconds, verify server health before showing overlay
+      if (timeSinceLastMessage > HEARTBEAT_TIMEOUT_MS) {
+        try {
+          const res = await fetch(healthUrl, { cache: "no-store" })
+          if (res.ok) {
+            // Server is actually up - SSE connection issue, let browser reconnect
+            return
+          }
+        } catch {
+          // Health check failed - server is likely down
+          void beginBlocking("connection-lost")
+        }
       }
     }
 
-    // Reset error count when connection is re-established
-    // If the modal is showing (we timed out waiting), retry polling now that the API is back
+    // Update last message time on any message (heartbeats or real events)
+    const updateMessageTime = () => {
+      lastMessageTime.current = Date.now()
+    }
+
+    // Reset state when connection is re-established
     source.onopen = () => {
-      errorCount = 0
+      lastMessageTime.current = Date.now()
       // If we previously timed out and the modal is still showing, retry the reload
-      // Delay briefly to let the server stabilize (SSE may connect before /healthz is ready)
       if (!restartTriggered.current && stateRef.current.status === "waiting") {
         setTimeout(() => {
-          // Re-check conditions after delay in case state changed
           if (!restartTriggered.current && stateRef.current.status === "waiting") {
             void beginBlocking(stateRef.current.reason)
           }
