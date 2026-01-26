@@ -37,7 +37,7 @@ describe("GeminiProvider", () => {
 
   it("should use default model if not specified", () => {
     const provider = new GeminiProvider({ project: "test-project" })
-    expect(provider["model"]).toBe("gemini-2.0-flash-exp")
+    expect(provider["model"]).toBe("gemini-2.0-flash-001")
   })
 
   it("should use custom model if specified", () => {
