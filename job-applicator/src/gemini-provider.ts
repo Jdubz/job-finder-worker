@@ -1,19 +1,14 @@
 /**
- * Gemini API provider for job extraction.
- * Uses the same pattern as job-finder-worker for consistency.
- * 
- * Supports two authentication modes:
- * 1. API Key: Set GEMINI_API_KEY environment variable (simple, recommended for dev)
- * 2. Vertex AI: Set GOOGLE_CLOUD_PROJECT + use Application Default Credentials (production)
+ * Gemini provider for job extraction using Vertex AI.
+ * Uses Google Cloud Vertex AI with service account authentication.
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { VertexAI } from "@google-cloud/vertexai"
 import { logger } from "./logger.js"
 import type { JobExtraction } from "./types.js"
 import { parseCliObjectOutput } from "./utils.js"
 
 export interface GeminiConfig {
-  apiKey?: string
   project?: string
   location?: string
   model?: string
@@ -22,38 +17,30 @@ export interface GeminiConfig {
 }
 
 export class GeminiProvider {
-  private client: GoogleGenerativeAI
+  private vertexAI: VertexAI
   private model: string
-  private authMode: "api_key" | "vertex_ai"
+  private project: string
+  private location: string
 
   constructor(config: GeminiConfig) {
-    const apiKey = config.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-    const project = config.project || process.env.GOOGLE_CLOUD_PROJECT
-    const location = config.location || process.env.GOOGLE_CLOUD_LOCATION || "us-central1"
+    this.project = config.project || process.env.GOOGLE_CLOUD_PROJECT || ""
+    this.location = config.location || process.env.GOOGLE_CLOUD_LOCATION || "us-central1"
 
-    // Try API key first (simpler), then fall back to Vertex AI
-    if (apiKey) {
-      this.client = new GoogleGenerativeAI(apiKey)
-      this.authMode = "api_key"
-      logger.info("[Gemini] Using API key authentication")
-    } else if (project) {
-      this.client = new GoogleGenerativeAI({
-        vertexai: true,
-        project,
-        location,
-      })
-      this.authMode = "vertex_ai"
-      logger.info(`[Gemini] Using Vertex AI authentication (project: ${project}, location: ${location})`)
-    } else {
+    if (!this.project) {
       throw new Error(
-        "Gemini requires either GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT. " +
-        "Set GEMINI_API_KEY for API key auth, or GOOGLE_CLOUD_PROJECT for Vertex AI."
+        "GOOGLE_CLOUD_PROJECT environment variable is required. " +
+        "Set it in your .env file or pass as config.project"
       )
     }
 
+    this.vertexAI = new VertexAI({
+      project: this.project,
+      location: this.location,
+    })
+
     this.model = config.model || process.env.GEMINI_DEFAULT_MODEL || "gemini-2.0-flash-exp"
 
-    logger.info(`[Gemini] Initialized with model: ${this.model} (auth: ${this.authMode})`)
+    logger.info(`[Gemini] Initialized with Vertex AI (project: ${this.project}, location: ${this.location}, model: ${this.model})`)
   }
 
   async generateContent(
@@ -67,37 +54,31 @@ export class GeminiProvider {
     const temperature = options?.temperature || 0.7
 
     try {
-      const model = this.client.getGenerativeModel({
+      const generativeModel = this.vertexAI.getGenerativeModel({
         model: this.model,
-      })
-
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           maxOutputTokens,
           temperature,
         },
       })
 
+      const result = await generativeModel.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      })
+
       const response = result.response
 
       // Check if response was blocked by safety filters
       if (!response.candidates || response.candidates.length === 0) {
-        const blockReason = response.promptFeedback?.blockReason
-        if (blockReason) {
-          throw new Error(`Content blocked by safety filters: ${blockReason}`)
-        }
-        throw new Error("No response candidates generated")
+        throw new Error("No response candidates generated (possibly blocked by safety filters)")
       }
 
-      let text: string
-      try {
-        text = response.text()
-      } catch (err) {
-        // response.text() can throw if content was filtered
-        const message = err instanceof Error ? err.message : String(err)
-        throw new Error(`Failed to get response text: ${message}`)
+      const candidate = response.candidates[0]
+      if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+        throw new Error("Response candidate has no content")
       }
+
+      const text = candidate.content.parts.map(part => part.text).join("")
 
       if (!text || text.trim().length === 0) {
         throw new Error("Gemini API returned empty response")
@@ -113,15 +94,14 @@ export class GeminiProvider {
         throw new Error("Gemini API quota exceeded. Please try again later.")
       }
 
-      // Check for API key errors
-      if (message.toLowerCase().includes("api key") || message.toLowerCase().includes("authentication")) {
-        throw new Error("Invalid Gemini API key. Check your GEMINI_API_KEY in .env file.")
+      // Check for authentication errors
+      if (message.toLowerCase().includes("authentication") || message.toLowerCase().includes("permission")) {
+        throw new Error("Vertex AI authentication failed. Ensure service account is properly configured.")
       }
 
       // Re-throw our formatted errors
-      if (message.startsWith("Content blocked") || 
-          message.startsWith("Failed to get response text") ||
-          message.startsWith("No response candidates")) {
+      if (message.startsWith("No response candidates") || 
+          message.startsWith("Response candidate has no content")) {
         throw error
       }
 

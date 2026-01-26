@@ -1,50 +1,56 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { GeminiProvider } from "./gemini-provider.js"
+import { GeminiProvider, getGeminiProvider } from "./gemini-provider.js"
 
 describe("GeminiProvider", () => {
   beforeEach(() => {
     vi.resetModules()
     // Clear env vars for clean state
-    delete process.env.GEMINI_API_KEY
     delete process.env.GOOGLE_CLOUD_PROJECT
+    delete process.env.GOOGLE_CLOUD_LOCATION
   })
 
-  it("should throw error if neither API key nor GCP project provided", () => {
-    expect(() => new GeminiProvider({})).toThrow(
-      "Gemini requires either GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT"
-    )
+  it("should throw error if no project provided", () => {
+    expect(() => new GeminiProvider({})).toThrow("GOOGLE_CLOUD_PROJECT environment variable is required")
   })
 
-  it("should use API key authentication when provided", () => {
-    const provider = new GeminiProvider({ apiKey: "test-key" })
-    expect(provider["authMode"]).toBe("api_key")
-  })
-
-  it("should use Vertex AI authentication when project provided", () => {
+  it("should use project from config", () => {
     const provider = new GeminiProvider({ project: "test-project" })
-    expect(provider["authMode"]).toBe("vertex_ai")
+    expect(provider).toBeDefined()
   })
 
-  it("should prefer API key over Vertex AI when both provided", () => {
-    const provider = new GeminiProvider({ apiKey: "test-key", project: "test-project" })
-    expect(provider["authMode"]).toBe("api_key")
+  it("should use project from GOOGLE_CLOUD_PROJECT env var", () => {
+    process.env.GOOGLE_CLOUD_PROJECT = "env-project"
+    const provider = new GeminiProvider({})
+    expect(provider).toBeDefined()
+  })
+
+  it("should use default location if not specified", () => {
+    process.env.GOOGLE_CLOUD_PROJECT = "test-project"
+    const provider = new GeminiProvider({})
+    expect(provider["location"]).toBe("us-central1")
+  })
+
+  it("should use custom location if specified", () => {
+    const provider = new GeminiProvider({ project: "test-project", location: "us-west1" })
+    expect(provider["location"]).toBe("us-west1")
   })
 
   it("should use default model if not specified", () => {
-    const provider = new GeminiProvider({ apiKey: "test-key" })
+    const provider = new GeminiProvider({ project: "test-project" })
     expect(provider["model"]).toBe("gemini-2.0-flash-exp")
   })
 
   it("should use custom model if specified", () => {
-    const provider = new GeminiProvider({ apiKey: "test-key", model: "gemini-1.5-pro" })
+    const provider = new GeminiProvider({ project: "test-project", model: "gemini-1.5-pro" })
     expect(provider["model"]).toBe("gemini-1.5-pro")
   })
 
   it("should use environment variable for default model", () => {
     const originalEnv = process.env.GEMINI_DEFAULT_MODEL
     process.env.GEMINI_DEFAULT_MODEL = "custom-model"
+    process.env.GOOGLE_CLOUD_PROJECT = "test-project"
 
-    const provider = new GeminiProvider({ apiKey: "test-key" })
+    const provider = new GeminiProvider({})
     expect(provider["model"]).toBe("custom-model")
 
     // Restore
@@ -59,23 +65,15 @@ describe("GeminiProvider", () => {
 describe("getGeminiProvider singleton", () => {
   beforeEach(() => {
     vi.resetModules()
-    delete process.env.GEMINI_API_KEY
+  })
+
+  it("should throw if GOOGLE_CLOUD_PROJECT is not set", () => {
+    const originalProject = process.env.GOOGLE_CLOUD_PROJECT
     delete process.env.GOOGLE_CLOUD_PROJECT
-  })
 
-  it("should throw if neither GEMINI_API_KEY nor GOOGLE_CLOUD_PROJECT is set", () => {
-    expect(() => getGeminiProvider()).toThrow()
-  })
+    expect(() => getGeminiProvider()).toThrow("GOOGLE_CLOUD_PROJECT environment variable is required")
 
-  it("should work with GEMINI_API_KEY", () => {
-    process.env.GEMINI_API_KEY = "test-key"
-    // Re-import to get fresh singleton with new env
-    expect(() => getGeminiProvider()).not.toThrow()
-  })
-
-  it("should work with GOOGLE_CLOUD_PROJECT", () => {
-    process.env.GOOGLE_CLOUD_PROJECT = "test-project"
-    // Re-import to get fresh singleton with new env
-    expect(() => getGeminiProvider()).not.toThrow()
+    // Restore
+    if (originalProject) process.env.GOOGLE_CLOUD_PROJECT = originalProject
   })
 })
