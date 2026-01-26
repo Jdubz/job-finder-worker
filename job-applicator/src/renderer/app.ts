@@ -279,7 +279,7 @@ interface ElectronAPI {
     documentUrl?: string
     type?: "resume" | "coverLetter"
   }) => Promise<{ success: boolean; message: string; filePath?: string }>
-  submitJob: (provider: "claude" | "gemini") => Promise<{ success: boolean; message: string }>
+  submitJob: (provider: "gemini") => Promise<{ success: boolean; message: string }>
   getCdpStatus: () => Promise<{ connected: boolean; message?: string }>
   checkFileInput: () => Promise<{ hasFileInput: boolean; selector?: string }>
 
@@ -441,7 +441,6 @@ const cancelReviewBtn = getElement<HTMLButtonElement>("cancelReviewBtn")
 
 // DOM elements - Agent Panel
 const agentStatus = getElement<HTMLDivElement>("agentStatus")
-const agentProviderSelect = getElement<HTMLSelectElement>("agentProviderSelect")
 const startSessionBtn = getElement<HTMLButtonElement>("startSessionBtn")
 const stopSessionBtn = getElement<HTMLButtonElement>("stopSessionBtn")
 const agentActions = getElement<HTMLDivElement>("agentActions")
@@ -1728,11 +1727,12 @@ function previewCoverLetter() {
 
 // Submit job listing for analysis
 async function submitJob() {
-  const provider = agentProviderSelect.value as "claude" | "gemini"
+  // Provider hardcoded to gemini (job extraction uses Gemini API)
+  const provider = "gemini" as const
 
   try {
     setButtonsEnabled(false)
-    setStatus(`Extracting job details with ${provider}...`, "loading")
+    setStatus("Extracting job details with Gemini...", "loading")
     const result = await api.submitJob(provider)
 
     if (result.success) {

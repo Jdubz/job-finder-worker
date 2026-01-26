@@ -2,13 +2,13 @@
  * Test setup file for job-applicator.
  *
  * This file is loaded before all tests to set up global mocks and prevent
- * accidental expensive AI CLI calls during testing.
+ * accidental expensive operations during testing.
  */
 
 import { vi } from "vitest"
 
-// Mock child_process.spawn to prevent any accidental AI CLI calls
-// The AI CLI tools (claude, gemini) are invoked via spawn in main.ts
+// Mock child_process.spawn to prevent any accidental CLI calls
+// Used for Claude CLI in form-filling (not for job extraction which uses Gemini API)
 vi.mock("child_process", () => ({
   spawn: vi.fn(() => {
     throw new Error(

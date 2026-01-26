@@ -680,11 +680,6 @@ select:focus {
   margin-bottom: 12px;
 }
 
-.fill-controls .provider-select {
-  flex: 1;
-  min-width: 0;
-}
-
 .fill-controls .btn-fill {
   flex-shrink: 0;
 }
@@ -1102,10 +1097,6 @@ select:focus {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
-}
-
-.agent-controls .provider-select {
-  flex: 1;
 }
 
 .btn-start-session {

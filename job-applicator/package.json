@@ -28,6 +28,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@shared/types": "*",
     "electron-store": "^11.0.2",
     "playwright-core": "^1.47.2"

@@ -70,8 +70,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   uploadResume: (options?: { documentUrl?: string; type?: "resume" | "coverLetter" }) =>
     ipcRenderer.invoke("upload-resume", options),
 
-  // Job submission
-  submitJob: (provider: "claude" | "gemini") => ipcRenderer.invoke("submit-job", provider),
+  // Job submission (uses Gemini API for extraction)
+  submitJob: (provider: "gemini") => ipcRenderer.invoke("submit-job", provider),
 
   // CDP status
   getCdpStatus: () => ipcRenderer.invoke("get-cdp-status"),
