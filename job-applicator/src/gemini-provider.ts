@@ -1,6 +1,10 @@
 /**
  * Gemini API provider for job extraction.
  * Uses the same pattern as job-finder-worker for consistency.
+ * 
+ * Supports two authentication modes:
+ * 1. API Key: Set GEMINI_API_KEY environment variable (simple, recommended for dev)
+ * 2. Vertex AI: Set GOOGLE_CLOUD_PROJECT + use Application Default Credentials (production)
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai"
@@ -9,7 +13,9 @@ import type { JobExtraction } from "./types.js"
 import { parseCliObjectOutput } from "./utils.js"
 
 export interface GeminiConfig {
-  apiKey: string
+  apiKey?: string
+  project?: string
+  location?: string
   model?: string
   maxOutputTokens?: number
   temperature?: number
@@ -18,16 +24,36 @@ export interface GeminiConfig {
 export class GeminiProvider {
   private client: GoogleGenerativeAI
   private model: string
+  private authMode: "api_key" | "vertex_ai"
 
   constructor(config: GeminiConfig) {
-    if (!config.apiKey) {
-      throw new Error("GEMINI_API_KEY is required")
+    const apiKey = config.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    const project = config.project || process.env.GOOGLE_CLOUD_PROJECT
+    const location = config.location || process.env.GOOGLE_CLOUD_LOCATION || "us-central1"
+
+    // Try API key first (simpler), then fall back to Vertex AI
+    if (apiKey) {
+      this.client = new GoogleGenerativeAI(apiKey)
+      this.authMode = "api_key"
+      logger.info("[Gemini] Using API key authentication")
+    } else if (project) {
+      this.client = new GoogleGenerativeAI({
+        vertexai: true,
+        project,
+        location,
+      } as any)
+      this.authMode = "vertex_ai"
+      logger.info(`[Gemini] Using Vertex AI authentication (project: ${project}, location: ${location})`)
+    } else {
+      throw new Error(
+        "Gemini requires either GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT. " +
+        "Set GEMINI_API_KEY for API key auth, or GOOGLE_CLOUD_PROJECT for Vertex AI."
+      )
     }
 
-    this.client = new GoogleGenerativeAI(config.apiKey)
     this.model = config.model || process.env.GEMINI_DEFAULT_MODEL || "gemini-2.0-flash-exp"
 
-    logger.info(`[Gemini] Initialized with model: ${this.model}`)
+    logger.info(`[Gemini] Initialized with model: ${this.model} (auth: ${this.authMode})`)
   }
 
   async generateContent(
@@ -139,13 +165,7 @@ let geminiInstance: GeminiProvider | null = null
 
 export function getGeminiProvider(): GeminiProvider {
   if (!geminiInstance) {
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      throw new Error(
-        "GEMINI_API_KEY environment variable is required. " + "Add it to job-applicator/.env file."
-      )
-    }
-    geminiInstance = new GeminiProvider({ apiKey })
+    geminiInstance = new GeminiProvider({})
   }
   return geminiInstance
 }

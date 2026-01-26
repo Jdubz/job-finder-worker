@@ -11,20 +11,30 @@ Electron application for automated job application form filling and job listing 
 
 ## Prerequisites
 
-1. **Gemini API Key**: Get one from [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. **Gemini Authentication** (choose one):
+   - **Option A (Simple):** Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - **Option B (Production):** Use Google Cloud Project with Application Default Credentials
 2. **Node.js**: Version 18 or higher
 3. **Backend API**: Running job-finder backend server
 
 ## Setup
 
-1. Copy `.env` to create your local configuration (or create a new one):
+1. Copy `.env.example` to `.env` (or use production env file):
    ```bash
-   cp .env .env.local
+   cp .env.example .env
    ```
 
-2. Add your Gemini API key to `.env`:
+2. Configure Gemini authentication (choose one method):
+
+   **Method A: API Key (Recommended for development)**
    ```bash
    GEMINI_API_KEY=your-api-key-here
+   ```
+
+   **Method B: Vertex AI (Production, uses existing GCP setup)**
+   ```bash
+   GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+   GOOGLE_CLOUD_LOCATION=us-central1
    ```
 
 3. Configure the backend API URL:
@@ -99,8 +109,10 @@ Benefits of the migration:
 ## Troubleshooting
 
 ### "GEMINI_API_KEY is required" error
-- Ensure you've added `GEMINI_API_KEY` to your `.env` file
-- Check that the API key is valid and has quota available
+- Either set `GEMINI_API_KEY` in your `.env` file, OR
+- Set `GOOGLE_CLOUD_PROJECT` to use Vertex AI authentication
+- Check that the API key is valid and has quota available (if using API key)
+- Ensure Application Default Credentials are configured (if using Vertex AI)
 
 ### Job extraction fails
 - Check the browser console for detailed error messages

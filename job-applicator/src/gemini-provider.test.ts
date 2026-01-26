@@ -4,10 +4,30 @@ import { GeminiProvider } from "./gemini-provider.js"
 describe("GeminiProvider", () => {
   beforeEach(() => {
     vi.resetModules()
+    // Clear env vars for clean state
+    delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_CLOUD_PROJECT
   })
 
-  it("should throw error if no API key provided", () => {
-    expect(() => new GeminiProvider({ apiKey: "" })).toThrow("GEMINI_API_KEY is required")
+  it("should throw error if neither API key nor GCP project provided", () => {
+    expect(() => new GeminiProvider({})).toThrow(
+      "Gemini requires either GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT"
+    )
+  })
+
+  it("should use API key authentication when provided", () => {
+    const provider = new GeminiProvider({ apiKey: "test-key" })
+    expect(provider["authMode"]).toBe("api_key")
+  })
+
+  it("should use Vertex AI authentication when project provided", () => {
+    const provider = new GeminiProvider({ project: "test-project" })
+    expect(provider["authMode"]).toBe("vertex_ai")
+  })
+
+  it("should prefer API key over Vertex AI when both provided", () => {
+    const provider = new GeminiProvider({ apiKey: "test-key", project: "test-project" })
+    expect(provider["authMode"]).toBe("api_key")
   })
 
   it("should use default model if not specified", () => {
@@ -37,16 +57,29 @@ describe("GeminiProvider", () => {
 })
 
 describe("getGeminiProvider singleton", () => {
-  it("should throw if GEMINI_API_KEY is not set", async () => {
-    const originalKey = process.env.GEMINI_API_KEY
+  beforeEach(() => {
+    vi.resetModules()
     delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_CLOUD_PROJECT
+  })
 
-    const { getGeminiProvider } = await import("./gemini-provider.js")
-    expect(() => getGeminiProvider()).toThrow("GEMINI_API_KEY environment variable is required")
+  it("should throw if neither GEMINI_API_KEY nor GOOGLE_CLOUD_PROJECT is set", () => {
+    // Need to clear the singleton between tests
+    const { getGeminiProvider } = require("./gemini-provider.js")
+    expect(() => getGeminiProvider()).toThrow()
+  })
 
-    // Restore
-    if (originalKey) {
-      process.env.GEMINI_API_KEY = originalKey
-    }
+  it("should work with GEMINI_API_KEY", () => {
+    process.env.GEMINI_API_KEY = "test-key"
+    const { getGeminiProvider } = require("./gemini-provider.js")
+    const provider = getGeminiProvider()
+    expect(provider).toBeDefined()
+  })
+
+  it("should work with GOOGLE_CLOUD_PROJECT", () => {
+    process.env.GOOGLE_CLOUD_PROJECT = "test-project"
+    const { getGeminiProvider } = require("./gemini-provider.js")
+    const provider = getGeminiProvider()
+    expect(provider).toBeDefined()
   })
 })
