@@ -134,6 +134,7 @@ export class NetworkStorageService {
    * Requires smbclient to be installed on the system
    * 
    * Security: Uses environment variable for password to avoid exposure in process lists
+   * Uses proper shell escaping to prevent injection attacks
    */
   private async copyUsingSmbClient(
     localPath: string,
@@ -154,15 +155,20 @@ export class NetworkStorageService {
       ...(this.config.password && { PASSWD: this.config.password })
     }
 
+    // Escape shell arguments to prevent injection
+    const escapeShellArg = (arg: string): string => {
+      return `'${arg.replace(/'/g, "'\\''")}'`
+    }
+
     // Create remote directory first (ignore errors if it exists)
     const mkdirCmd = this.config.password
-      ? `smbclient ${smbUrl} ${authPart} -c "mkdir ${remotePath}" --password "$PASSWD" 2>/dev/null || true`
-      : `smbclient ${smbUrl} ${authPart} -c "mkdir ${remotePath}" 2>/dev/null || true`
+      ? `smbclient ${escapeShellArg(smbUrl)} ${authPart} -c "mkdir ${remotePath}" --password "$PASSWD" 2>/dev/null || true`
+      : `smbclient ${escapeShellArg(smbUrl)} ${authPart} -c "mkdir ${remotePath}" 2>/dev/null || true`
     
     // Copy file
     const copyCmd = this.config.password
-      ? `smbclient ${smbUrl} ${authPart} -c "cd ${remotePath}; put ${localPath} ${filename}" --password "$PASSWD"`
-      : `smbclient ${smbUrl} ${authPart} -c "cd ${remotePath}; put ${localPath} ${filename}"`
+      ? `smbclient ${escapeShellArg(smbUrl)} ${authPart} -c "cd ${remotePath}; put ${escapeShellArg(localPath)} ${escapeShellArg(filename)}" --password "$PASSWD"`
+      : `smbclient ${escapeShellArg(smbUrl)} ${authPart} -c "cd ${remotePath}; put ${escapeShellArg(localPath)} ${escapeShellArg(filename)}"`
 
     try {
       // Create directory (may already exist)
@@ -179,15 +185,17 @@ export class NetworkStorageService {
       return { success: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      const code = (error as any)?.code
       
-      // Check if smbclient is not installed
-      if (message.includes('command not found') || message.includes('smbclient')) {
+      // Check if smbclient is not installed (ENOENT = command not found)
+      if (code === 'ENOENT' || message.includes('command not found')) {
         logger.warn({
           error: message,
         }, 'smbclient not installed, network storage disabled')
         return { success: false, error: 'smbclient not installed' }
       }
 
+      // All other errors are smbclient runtime errors (auth, network, etc.)
       logger.error({
         localPath,
         remoteFullPath,

@@ -467,14 +467,9 @@ export class GeneratorWorkflowService {
       createdAt: new Date().toISOString()
     })
     
-    // Copy to network storage (non-blocking, failures are logged but don't stop generation)
+    // Copy to network storage (non-blocking, errors logged internally)
     const absolutePath = storageService.getAbsolutePath(saved.storagePath)
-    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'Resume').catch((error) => {
-      this.log.warn({
-        filename: saved.filename,
-        error: error instanceof Error ? error.message : String(error)
-      }, 'Failed to copy resume to network storage')
-    })
+    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'Resume')
     
     return storageService.createPublicUrl(saved.storagePath)
   }
@@ -545,14 +540,9 @@ export class GeneratorWorkflowService {
       createdAt: new Date().toISOString()
     })
     
-    // Copy to network storage (non-blocking, failures are logged but don't stop generation)
+    // Copy to network storage (non-blocking, errors logged internally)
     const absolutePath = storageService.getAbsolutePath(saved.storagePath)
-    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'CoverLetter').catch((error) => {
-      this.log.warn({
-        filename: saved.filename,
-        error: error instanceof Error ? error.message : String(error)
-      }, 'Failed to copy cover letter to network storage')
-    })
+    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'CoverLetter')
     
     return storageService.createPublicUrl(saved.storagePath)
   }

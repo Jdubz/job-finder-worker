@@ -75,7 +75,11 @@ MIN_POLL_INTERVAL_SECONDS = 10
 DEFAULT_WORKER_PORT = 5555
 DEFAULT_WORKER_HOST = "0.0.0.0"
 WORKER_SHUTDOWN_TIMEOUT_SECONDS = 30
-WORKER_AUTO_RESTART_ON_SIGNAL = os.getenv("WORKER_AUTO_RESTART_ON_SIGNAL", "true").lower() == "true"
+# Auto-restart defaults to false in production/containers to respect SIGTERM for graceful shutdown
+# Set WORKER_AUTO_RESTART_ON_SIGNAL=true in development if you want auto-restart behavior
+WORKER_AUTO_RESTART_ON_SIGNAL = (
+    os.getenv("WORKER_AUTO_RESTART_ON_SIGNAL", "false").lower() == "true"
+)
 WORKER_RESTART_DELAY_SECONDS = 5
 
 # Migration guards
@@ -685,6 +689,7 @@ def worker_loop():
 
     # Check if restart was requested
     if _get_state("restart_requested"):
+        global worker_thread
         slogger.worker_status("restarting", {"delay_seconds": WORKER_RESTART_DELAY_SECONDS})
         _set_state("restart_requested", False)
         _set_state("shutdown_requested", False)

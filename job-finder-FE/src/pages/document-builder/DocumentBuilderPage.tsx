@@ -468,15 +468,18 @@ export function DocumentBuilderPage() {
     if (!_generationRequestId || !draftContent) return
 
     setLoading(true)
+    const savedDraftContent = draftContent // Save draft in case we need to restore it
     setDraftContent(null)
 
     try {
       const result = await generatorClient.submitReview(_generationRequestId, {
-        documentType: draftContent.documentType,
+        documentType: savedDraftContent.documentType,
         content,
       })
 
       if (!result.success || result.data.status === "failed") {
+        // Restore draft content so user can retry
+        setDraftContent(savedDraftContent)
         showUserError("Review submission failed. Please try again.", result.data.error)
         return
       }
@@ -509,6 +512,7 @@ export function DocumentBuilderPage() {
         const stepResponse = await generatorClient.executeStep(_generationRequestId)
 
         if (!stepResponse.success || stepResponse.data.status === "failed") {
+          // Don't restore draft here - the review was successful, just next step failed
           showUserError("Generation failed after review.", stepResponse.data.error)
           return
         }
@@ -541,7 +545,7 @@ export function DocumentBuilderPage() {
 
       // Success!
       const documentTypeLabel =
-        draftContent.documentType === "resume"
+        savedDraftContent.documentType === "resume"
           ? "Resume"
           : "Cover letter"
       toast.success({ title: `${documentTypeLabel} generated successfully!` })
@@ -557,6 +561,8 @@ export function DocumentBuilderPage() {
       setCustomJobDescription("")
       setTargetSummary("")
     } catch (error) {
+      // Restore draft content so user can retry
+      setDraftContent(savedDraftContent)
       logger.error("DocumentBuilder", "reviewSubmit", "Review submission failed", {
         error: { type: "ReviewError", message: error instanceof Error ? error.message : String(error) },
       })
