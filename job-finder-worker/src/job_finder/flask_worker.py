@@ -681,14 +681,14 @@ def worker_loop():
 
     slogger.worker_status("stopped", {"total_processed": _get_state("items_processed_total")})
     _set_state("running", False)
-    
+
     # Check if restart was requested
     if _get_state("restart_requested"):
         slogger.worker_status("restarting", {"delay_seconds": WORKER_RESTART_DELAY_SECONDS})
         _set_state("restart_requested", False)
         _set_state("shutdown_requested", False)
         time.sleep(WORKER_RESTART_DELAY_SECONDS)
-        
+
         # Restart the worker thread
         slogger.worker_status("restart_initiated")
         worker_thread = threading.Thread(target=worker_loop, daemon=True)
@@ -764,7 +764,7 @@ def start_worker():
     _update_state(shutdown_requested=False, restart_requested=False, start_time=time.time())
     worker_thread = threading.Thread(target=worker_loop, daemon=True)
     worker_thread.start()
-    
+
     slogger.worker_status("started_via_api")
     return jsonify({"message": "Worker started"})
 
@@ -829,7 +829,7 @@ def config_endpoint():
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully.
-    
+
     By default, SIGTERM triggers a restart (not shutdown) to allow the worker
     to resume after container updates. Set WORKER_AUTO_RESTART_ON_SIGNAL=false
     to disable auto-restart.
@@ -888,11 +888,11 @@ def main():
         # Start worker automatically
         _set_state("start_time", time.time())
         slogger.worker_status(
-            "auto_starting", 
+            "auto_starting",
             {
                 "auto_restart_enabled": WORKER_AUTO_RESTART_ON_SIGNAL,
-                "poll_interval": _get_state("poll_interval")
-            }
+                "poll_interval": _get_state("poll_interval"),
+            },
         )
         worker_thread = threading.Thread(target=worker_loop, daemon=True)
         worker_thread.start()
