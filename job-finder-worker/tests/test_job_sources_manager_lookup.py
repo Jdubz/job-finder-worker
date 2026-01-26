@@ -6,8 +6,7 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 
 def _bootstrap_db(path: Path):
     with sqlite3.connect(path) as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE job_sources (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -21,11 +20,9 @@ def _bootstrap_db(path: Path):
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
-            """
-        )
+            """)
 
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO job_sources (
               id, name, source_type, status, config_json, tags,
               company_id, aggregator_domain, created_at, updated_at
@@ -33,8 +30,7 @@ def _bootstrap_db(path: Path):
               'src-gh', 'GH Jobs', 'api', 'active', '{}', '[]',
               'co-1', 'greenhouse.io', datetime('now'), datetime('now')
             )
-            """
-        )
+            """)
 
 
 def test_get_source_by_company_and_aggregator_match(tmp_path):

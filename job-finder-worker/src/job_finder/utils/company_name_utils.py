@@ -3,7 +3,6 @@
 import re
 from typing import List, Pattern
 
-
 # NOTE: Order matters – handle separator variants before plain suffixes
 _JOB_BOARD_SUFFIX_PATTERN_STRINGS: List[str] = [
     r"\s+-\s+careers?[\s.,;:]*$",  # " - Careers"

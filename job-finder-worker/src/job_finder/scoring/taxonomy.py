@@ -53,8 +53,7 @@ class SkillTaxonomyRepository:
 
     def _ensure_table(self):
         with sqlite_connection(self.db_path) as conn:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS skill_taxonomy (
                     canonical TEXT PRIMARY KEY,
                     category TEXT,
@@ -63,8 +62,7 @@ class SkillTaxonomyRepository:
                     parallels_csv TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL
                 )
-                """
-            )
+                """)
             # Migration: add columns if missing
             columns = [row[1] for row in conn.execute("PRAGMA table_info(skill_taxonomy)")]
             if "implies_csv" not in columns:

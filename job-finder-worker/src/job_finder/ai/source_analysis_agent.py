@@ -396,8 +396,7 @@ def _build_analysis_prompt(
                 prompt_parts.append(f"  Snippet: {result.get('snippet')}\n")
 
     # Add the response format instructions
-    prompt_parts.append(
-        """
+    prompt_parts.append("""
 ### Response Format
 
 Respond with a JSON object containing your analysis:
@@ -444,8 +443,7 @@ CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - For Ashby: https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs.
 
 IMPORTANT: Your response must be valid JSON only. No additional text.
-"""
-    )
+""")
 
     return "".join(prompt_parts)
 

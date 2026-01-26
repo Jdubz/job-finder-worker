@@ -16,8 +16,7 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 def _bootstrap_db(path: Path):
     """Create test database with job_sources table."""
     with sqlite3.connect(path) as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE job_sources (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -31,8 +30,7 @@ def _bootstrap_db(path: Path):
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
-            """
-        )
+            """)
         # Insert test sources
         conn.executemany(
             """

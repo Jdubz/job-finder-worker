@@ -23,8 +23,7 @@ class TestConfigLoaderAISettings:
         """Create a temporary SQLite database with config table."""
         db_file = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_file))
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS job_finder_config (
                 id TEXT PRIMARY KEY,
                 payload_json TEXT NOT NULL,
@@ -32,8 +31,7 @@ class TestConfigLoaderAISettings:
                 updated_at TEXT,
                 updated_by TEXT
             )
-        """
-        )
+        """)
         conn.commit()
         conn.close()
         return str(db_file)
@@ -145,8 +143,7 @@ class TestConfigLoaderIntegration:
         """Create a temporary SQLite database with config table."""
         db_file = tmp_path / "test.db"
         conn = sqlite3.connect(str(db_file))
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS job_finder_config (
                 id TEXT PRIMARY KEY,
                 payload_json TEXT NOT NULL,
@@ -154,8 +151,7 @@ class TestConfigLoaderIntegration:
                 updated_at TEXT,
                 updated_by TEXT
             )
-        """
-        )
+        """)
         conn.commit()
         conn.close()
         return str(db_file)

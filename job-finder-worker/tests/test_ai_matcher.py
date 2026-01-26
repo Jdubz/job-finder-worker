@@ -87,14 +87,12 @@ class TestAnalyzeMatch:
 
     def test_analyze_match_success(self, mock_agent_manager, mock_profile, sample_job):
         """Test successful match analysis."""
-        mock_agent_manager.execute.return_value = Mock(
-            text="""
+        mock_agent_manager.execute.return_value = Mock(text="""
             {
                 "matched_skills": ["Python", "AWS"],
                 "missing_skills": ["Go"]
             }
-            """
-        )
+            """)
 
         matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
@@ -125,8 +123,7 @@ class TestAnalyzeMatch:
         self, mock_agent_manager, mock_profile, sample_job
     ):
         """Test JSON extraction from markdown code blocks."""
-        mock_agent_manager.execute.return_value = Mock(
-            text="""
+        mock_agent_manager.execute.return_value = Mock(text="""
             Here's the analysis:
             ```json
             {
@@ -134,8 +131,7 @@ class TestAnalyzeMatch:
                 "missing_skills": []
             }
             ```
-            """
-        )
+            """)
 
         matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
@@ -156,14 +152,12 @@ class TestAnalyzeMatch:
         self, mock_agent_manager, mock_profile, sample_job
     ):
         """Test validation of required fields in response."""
-        mock_agent_manager.execute.return_value = Mock(
-            text="""
+        mock_agent_manager.execute.return_value = Mock(text="""
             {
                 "match_score": 85,
                 "matched_skills": ["Python"]
             }
-            """
-        )
+            """)
 
         matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
@@ -219,15 +213,13 @@ class TestAnalyzeJob:
 
     def test_analyze_job_below_threshold(self, mock_provider, mock_profile, sample_job):
         """Test job below threshold returns None."""
-        mock_provider.execute.return_value = Mock(
-            text="""
+        mock_provider.execute.return_value = Mock(text="""
             {
                 "match_score": 50,
                 "matched_skills": ["Python"],
                 "missing_skills": ["Go"]
             }
-            """
-        )
+            """)
 
         matcher = AIJobMatcher(
             agent_manager=mock_provider, profile=mock_profile, min_match_score=80

@@ -21,7 +21,6 @@ from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.job_queue.manager import QueueManager
 from job_finder.storage.job_listing_storage import JobListingStorage
 
-
 # ============================================================
 # FIXTURES
 # ============================================================
@@ -34,8 +33,7 @@ def temp_db():
         db_path = os.path.join(tmpdir, "test.db")
         with sqlite3.connect(db_path) as conn:
             # Create job_queue table
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE job_queue (
                     id TEXT PRIMARY KEY,
                     type TEXT NOT NULL,
@@ -56,11 +54,9 @@ def temp_db():
                     processed_at TEXT,
                     completed_at TEXT
                 )
-            """
-            )
+            """)
             # Create job_listings table
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE job_listings (
                     id TEXT PRIMARY KEY,
                     url TEXT NOT NULL UNIQUE,
@@ -78,8 +74,7 @@ def temp_db():
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
         yield db_path
 
 

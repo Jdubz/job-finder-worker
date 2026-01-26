@@ -8,6 +8,7 @@ This worker provides:
 - Process status and statistics
 - Same job processing logic as the daemon worker
 """
+
 import base64
 import json
 import os
