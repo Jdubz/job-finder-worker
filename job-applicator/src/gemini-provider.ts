@@ -41,7 +41,7 @@ export class GeminiProvider {
         vertexai: true,
         project,
         location,
-      } as any)
+      })
       this.authMode = "vertex_ai"
       logger.info(`[Gemini] Using Vertex AI authentication (project: ${project}, location: ${location})`)
     } else {

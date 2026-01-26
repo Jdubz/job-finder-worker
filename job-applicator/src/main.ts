@@ -167,11 +167,6 @@ const SIDEBAR_WIDTH = 300
 const CUSTOM_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
-// CLI timeout and warning thresholds
-// 5 minutes for complex form fills - increased from 2 minutes (120s) to handle large forms
-// Warning intervals help identify if operations are taking unusually long
-const CLI_TIMEOUT_MS = 300000 // 5 minutes
-const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
 const TOOL_SERVER_HEALTH_TIMEOUT_MS = 3000
 
 // Maximum steps for generation workflow (prevent infinite loops)
