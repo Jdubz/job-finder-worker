@@ -13,6 +13,7 @@ import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService, type ArtifactMetadata } from './services/storage.service'
+import { networkStorageService } from './services/network-storage.service'
 import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
@@ -465,6 +466,16 @@ export class GeneratorWorkflowService {
       sizeBytes: saved.size,
       createdAt: new Date().toISOString()
     })
+    
+    // Copy to network storage (non-blocking, failures are logged but don't stop generation)
+    const absolutePath = storageService.getAbsolutePath(saved.storagePath)
+    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'Resume').catch((error) => {
+      this.log.warn({
+        filename: saved.filename,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Failed to copy resume to network storage')
+    })
+    
     return storageService.createPublicUrl(saved.storagePath)
   }
 
@@ -533,6 +544,16 @@ export class GeneratorWorkflowService {
       sizeBytes: saved.size,
       createdAt: new Date().toISOString()
     })
+    
+    // Copy to network storage (non-blocking, failures are logged but don't stop generation)
+    const absolutePath = storageService.getAbsolutePath(saved.storagePath)
+    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'CoverLetter').catch((error) => {
+      this.log.warn({
+        filename: saved.filename,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Failed to copy cover letter to network storage')
+    })
+    
     return storageService.createPublicUrl(saved.storagePath)
   }
 

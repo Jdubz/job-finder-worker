@@ -27,7 +27,16 @@ const EnvSchema = z.object({
   // Log rotation support
   LOG_DIR: z.string().default('/logs'),
   LOG_ROTATE_MAX_BYTES: z.coerce.number().positive().default(100 * 1024 * 1024),
-  LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7)
+  LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7),
+
+  // Network storage (SMB/CIFS) for document backup
+  NETWORK_STORAGE_ENABLED: z.string().optional(),
+  NETWORK_STORAGE_HOST: z.string().optional(),
+  NETWORK_STORAGE_SHARE: z.string().optional(),
+  NETWORK_STORAGE_PATH: z.string().optional(),
+  NETWORK_STORAGE_USERNAME: z.string().optional(),
+  NETWORK_STORAGE_PASSWORD: z.string().optional(),
+  NETWORK_STORAGE_MOUNT_POINT: z.string().optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>

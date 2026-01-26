@@ -1438,6 +1438,32 @@ select:focus {
   border-color: #1a4a7a;
 }
 
+.review-input {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  color: #eee;
+  transition: border-color 0.15s;
+}
+
+.review-input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.review-input:hover {
+  border-color: #1a4a7a;
+}
+
+.review-input::placeholder {
+  color: #6b7280;
+}
+
 .review-highlight-item {
   display: flex;
   gap: 8px;

@@ -7,6 +7,9 @@ import {
   generatorClient,
   type GenerateDocumentRequest,
   type GenerationStep,
+  type ResumeContent,
+  type CoverLetterContent,
+  type DraftContentResponse,
 } from "@/api/generator-client"
 import { getAbsoluteArtifactUrl } from "@/config/api"
 import type { JobMatch } from "@shared/types"
@@ -27,6 +30,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Sparkles, Download } from "lucide-react"
 import { GenerationProgress } from "@/components/GenerationProgress"
+import { ResumeReviewForm } from "@/components/ResumeReviewForm"
 import { toast } from "@/components/toast"
 
 // Step definitions matching backend generation-steps.ts
@@ -165,6 +169,7 @@ export function DocumentBuilderPage() {
   const [_generationRequestId, setGenerationRequestId] = useState<string | null>(null)
   const [resumeUrl, setResumeUrl] = useState<string | null>(null)
   const [coverLetterUrl, setCoverLetterUrl] = useState<string | null>(null)
+  const [draftContent, setDraftContent] = useState<DraftContentResponse | null>(null)
 
   // Set page title
   useEffect(() => {
@@ -323,6 +328,17 @@ export function DocumentBuilderPage() {
       // Step 2: Execute remaining steps sequentially until complete
       let nextStep = startResponse.data.nextStep
       let currentSteps = startResponse.data.steps || []
+      let currentStatus = startResponse.data.status
+
+      // Check if we need to pause for review after start
+      if (currentStatus === "awaiting_review") {
+        const draft = await generatorClient.getDraftContent(startResponse.data.requestId)
+        if (draft) {
+          setDraftContent(draft)
+          setLoading(false)
+          return // Pause here - user will call handleReviewSubmit to continue
+        }
+      }
 
       while (nextStep) {
         try {
@@ -374,6 +390,19 @@ export function DocumentBuilderPage() {
           }
           if (stepResponse.data.coverLetterUrl) {
             setCoverLetterUrl(stepResponse.data.coverLetterUrl)
+          }
+
+          // Update current status
+          currentStatus = stepResponse.data.status
+
+          // Check if this step resulted in awaiting_review
+          if (currentStatus === "awaiting_review") {
+            const draft = await generatorClient.getDraftContent(startResponse.data.requestId)
+            if (draft) {
+              setDraftContent(draft)
+              setLoading(false)
+              return // Pause here - user will call handleReviewSubmit to continue
+            }
           }
 
           // Move to next step (undefined when complete)
@@ -430,6 +459,108 @@ export function DocumentBuilderPage() {
         error: { type: "GenerationError", message: error instanceof Error ? error.message : String(error) },
       })
       showUserError("Document generation failed. Please try again.", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleReviewSubmit = async (content: ResumeContent | CoverLetterContent) => {
+    if (!_generationRequestId || !draftContent) return
+
+    setLoading(true)
+    setDraftContent(null)
+
+    try {
+      const result = await generatorClient.submitReview(_generationRequestId, {
+        documentType: draftContent.documentType,
+        content,
+      })
+
+      if (!result.success || result.data.status === "failed") {
+        showUserError("Review submission failed. Please try again.", result.data.error)
+        return
+      }
+
+      // Update steps after review submission
+      if (result.data.steps) {
+        setGenerationSteps(result.data.steps)
+      }
+
+      // Update URLs if available
+      if (result.data.resumeUrl) {
+        setResumeUrl(result.data.resumeUrl)
+      }
+      if (result.data.coverLetterUrl) {
+        setCoverLetterUrl(result.data.coverLetterUrl)
+      }
+
+      // Continue with remaining steps
+      let nextStep = result.data.nextStep
+      let currentSteps = result.data.steps || []
+      let currentStatus = result.data.status
+
+      while (nextStep) {
+        setGenerationSteps(
+          currentSteps.map((step) =>
+            step.id === nextStep ? { ...step, status: "in_progress" as const } : step
+          )
+        )
+
+        const stepResponse = await generatorClient.executeStep(_generationRequestId)
+
+        if (!stepResponse.success || stepResponse.data.status === "failed") {
+          showUserError("Generation failed after review.", stepResponse.data.error)
+          return
+        }
+
+        if (stepResponse.data.steps) {
+          currentSteps = stepResponse.data.steps
+          setGenerationSteps(currentSteps)
+        }
+
+        if (stepResponse.data.resumeUrl) {
+          setResumeUrl(stepResponse.data.resumeUrl)
+        }
+        if (stepResponse.data.coverLetterUrl) {
+          setCoverLetterUrl(stepResponse.data.coverLetterUrl)
+        }
+
+        currentStatus = stepResponse.data.status
+        nextStep = stepResponse.data.nextStep
+
+        // Check for another review step (unlikely but possible)
+        if (currentStatus === "awaiting_review") {
+          const draft = await generatorClient.getDraftContent(_generationRequestId)
+          if (draft) {
+            setDraftContent(draft)
+            setLoading(false)
+            return
+          }
+        }
+      }
+
+      // Success!
+      const documentTypeLabel =
+        draftContent.documentType === "resume"
+          ? "Resume"
+          : "Cover letter"
+      toast.success({ title: `${documentTypeLabel} generated successfully!` })
+      setAlert({
+        type: "success",
+        message: `${documentTypeLabel} generated successfully!`,
+      })
+
+      // Reset form
+      setSelectedJobMatchId("")
+      setCustomJobTitle("")
+      setCustomCompanyName("")
+      setCustomJobDescription("")
+      setTargetSummary("")
+    } catch (error) {
+      logger.error("DocumentBuilder", "reviewSubmit", "Review submission failed", {
+        error: { type: "ReviewError", message: error instanceof Error ? error.message : String(error) },
+      })
+      showUserError("Review submission failed. Please try again.", error)
     } finally {
       setLoading(false)
     }
@@ -629,8 +760,25 @@ export function DocumentBuilderPage() {
         </Card>
       </div>
 
-      {/* Generation Progress - Positioned at bottom of page */}
-      {generationSteps.length > 0 && (
+      {/* Generation Progress or Review Form - Positioned at bottom of page */}
+      {draftContent ? (
+        <Card className="mt-8">
+          <CardContent className="p-6">
+            <ResumeReviewForm
+              documentType={draftContent.documentType}
+              content={draftContent.content}
+              onSubmit={handleReviewSubmit}
+              onCancel={() => {
+                setDraftContent(null)
+                setGenerationRequestId(null)
+                setGenerationSteps([])
+                setLoading(false)
+              }}
+              isSubmitting={loading}
+            />
+          </CardContent>
+        </Card>
+      ) : generationSteps.length > 0 && (
         <Card className="mt-8">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Document Generation</CardTitle>
