@@ -1,20 +1,22 @@
-# Claude CLI to Gemini API Migration - Summary
+# Claude CLI to Vertex AI Migration - Summary
 
 **Date:** 2026-01-26  
 **Status:** ✅ Complete
 
 ## Overview
 
-Successfully migrated job listing extraction from Claude CLI to Gemini API. This was a hard cutover with no backwards compatibility, as requested.
+Successfully migrated job listing extraction from Claude CLI to Google Cloud Vertex AI. This was a hard cutover with no backwards compatibility, as requested.
+
+**Note:** The original plan specified using `@google/generative-ai` with API key authentication, but we pivoted to Vertex AI (`@google-cloud/vertexai`) with service account authentication because only service accounts (no API keys) are available in the production environment. This matches the worker's authentication approach.
 
 ## Changes Made
 
 ### 1. Dependencies Added
-- ✅ Installed `@google/generative-ai@0.24.1`
+- ✅ Installed `@google-cloud/vertexai@1.10.0`
 
 ### 2. New Files Created
-- ✅ `src/gemini-provider.ts` - Gemini API wrapper with job extraction logic
-- ✅ `src/gemini-provider.test.ts` - Unit tests for Gemini provider
+- ✅ `src/gemini-provider.ts` - Vertex AI wrapper with job extraction logic
+- ✅ `src/gemini-provider.test.ts` - Unit tests for Vertex AI provider
 - ✅ `README.md` - Documentation with setup instructions
 - ✅ `.env.example` - Environment configuration template
 - ✅ `MIGRATION-SUMMARY.md` - This file
@@ -23,7 +25,7 @@ Successfully migrated job listing extraction from Claude CLI to Gemini API. This
 
 #### `src/main.ts`
 - Added import for `getGeminiProvider`
-- Updated `submit-job` IPC handler to use Gemini API instead of Claude CLI
+- Updated `submit-job` IPC handler to use Vertex AI instead of Claude CLI
 - Removed `runCliCommon()` function (lines 1250-1322)
 - Removed `runCliForExtraction()` function (lines 1324-1341)
 - Changed parameter from `provider` to `_provider` (unused now)
@@ -46,7 +48,7 @@ Successfully migrated job listing extraction from Claude CLI to Gemini API. This
 - Updated status message to say "Extracting job details with Gemini..."
 
 #### `.env`
-- Added `GEMINI_API_KEY` configuration
+- Added `GOOGLE_CLOUD_PROJECT` configuration
 - Added `GEMINI_DEFAULT_MODEL` configuration
 
 ### 4. Code Removed
@@ -70,7 +72,7 @@ Successfully migrated job listing extraction from Claude CLI to Gemini API. This
 - No build errors related to Gemini migration
 
 ### Manual Testing Checklist
-- [ ] Set `GEMINI_API_KEY` in `.env`
+- [ ] Set `GOOGLE_CLOUD_PROJECT` in `.env`
 - [ ] Start the application
 - [ ] Navigate to a job listing page
 - [ ] Click "Submit Job"
@@ -83,8 +85,8 @@ Successfully migrated job listing extraction from Claude CLI to Gemini API. This
 Users must add to their `.env` file:
 
 ```bash
-GEMINI_API_KEY=your-api-key-here
-GEMINI_DEFAULT_MODEL=gemini-2.0-flash-exp  # Optional, has default
+GOOGLE_CLOUD_PROJECT=your-api-key-here
+GEMINI_DEFAULT_MODEL=gemini-2.0-flash-001  # Optional, has default
 ```
 
 Get API key from: https://makersuite.google.com/app/apikey

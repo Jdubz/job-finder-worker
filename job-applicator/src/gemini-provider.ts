@@ -1,6 +1,16 @@
 /**
- * Gemini provider for job extraction using Vertex AI.
- * Uses Google Cloud Vertex AI with service account authentication.
+ * Gemini provider for job extraction using Google Cloud Vertex AI.
+ *
+ * This implementation uses the `@google-cloud/vertexai` client with
+ * service account / Google Cloud ADC-based authentication (via
+ * GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION and standard GCP creds)
+ * to call Gemini models.
+ *
+ * NOTE: This is an intentional deviation from the original migration plan
+ * in PLAN-claude-to-gemini-migration.md, which proposed using the
+ * `@google/generative-ai` SDK with GEMINI_API_KEY authentication.
+ * We switched to Vertex AI because only service account credentials are
+ * available (no API key), matching the worker's authentication approach.
  */
 
 import { VertexAI } from "@google-cloud/vertexai"
@@ -38,7 +48,7 @@ export class GeminiProvider {
       location: this.location,
     })
 
-    this.model = config.model || process.env.GEMINI_DEFAULT_MODEL || "gemini-2.0-flash-exp"
+    this.model = config.model || process.env.GEMINI_DEFAULT_MODEL || "gemini-2.0-flash-001"
 
     logger.info(`[Gemini] Initialized with Vertex AI (project: ${this.project}, location: ${this.location}, model: ${this.model})`)
   }
@@ -81,17 +91,17 @@ export class GeminiProvider {
       const text = candidate.content.parts.map(part => part.text).join("")
 
       if (!text || text.trim().length === 0) {
-        throw new Error("Gemini API returned empty response")
+        throw new Error("Vertex AI returned empty response")
       }
 
       return text
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      logger.error(`[Gemini] API error: ${message}`)
+      logger.error(`[Gemini] Vertex AI error: ${message}`)
 
       // Check for quota/rate limit errors
       if (message.toLowerCase().includes("quota") || message.toLowerCase().includes("rate limit")) {
-        throw new Error("Gemini API quota exceeded. Please try again later.")
+        throw new Error("Vertex AI quota exceeded. Please try again later.")
       }
 
       // Check for authentication errors
@@ -105,7 +115,7 @@ export class GeminiProvider {
         throw error
       }
 
-      throw new Error(`Gemini API error: ${message}`)
+      throw new Error(`Vertex AI error: ${message}`)
     }
   }
 
@@ -144,9 +154,28 @@ export class GeminiProvider {
 // Singleton instance
 let geminiInstance: GeminiProvider | null = null
 
+/**
+ * Get the shared GeminiProvider instance.
+ *
+ * Note: Configuration (including environment variables like GOOGLE_CLOUD_PROJECT)
+ * is captured when the instance is first created. If you change relevant
+ * environment variables at runtime and want those changes to take effect,
+ * call resetGeminiProvider() before calling this function again, or restart
+ * the application.
+ */
 export function getGeminiProvider(): GeminiProvider {
   if (!geminiInstance) {
     geminiInstance = new GeminiProvider({})
   }
   return geminiInstance
+}
+
+/**
+ * Reset the shared GeminiProvider instance.
+ *
+ * After calling this, the next call to getGeminiProvider() will create
+ * a new GeminiProvider using the current environment variables.
+ */
+export function resetGeminiProvider(): void {
+  geminiInstance = null
 }

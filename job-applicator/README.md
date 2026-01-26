@@ -35,12 +35,12 @@ Electron application for automated job application form filling and job listing 
    
    Or set `GOOGLE_APPLICATION_CREDENTIALS` to your service account key file.
 
-3. Configure the backend API URL:
+4. Configure the backend API URL:
    ```bash
    JOB_FINDER_API_URL=http://localhost:3000/api
    ```
 
-4. Install dependencies:
+5. Install dependencies:
    ```bash
    npm install
    ```
@@ -92,7 +92,7 @@ npm run typecheck
 - **Main Process**: Electron main process handles IPC, file operations, and API calls
 - **Renderer Process**: UI built with vanilla TypeScript/HTML/CSS
 - **MCP Server**: Model Context Protocol server for browser automation tools
-- **Gemini Provider**: API client for job extraction using Google Gemini
+- **Gemini Provider**: API client for job extraction using Google Cloud Vertex AI
 
 ## Migration from Claude CLI
 
