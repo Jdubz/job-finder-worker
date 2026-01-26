@@ -70,12 +70,10 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
 
     try:
         # Check if skill_taxonomy table exists
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT name FROM sqlite_master
             WHERE type = 'table' AND name = 'skill_taxonomy'
-        """
-        )
+        """)
         if not cursor.fetchone():
             logger.info("skill_taxonomy table does not exist. Nothing to migrate.")
             logger.info("Table will be created with parallels when taxonomy is first loaded.")

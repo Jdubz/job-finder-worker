@@ -8,8 +8,7 @@ from job_finder.job_queue.models import JobQueueItem, QueueItemType
 def make_manager(tmp_path: Path) -> QueueManager:
     db_path = tmp_path / "queue.db"
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE job_queue (
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL,
@@ -30,8 +29,7 @@ def make_manager(tmp_path: Path) -> QueueManager:
             completed_at TEXT,
             dedupe_key TEXT
         );
-        """
-    )
+        """)
     conn.commit()
     conn.close()
     return QueueManager(db_path=str(db_path))

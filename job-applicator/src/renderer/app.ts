@@ -955,6 +955,10 @@ function renderReviewForm(documentType: "resume" | "coverLetter", content: Resum
 function renderResumeReviewForm(content: ResumeContent) {
   let html = `
     <div class="review-field">
+      <div class="review-field-label">Professional Title</div>
+      <input type="text" class="review-input" id="review-title" value="${escapeHtml(content.personalInfo?.title || "")}" placeholder="e.g., Senior Software Engineer, Full Stack Developer" />
+    </div>
+    <div class="review-field">
       <div class="review-field-label">Professional Summary</div>
       <textarea class="review-textarea" id="review-summary" rows="4">${escapeHtml(content.professionalSummary || "")}</textarea>
     </div>
@@ -1074,6 +1078,8 @@ function collectReviewedContent(): ResumeContent | CoverLetterContent | null {
 
 // Collect edited resume content
 function collectResumeContent(original: ResumeContent): ResumeContent {
+  const titleEl = document.getElementById("review-title") as HTMLInputElement
+  const title = titleEl?.value || original.personalInfo?.title || ""
   const summaryEl = document.getElementById("review-summary") as HTMLTextAreaElement
   const summary = summaryEl?.value || original.professionalSummary
 
@@ -1087,6 +1093,10 @@ function collectResumeContent(original: ResumeContent): ResumeContent {
 
   return {
     ...original,
+    personalInfo: {
+      ...original.personalInfo,
+      title,
+    },
     professionalSummary: summary,
     experience,
   }

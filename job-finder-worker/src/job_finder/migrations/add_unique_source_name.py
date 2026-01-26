@@ -26,15 +26,13 @@ def check_for_duplicates(cursor: sqlite3.Cursor) -> list[tuple[str, int]]:
     Returns:
         List of (name, count) tuples for names that appear more than once
     """
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT name, COUNT(*) as count
         FROM job_sources
         GROUP BY name
         HAVING count > 1
         ORDER BY count DESC
-    """
-    )
+    """)
     return cursor.fetchall()
 
 
@@ -57,12 +55,10 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
 
     try:
         # Check if index already exists
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT name FROM sqlite_master
             WHERE type = 'index' AND name = 'idx_job_sources_name_unique'
-        """
-        )
+        """)
         if cursor.fetchone():
             logger.info("Unique index idx_job_sources_name_unique already exists. Nothing to do.")
             return True
@@ -86,11 +82,9 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
 
         # Create unique index
         logger.info("Creating unique index idx_job_sources_name_unique on job_sources(name)...")
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE UNIQUE INDEX idx_job_sources_name_unique ON job_sources(name)
-        """
-        )
+        """)
 
         conn.commit()
         logger.info("Migration completed successfully.")

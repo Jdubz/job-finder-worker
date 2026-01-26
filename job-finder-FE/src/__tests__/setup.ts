@@ -6,20 +6,11 @@
 
 import { vi, beforeEach, afterEach } from "vitest"
 
-// MUST BE FIRST: Polyfill React.act before any other imports
-// React 19 compatibility - @testing-library/react expects act from react-dom/test-utils
-const actPolyfill = async (callback: () => void | Promise<void>) => {
-  const result = callback()
-  if (result && typeof result === "object" && "then" in result) {
-    await result
-  }
-  await new Promise((resolve) => setTimeout(resolve, 0))
-}
-
-// Mock react-dom/test-utils BEFORE importing anything else
-vi.mock("react-dom/test-utils", () => ({
-  act: actPolyfill,
-}))
+// Mock react-dom/test-utils to export act from react (React 19 compatibility)
+vi.mock("react-dom/test-utils", async () => {
+  const { act } = await import("react")
+  return { act }
+})
 
 // Now safe to import other modules
 import "@testing-library/jest-dom"

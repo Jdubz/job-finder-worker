@@ -28,8 +28,7 @@ def _init_db(db_path: Path) -> None:
     """Initialize test database with all required columns including retry tracking."""
     db_path.touch()
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE job_queue (
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL,
@@ -50,8 +49,7 @@ def _init_db(db_path: Path) -> None:
             processed_at TEXT,
             completed_at TEXT
         );
-        """
-    )
+        """)
     conn.commit()
     conn.close()
 

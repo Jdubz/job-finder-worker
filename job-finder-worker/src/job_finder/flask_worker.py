@@ -8,6 +8,7 @@ This worker provides:
 - Process status and statistics
 - Same job processing logic as the daemon worker
 """
+
 import base64
 import json
 import os
@@ -74,6 +75,12 @@ MIN_POLL_INTERVAL_SECONDS = 10
 DEFAULT_WORKER_PORT = 5555
 DEFAULT_WORKER_HOST = "0.0.0.0"
 WORKER_SHUTDOWN_TIMEOUT_SECONDS = 30
+# Auto-restart defaults to false in production/containers to respect SIGTERM for graceful shutdown
+# Set WORKER_AUTO_RESTART_ON_SIGNAL=true in development if you want auto-restart behavior
+WORKER_AUTO_RESTART_ON_SIGNAL = (
+    os.getenv("WORKER_AUTO_RESTART_ON_SIGNAL", "false").lower() == "true"
+)
+WORKER_RESTART_DELAY_SECONDS = 5
 
 # Migration guards
 REQUIRED_CONFIG_MIGRATIONS = {
@@ -87,6 +94,7 @@ _state_lock = threading.Lock()
 worker_state = {
     "running": False,
     "shutdown_requested": False,
+    "restart_requested": False,
     "items_processed_total": 0,
     "last_poll_time": None,
     "last_error": None,
@@ -679,6 +687,20 @@ def worker_loop():
     slogger.worker_status("stopped", {"total_processed": _get_state("items_processed_total")})
     _set_state("running", False)
 
+    # Check if restart was requested
+    if _get_state("restart_requested"):
+        global worker_thread
+        slogger.worker_status("restarting", {"delay_seconds": WORKER_RESTART_DELAY_SECONDS})
+        _set_state("restart_requested", False)
+        _set_state("shutdown_requested", False)
+        time.sleep(WORKER_RESTART_DELAY_SECONDS)
+
+        # Restart the worker thread
+        slogger.worker_status("restart_initiated")
+        worker_thread = threading.Thread(target=worker_loop, daemon=True)
+        worker_thread.start()
+        slogger.worker_status("restarted")
+
 
 # Flask routes
 @app.route("/health")
@@ -730,6 +752,7 @@ def start_worker():
     global worker_thread, queue_manager, processor, config_loader, ai_matcher
 
     if _get_state("running"):
+        slogger.worker_status("start_request_ignored", {"reason": "already_running"})
         return jsonify({"message": "Worker is already running"}), 400
 
     if queue_manager is None or processor is None or config_loader is None or ai_matcher is None:
@@ -744,10 +767,11 @@ def start_worker():
         _get_state("poll_interval") or DEFAULT_POLL_INTERVAL_SECONDS,
     )
 
-    _update_state(shutdown_requested=False, start_time=time.time())
+    _update_state(shutdown_requested=False, restart_requested=False, start_time=time.time())
     worker_thread = threading.Thread(target=worker_loop, daemon=True)
     worker_thread.start()
 
+    slogger.worker_status("started_via_api")
     return jsonify({"message": "Worker started"})
 
 
@@ -810,9 +834,19 @@ def config_endpoint():
 
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully."""
-    slogger.worker_status("shutdown_requested", {"signal": signum})
-    _set_state("shutdown_requested", True)
+    """Handle shutdown signals gracefully.
+
+    By default, SIGTERM triggers a restart (not shutdown) to allow the worker
+    to resume after container updates. Set WORKER_AUTO_RESTART_ON_SIGNAL=false
+    to disable auto-restart.
+    """
+    if WORKER_AUTO_RESTART_ON_SIGNAL:
+        slogger.worker_status("restart_requested", {"signal": signum, "auto_restart": True})
+        _set_state("restart_requested", True)
+        _set_state("shutdown_requested", True)
+    else:
+        slogger.worker_status("shutdown_requested", {"signal": signum, "auto_restart": False})
+        _set_state("shutdown_requested", True)
 
 
 def main():
@@ -859,6 +893,13 @@ def main():
 
         # Start worker automatically
         _set_state("start_time", time.time())
+        slogger.worker_status(
+            "auto_starting",
+            {
+                "auto_restart_enabled": WORKER_AUTO_RESTART_ON_SIGNAL,
+                "poll_interval": _get_state("poll_interval"),
+            },
+        )
         worker_thread = threading.Thread(target=worker_loop, daemon=True)
         worker_thread.start()
 

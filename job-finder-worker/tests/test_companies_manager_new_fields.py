@@ -11,16 +11,14 @@ from job_finder.storage.companies_manager import CompaniesManager
 def _apply_migrations(db_path: Path) -> None:
     migrations_dir = Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
-        conn.executescript(
-            """
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS config (
               id TEXT PRIMARY KEY,
               payload_json TEXT NOT NULL,
               updated_at TEXT NOT NULL,
               updated_by TEXT
             );
-            """
-        )
+            """)
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             conn.executescript(sql_file.read_text())
 

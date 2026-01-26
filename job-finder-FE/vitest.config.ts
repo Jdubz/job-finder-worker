@@ -24,6 +24,10 @@ export default defineConfig({
   // Make environment variables from process.env available to tests
   // Fallback to .env.test values if not set in process.env
   envDir: path.resolve(__dirname, '.'),
+  // Define NODE_ENV for React development builds with act support
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('development'),
+  },
   test: {
     globals: true,
     environment: "jsdom",

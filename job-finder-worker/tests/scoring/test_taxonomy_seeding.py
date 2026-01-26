@@ -9,8 +9,7 @@ def test_ensure_core_seeds_inserts_missing_core_rows(tmp_path: Path):
 
     # Create table with a placeholder row so _seed_if_empty() will no-op
     with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE skill_taxonomy (
                 canonical TEXT PRIMARY KEY,
                 category TEXT,
@@ -19,8 +18,7 @@ def test_ensure_core_seeds_inserts_missing_core_rows(tmp_path: Path):
                 parallels_csv TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             )
-            """
-        )
+            """)
         conn.execute(
             "INSERT INTO skill_taxonomy (canonical, category, synonyms_csv, implies_csv, parallels_csv, updated_at) VALUES (?,?,?,?,?,datetime('now'))",
             (

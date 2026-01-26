@@ -51,6 +51,27 @@ export function ResumeReviewForm({
         <CardContent>
           <ScrollArea className="h-[60vh] pr-4">
             <div className="space-y-6">
+              {/* Personal Info - Title */}
+              <div>
+                <Label className="text-sm font-semibold">Professional Title</Label>
+                <Input
+                  value={resume.personalInfo?.title || ""}
+                  onChange={(e) =>
+                    setEditedContent({
+                      ...resume,
+                      personalInfo: {
+                        ...resume.personalInfo,
+                        title: e.target.value,
+                      },
+                    })
+                  }
+                  className="mt-1"
+                  placeholder="e.g., Senior Software Engineer, Full Stack Developer"
+                />
+              </div>
+
+              <Separator />
+
               {/* Professional Summary */}
               <div>
                 <Label className="text-sm font-semibold">Professional Summary</Label>

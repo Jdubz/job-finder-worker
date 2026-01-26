@@ -10,8 +10,7 @@ from job_finder.job_queue.models import SourceStatus
 def _bootstrap_db(path: Path):
     """Create test database with job_sources table."""
     with sqlite3.connect(path) as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE job_sources (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -25,8 +24,7 @@ def _bootstrap_db(path: Path):
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
-            """
-        )
+            """)
 
 
 def test_update_company_link_success(tmp_path):

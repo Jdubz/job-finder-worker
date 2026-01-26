@@ -39,14 +39,12 @@ logger = logging.getLogger(__name__)
 def get_all_listings(db_path: str | None = None) -> List[Dict[str, Any]]:
     """Fetch all job listings from the database."""
     with sqlite_connection(db_path) as conn:
-        rows = conn.execute(
-            """
+        rows = conn.execute("""
             SELECT id, url, title, company_name, location, description,
                    posted_date, salary_range, source_id, status
             FROM job_listings
             ORDER BY created_at ASC
-            """
-        ).fetchall()
+            """).fetchall()
         return [dict(row) for row in rows]
 
 

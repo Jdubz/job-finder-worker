@@ -20,7 +20,6 @@ from job_finder.job_queue.models import (
     SourceTier,
 )
 
-
 TS_SHARED_ROOT = Path(__file__).resolve().parents[2] / "shared" / "src"
 
 

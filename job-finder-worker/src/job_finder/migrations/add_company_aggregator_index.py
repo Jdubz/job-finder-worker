@@ -25,12 +25,10 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
 
     try:
         # Check if index already exists
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT name FROM sqlite_master
             WHERE type = 'index' AND name = 'idx_job_sources_company_aggregator'
-            """
-        )
+            """)
         if cursor.fetchone():
             logger.info("Index idx_job_sources_company_aggregator already exists. Nothing to do.")
             return True
@@ -42,13 +40,11 @@ def run_migration(db_path: str, dry_run: bool = False) -> bool:
             return True
 
         logger.info("Creating partial index idx_job_sources_company_aggregator on job_sources...")
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_job_sources_company_aggregator
               ON job_sources (company_id, aggregator_domain)
               WHERE company_id IS NOT NULL AND aggregator_domain IS NOT NULL;
-            """
-        )
+            """)
 
         conn.commit()
         logger.info("Migration completed successfully.")

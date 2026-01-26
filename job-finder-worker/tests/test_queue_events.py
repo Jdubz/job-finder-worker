@@ -21,7 +21,6 @@ from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
