@@ -18,12 +18,18 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // React 19 compatibility: redirect react-dom/test-utils to react
+      "react-dom/test-utils": "react",
     },
     conditions: ['development', 'browser'],
   },
   // Make environment variables from process.env available to tests
   // Fallback to .env.test values if not set in process.env
   envDir: path.resolve(__dirname, '.'),
+  // Define NODE_ENV for React development builds with act support
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('development'),
+  },
   test: {
     globals: true,
     environment: "jsdom",
