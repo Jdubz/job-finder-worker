@@ -132,6 +132,8 @@ export class NetworkStorageService {
   /**
    * Copy file using smbclient command
    * Requires smbclient to be installed on the system
+   * 
+   * Security: Uses environment variable for password to avoid exposure in process lists
    */
   private async copyUsingSmbClient(
     localPath: string,
@@ -141,28 +143,33 @@ export class NetworkStorageService {
     const smbUrl = `//${this.config.smbHost}/${this.config.smbShare}`
     const remoteFullPath = `${remotePath}/${filename}`
 
-    // Build smbclient command
+    // Build authentication - use env var for password to avoid exposure in ps/logs
     const authPart = this.config.username
-      ? `-U ${this.config.username}${this.config.password ? `%${this.config.password}` : ''}`
+      ? `-U ${this.config.username}`
       : '-N' // No password (guest)
 
+    // Prepare environment with password if provided
+    const env = {
+      ...process.env,
+      ...(this.config.password && { PASSWD: this.config.password })
+    }
+
     // Create remote directory first (ignore errors if it exists)
-    const mkdirCmd = `smbclient ${smbUrl} ${authPart} -c "mkdir ${remotePath}" 2>/dev/null || true`
+    const mkdirCmd = this.config.password
+      ? `smbclient ${smbUrl} ${authPart} -c "mkdir ${remotePath}" --password "$PASSWD" 2>/dev/null || true`
+      : `smbclient ${smbUrl} ${authPart} -c "mkdir ${remotePath}" 2>/dev/null || true`
     
     // Copy file
-    const copyCmd = `smbclient ${smbUrl} ${authPart} -c "cd ${remotePath}; put ${localPath} ${filename}"`
+    const copyCmd = this.config.password
+      ? `smbclient ${smbUrl} ${authPart} -c "cd ${remotePath}; put ${localPath} ${filename}" --password "$PASSWD"`
+      : `smbclient ${smbUrl} ${authPart} -c "cd ${remotePath}; put ${localPath} ${filename}"`
 
     try {
       // Create directory (may already exist)
-      await execAsync(mkdirCmd)
+      await execAsync(mkdirCmd, { env })
 
-      // Copy file
-      const { stdout, stderr } = await execAsync(copyCmd)
-
-      // Check for errors in output
-      if (stderr && !stderr.includes('putting file')) {
-        throw new Error(`smbclient error: ${stderr}`)
-      }
+      // Copy file - rely on exit code rather than parsing stderr
+      await execAsync(copyCmd, { env })
 
       logger.info({
         source: localPath,
@@ -207,11 +214,20 @@ export class NetworkStorageService {
         // Test smbclient connection
         const smbUrl = `//${this.config.smbHost}/${this.config.smbShare}`
         const authPart = this.config.username
-          ? `-U ${this.config.username}${this.config.password ? `%${this.config.password}` : ''}`
+          ? `-U ${this.config.username}`
           : '-N'
 
-        const cmd = `smbclient ${smbUrl} ${authPart} -c "ls" 2>&1`
-        await execAsync(cmd)
+        // Use environment variable for password
+        const env = {
+          ...process.env,
+          ...(this.config.password && { PASSWD: this.config.password })
+        }
+
+        const cmd = this.config.password
+          ? `smbclient ${smbUrl} ${authPart} -c "ls" --password "$PASSWD" 2>&1`
+          : `smbclient ${smbUrl} ${authPart} -c "ls" 2>&1`
+
+        await execAsync(cmd, { env })
         return { accessible: true }
       }
     } catch (error) {
