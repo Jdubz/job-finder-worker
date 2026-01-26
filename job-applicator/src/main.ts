@@ -22,6 +22,7 @@ if (fs.existsSync(envPath)) {
 }
 
 import { logger } from "./logger.js"
+import { getGeminiProvider } from "./gemini-provider.js"
 
 // Log loaded environment for debugging
 logger.info(`[ENV] JOB_FINDER_API_URL = ${process.env.JOB_FINDER_API_URL || "(not set, using default)"}`)
@@ -67,7 +68,6 @@ ipcMain.on("renderer-log", (_event: unknown, level: string, args: unknown[]) => 
 // Import shared types and utilities
 import type {
   CliProvider,
-  JobExtraction,
   GenerationStep,
   GenerationProgress,
 } from "./types.js"
@@ -75,7 +75,6 @@ import type { JobMatchWithListing, ResumeContent, CoverLetterContent } from "@sh
 import {
   buildExtractionPrompt,
   getUserFriendlyErrorMessage,
-  parseCliObjectOutput,
 } from "./utils.js"
 
 // Tool executor and server
@@ -168,11 +167,6 @@ const SIDEBAR_WIDTH = 300
 const CUSTOM_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
-// CLI timeout and warning thresholds
-// 5 minutes for complex form fills - increased from 2 minutes (120s) to handle large forms
-// Warning intervals help identify if operations are taking unusually long
-const CLI_TIMEOUT_MS = 300000 // 5 minutes
-const CLI_WARNING_INTERVALS = [30000, 60000, 90000] // Log warnings at 30s, 60s, 90s
 const TOOL_SERVER_HEALTH_TIMEOUT_MS = 3000
 
 // Maximum steps for generation workflow (prevent infinite loops)
@@ -928,7 +922,7 @@ ipcMain.handle(
 // Submit job listing for analysis
 ipcMain.handle(
   "submit-job",
-  async (_event: IpcMainInvokeEvent, provider: CliProvider): Promise<{ success: boolean; message: string }> => {
+  async (_event: IpcMainInvokeEvent, _provider: CliProvider): Promise<{ success: boolean; message: string }> => {
     try {
       if (!browserView) throw new Error("BrowserView not initialized")
 
@@ -949,10 +943,11 @@ ipcMain.handle(
         return { success: false, message: "Page content too short - is this a job listing?" }
       }
 
-      // 3. Use AI CLI to extract job details
-      logger.info(`Calling ${provider} CLI for job extraction...`)
+      // 3. Use Gemini API to extract job details
+      logger.info("Calling Gemini API for job extraction...")
+      const gemini = getGeminiProvider()
       const extractPrompt = buildExtractionPrompt(pageContent, url)
-      const extracted = await runCliForExtraction(provider, extractPrompt)
+      const extracted = await gemini.extractJobDetails(extractPrompt)
       logger.info("Extracted job details:", extracted)
 
       // 4. Submit to backend API using typed API client
@@ -1240,103 +1235,6 @@ ipcMain.handle(
     }
   }
 )
-
-/**
- * Run CLI for one-shot commands (job extraction)
- * Uses Claude CLI with JSON output format
- */
-function runCliCommon<T>(
-  _provider: CliProvider,
-  prompt: string,
-  parse: (stdout: string) => T,
-  context: string
-): Promise<T> {
-  // Use Claude CLI for job extraction
-  const cmd = "claude"
-  const args = ["--print", "--output-format", "json", "--dangerously-skip-permissions", "-p", "-"]
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, {
-      windowsHide: true,
-    })
-    let stdout = ""
-    let stderr = ""
-
-    const warningTimers = CLI_WARNING_INTERVALS.map((ms) =>
-      setTimeout(() => {
-        logger.warn(`[CLI] Claude ${context} still running after ${ms / 1000}s...`)
-      }, ms)
-    )
-
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM")
-      reject(new Error(`Claude CLI timed out after ${CLI_TIMEOUT_MS / 1000}s (${context})`))
-    }, CLI_TIMEOUT_MS)
-
-    const clearAllTimers = () => {
-      warningTimers.forEach(clearTimeout)
-      clearTimeout(timeout)
-    }
-
-    child.stdin.write(prompt)
-    child.stdin.end()
-
-    child.stdout.on("data", (d) => (stdout += d))
-    child.stderr.on("data", (d) => (stderr += d))
-
-    child.on("error", (err) => {
-      clearAllTimers()
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("Claude CLI not found. Please install it first and ensure it's in your PATH."))
-      } else {
-        reject(new Error(`Failed to spawn Claude CLI (${context}): ${err.message}`))
-      }
-    })
-
-    child.on("close", (code) => {
-      clearAllTimers()
-      if (code !== 0) {
-        let errorMsg = `Claude CLI failed (exit ${code}).`
-        const cleanErr = stderr?.trim()
-        const cleanOut = stdout?.trim()
-        if (cleanErr && cleanOut) {
-          errorMsg += ` Error: ${cleanErr} Output: ${cleanOut}`
-        } else if (cleanErr) {
-          errorMsg += ` Error: ${cleanErr}`
-        } else if (cleanOut) {
-          errorMsg += ` Output: ${cleanOut}`
-        }
-        reject(new Error(errorMsg))
-        return
-      }
-      try {
-        resolve(parse(stdout))
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        reject(new Error(`Claude CLI returned invalid JSON (${context}): ${msg}`))
-      }
-    })
-  })
-}
-
-function runCliForExtraction(provider: CliProvider, prompt: string): Promise<JobExtraction> {
-  return runCliCommon<JobExtraction>(
-    provider,
-    prompt,
-    (stdout) => {
-      const jobData = parseCliObjectOutput(stdout)
-      logger.info(`[CLI] Parsed job data:`, jobData)
-      return {
-        title: (jobData.title as string) ?? null,
-        description: (jobData.description as string) ?? null,
-        location: (jobData.location as string) ?? null,
-        techStack: (jobData.techStack as string) ?? null,
-        companyName: (jobData.companyName as string) ?? null,
-      }
-    },
-    "job-extraction"
-  )
-}
 
 // ============================================================================
 // Form Fill IPC Handler (MCP-based)

@@ -130,7 +130,8 @@ export interface GenerationProgress {
 // CLI Types (app-specific)
 // ============================================================================
 
-export type CliProvider = "claude" | "gemini"
+/** Provider type - Gemini API is used for job extraction */
+export type CliProvider = "gemini"
 
 // ============================================================================
 // Workflow Types (app-specific)
