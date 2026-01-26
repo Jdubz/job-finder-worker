@@ -145,12 +145,13 @@ export class GeminiProvider {
 
       logger.info("[Gemini] Parsed job data successfully")
 
+      // Ensure type safety by checking each field at runtime
       return {
-        title: (jobData.title as string) ?? null,
-        description: (jobData.description as string) ?? null,
-        location: (jobData.location as string) ?? null,
-        techStack: (jobData.techStack as string) ?? null,
-        companyName: (jobData.companyName as string) ?? null,
+        title: typeof jobData.title === "string" ? jobData.title : null,
+        description: typeof jobData.description === "string" ? jobData.description : null,
+        location: typeof jobData.location === "string" ? jobData.location : null,
+        techStack: typeof jobData.techStack === "string" ? jobData.techStack : null,
+        companyName: typeof jobData.companyName === "string" ? jobData.companyName : null,
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
