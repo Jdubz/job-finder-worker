@@ -18,8 +18,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      // React 19 compatibility: redirect react-dom/test-utils to react
-      "react-dom/test-utils": "react",
     },
     conditions: ['development', 'browser'],
   },
