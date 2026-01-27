@@ -16,7 +16,7 @@
     ]
   },
   "scripts": {
-    "dev": "npm run build && electron .",
+    "dev": "npm run build && electron . --no-sandbox",
     "build": "tsc && npm run postbuild && npm run build:mcp",
     "build:mcp": "cd mcp-server && npm ci && npm run build",
     "postbuild": "node scripts/postbuild.mjs",
