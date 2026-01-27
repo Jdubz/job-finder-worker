@@ -33,132 +33,169 @@ job-finder-BE/
 │   ├── src/
 │   │   ├── routes/
 │   │   ├── services/
+│   │   ├── db/
+│   │   ├── test/           # Test setup and helpers
 │   │   └── utils/
-│   ├── tests/
-│   │   ├── unit/
-│   │   │   ├── routes/
-│   │   │   │   ├── jobQueue.test.ts
-│   │   │   │   ├── jobMatching.test.ts
-│   │   │   │   └── companies.test.ts
-│   │   │   ├── services/
-│   │   │   └── utils/
-│   │   ├── integration/
-│   │   │   ├── api/
-│   │   │   │   ├── jobQueue.api.test.ts
-│   │   │   │   ├── jobMatching.api.test.ts
-│   │   │   │   └── companies.api.test.ts
-│   │   │   └── (SQLite test database helpers)
-│   │   ├── helpers/
-│   │   │   ├── testSetup.ts
-│   │   │   ├── mockData.ts
-│   │   │   └── testHelpers.ts
-│   │   └── __mocks__/
-│   └── jest.config.js
+│   └── vitest.config.ts
 ```
+
+**Test file locations:**
+- Unit tests: `src/routes/__tests__/` or `src/services/__tests__/`
+- Integration tests: `src/routes/__tests__/*.integration.test.ts`
+- Test helpers: `src/test/`
 
 ## Setup Procedures
 
 ### 1. Install Testing Dependencies
 
+**Note:** The backend already uses Vitest. These dependencies should already be installed. If setting up from scratch:
+
 ```bash
 cd job-finder-BE/server
 npm install --save-dev \
-  jest \
-  ts-jest \
-  @types/jest \
+  vitest \
+  @vitest/ui \
   supertest \
   @types/supertest
 ```
 
-### 2. Configure Jest
+### 2. Configure Vitest
 
-Create `jest.config.js`:
+The backend uses Vitest with config in `vitest.config.ts`. Example configuration:
 
-```javascript
-module.exports = {
-  preset: "ts-jest",
-  testEnvironment: "node",
-  roots: ["<rootDir>/src", "<rootDir>/tests"],
-  testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
-  transform: {
-    "^.+\\.ts$": "ts-jest",
+```typescript
+import { defineConfig } from 'vitest/config'
+import path from 'path'
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/test/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/mockData.ts'
+      ]
+    }
   },
-  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts", "!src/index.ts"],
-  coverageThreshold: {
-    global: {
-      branches: 70,
-      functions: 70,
-      lines: 70,
-      statements: 70,
-    },
-  },
-  setupFilesAfterEnv: ["<rootDir>/tests/helpers/testSetup.ts"],
-};
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  }
+})
 ```
 
 ### 3. Set Up Test Environment
 
-Configure test environment variables. Note: Firebase Admin SDK mocking is only needed if testing Firebase Authentication flows, not for data storage (which uses SQLite).
+Configure test environment variables in `.env.test` or test setup files. 
+
+**Note:** Firebase Admin SDK mocking is only needed if testing Firebase Authentication flows, not for data storage (which uses SQLite).
 
 ### 4. Create Test Helpers
 
-Set up common test fixtures, mock data, and SQLite database helpers in the `tests/helpers/` directory.
+Set up common test fixtures, mock data, and SQLite database helpers in the `src/test/` directory (matching the existing structure in `job-finder-BE/server/src/test/`).
 
 ## Unit Tests
 
-### Example: Job Queue Function Test
+### Example: Contract Test with Vitest
 
 ```typescript
-// tests/unit/functions/jobQueue.test.ts
-import { processJobQueue } from "../../../src/functions/jobQueue";
-import { mockJobData } from "../../helpers/mockData";
+// src/modules/job-queue/__tests__/job-queue.contract.test.ts
+import { describe, it, expect, beforeEach } from 'vitest'
+import request from 'supertest'
+import express from 'express'
+import { queueItemSchema } from '@shared/types'
+import { buildJobQueueRouter } from '../job-queue.routes'
+import { getDb } from '../../../db/sqlite'
+import { apiErrorHandler } from '../../../middleware/api-error'
 
-describe("processJobQueue", () => {
-  it("should process valid job queue item", async () => {
-    const result = await processJobQueue(mockJobData);
+const createApp = () => {
+  const app = express()
+  app.use(express.json())
+  app.use('/queue', buildJobQueueRouter())
+  app.use(apiErrorHandler)
+  return app
+}
 
-    expect(result.status).toBe("success");
-    expect(result.jobId).toBeDefined();
-  });
+describe('job queue contract', () => {
+  const db = getDb()
+  const app = createApp()
 
-  it("should reject invalid job data", async () => {
-    const invalidData = { ...mockJobData, url: "" };
+  beforeEach(() => {
+    db.prepare('DELETE FROM job_queue').run()
+  })
 
-    await expect(processJobQueue(invalidData)).rejects.toThrow(
-      "Invalid job URL",
-    );
-  });
-});
+  it('serializes list responses according to shared schema', async () => {
+    const submitRes = await request(app).post('/queue/jobs').send({
+      url: 'https://example.com/test',
+      companyName: 'Test Co',
+    })
+
+    expect(submitRes.status).toBe(201)
+
+    const res = await request(app).get('/queue?limit=5')
+    expect(res.status).toBe(200)
+    const parsed = queueItemSchema.array().safeParse(res.body.data.items)
+    expect(parsed.success).toBe(true)
+  })
+})
 ```
 
 ### Coverage Targets
 
-- Unit tests for all Cloud Functions
-- Test job queue processing functions
-- Test job matching functions
-- Test company management functions
-- Test authentication helpers
-- Test data validation utilities
+- Contract tests for all API routes (testing shared schema compliance)
+- Repository tests for database operations
+- Service tests for business logic
+- Middleware tests for authentication and error handling
 - **Target: 70%+ code coverage**
+
+**Current test locations:**
+- `src/modules/*/\_\_tests\_\_/*.contract.test.ts` - API contract tests
+- `src/modules/*/\_\_tests\_\_/*.repository.test.ts` - Repository tests
+- `src/modules/*/\_\_tests\_\_/*.routes.test.ts` - Route handler tests
+- `src/services/*.test.ts` - Service tests
 
 ## Integration Tests
 
-### Example: API Endpoint Test
+Integration tests verify end-to-end flows including database operations.
+
+### Example: Repository Integration Test
 
 ```typescript
-// tests/integration/api/jobQueue.api.test.ts
-import { initializeTestApp } from "../../helpers/testHelpers";
-import { mockJobData } from "../../helpers/mockData";
+// src/modules/job-queue/__tests__/job-queue.repository.test.ts
+import { describe, it, expect, beforeEach } from 'vitest'
+import { getDb } from '../../../db/sqlite'
+import { JobQueueRepository } from '../job-queue.repository'
 
-describe("Job Queue API", () => {
-  let testEnv;
+describe('JobQueueRepository', () => {
+  const db = getDb()
+  const repo = new JobQueueRepository()
 
-  beforeAll(async () => {
-    testEnv = await initializeTestApp();
-  });
+  beforeEach(() => {
+    db.prepare('DELETE FROM job_queue').run()
+  })
 
-  afterAll(async () => {
-    await testEnv.cleanup();
+  it('creates and retrieves queue items', () => {
+    const item = repo.create({
+      url: 'https://example.com/job',
+      companyName: 'Test Company',
+      status: 'pending'
+    })
+
+    expect(item.id).toBeDefined()
+    
+    const retrieved = repo.getById(item.id)
+    expect(retrieved?.url).toBe('https://example.com/job')
+  })
+})
+```
   });
 
   it("should accept job submission", async () => {
