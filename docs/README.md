@@ -1,6 +1,6 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2026-01-27
 
 # Job Finder Documentation
 
@@ -11,6 +11,7 @@ Documentation for the Job Finder application - a containerized monorepo with Exp
 - **[System Architecture](./shared/architecture/system-overview.md)** - Overview of the application architecture
 - **[Development Setup](./infrastructure/setup/development-stack.md)** - How to run locally
 - **[Quick Reference](./infrastructure/setup/quick-reference.md)** - Common commands
+- **[Migration History](./shared/MIGRATION_HISTORY.md)** - Firestore to SQLite migration details
 
 ## Documentation Structure
 

@@ -2,11 +2,13 @@
 
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-12-09
+> Last Updated: 2026-01-27
 
 ## Overview
 
-This guide covers comprehensive testing for job-finder-bot backend services. Firestore is no longer used; SQLite is the sole datastore. Currently there is minimal test coverage, creating critical risk of deploying broken code to production.
+This guide covers comprehensive testing for job-finder backend services. **SQLite is the sole datastore** - Firestore was fully migrated away from in late 2025. Currently there is minimal test coverage, creating critical risk of deploying broken code to production.
+
+**Note:** Firebase Authentication is still used for user authentication, but Firestore (database) is completely removed.
 
 ## Context
 
@@ -27,14 +29,14 @@ This guide covers comprehensive testing for job-finder-bot backend services. Fir
 
 ```
 job-finder-BE/
-├── functions/
+├── server/
 │   ├── src/
-│   │   ├── functions/
+│   │   ├── routes/
 │   │   ├── services/
 │   │   └── utils/
 │   ├── tests/
 │   │   ├── unit/
-│   │   │   ├── functions/
+│   │   │   ├── routes/
 │   │   │   │   ├── jobQueue.test.ts
 │   │   │   │   ├── jobMatching.test.ts
 │   │   │   │   └── companies.test.ts
@@ -45,11 +47,11 @@ job-finder-BE/
 │   │   │   │   ├── jobQueue.api.test.ts
 │   │   │   │   ├── jobMatching.api.test.ts
 │   │   │   │   └── companies.api.test.ts
-  │   │   │   └── (datastore helpers for SQLite only)
+│   │   │   └── (SQLite test database helpers)
 │   │   ├── helpers/
 │   │   │   ├── testSetup.ts
 │   │   │   ├── mockData.ts
-│   │   │   └── emulatorHelpers.ts
+│   │   │   └── testHelpers.ts
 │   │   └── __mocks__/
 │   └── jest.config.js
 ```
@@ -59,14 +61,13 @@ job-finder-BE/
 ### 1. Install Testing Dependencies
 
 ```bash
-cd job-finder-BE/functions
+cd job-finder-BE/server
 npm install --save-dev \
   jest \
   ts-jest \
   @types/jest \
   supertest \
-  @types/supertest \
-  firebase-functions-test
+  @types/supertest
 ```
 
 ### 2. Configure Jest
@@ -97,11 +98,11 @@ module.exports = {
 
 ### 3. Set Up Test Environment
 
-Configure test environment variables and Firebase Admin SDK mocking.
+Configure test environment variables. Note: Firebase Admin SDK mocking is only needed if testing Firebase Authentication flows, not for data storage (which uses SQLite).
 
 ### 4. Create Test Helpers
 
-Set up common test fixtures, mock data, and emulator helpers in the `tests/helpers/` directory.
+Set up common test fixtures, mock data, and SQLite database helpers in the `tests/helpers/` directory.
 
 ## Unit Tests
 
@@ -146,7 +147,7 @@ describe("processJobQueue", () => {
 
 ```typescript
 // tests/integration/api/jobQueue.api.test.ts
-import { initializeTestApp } from "../../helpers/emulatorHelpers";
+import { initializeTestApp } from "../../helpers/testHelpers";
 import { mockJobData } from "../../helpers/mockData";
 
 describe("Job Queue API", () => {

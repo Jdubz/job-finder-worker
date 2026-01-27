@@ -57,7 +57,7 @@ npm run prepare
 ## Next Steps
 
 - Finish migrating the worker + frontend to the new Node server / SQLite backend
-- Remove remaining Firebase dependencies once parity is achieved
+- Continue improving test coverage across all components
 - Flesh out CI so the root `build` job runs workspace builds + tests
 
 ## Security
