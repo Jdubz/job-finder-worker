@@ -6,6 +6,9 @@
     "esModuleInterop": true,
     "types": ["node"],
     "typeRoots": ["./src/types", "./node_modules/@types", "../node_modules/@types"],
+    "paths": {
+      "@shared/types": ["../shared/dist/index.d.ts"]
+    },
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -15,5 +18,5 @@
     "rootDir": "src"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

@@ -1,5 +1,24 @@
 #!/usr/bin/env sh
 set -e
 
+echo "Running pre-push checks..."
+
+# Build shared types first
+echo "Building shared types..."
+npm run build:shared
+
+# Run linting
+echo "Running lint checks..."
+npm run lint --workspaces --if-present || true
+
+# Run typechecks
+echo "Running type checks..."
+npm run typecheck
+
+# Run tests for staged files
 npm run tests:staged
+
+# Python linting
 scripts/lint-staged-python.sh
+
+echo "Pre-push checks complete!"

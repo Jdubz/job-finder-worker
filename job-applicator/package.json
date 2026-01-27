@@ -16,13 +16,14 @@
     ]
   },
   "scripts": {
-    "dev": "npm run build && electron .",
+    "dev": "npm run build && electron . --no-sandbox",
     "build": "tsc && npm run postbuild && npm run build:mcp",
     "build:mcp": "cd mcp-server && npm ci && npm run build",
     "postbuild": "node scripts/postbuild.mjs",
     "watch:build": "nodemon --watch src --watch mcp-server/src --ext ts,html,css --exec 'npm run build'",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
+    "type-check": "npm run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

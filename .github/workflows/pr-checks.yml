@@ -426,6 +426,8 @@ jobs:
           restore-keys: |
             electron-${{ runner.os }}-
       - run: npm ci
+      - name: Build shared types
+        run: npm run build:shared
       - name: TypeScript check
         working-directory: job-applicator
         run: npm run typecheck
@@ -448,6 +450,8 @@ jobs:
           restore-keys: |
             electron-${{ runner.os }}-
       - run: npm ci
+      - name: Build shared types
+        run: npm run build:shared
       - name: Build
         working-directory: job-applicator
         run: npm run build
@@ -470,6 +474,8 @@ jobs:
           restore-keys: |
             electron-${{ runner.os }}-
       - run: npm ci
+      - name: Build shared types
+        run: npm run build:shared
       - name: Run tests
         working-directory: job-applicator
         run: npm test
