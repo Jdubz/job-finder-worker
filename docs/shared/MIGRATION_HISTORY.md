@@ -1,3 +1,7 @@
+> Status: Active
+> Owner: @jdubz
+> Last Updated: 2026-01-27
+
 # Migration History
 
 ## Firestore to SQLite Migration (Late 2025)

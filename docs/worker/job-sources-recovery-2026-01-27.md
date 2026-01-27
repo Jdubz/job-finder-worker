@@ -1,3 +1,7 @@
+> Status: Active
+> Owner: @jdubz
+> Last Updated: 2026-01-27
+
 # Job Sources Recovery - January 27, 2026
 
 ## Summary
