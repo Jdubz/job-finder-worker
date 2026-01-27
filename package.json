@@ -41,6 +41,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
     "pino-pretty": "^13.1.2",
+    "tsup": "^8.5.1",
     "vitest": "^3.2.4"
   },
   "dependencies": {
