@@ -346,7 +346,7 @@ export function JobApplicationsPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -374,78 +374,80 @@ export function JobApplicationsPage() {
               </Button>
             </div>
           ) : (
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40%] min-w-[200px]">Job Title</TableHead>
-                  <TableHead className="w-[20%] max-w-[180px]">Company</TableHead>
-                  <TableHead className="hidden md:table-cell w-[15%] max-w-[140px]">Location</TableHead>
-                  <TableHead className="hidden lg:table-cell w-[10%]">Posted</TableHead>
-                  <TableHead className="text-center w-[8%]">Score</TableHead>
-                  <TableHead className="w-[7%] text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredMatches.map((match) => (
-                  <TableRow
-                    key={match.id}
-                    className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
-                    onClick={() => handleRowClick(match)}
-                  >
-                    <TableCell>
-                      <div className="font-medium truncate" title={match.listing.title}>
-                        {match.listing.title}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[180px]">
-                      <button
-                        type="button"
-                        className="text-blue-600 hover:underline text-left truncate block max-w-full"
-                        title={match.listing.companyName}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openModal({
-                            type: "company",
-                            companyId: match.listing.companyId || undefined,
-                          })
-                        }}
-                      >
-                        {match.listing.companyName}
-                      </button>
-                      {/* Show location on mobile as secondary text */}
-                      <div className="md:hidden text-xs text-muted-foreground mt-0.5 truncate">
-                        {match.listing.location || ""}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground max-w-[140px]">
-                      <span className="truncate block" title={match.listing.location || undefined}>
-                        {match.listing.location || "—"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell text-muted-foreground whitespace-nowrap">
-                      {formatDate(match.listing.postedDate)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {match.status !== "ignored" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                          title="Ignore this match"
-                          onClick={(e) => handleIgnoreClick(e, match)}
-                        >
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">Ignore</span>
-                        </Button>
-                      )}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[180px]">Job Title</TableHead>
+                    <TableHead className="min-w-[140px]">Company</TableHead>
+                    <TableHead className="hidden md:table-cell min-w-[120px]">Location</TableHead>
+                    <TableHead className="hidden lg:table-cell min-w-[100px]">Posted</TableHead>
+                    <TableHead className="text-center min-w-[80px]">Score</TableHead>
+                    <TableHead className="text-center min-w-[80px]">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredMatches.map((match) => (
+                    <TableRow
+                      key={match.id}
+                      className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
+                      onClick={() => handleRowClick(match)}
+                    >
+                      <TableCell className="max-w-[300px]">
+                        <div className="font-medium truncate" title={match.listing.title}>
+                          {match.listing.title}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline text-left truncate block w-full"
+                          title={match.listing.companyName}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openModal({
+                              type: "company",
+                              companyId: match.listing.companyId || undefined,
+                            })
+                          }}
+                        >
+                          {match.listing.companyName}
+                        </button>
+                        {/* Show location on mobile as secondary text */}
+                        <div className="md:hidden text-xs text-muted-foreground mt-0.5 truncate">
+                          {match.listing.location || ""}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-muted-foreground max-w-[160px]">
+                        <span className="truncate block" title={match.listing.location || undefined}>
+                          {match.listing.location || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground whitespace-nowrap">
+                        {formatDate(match.listing.postedDate)}
+                      </TableCell>
+                      <TableCell className="text-center whitespace-nowrap">
+                        <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {match.status !== "ignored" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            title="Ignore this match"
+                            onClick={(e) => handleIgnoreClick(e, match)}
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Ignore</span>
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

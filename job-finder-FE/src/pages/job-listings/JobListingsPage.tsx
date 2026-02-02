@@ -336,12 +336,14 @@ export function JobListingsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <JobListingsTable
-            listings={filteredListings}
-            loading={loading}
-            onRowClick={handleRowClick}
-            onCompanyClick={handleCompanyClick}
-          />
+          <div className="overflow-x-auto">
+            <JobListingsTable
+              listings={filteredListings}
+              loading={loading}
+              onRowClick={handleRowClick}
+              onCompanyClick={handleCompanyClick}
+            />
+          </div>
         </CardContent>
       </Card>
 

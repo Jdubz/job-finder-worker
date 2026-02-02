@@ -435,22 +435,24 @@ export function QueueManagementPage() {
                   <p>No pending tasks in the queue.</p>
                 </div>
               ) : (
-                <QueueTable
-                  items={pendingItems}
-                  onRowClick={(item) =>
-                    openModal({
-                      type: "jobQueueItem",
-                      item,
-                      onCancel: () => {
-                        if (item.id) return handleCancelItem(item.id)
-                      },
-                    })
-                  }
-                  onCancel={handleCancelItem}
-                  onRetry={handleRetryItem}
-                  onUnblock={handleUnblockItem}
-                  formatRelativeTime={formatRelativeTime}
-                />
+                <div className="overflow-x-auto">
+                  <QueueTable
+                    items={pendingItems}
+                    onRowClick={(item) =>
+                      openModal({
+                        type: "jobQueueItem",
+                        item,
+                        onCancel: () => {
+                          if (item.id) return handleCancelItem(item.id)
+                        },
+                      })
+                    }
+                    onCancel={handleCancelItem}
+                    onRetry={handleRetryItem}
+                    onUnblock={handleUnblockItem}
+                    formatRelativeTime={formatRelativeTime}
+                  />
+                </div>
               )}
             </TabsContent>
 
@@ -469,14 +471,16 @@ export function QueueManagementPage() {
                   </p>
                 </div>
               ) : (
-                <QueueTable
-                  items={completedItems}
-                  onRowClick={(item) => openModal({ type: "jobQueueItem", item })}
-                  onCancel={handleCancelItem}
-                  onRetry={handleRetryItem}
-                  onUnblock={handleUnblockItem}
-                  formatRelativeTime={formatRelativeTime}
-                />
+                <div className="overflow-x-auto">
+                  <QueueTable
+                    items={completedItems}
+                    onRowClick={(item) => openModal({ type: "jobQueueItem", item })}
+                    onCancel={handleCancelItem}
+                    onRetry={handleRetryItem}
+                    onUnblock={handleUnblockItem}
+                    formatRelativeTime={formatRelativeTime}
+                  />
+                </div>
               )}
             </TabsContent>
           </Tabs>
