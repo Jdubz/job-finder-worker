@@ -109,7 +109,7 @@ export function JobListingsTable({
               </button>
             </TableCell>
             <TableCell className="hidden lg:table-cell text-muted-foreground max-w-[160px]">
-              <span className="truncate block">{listing.location || "—"}</span>
+              <span className="truncate block" title={listing.location || undefined}>{listing.location || "—"}</span>
             </TableCell>
             <TableCell className="hidden sm:table-cell text-muted-foreground">
               {(() => {
