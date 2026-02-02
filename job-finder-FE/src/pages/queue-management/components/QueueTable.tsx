@@ -35,12 +35,12 @@ export function QueueTable({ items, onRowClick, onCancel, onRetry, onUnblock, fo
     <Table className="rounded-lg border border-border/70 bg-card/60 shadow-sm">
       <TableHeader className="bg-muted/40">
         <TableRow className="hover:bg-muted/40">
-          <TableHead>Task</TableHead>
-          <TableHead className="hidden md:table-cell">Type</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="hidden md:table-cell">Updated</TableHead>
-          <TableHead className="hidden md:table-cell">Result</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
+          <TableHead className="min-w-[180px]">Task</TableHead>
+          <TableHead className="hidden md:table-cell min-w-[140px]">Type</TableHead>
+          <TableHead className="min-w-[100px]">Status</TableHead>
+          <TableHead className="hidden md:table-cell min-w-[100px]">Updated</TableHead>
+          <TableHead className="hidden md:table-cell min-w-[160px]">Result</TableHead>
+          <TableHead className="text-right min-w-[100px]">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

@@ -62,12 +62,12 @@ export function JobListingsTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Title</TableHead>
-          <TableHead className="hidden md:table-cell">Company</TableHead>
-          <TableHead className="hidden lg:table-cell">Location</TableHead>
-          <TableHead className="hidden sm:table-cell">Score</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="hidden md:table-cell">Updated</TableHead>
+          <TableHead className="min-w-[180px]">Title</TableHead>
+          <TableHead className="hidden md:table-cell min-w-[140px]">Company</TableHead>
+          <TableHead className="hidden lg:table-cell min-w-[120px]">Location</TableHead>
+          <TableHead className="hidden sm:table-cell min-w-[80px]">Score</TableHead>
+          <TableHead className="min-w-[100px]">Status</TableHead>
+          <TableHead className="hidden md:table-cell min-w-[120px]">Updated</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -77,7 +77,7 @@ export function JobListingsTable({
             className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
             onClick={() => onRowClick(listing)}
           >
-            <TableCell className="max-w-[150px] sm:max-w-[250px] md:max-w-[300px]">
+            <TableCell className="max-w-[300px]">
               <div className="font-medium truncate">{listing.title}</div>
               {/* Show company and location on mobile as secondary text */}
               <div className="md:hidden text-xs text-muted-foreground mt-0.5 flex min-w-0">
@@ -96,10 +96,10 @@ export function JobListingsTable({
                 {listing.location && <span className="flex-shrink-0">{` • ${listing.location}`}</span>}
               </div>
             </TableCell>
-            <TableCell className="hidden md:table-cell">
+            <TableCell className="hidden md:table-cell max-w-[200px]">
               <button
                 type="button"
-                className="text-blue-600 hover:underline text-left"
+                className="text-blue-600 hover:underline text-left truncate block w-full"
                 onClick={(e) => {
                   e.stopPropagation()
                   onCompanyClick(listing.companyId || undefined)
@@ -108,8 +108,8 @@ export function JobListingsTable({
                 {listing.companyName}
               </button>
             </TableCell>
-            <TableCell className="hidden lg:table-cell text-muted-foreground">
-              {listing.location || "—"}
+            <TableCell className="hidden lg:table-cell text-muted-foreground max-w-[160px]">
+              <span className="truncate block">{listing.location || "—"}</span>
             </TableCell>
             <TableCell className="hidden sm:table-cell text-muted-foreground">
               {(() => {
@@ -118,7 +118,7 @@ export function JobListingsTable({
               })()}
             </TableCell>
             <TableCell>{getStatusBadge(listing.status)}</TableCell>
-            <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+            <TableCell className="hidden md:table-cell text-muted-foreground text-sm whitespace-nowrap">
               {formatDateTime(listing.updatedAt)}
             </TableCell>
           </TableRow>
