@@ -429,6 +429,51 @@ class PreFilter:
                 arrangement = match.group(1).lower()
                 return arrangement
 
+        # Check description for remote/hybrid work indicators
+        # This catches jobs that mention remote work in the description but don't have
+        # explicit remote flags in the API (common with Greenhouse, Lever, etc.)
+        if isinstance(description, str) and description:
+            desc_lower = description.lower()
+
+            # Remote work patterns - must be work-related, not technical terms
+            remote_work_patterns = [
+                r"\bremote[- ]first\b",
+                r"\bremote[- ]friendly\b",
+                r"\bfully remote\b",
+                r"\b100% remote\b",
+                r"\bwork from (?:home|anywhere)\b",
+                r"\bwork remotely\b",
+                r"\bdistributed team\b",
+                r"\bdistributed workforce\b",
+                r"\bdistributed company\b",
+                r"\bdistributed culture\b",
+                r"\bdistributed across (?:time ?zones|offices|locations|countries|regions)\b",
+                r"\bremote position\b",
+                r"\bremote role\b",
+                r"\bremote opportunity\b",
+                r"\banywhere in (?:the )?\w+\b",  # "anywhere in US", "anywhere in Canada"
+                r"\blocation[- ]independent\b",
+                r"\bwork (?:from )?anywhere\b",
+            ]
+
+            for pattern in remote_work_patterns:
+                if re.search(pattern, desc_lower):
+                    return "remote"
+
+            # Hybrid work patterns - be more flexible to catch "distributed and hybrid team"
+            hybrid_patterns = [
+                r"\bhybrid (?:work|role|position|schedule|model|team|environment)\b",
+                r"\bflexible work arrangement\b",
+                r"\bremote and in[- ]office\b",
+                r"\bin[- ]office and remote\b",
+                r"\bdistributed and hybrid\b",
+                r"\bhybrid and distributed\b",
+            ]
+
+            for pattern in hybrid_patterns:
+                if re.search(pattern, desc_lower):
+                    return "hybrid"
+
         # Check offices array for remote indicators (Greenhouse)
         offices = job_data.get("offices", [])
         if isinstance(offices, list):
