@@ -67,6 +67,48 @@ class PreFilter:
     # LinkedIn job-wrapping tags that signal work arrangement inside descriptions
     LI_WORK_ARRANGEMENT_PATTERN = re.compile(r"#\s*li[-_ ]?(remote|hybrid|onsite)\b", re.IGNORECASE)
 
+    # Pre-compiled patterns for remote work detection from descriptions
+    # Combined into single regex for performance (avoids multiple re.search calls)
+    REMOTE_WORK_PATTERN = re.compile(
+        r"|".join(
+            [
+                r"\bremote[- ]first\b",
+                r"\bremote[- ]friendly\b",
+                r"\bfully remote\b",
+                r"\b100% remote\b",
+                r"\bwork from (?:home|anywhere)\b",
+                r"\bwork remotely\b",
+                r"\bdistributed team\b",
+                r"\bdistributed workforce\b",
+                r"\bdistributed company\b",
+                r"\bdistributed culture\b",
+                r"\bdistributed across (?:time ?zones|offices|locations|countries|regions)\b",
+                r"\bremote position\b",
+                r"\bremote role\b",
+                r"\bremote opportunity\b",
+                r"\banywhere in (?:the )?[\w\s]+\b",  # Multi-word regions like "United States"
+                r"\blocation[- ]independent\b",
+                r"\bwork (?:from )?anywhere\b",
+            ]
+        ),
+        re.IGNORECASE,
+    )
+
+    # Pre-compiled patterns for hybrid work detection from descriptions
+    HYBRID_WORK_PATTERN = re.compile(
+        r"|".join(
+            [
+                r"\bhybrid (?:work|role|position|schedule|model|team|environment)\b",
+                r"\bflexible work arrangement\b",
+                r"\bremote and in[- ]office\b",
+                r"\bin[- ]office and remote\b",
+                r"\bdistributed and hybrid\b",
+                r"\bhybrid and distributed\b",
+            ]
+        ),
+        re.IGNORECASE,
+    )
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize the pre-filter.
@@ -428,6 +470,17 @@ class PreFilter:
             if match:
                 arrangement = match.group(1).lower()
                 return arrangement
+
+        # Check description for remote/hybrid work indicators
+        # This catches jobs that mention remote work in the description but don't have
+        # explicit remote flags in the API (common with Greenhouse, Lever, etc.)
+        if isinstance(description, str) and description:
+            # Use pre-compiled patterns for better performance
+            if self.REMOTE_WORK_PATTERN.search(description):
+                return "remote"
+
+            if self.HYBRID_WORK_PATTERN.search(description):
+                return "hybrid"
 
         # Check offices array for remote indicators (Greenhouse)
         offices = job_data.get("offices", [])

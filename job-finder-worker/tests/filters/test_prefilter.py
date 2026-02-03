@@ -740,6 +740,178 @@ class TestPreFilterLinkedInHashtags:
         assert expected_reason in result.reason
 
 
+class TestPreFilterDescriptionBasedRemoteDetection:
+    """Tests for remote/hybrid detection from job descriptions using pre-compiled patterns."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {
+                "allowFullTime": True,
+                "allowPartTime": True,
+                "allowContract": True,
+            },
+            "salary": {"minimum": None},
+        }
+
+    def test_remote_first_detected(self, base_config):
+        """Should detect 'remote-first' as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Software Engineer",
+            "location": "US",
+            "description": "We are a remote-first company with distributed teams.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_distributed_team_detected(self, base_config):
+        """Should detect 'distributed team' as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Backend Engineer",
+            "location": "Canada",
+            "description": "Join our distributed team working across multiple time zones.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_work_from_anywhere_detected(self, base_config):
+        """Should detect 'work from anywhere' as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Full Stack Developer",
+            "location": "US",
+            "description": "You can work from anywhere in the United States.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_hybrid_team_detected(self, base_config):
+        """Should detect 'hybrid team' as hybrid."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Software Engineer",
+            "location": "Seattle",
+            "description": "Collaborate in a hybrid team environment with flexible schedule.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_distributed_and_hybrid_detected(self, base_config):
+        """Should detect 'distributed and hybrid' as hybrid."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Engineer",
+            "location": "US",
+            "description": "Work in a distributed and hybrid team with colleagues worldwide.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_flexible_work_arrangement_detected(self, base_config):
+        """Should detect 'flexible work arrangement' as hybrid."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Developer",
+            "location": "New York",
+            "description": "We offer flexible work arrangements for all team members.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_distributed_systems_not_detected(self, base_config):
+        """Should NOT detect 'distributed systems' (technical term) as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Software Engineer",
+            "location": "San Francisco",
+            "description": "Build large-scale distributed systems using microservices architecture.",
+        }
+        arrangement = pf._infer_work_arrangement(job_data)
+        # Should return None (unknown) since this is a technical term, not work arrangement
+        assert arrangement is None
+
+    def test_distributed_data_processing_not_detected(self, base_config):
+        """Should NOT detect 'distributed data processing' (technical term) as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Data Engineer",
+            "location": "Seattle",
+            "description": "Experience with distributed data frameworks like Spark and Hadoop required.",
+        }
+        arrangement = pf._infer_work_arrangement(job_data)
+        assert arrangement is None
+
+    def test_anywhere_in_multiword_region_detected(self, base_config):
+        """Should detect 'anywhere in United States' with multi-word region name."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Engineer",
+            "location": "US",
+            "description": "Position available anywhere in the United States.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_fully_remote_detected(self, base_config):
+        """Should detect 'fully remote' as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Software Developer",
+            "location": "Canada",
+            "description": "This is a fully remote position with no office requirement.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_remote_position_detected(self, base_config):
+        """Should detect 'remote position' as remote."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Backend Engineer",
+            "location": "UK",
+            "description": "We're hiring for a remote position on our platform team.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_case_insensitive_matching(self, base_config):
+        """Patterns should match case-insensitively."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Engineer",
+            "location": "US",
+            "description": "Join our DISTRIBUTED TEAM working REMOTELY across time zones.",
+        }
+        result = pf.filter(job_data)
+        assert result.passed is True
+
+    def test_no_false_positive_from_hybrid_infrastructure(self, base_config):
+        """Should NOT detect 'hybrid cloud' or 'hybrid infrastructure' as work arrangement."""
+        pf = PreFilter(base_config)
+        job_data = {
+            "title": "Cloud Engineer",
+            "location": "Boston",
+            "description": "Design and implement hybrid cloud solutions and infrastructure.",
+        }
+        arrangement = pf._infer_work_arrangement(job_data)
+        # Should not match because "hybrid cloud" is not a work arrangement pattern
+        assert arrangement is None
+
+
 class TestPreFilterRemoteSource:
     """Tests for is_remote_source flag (set on source config, not prefilter-policy)."""
 
