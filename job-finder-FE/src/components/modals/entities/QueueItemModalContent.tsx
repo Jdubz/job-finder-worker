@@ -3,7 +3,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
-import { ExternalLink, Link as LinkIcon, Loader2 } from "lucide-react"
+import { statusBadgeClass } from "@/lib/status-badge"
+import { AlertTriangle, Check, Copy, ExternalLink, Link as LinkIcon, Loader2 } from "lucide-react"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { jobListingsClient, jobMatchesClient, companiesClient, jobSourcesClient } from "@/api"
 import {
@@ -124,7 +125,7 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
             {(company || getDomain(item.url || "") || "No company") as string} • {getTaskTypeLabel(item)}
           </p>
         </div>
-        <Badge variant="outline" className="capitalize">
+        <Badge className={statusBadgeClass(item.status)}>
           {item.status}
         </Badge>
       </div>
@@ -203,11 +204,8 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
         </div>
       )}
 
-      {item.error_details && (
-        <div>
-          <Label className="text-muted-foreground text-xs uppercase tracking-wide">Error</Label>
-          <p className="mt-1 text-sm text-destructive whitespace-pre-wrap">{item.error_details}</p>
-        </div>
+      {(item.result_message || item.error_details) && (
+        <ErrorResultSection resultMessage={item.result_message} errorDetails={item.error_details} status={item.status} />
       )}
 
       {item.metadata && (
@@ -235,6 +233,58 @@ export function QueueItemModalContent({ item, handlers }: QueueItemModalContentP
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+function ErrorResultSection({
+  resultMessage,
+  errorDetails,
+  status,
+}: {
+  resultMessage?: string | null
+  errorDetails?: string | null
+  status?: string
+}) {
+  const [copied, setCopied] = useState(false)
+  const isFailed = status === "failed" || status === "blocked"
+  const text = [resultMessage, errorDetails].filter(Boolean).join("\n\n")
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <Label className="text-muted-foreground text-xs uppercase tracking-wide flex items-center gap-1">
+          {isFailed && <AlertTriangle className="h-3 w-3 text-destructive" />}
+          {isFailed ? "Error" : "Result"}
+        </Label>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-muted-foreground"
+          onClick={handleCopy}
+        >
+          {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <div
+        className={`mt-1 text-sm whitespace-pre-wrap rounded-md p-3 ${
+          isFailed
+            ? "bg-destructive/10 text-destructive border border-destructive/20"
+            : "bg-muted text-foreground"
+        }`}
+      >
+        {resultMessage && <p>{resultMessage}</p>}
+        {errorDetails && (
+          <p className={resultMessage ? "mt-2 text-xs opacity-80" : ""}>{errorDetails}</p>
+        )}
+      </div>
     </div>
   )
 }

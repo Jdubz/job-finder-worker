@@ -110,11 +110,19 @@ class PlaywrightRenderer:
                 )
                 force_restart = True
 
-            is_connected = (
-                self._browser is not None and getattr(self._browser, "is_connected", lambda: True)()
-            )
-            if is_connected and not force_restart:
-                return
+            # Skip is_connected check when force_restart is needed (e.g., thread mismatch).
+            # Calling is_connected on a browser created on a dead thread throws
+            # "cannot switch to a different thread" greenlet errors.
+            if not force_restart:
+                try:
+                    is_connected = (
+                        self._browser is not None
+                        and getattr(self._browser, "is_connected", lambda: True)()
+                    )
+                except Exception:
+                    is_connected = False
+                if is_connected:
+                    return
 
             # Clean up existing browser if present
             if self._browser is not None:
