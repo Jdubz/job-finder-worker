@@ -74,22 +74,14 @@ export function useAddJobForm(): UseAddJobFormResult {
         setSubmitError("Job URL is required")
         return
       }
-      if (!formState.jobTitle.trim()) {
-        setSubmitError("Job title is required")
-        return
-      }
-      if (!formState.jobDescription.trim()) {
-        setSubmitError("Job description is required")
-        return
-      }
 
       try {
         setIsSubmitting(true)
         const payload: SubmitJobRequest = {
           url: formState.jobUrl.trim(),
           companyName: formState.companyName.trim() || undefined,
-          title: formState.jobTitle.trim(),
-          description: formState.jobDescription.trim(),
+          title: formState.jobTitle.trim() || undefined,
+          description: formState.jobDescription.trim() || undefined,
           location: formState.jobLocation.trim() || undefined,
           techStack: formState.jobTechStack.trim() || undefined,
           bypassFilter: formState.bypassFilter,

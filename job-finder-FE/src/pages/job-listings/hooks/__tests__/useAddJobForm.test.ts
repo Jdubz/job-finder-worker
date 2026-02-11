@@ -101,7 +101,9 @@ describe("useAddJobForm", () => {
     expect(mockSubmitJob).not.toHaveBeenCalled()
   })
 
-  it("validates required fields - missing title", async () => {
+  it("allows submission with URL only (no title or description required)", async () => {
+    mockSubmitJob.mockResolvedValue({ id: "job-123" })
+
     const { result } = renderHook(() => useAddJobForm())
 
     act(() => {
@@ -114,26 +116,14 @@ describe("useAddJobForm", () => {
       await result.current.handleSubmit(mockEvent)
     })
 
-    expect(result.current.submitError).toBe("Job title is required")
-    expect(mockSubmitJob).not.toHaveBeenCalled()
-  })
-
-  it("validates required fields - missing description", async () => {
-    const { result } = renderHook(() => useAddJobForm())
-
-    act(() => {
-      result.current.setField("jobUrl", "https://example.com/job")
-      result.current.setField("jobTitle", "Software Engineer")
-    })
-
-    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
-
-    await act(async () => {
-      await result.current.handleSubmit(mockEvent)
-    })
-
-    expect(result.current.submitError).toBe("Job description is required")
-    expect(mockSubmitJob).not.toHaveBeenCalled()
+    expect(result.current.submitError).toBeNull()
+    expect(mockSubmitJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/job",
+        title: undefined,
+        description: undefined,
+      })
+    )
   })
 
   it("submits form successfully", async () => {
