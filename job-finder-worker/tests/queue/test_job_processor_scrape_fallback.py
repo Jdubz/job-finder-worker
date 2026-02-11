@@ -200,7 +200,12 @@ class TestExecuteScrapePageExtractionFallback:
         with pytest.raises(ValueError, match="No job data found"):
             processor._execute_scrape(ctx)
 
-    def test_no_agents_available_propagates(self):
+    def test_no_agents_available_falls_through_to_value_error(self):
+        """NoAgentsAvailableError in page extraction should NOT stop the queue.
+
+        Page extraction is opportunistic — failing one URL-only item shouldn't
+        kill processing for items that have pre-scraped data.
+        """
         processor = _make_job_processor()
         item = _make_item(metadata={})
         ctx = _pipeline_ctx(item)
@@ -208,7 +213,7 @@ class TestExecuteScrapePageExtractionFallback:
         processor.page_data_extractor = MagicMock()
         processor.page_data_extractor.extract.side_effect = NoAgentsAvailableError("down")
 
-        with pytest.raises(NoAgentsAvailableError):
+        with pytest.raises(ValueError, match="No job data found"):
             processor._execute_scrape(ctx)
 
     def test_manual_location_merged_into_extracted(self):
