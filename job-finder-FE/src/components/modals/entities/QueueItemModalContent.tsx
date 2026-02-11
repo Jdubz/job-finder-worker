@@ -251,9 +251,13 @@ function ErrorResultSection({
   const text = [resultMessage, errorDetails].filter(Boolean).join("\n\n")
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback: clipboard API unavailable or permission denied
+    }
   }
 
   return (
