@@ -87,7 +87,14 @@ class PageDataExtractor:
                 ai_result = self._extract_with_ai(page_text)
                 if ai_result:
                     # JSON-LD takes priority; AI fills gaps
-                    for key in ("title", "description", "company", "location", "salary", "posted_date"):
+                    for key in (
+                        "title",
+                        "description",
+                        "company",
+                        "location",
+                        "salary",
+                        "posted_date",
+                    ):
                         if not result.get(key) and ai_result.get(key):
                             result[key] = ai_result[key]
 
