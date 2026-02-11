@@ -63,6 +63,7 @@ export class JobQueueService {
   submitJob(input: SubmitJobInput): QueueItem {
     const now = new Date()
     const hasPrebuiltDocs = Boolean(input.generationId)
+    const isUrlOnly = !input.title && !input.description
     const metadata = {
       ...(input.metadata ?? {}),
       ...(input.companyUrl ? { companyUrl: input.companyUrl } : {}),
@@ -71,6 +72,7 @@ export class JobQueueService {
       ...(input.location ? { manualLocation: input.location } : {}),
       ...(input.techStack ? { manualTechStack: input.techStack } : {}),
       ...(input.bypassFilter ? { bypassFilter: true } : {}),
+      ...(isUrlOnly ? { urlOnlySubmission: true } : {}),
       ...(input.companyName ? { manualCompanyName: input.companyName } : {})
     }
 

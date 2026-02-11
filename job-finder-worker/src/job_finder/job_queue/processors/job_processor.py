@@ -29,6 +29,7 @@ from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
+from job_finder.ai.page_data_extractor import PageDataExtractor
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 from job_finder.exceptions import (
     AIProviderError,
@@ -114,6 +115,7 @@ class JobProcessor(BaseProcessor):
         # Initialize AgentManager for AI operations
         self.agent_manager = AgentManager(ctx.config_loader)
         self.extractor = JobExtractor(self.agent_manager)
+        self.page_data_extractor = PageDataExtractor(self.agent_manager)
 
         # Initialize scrape runner with config_loader so it creates both title_filter and prefilter
         self.scrape_runner = ScrapeRunner(
@@ -535,17 +537,20 @@ class JobProcessor(BaseProcessor):
         1. Manual submission data (user-submitted jobs)
         2. Job listing record (queried by listing_id from metadata)
         3. Legacy scraped_data (for backwards compatibility during transition)
+        4. Playwright page render + AI extraction (URL-only submissions)
         """
         item = ctx.item
         metadata = item.metadata or {}
 
-        # Manual job data (user-submitted) - check both title and description
+        # Manual job data (user-submitted) - return immediately only if BOTH provided.
+        # If only one is present, fall through to other sources so page extraction
+        # can fill the missing field (manual data merged later).
         manual_title = metadata.get("manualTitle")
         manual_desc = metadata.get("manualDescription")
-        if manual_title or manual_desc:
+        if manual_title and manual_desc:
             return {
-                "title": manual_title or "",
-                "description": manual_desc or "",
+                "title": manual_title,
+                "description": manual_desc,
                 "company": metadata.get("manualCompanyName") or item.company_name or "",
                 "location": metadata.get("manualLocation") or "",
                 "url": item.url,
@@ -570,9 +575,36 @@ class JobProcessor(BaseProcessor):
         if item.scraped_data and item.scraped_data.get("title"):
             return item.scraped_data
 
+        # URL-only fallback: render page with Playwright and extract via JSON-LD / AI
+        if item.url:
+            try:
+                self._update_status(item, "Rendering page and extracting job data", "scrape")
+                extracted = self.page_data_extractor.extract(item.url)
+                if extracted:
+                    # Merge partial manual data (manual takes priority over extracted)
+                    if manual_title:
+                        extracted["title"] = manual_title
+                    if manual_desc:
+                        extracted["description"] = manual_desc
+                    if metadata.get("manualCompanyName"):
+                        extracted["company"] = metadata["manualCompanyName"]
+                    if metadata.get("manualLocation"):
+                        extracted["location"] = metadata["manualLocation"]
+
+                    if extracted.get("title") and extracted.get("description"):
+                        logger.info(
+                            "[PIPELINE] Extracted job data via page rendering: %s",
+                            extracted.get("title", "")[:60],
+                        )
+                        return extracted
+            except NoAgentsAvailableError:
+                raise  # Critical - must propagate to stop queue
+            except Exception as e:
+                logger.warning("Page data extraction failed for %s: %s", item.url, e)
+
         raise ValueError(
-            f"No job data found for {item.url} - no job_listing_id in metadata "
-            f"and no scraped_data present. listing_id={listing_id}"
+            f"No job data found for {item.url} - no job_listing_id in metadata, "
+            f"no scraped_data, and page extraction failed. listing_id={listing_id}"
         )
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:
