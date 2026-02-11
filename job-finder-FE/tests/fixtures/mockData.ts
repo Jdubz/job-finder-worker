@@ -13,7 +13,7 @@ import type {
   WorkerSettings,
 } from "@shared/types"
 
-const now = () => new Date()
+const now = new Date()
 
 export const mockJobListing: JobListing = {
   title: "Software Engineer",
@@ -40,8 +40,8 @@ const mockListingRecord: JobListingRecord = {
   status: "pending",
   filterResult: null,
   matchScore: null,
-  createdAt: now(),
-  updatedAt: now(),
+  createdAt: now,
+  updatedAt: now,
 }
 
 export const mockJobMatch: JobMatchWithListing = {
@@ -55,9 +55,9 @@ export const mockJobMatch: JobMatchWithListing = {
   potentialConcerns: [],
   experienceMatch: 88,
   customizationRecommendations: [],
-  analyzedAt: now(),
-  createdAt: now(),
-  updatedAt: now(),
+  analyzedAt: now,
+  createdAt: now,
+  updatedAt: now,
   submittedBy: "tester@example.com",
   queueItemId: "queue-1",
   resumeIntakeData: undefined,
@@ -84,8 +84,8 @@ export const mockQueueItem: QueueItem = {
   type: "job",
   status: "pending" as QueueStatus,
   url: mockJobListing.url,
-  created_at: now(),
-  updated_at: now(),
+  created_at: now,
+  updated_at: now,
   company_name: mockJobListing.company,
   source: "user_submission" as QueueSource,
 }
@@ -100,7 +100,7 @@ export const mockCompletedQueueItem: QueueItem = {
   ...mockQueueItem,
   id: "queue-3",
   status: "success",
-  completed_at: now(),
+  completed_at: now,
 }
 
 export const mockFailedQueueItem: QueueItem = {
@@ -284,8 +284,8 @@ export const mockCompany: Company = {
   id: "company-1",
   name: mockJobListing.company,
   website: "https://example.com",
-  createdAt: now(),
-  updatedAt: now(),
+  createdAt: now,
+  updatedAt: now,
 }
 
 export const mockErrorResponses = {
