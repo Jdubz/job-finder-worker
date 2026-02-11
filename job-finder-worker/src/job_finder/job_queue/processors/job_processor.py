@@ -542,13 +542,15 @@ class JobProcessor(BaseProcessor):
         item = ctx.item
         metadata = item.metadata or {}
 
-        # Manual job data (user-submitted) - check both title and description
+        # Manual job data (user-submitted) - return immediately only if BOTH provided.
+        # If only one is present, fall through to other sources so page extraction
+        # can fill the missing field (manual data merged later).
         manual_title = metadata.get("manualTitle")
         manual_desc = metadata.get("manualDescription")
-        if manual_title or manual_desc:
+        if manual_title and manual_desc:
             return {
-                "title": manual_title or "",
-                "description": manual_desc or "",
+                "title": manual_title,
+                "description": manual_desc,
                 "company": metadata.get("manualCompanyName") or item.company_name or "",
                 "location": metadata.get("manualLocation") or "",
                 "url": item.url,
@@ -578,12 +580,23 @@ class JobProcessor(BaseProcessor):
             try:
                 self._update_status(item, "Rendering page and extracting job data", "scrape")
                 extracted = self.page_data_extractor.extract(item.url)
-                if extracted and extracted.get("title") and extracted.get("description"):
-                    logger.info(
-                        "[PIPELINE] Extracted job data via page rendering: %s",
-                        extracted.get("title", "")[:60],
-                    )
-                    return extracted
+                if extracted:
+                    # Merge partial manual data (manual takes priority over extracted)
+                    if manual_title:
+                        extracted["title"] = manual_title
+                    if manual_desc:
+                        extracted["description"] = manual_desc
+                    if metadata.get("manualCompanyName"):
+                        extracted["company"] = metadata["manualCompanyName"]
+                    if metadata.get("manualLocation"):
+                        extracted["location"] = metadata["manualLocation"]
+
+                    if extracted.get("title") and extracted.get("description"):
+                        logger.info(
+                            "[PIPELINE] Extracted job data via page rendering: %s",
+                            extracted.get("title", "")[:60],
+                        )
+                        return extracted
             except NoAgentsAvailableError:
                 raise  # Critical - must propagate to stop queue
             except Exception as e:

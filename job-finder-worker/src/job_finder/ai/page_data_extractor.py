@@ -6,9 +6,12 @@ tries JSON-LD structured data first, then falls back to AI extraction from
 visible page text.
 """
 
+import ipaddress
 import json
 import logging
+import socket
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
@@ -49,6 +52,39 @@ class PageDataExtractor:
     def __init__(self, agent_manager: AgentManager):
         self.agent_manager = agent_manager
 
+    @staticmethod
+    def _validate_url(url: str) -> None:
+        """Validate URL to prevent SSRF attacks.
+
+        Blocks private, loopback, and link-local IPs to prevent rendering
+        user-submitted URLs that target internal services.
+
+        Raises:
+            ValueError: If the URL is not safe to render.
+        """
+        parsed = urlparse(url)
+
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"Invalid URL scheme: {parsed.scheme}")
+
+        hostname = parsed.hostname
+        if not hostname:
+            raise ValueError("URL has no hostname")
+
+        blocked_hostnames = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+        if hostname.lower() in blocked_hostnames:
+            raise ValueError(f"Blocked hostname: {hostname}")
+
+        # Resolve DNS and reject private/internal IPs
+        try:
+            addrinfo = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            for _family, _type, _proto, _canonname, sockaddr in addrinfo:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    raise ValueError(f"URL resolves to blocked IP range: {hostname} -> {ip}")
+        except socket.gaierror:
+            pass  # DNS resolution failed; let Playwright handle the error
+
     def extract(self, url: str) -> Optional[Dict[str, Any]]:
         """Render a URL and extract job posting data.
 
@@ -60,7 +96,12 @@ class PageDataExtractor:
         Returns:
             Dict with {title, description, company, location, url, salary, posted_date}
             or None if extraction fails or yields insufficient data.
+
+        Raises:
+            ValueError: If the URL fails SSRF validation.
         """
+        self._validate_url(url)
+
         try:
             html = self._render_page(url)
         except Exception as e:
@@ -154,7 +195,19 @@ class PageDataExtractor:
 
             jp = postings[0]
             job.setdefault("title", jp.get("title") or "")
-            job.setdefault("company", (jp.get("hiringOrganization") or {}).get("name", ""))
+            hiring_org = jp.get("hiringOrganization")
+            company_name = ""
+            if isinstance(hiring_org, dict):
+                company_name = hiring_org.get("name", "") or ""
+            elif isinstance(hiring_org, str):
+                company_name = hiring_org
+            elif isinstance(hiring_org, list) and hiring_org:
+                first_org = hiring_org[0]
+                if isinstance(first_org, dict):
+                    company_name = first_org.get("name", "") or ""
+                elif isinstance(first_org, str):
+                    company_name = first_org
+            job.setdefault("company", company_name)
             job.setdefault("description", jp.get("description", ""))
 
             # Location: try place then address fields

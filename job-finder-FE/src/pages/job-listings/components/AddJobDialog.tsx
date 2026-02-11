@@ -52,7 +52,7 @@ export function AddJobDialog({
         <DialogHeader>
           <DialogTitle>Add Job for Analysis</DialogTitle>
           <DialogDescription>
-            Submit a job posting URL for analysis. Title and description are optional and will be auto-extracted from the page if left blank.
+            Submit a job posting URL for analysis. Title and description are optional — the system will attempt to extract them from the page if left blank.
           </DialogDescription>
         </DialogHeader>
 
@@ -74,7 +74,7 @@ export function AddJobDialog({
               onChange={(e) => onFieldChange("jobUrl", e.target.value)}
               disabled={isSubmitting}
             />
-            <p className="text-sm text-muted-foreground">Direct link to the job posting page. If title and description are left blank, they will be automatically extracted.</p>
+            <p className="text-sm text-muted-foreground">Direct link to the job posting page. If title and description are left blank, the system will attempt to extract them automatically.</p>
           </div>
 
           <div className="space-y-2">
@@ -100,7 +100,7 @@ export function AddJobDialog({
               className="min-h-[140px]"
             />
             <p className="text-sm text-muted-foreground">
-              {formState.jobDescription.trim() ? "Providing the description avoids false negatives in keyword/tech filters." : "Leave blank to auto-extract from the URL."}
+              {formState.jobDescription.trim() ? "Providing the description avoids false negatives in keyword/tech filters." : "Leave blank to attempt auto-extraction from the URL."}
             </p>
           </div>
 

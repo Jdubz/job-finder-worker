@@ -71,7 +71,7 @@ export class JobQueueService {
       ...(input.description ? { manualDescription: input.description } : {}),
       ...(input.location ? { manualLocation: input.location } : {}),
       ...(input.techStack ? { manualTechStack: input.techStack } : {}),
-      ...(input.bypassFilter || isUrlOnly ? { bypassFilter: true } : {}),
+      ...(input.bypassFilter ? { bypassFilter: true } : {}),
       ...(isUrlOnly ? { urlOnlySubmission: true } : {}),
       ...(input.companyName ? { manualCompanyName: input.companyName } : {})
     }
