@@ -22,47 +22,12 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
 from job_finder.ai.response_parser import extract_json_from_response
+from job_finder.scrapers.config_expander import normalize_source_type
 
 if TYPE_CHECKING:
     from job_finder.ai.agent_manager import AgentManager
 
 logger = logging.getLogger(__name__)
-
-# Map ATS vendor names and other non-standard type values the AI may produce
-# back to the three valid source types: api, rss, html
-_SOURCE_TYPE_NORMALIZATION = {
-    "json": "api",
-    "workday": "api",
-    "icims": "api",
-    "rippling": "api",
-    "greenhouse": "api",
-    "ashby": "api",
-    "lever": "api",
-    "smartrecruiters": "api",
-    "breezy": "api",
-    "jobvite": "api",
-    "recruitee": "api",
-    "workable": "api",
-    "successfactors": "api",
-    "oracle": "api",
-    "taleo": "api",
-    "company-page": "html",
-    "company_page": "html",
-}
-
-
-def _normalize_source_type(source_type: str) -> str:
-    """Normalize AI-generated source type to one of: api, rss, html."""
-    normalized = source_type.lower().strip()
-    if normalized in ("api", "rss", "html"):
-        return normalized
-    mapped = _SOURCE_TYPE_NORMALIZATION.get(normalized)
-    if mapped:
-        logger.info("Normalized source type '%s' -> '%s'", source_type, mapped)
-        return mapped
-    # Unknown type - default to api since most ATS platforms are API-based
-    logger.warning("Unknown source type '%s', defaulting to 'api'", source_type)
-    return "api"
 
 
 class SourceClassification(str, Enum):
@@ -432,7 +397,8 @@ def _build_analysis_prompt(
                 prompt_parts.append(f"  Snippet: {result.get('snippet')}\n")
 
     # Add the response format instructions
-    prompt_parts.append("""
+    prompt_parts.append(
+        """
 ### Response Format
 
 Respond with a JSON object containing your analysis:
@@ -479,7 +445,8 @@ CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 - For Ashby: https://api.ashbyhq.com/posting-api/job-board/{{slug}}, response_path=jobs.
 
 IMPORTANT: Your response must be valid JSON only. No additional text.
-""")
+"""
+    )
 
     return "".join(prompt_parts)
 
@@ -517,7 +484,7 @@ def _parse_analysis_response(response: str) -> Optional[SourceAnalysisResult]:
         # Normalize source_config type before it enters the system
         source_config = data.get("source_config")
         if isinstance(source_config, dict) and "type" in source_config:
-            source_config["type"] = _normalize_source_type(source_config["type"])
+            source_config["type"] = normalize_source_type(source_config["type"])
 
         return SourceAnalysisResult(
             classification=classification,

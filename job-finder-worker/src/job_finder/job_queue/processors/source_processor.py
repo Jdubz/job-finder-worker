@@ -51,7 +51,7 @@ from job_finder.scrapers.ats_prober import (
     probe_all_ats_providers_detailed,
     ATSProbeResultSet,
 )
-from job_finder.scrapers.config_expander import expand_config, _normalize_source_type
+from job_finder.scrapers.config_expander import expand_config, normalize_source_type
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.rendering.playwright_renderer import get_renderer, RenderRequest
@@ -411,9 +411,18 @@ class SourceProcessor(BaseProcessor):
             source_config = analysis.source_config or {"type": "html", "url": url, "headers": {}}
             # Normalize ATS vendor names to standard types (defense-in-depth;
             # _parse_analysis_response already normalizes, but guard against
-            # the fallback dict and any future code paths)
-            raw_type = source_config.get("type", "unknown")
-            source_config["type"] = _normalize_source_type(raw_type)
+            # the fallback dict and any future code paths).
+            raw_type = source_config.get("type")
+            if raw_type is not None:
+                source_config["type"] = normalize_source_type(raw_type)
+            else:
+                # Infer type from config shape when the agent omits it
+                if "response_path" in source_config:
+                    source_config["type"] = "api"
+                elif "job_selector" in source_config:
+                    source_config["type"] = "html"
+                else:
+                    source_config["type"] = "html"
             source_type = source_config["type"]
 
             disabled_notes = analysis.disable_notes or ""
@@ -2279,7 +2288,7 @@ Return ONLY valid JSON (no markdown, no explanation outside the JSON).
             proposed_type = config_data.get("type", source_type)
 
             # Normalize ATS vendor names and non-standard types
-            proposed_type = _normalize_source_type(proposed_type)
+            proposed_type = normalize_source_type(proposed_type)
             config_data["type"] = proposed_type
 
             # Validate proposed URL domain

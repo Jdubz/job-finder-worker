@@ -5,6 +5,7 @@ import pytest
 from job_finder.scrapers.config_expander import (
     GREENHOUSE_FIELDS,
     expand_config,
+    normalize_source_type,
 )
 
 
@@ -253,3 +254,85 @@ class TestJSRenderingSettings:
         assert result["requires_js"] is True
         assert result["render_wait_for"] == ".jobs-container"
         assert result["render_timeout_ms"] == 25000
+
+
+class TestNormalizeSourceType:
+    """Tests for normalize_source_type — the single source of truth for type mapping."""
+
+    @pytest.mark.parametrize("input_type", ["api", "rss", "html"])
+    def test_valid_types_pass_through(self, input_type):
+        assert normalize_source_type(input_type) == input_type
+
+    @pytest.mark.parametrize("input_type", ["API", "Rss", "HTML"])
+    def test_case_insensitive(self, input_type):
+        assert normalize_source_type(input_type) == input_type.lower()
+
+    @pytest.mark.parametrize(
+        "vendor,expected",
+        [
+            ("workday", "api"),
+            ("icims", "api"),
+            ("rippling", "api"),
+            ("greenhouse", "api"),
+            ("ashby", "api"),
+            ("lever", "api"),
+            ("smartrecruiters", "api"),
+            ("json", "api"),
+            ("company-page", "html"),
+            ("company_page", "html"),
+        ],
+    )
+    def test_vendor_names_normalize_to_correct_type(self, vendor, expected):
+        assert normalize_source_type(vendor) == expected
+
+    def test_unknown_type_defaults_to_api(self):
+        assert normalize_source_type("totally_unknown") == "api"
+
+    def test_whitespace_stripped(self):
+        assert normalize_source_type("  api  ") == "api"
+
+
+class TestNormalizationInExpandConfig:
+    """Tests that expand_config normalizes type in full configs."""
+
+    def test_full_config_with_vendor_type_normalized(self):
+        """A full config (url+fields) with type='json' should normalize to 'api'."""
+        config = {
+            "type": "json",
+            "url": "https://example.com/api/jobs",
+            "fields": {"title": "title", "url": "url"},
+        }
+        result = expand_config("json", config)
+        assert result["type"] == "api"
+
+    def test_full_config_with_workday_type_normalized(self):
+        """A full config with type='workday' should normalize to 'api'."""
+        config = {
+            "type": "workday",
+            "url": "https://company.wd5.myworkdayjobs.com/wday/cxs/company/board/jobs",
+            "fields": {"title": "title", "url": "externalPath"},
+            "method": "POST",
+            "post_body": {"limit": 50, "offset": 0},
+        }
+        result = expand_config("workday", config)
+        assert result["type"] == "api"
+
+    def test_full_config_with_unknown_type_defaults_to_api(self):
+        """A full config with an unknown type should default to 'api'."""
+        config = {
+            "type": "mystery_ats",
+            "url": "https://example.com/jobs",
+            "fields": {"title": "name"},
+        }
+        result = expand_config("mystery_ats", config)
+        assert result["type"] == "api"
+
+    def test_company_page_type_routes_to_html(self):
+        """source_type='company_page' should dispatch to HTML expansion."""
+        config = {
+            "url": "https://example.com/careers",
+            "job_selector": ".job-card",
+            "fields": {"title": ".title", "url": "a@href"},
+        }
+        result = expand_config("company_page", config)
+        assert result["type"] == "html"
