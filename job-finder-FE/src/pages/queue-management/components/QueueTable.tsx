@@ -85,8 +85,15 @@ export function QueueTable({ items, onRowClick, onCancel, onRetry, onUnblock, fo
               <TableCell className="hidden md:table-cell text-muted-foreground">
                 {formatRelativeTime(item.updated_at)}
               </TableCell>
-              <TableCell className="hidden md:table-cell max-w-[240px] truncate text-muted-foreground">
-                {item.result_message ?? "—"}
+              <TableCell className="hidden md:table-cell max-w-[300px] text-muted-foreground">
+                <span
+                  className={`line-clamp-2 text-xs ${
+                    item.status === "failed" ? "text-destructive" : ""
+                  }`}
+                  title={item.result_message ?? undefined}
+                >
+                  {item.result_message ?? "—"}
+                </span>
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">

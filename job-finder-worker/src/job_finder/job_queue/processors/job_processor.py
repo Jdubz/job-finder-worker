@@ -576,6 +576,10 @@ class JobProcessor(BaseProcessor):
             return item.scraped_data
 
         # URL-only fallback: render page with Playwright and extract via JSON-LD / AI
+        # Note: NoAgentsAvailableError is NOT propagated here — page extraction is
+        # an opportunistic fallback. Failing one URL-only item should not stop the
+        # queue. The critical NoAgentsAvailableError propagation happens in stage 3
+        # (AI_EXTRACTION) where it applies to ALL items.
         if item.url:
             try:
                 self._update_status(item, "Rendering page and extracting job data", "scrape")
@@ -597,14 +601,14 @@ class JobProcessor(BaseProcessor):
                             extracted.get("title", "")[:60],
                         )
                         return extracted
-            except NoAgentsAvailableError:
-                raise  # Critical - must propagate to stop queue
             except Exception as e:
                 logger.warning("Page data extraction failed for %s: %s", item.url, e)
 
         raise ValueError(
-            f"No job data found for {item.url} - no job_listing_id in metadata, "
-            f"no scraped_data, and page extraction failed. listing_id={listing_id}"
+            f"No job data found for {item.url} - no manual data, no job_listing_id, "
+            f"no scraped_data, and page extraction failed. "
+            f"URL-only submissions require working AI agents for extraction. "
+            f"listing_id={listing_id}"
         )
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:
