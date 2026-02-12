@@ -261,8 +261,14 @@ export class JobMatchRepository {
   }
 
   updateStatus(id: string, status: 'active' | 'ignored' | 'applied'): JobMatchWithListing | null {
+    // First check if the match exists before attempting update
+    const existingMatch = this.getById(id)
+    if (!existingMatch) {
+      return null
+    }
+
     const now = new Date().toISOString()
-    this.db
+    const result = this.db
       .prepare(
         `UPDATE job_matches
          SET status = @status,
@@ -272,7 +278,25 @@ export class JobMatchRepository {
       )
       .run({ status, now, id })
 
-    return this.getByIdWithListing(id)
+    // Verify the update succeeded
+    if (result.changes === 0) {
+      return null
+    }
+
+    // Try to get the updated match with listing
+    const matchWithListing = this.getByIdWithListing(id)
+
+    // If listing is missing, this is a data integrity issue
+    // The status was updated, but we can't return the full data
+    if (!matchWithListing) {
+      console.error(
+        `Data integrity error: Job match ${id} was updated but associated listing is missing. ` +
+        `This indicates orphaned data that should be cleaned up.`
+      )
+      return null
+    }
+
+    return matchWithListing
   }
 
   /**

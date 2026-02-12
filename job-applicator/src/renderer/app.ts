@@ -1276,25 +1276,31 @@ async function markAsApplied() {
   setStatus("Marking as applied...", "loading")
   markAppliedBtn.disabled = true
 
-  const result = await api.updateJobMatchStatus({
-    id: selectedJobMatchId,
-    status: "applied",
-  })
+  try {
+    const result = await api.updateJobMatchStatus({
+      id: selectedJobMatchId,
+      status: "applied",
+    })
 
-  if (result.success) {
-    setStatus("Marked as applied", "success")
-    // Update local state
-    const match = jobMatches.find((m) => m.id === selectedJobMatchId)
-    if (match) {
-      match.status = "applied"
+    if (result.success) {
+      setStatus("Marked as applied", "success")
+      // Update local state
+      const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+      if (match) {
+        match.status = "applied"
+      }
+      // Update workflow
+      setWorkflowStep("submit", "completed")
+      renderJobSelect()
+      markIgnoredBtn.disabled = false
+    } else {
+      setStatus(result.message || "Failed to update status", "error")
+      markAppliedBtn.disabled = false
     }
-    // Update workflow
-    setWorkflowStep("submit", "completed")
-    renderJobSelect()
-    markIgnoredBtn.disabled = false
-  } else {
-    setStatus(result.message || "Failed to update status", "error")
+  } catch (error) {
+    setStatus("Failed to update status", "error")
     markAppliedBtn.disabled = false
+    console.error("Error marking job as applied:", error)
   }
 }
 
@@ -1305,23 +1311,29 @@ async function markAsIgnored() {
   setStatus("Marking as ignored...", "loading")
   markIgnoredBtn.disabled = true
 
-  const result = await api.updateJobMatchStatus({
-    id: selectedJobMatchId,
-    status: "ignored",
-  })
+  try {
+    const result = await api.updateJobMatchStatus({
+      id: selectedJobMatchId,
+      status: "ignored",
+    })
 
-  if (result.success) {
-    setStatus("Marked as ignored", "success")
-    // Update local state
-    const match = jobMatches.find((m) => m.id === selectedJobMatchId)
-    if (match) {
-      match.status = "ignored"
+    if (result.success) {
+      setStatus("Marked as ignored", "success")
+      // Update local state
+      const match = jobMatches.find((m) => m.id === selectedJobMatchId)
+      if (match) {
+        match.status = "ignored"
+      }
+      renderJobSelect()
+      markAppliedBtn.disabled = false
+    } else {
+      setStatus(result.message || "Failed to update status", "error")
+      markIgnoredBtn.disabled = false
     }
-    renderJobSelect()
-    markAppliedBtn.disabled = false
-  } else {
-    setStatus(result.message || "Failed to update status", "error")
+  } catch (error) {
+    setStatus("Failed to update status", "error")
     markIgnoredBtn.disabled = false
+    console.error("Error marking job as ignored:", error)
   }
 }
 
