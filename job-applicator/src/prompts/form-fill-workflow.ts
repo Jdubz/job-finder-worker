@@ -261,6 +261,12 @@ STEP 8: FILL REMAINING EMPTY FIELDS
 - Check each field's "value" - only fill if empty
 - Fill empty: skills, certifications, yes/no questions, checkboxes
 - Use set_checkbox(selector, true) for unchecked agreement checkboxes
+- For "Additional Information", "Cover Letter", "Why are you interested?",
+  or similar freeform text fields: write a 3-5 sentence response explaining
+  why the candidate's personal and professional experiences make them a strong
+  match for this specific role and company. Use specifics from the user profile
+  and job context — mention relevant technologies, accomplishments, or domain
+  experience. Keep the tone professional but personable. Never leave these empty.
 
 STEP 9: SCROLL AND CHECK FOR MORE
 - Scroll down the page

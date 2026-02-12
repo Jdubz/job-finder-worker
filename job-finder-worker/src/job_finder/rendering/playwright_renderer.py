@@ -82,8 +82,11 @@ class PlaywrightRenderer:
         self._browser_thread_id: Optional[int] = None  # Track which thread owns browser
         self._consecutive_failures = 0
         self._max_consecutive_failures = 3  # Restart browser after this many failures
-        # DON'T create browser here - create lazily on first render to ensure
-        # browser is created on the thread that will use it
+        # Persistent executor keeps the SAME thread across renders, preventing
+        # greenlet "cannot switch to a different thread" errors that occur when
+        # Playwright browser is created on one thread and used from another.
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._executor_lock = threading.Lock()
 
     def _ensure_browser(self, force_restart: bool = False) -> None:
         """Start or restart the shared browser instance.
@@ -155,6 +158,33 @@ class PlaywrightRenderer:
             if force_restart:
                 logger.info("playwright_browser_restarted on thread %s", current_thread_id)
 
+    def _get_executor(self) -> ThreadPoolExecutor:
+        """Get or create the persistent thread pool executor.
+
+        Uses a single-thread executor so all Playwright operations run on the
+        same thread, avoiding greenlet "cannot switch to a different thread" errors.
+        """
+        with self._executor_lock:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=1)
+            return self._executor
+
+    def _recreate_executor(self) -> None:
+        """Replace the executor after a hard timeout.
+
+        When a render hangs, the executor's thread is stuck. We abandon it
+        and create a fresh executor with a new thread. The next render will
+        detect the thread mismatch in _ensure_browser() and restart Playwright.
+        """
+        with self._executor_lock:
+            old = self._executor
+            self._executor = ThreadPoolExecutor(max_workers=1)
+            if old is not None:
+                try:
+                    old.shutdown(wait=False)
+                except Exception:
+                    pass
+
     def render(self, req: RenderRequest) -> RenderResult:
         if not req.url.startswith(("http://", "https://")):
             raise ValueError(f"Invalid URL scheme for rendering: {req.url}")
@@ -188,9 +218,9 @@ class PlaywrightRenderer:
             return self._render_internal(req, timeout, render_context, force_restart_needed)
 
         try:
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_do_render)
-                result = future.result(timeout=hard_timeout_sec)
+            executor = self._get_executor()
+            future = executor.submit(_do_render)
+            result = future.result(timeout=hard_timeout_sec)
 
             # Success - reset failure counter
             self._consecutive_failures = 0
@@ -200,6 +230,8 @@ class PlaywrightRenderer:
             # Hard timeout exceeded - browser likely hung
             # Try to clean up the abandoned context
             self._cleanup_abandoned_context(render_context)
+            # Abandon the hung thread and create a fresh executor
+            self._recreate_executor()
 
             duration_ms = int((time.monotonic() - start) * 1000)
             url_hash = hashlib.sha256(req.url.encode()).hexdigest()[:10]
@@ -338,7 +370,14 @@ class PlaywrightRenderer:
         )
 
     def close(self) -> None:
-        """Clean up browser and Playwright processes."""
+        """Clean up browser, Playwright processes, and executor thread."""
+        with self._executor_lock:
+            if self._executor:
+                try:
+                    self._executor.shutdown(wait=False)
+                except Exception:
+                    pass
+                self._executor = None
         with self._browser_lock:
             if self._browser:
                 try:

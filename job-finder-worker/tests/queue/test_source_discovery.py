@@ -22,6 +22,7 @@ from job_finder.job_queue.models import (
     SourceTypeHint,
 )
 from job_finder.job_queue.processor import QueueItemProcessor
+from job_finder.scrapers.ats_prober import ATSProbeResultSet
 
 
 def make_analysis_result(
@@ -47,6 +48,31 @@ def make_analysis_result(
         confidence=confidence,
         reasoning=reasoning,
     )
+
+
+@pytest.fixture(autouse=True)
+def _bypass_ats_probing():
+    """Bypass ATS probing in all discovery tests.
+
+    The ATS prober uses requests.get internally. When tests patch requests.get
+    on the source_processor module, it affects the shared requests module globally,
+    causing the prober to receive incomplete Mock responses that crash on attribute
+    access (e.g., response.url). Mocking the probe function directly isolates tests
+    from network dependencies and ensures the agent analysis path is exercised.
+    """
+    empty_result = ATSProbeResultSet(
+        best_result=None,
+        all_results=[],
+        expected_domain=None,
+        domain_matched_results=[],
+        has_slug_collision=False,
+        slugs_tried=[],
+    )
+    with patch(
+        "job_finder.job_queue.processors.source_processor.probe_all_ats_providers_detailed",
+        return_value=empty_result,
+    ):
+        yield
 
 
 @pytest.fixture

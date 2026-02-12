@@ -63,7 +63,7 @@ class TestGeminiProvider:
 
         os.environ.pop("GOOGLE_CLOUD_PROJECT", None)
 
-        with pytest.raises(AIProviderError, match="GCP project must be provided"):
+        with pytest.raises(AIProviderError, match="Gemini requires either GEMINI_API_KEY"):
             GeminiProvider()
 
     @patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"})

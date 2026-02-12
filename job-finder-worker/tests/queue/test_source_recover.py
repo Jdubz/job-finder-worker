@@ -22,6 +22,38 @@ from job_finder.job_queue.processors.source_processor import (
     ProbeResult,
     RecoveryResult,
 )
+from job_finder.scrapers.ats_prober import ATSProbeResultSet
+
+
+@pytest.fixture(autouse=True)
+def _bypass_ats_probing_and_network():
+    """Bypass ATS probing and network calls in recovery tests.
+
+    The ATS prober and content fetcher make real network calls that make tests
+    non-deterministic. Mock them to ensure the agent recovery path is exercised.
+    """
+    empty_result = ATSProbeResultSet(
+        best_result=None,
+        all_results=[],
+        expected_domain=None,
+        domain_matched_results=[],
+        has_slug_collision=False,
+        slugs_tried=[],
+    )
+    with (
+        patch(
+            "job_finder.job_queue.processors.source_processor.probe_all_ats_providers_detailed",
+            return_value=empty_result,
+        ),
+        patch(
+            "job_finder.job_queue.processors.source_processor.get_search_client",
+        ),
+        patch(
+            "job_finder.job_queue.processors.source_processor.requests.get",
+            side_effect=Exception("Network mocked in tests"),
+        ),
+    ):
+        yield
 
 
 @pytest.fixture

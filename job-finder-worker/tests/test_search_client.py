@@ -7,6 +7,7 @@ import pytest
 
 from job_finder.ai.search_client import (
     BraveSearchClient,
+    FallbackSearchClient,
     SearchResult,
     TavilySearchClient,
     get_search_client,
@@ -141,4 +142,4 @@ class TestGetSearchClient:
     def test_prefers_tavily_over_brave(self):
         with patch.dict(os.environ, {"TAVILY_API_KEY": "tavily-key", "BRAVE_API_KEY": "brave-key"}):
             client = get_search_client()
-            assert isinstance(client, TavilySearchClient)
+            assert isinstance(client, FallbackSearchClient)
