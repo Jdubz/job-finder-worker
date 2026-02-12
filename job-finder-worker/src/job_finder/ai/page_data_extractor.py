@@ -218,10 +218,14 @@ class PageDataExtractor:
                     place = place[0] if place else None
                 if isinstance(place, dict):
                     addr = place.get("address") or {}
-                    city = addr.get("addressLocality") or ""
-                    region = addr.get("addressRegion") or ""
-                    country = addr.get("addressCountry") or ""
-                    loc = ", ".join([p for p in [city, region, country] if p])
+                    # JSON-LD fields can be dicts (e.g. {"@type": "Country", "name": "US"})
+                    parts = [
+                        addr.get("addressLocality"),
+                        addr.get("addressRegion"),
+                        addr.get("addressCountry"),
+                    ]
+                    parts = [(p.get("name", "") if isinstance(p, dict) else p or "") for p in parts]
+                    loc = ", ".join(p for p in parts if p)
                 if loc:
                     job["location"] = loc
 

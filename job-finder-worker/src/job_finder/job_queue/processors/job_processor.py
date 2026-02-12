@@ -28,6 +28,7 @@ from typing import Any, Dict, Optional, List
 from urllib.parse import urlparse, quote_plus
 
 from job_finder.ai.agent_manager import AgentManager
+from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.page_data_extractor import PageDataExtractor
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
@@ -873,19 +874,21 @@ class JobProcessor(BaseProcessor):
 
         if taxonomy_repo and unknown_terms:
             try:
-                suggestions = self.agent_manager.execute(
+                result = self.agent_manager.execute(
                     task_type="analysis",
-                    prompt={
-                        "action": "taxonomy_enrich",
-                        "unknown_terms": unknown_terms,
-                        "job_title": title,
-                        "job_description": description,
-                    },
-                    max_attempts=1,
+                    prompt=json.dumps(
+                        {
+                            "action": "taxonomy_enrich",
+                            "unknown_terms": unknown_terms,
+                            "job_title": title,
+                            "job_description": description,
+                        }
+                    ),
+                    max_tokens=1000,
+                    temperature=0.3,
                 )
-                payload = (
-                    suggestions.get("result") if isinstance(suggestions, dict) else suggestions
-                )
+                parsed = json.loads(extract_json_from_response(result.text))
+                payload = parsed.get("result", parsed) if isinstance(parsed, dict) else parsed
                 if isinstance(payload, list):
                     for item in payload:
                         term = str(item.get("term", "")).strip().lower()

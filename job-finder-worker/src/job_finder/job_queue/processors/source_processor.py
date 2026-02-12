@@ -51,7 +51,7 @@ from job_finder.scrapers.ats_prober import (
     probe_all_ats_providers_detailed,
     ATSProbeResultSet,
 )
-from job_finder.scrapers.config_expander import expand_config
+from job_finder.scrapers.config_expander import expand_config, normalize_source_type
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.rendering.playwright_renderer import get_renderer, RenderRequest
@@ -409,7 +409,21 @@ class SourceProcessor(BaseProcessor):
                 source_name = f"{(urlparse(url).netloc if url else company_name) or 'Unknown'} Jobs"
 
             source_config = analysis.source_config or {"type": "html", "url": url, "headers": {}}
-            source_type = source_config.get("type", "unknown")
+            # Normalize ATS vendor names to standard types (defense-in-depth;
+            # _parse_analysis_response already normalizes, but guard against
+            # the fallback dict and any future code paths).
+            raw_type = source_config.get("type")
+            if raw_type is not None:
+                source_config["type"] = normalize_source_type(raw_type)
+            else:
+                # Infer type from config shape when the agent omits it
+                if "response_path" in source_config:
+                    source_config["type"] = "api"
+                elif "job_selector" in source_config:
+                    source_config["type"] = "html"
+                else:
+                    source_config["type"] = "html"
+            source_type = source_config["type"]
 
             disabled_notes = analysis.disable_notes or ""
             should_disable = analysis.should_disable or analysis.classification in (
@@ -2273,10 +2287,9 @@ Return ONLY valid JSON (no markdown, no explanation outside the JSON).
             # Check if agent proposed a different type than current
             proposed_type = config_data.get("type", source_type)
 
-            # Normalize type=json to type=api
-            if proposed_type == "json":
-                proposed_type = "api"
-                config_data["type"] = "api"
+            # Normalize ATS vendor names and non-standard types
+            proposed_type = normalize_source_type(proposed_type)
+            config_data["type"] = proposed_type
 
             # Validate proposed URL domain
             original_url = current_config.get("url", "")

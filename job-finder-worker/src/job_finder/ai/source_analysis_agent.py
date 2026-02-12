@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
 from job_finder.ai.response_parser import extract_json_from_response
+from job_finder.scrapers.config_expander import normalize_source_type
 
 if TYPE_CHECKING:
     from job_finder.ai.agent_manager import AgentManager
@@ -478,6 +479,11 @@ def _parse_analysis_response(response: str) -> Optional[SourceAnalysisResult]:
                 logger.warning(f"Unknown disable reason: {data['disable_reason']}")
                 disable_reason = DisableReason.DISCOVERY_FAILED
 
+        # Normalize source_config type before it enters the system
+        source_config = data.get("source_config")
+        if isinstance(source_config, dict) and "type" in source_config:
+            source_config["type"] = normalize_source_type(source_config["type"])
+
         return SourceAnalysisResult(
             classification=classification,
             aggregator_domain=data.get("aggregator_domain"),
@@ -485,7 +491,7 @@ def _parse_analysis_response(response: str) -> Optional[SourceAnalysisResult]:
             should_disable=data.get("should_disable", False),
             disable_reason=disable_reason,
             disable_notes=data.get("disable_notes", ""),
-            source_config=data.get("source_config"),
+            source_config=source_config,
             confidence=float(data.get("confidence", 0.0)),
             reasoning=data.get("reasoning", ""),
             suggested_actions=data.get("suggested_actions", []),
