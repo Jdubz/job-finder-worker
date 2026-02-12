@@ -112,9 +112,21 @@ def _normalize_source_type(source_type: str) -> str:
         return source_type
     # ATS vendor names and other non-standard types -> api
     if source_type in (
-        "greenhouse", "ashby", "workday", "icims", "rippling", "lever",
-        "smartrecruiters", "breezy", "jobvite", "recruitee", "workable",
-        "successfactors", "oracle", "taleo", "json",
+        "greenhouse",
+        "ashby",
+        "workday",
+        "icims",
+        "rippling",
+        "lever",
+        "smartrecruiters",
+        "breezy",
+        "jobvite",
+        "recruitee",
+        "workable",
+        "successfactors",
+        "oracle",
+        "taleo",
+        "json",
     ):
         return "api"
     if source_type in ("company-page", "company_page"):

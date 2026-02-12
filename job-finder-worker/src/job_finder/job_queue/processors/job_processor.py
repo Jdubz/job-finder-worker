@@ -876,12 +876,14 @@ class JobProcessor(BaseProcessor):
             try:
                 result = self.agent_manager.execute(
                     task_type="analysis",
-                    prompt=json.dumps({
-                        "action": "taxonomy_enrich",
-                        "unknown_terms": unknown_terms,
-                        "job_title": title,
-                        "job_description": description,
-                    }),
+                    prompt=json.dumps(
+                        {
+                            "action": "taxonomy_enrich",
+                            "unknown_terms": unknown_terms,
+                            "job_title": title,
+                            "job_description": description,
+                        }
+                    ),
                     max_tokens=1000,
                     temperature=0.3,
                 )
