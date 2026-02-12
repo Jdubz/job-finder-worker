@@ -28,6 +28,42 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Map ATS vendor names and other non-standard type values the AI may produce
+# back to the three valid source types: api, rss, html
+_SOURCE_TYPE_NORMALIZATION = {
+    "json": "api",
+    "workday": "api",
+    "icims": "api",
+    "rippling": "api",
+    "greenhouse": "api",
+    "ashby": "api",
+    "lever": "api",
+    "smartrecruiters": "api",
+    "breezy": "api",
+    "jobvite": "api",
+    "recruitee": "api",
+    "workable": "api",
+    "successfactors": "api",
+    "oracle": "api",
+    "taleo": "api",
+    "company-page": "html",
+    "company_page": "html",
+}
+
+
+def _normalize_source_type(source_type: str) -> str:
+    """Normalize AI-generated source type to one of: api, rss, html."""
+    normalized = source_type.lower().strip()
+    if normalized in ("api", "rss", "html"):
+        return normalized
+    mapped = _SOURCE_TYPE_NORMALIZATION.get(normalized)
+    if mapped:
+        logger.info("Normalized source type '%s' -> '%s'", source_type, mapped)
+        return mapped
+    # Unknown type - default to api since most ATS platforms are API-based
+    logger.warning("Unknown source type '%s', defaulting to 'api'", source_type)
+    return "api"
+
 
 class SourceClassification(str, Enum):
     """Classification types for job sources."""
@@ -478,6 +514,11 @@ def _parse_analysis_response(response: str) -> Optional[SourceAnalysisResult]:
                 logger.warning(f"Unknown disable reason: {data['disable_reason']}")
                 disable_reason = DisableReason.DISCOVERY_FAILED
 
+        # Normalize source_config type before it enters the system
+        source_config = data.get("source_config")
+        if isinstance(source_config, dict) and "type" in source_config:
+            source_config["type"] = _normalize_source_type(source_config["type"])
+
         return SourceAnalysisResult(
             classification=classification,
             aggregator_domain=data.get("aggregator_domain"),
@@ -485,7 +526,7 @@ def _parse_analysis_response(response: str) -> Optional[SourceAnalysisResult]:
             should_disable=data.get("should_disable", False),
             disable_reason=disable_reason,
             disable_notes=data.get("disable_notes", ""),
-            source_config=data.get("source_config"),
+            source_config=source_config,
             confidence=float(data.get("confidence", 0.0)),
             reasoning=data.get("reasoning", ""),
             suggested_actions=data.get("suggested_actions", []),

@@ -88,32 +88,36 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     # If config already has url and fields, it's a full config - just ensure type is set
     if "url" in config and "fields" in config:
         expanded = {**config}
-        if "type" not in expanded:
-            expanded["type"] = _normalize_source_type(source_type)
+        expanded["type"] = _normalize_source_type(expanded.get("type", source_type))
         return expanded
 
-    # Normalize source_type to scraping method
-    source_type = source_type.lower()
+    # Normalize source_type to scraping method before dispatch
+    source_type = _normalize_source_type(source_type)
 
     if source_type == "rss":
         return _expand_rss(config)
-    elif source_type in ("html", "company-page"):
+    elif source_type == "html":
         return _expand_html(config)
-    elif source_type in ("api", "greenhouse", "ashby", "workday"):
-        # For API sources (including legacy vendor-specific types),
-        # auto-detect the vendor from config contents
+    elif source_type == "api":
         return _expand_api(config)
     else:
-        # Unknown type - try to expand as API
+        # Fallback for any type _normalize_source_type doesn't cover
         return _expand_api(config)
 
 
 def _normalize_source_type(source_type: str) -> str:
-    """Normalize legacy source types to standard types."""
-    source_type = source_type.lower()
-    if source_type in ("greenhouse", "ashby", "workday"):
+    """Normalize legacy and ATS vendor source types to standard types."""
+    source_type = source_type.lower().strip()
+    if source_type in ("api", "rss", "html"):
+        return source_type
+    # ATS vendor names and other non-standard types -> api
+    if source_type in (
+        "greenhouse", "ashby", "workday", "icims", "rippling", "lever",
+        "smartrecruiters", "breezy", "jobvite", "recruitee", "workable",
+        "successfactors", "oracle", "taleo", "json",
+    ):
         return "api"
-    if source_type == "company-page":
+    if source_type in ("company-page", "company_page"):
         return "html"
     return source_type
 
