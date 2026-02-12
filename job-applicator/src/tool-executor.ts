@@ -2148,15 +2148,50 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
           }
         }
 
+        // Gather additional context for document type detection
+        const extraContext = [];
+        if (input.getAttribute('placeholder')) extraContext.push(input.getAttribute('placeholder'));
+        if (input.getAttribute('data-testid')) extraContext.push(input.getAttribute('data-testid'));
+        const wrapperLabel = input.closest('label');
+        if (wrapperLabel) extraContext.push(wrapperLabel.textContent?.trim()?.slice(0, 100) || '');
+
         // Determine if this is for resume or cover letter
         // Use getAttribute to avoid DOM Clobbering
         const inputName = input.getAttribute('name');
-        const contextText = (label + ' ' + (inputName || '') + ' ' + (inputId || '')).toLowerCase();
+        const baseContext = (label + ' ' + (inputName || '') + ' ' + (inputId || '') + ' ' + extraContext.join(' ')).toLowerCase();
         let documentType = 'unknown';
-        if (/resume|cv|curriculum/i.test(contextText)) {
+        if (/resume|cv|curriculum/i.test(baseContext)) {
           documentType = 'resume';
-        } else if (/cover.?letter/i.test(contextText)) {
+        } else if (/cover.?letter/i.test(baseContext)) {
           documentType = 'coverLetter';
+        }
+
+        // If still unknown, walk parent elements for nearby text (level by level)
+        // Use :scope > to select direct children only, preventing cross-contamination
+        // from sibling upload sections that may contain the other document type
+        if (documentType === 'unknown') {
+          let textParent = input.parentElement;
+          for (let i = 0; i < 4 && textParent && documentType === 'unknown'; i++) {
+            let levelText = '';
+            const nearbyEls = textParent.querySelectorAll(':scope > label, :scope > span, :scope > p, :scope > div, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+            nearbyEls.forEach(el => {
+              const t = el.textContent?.trim();
+              if (t && t.length < 100) levelText += ' ' + t;
+            });
+            const levelLower = levelText.toLowerCase();
+            const hasResume = /resume|cv|curriculum/i.test(levelLower);
+            const hasCover = /cover.?letter/i.test(levelLower);
+            if (hasResume && !hasCover) {
+              documentType = 'resume';
+            } else if (hasCover && !hasResume) {
+              documentType = 'coverLetter';
+            }
+            // Update label if still empty with nearby descriptive text
+            if (!label && levelText.trim()) {
+              label = levelText.trim().slice(0, 50);
+            }
+            textParent = textParent.parentElement;
+          }
         }
 
         results.push({
