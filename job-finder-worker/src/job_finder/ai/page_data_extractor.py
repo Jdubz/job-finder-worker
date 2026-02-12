@@ -221,6 +221,13 @@ class PageDataExtractor:
                     city = addr.get("addressLocality") or ""
                     region = addr.get("addressRegion") or ""
                     country = addr.get("addressCountry") or ""
+                    # JSON-LD fields can be dicts (e.g. {"@type": "Country", "name": "US"})
+                    if isinstance(city, dict):
+                        city = city.get("name", "")
+                    if isinstance(region, dict):
+                        region = region.get("name", "")
+                    if isinstance(country, dict):
+                        country = country.get("name", "")
                     loc = ", ".join([p for p in [city, region, country] if p])
                 if loc:
                     job["location"] = loc
