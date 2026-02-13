@@ -229,6 +229,29 @@ const payload: GenerateDocumentPayload = {
   }
 }
 
+function makeContentItems(overrides: Partial<ContentItem>[] = []): ContentItem[] {
+  const base: ContentItem = {
+    id: '1',
+    parentId: null,
+    order: 0,
+    title: 'Acme Corp',
+    role: 'Senior Developer',
+    location: 'Remote',
+    website: 'https://example.com',
+    startDate: '2022-01',
+    endDate: null,
+    description: 'Worked on various projects',
+    skills: ['JavaScript', 'TypeScript', 'Node.js'],
+    aiContext: 'work',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    createdBy: 'test@example.com',
+    updatedBy: 'test@example.com'
+  }
+  if (overrides.length === 0) return [base]
+  return overrides.map((o, i) => ({ ...base, id: String(i + 1), ...o }))
+}
+
 describe('GeneratorWorkflowService', () => {
 const repo = new InMemoryRepo()
 const personalInfoStore = new FakePersonalInfoStore()
@@ -557,6 +580,113 @@ const mockCoverLetterContent = {
       // Complete
       const finalResult = await service.runNextStep(requestId)
       expect(finalResult?.status).toBe('completed')
+    })
+  })
+
+  describe('groundResumeContent — skill validation', () => {
+    const personalInfo: PersonalInfo = {
+      name: 'Test User',
+      email: 'test@example.com',
+      applicationInfo: 'Test'
+    }
+
+    const callGround = (parsed: any, items: ContentItem[]) => {
+      const service = createService()
+      return (service as any).groundResumeContent(parsed, items, personalInfo, payload)
+    }
+
+    it('drops skills not present in source content items', () => {
+      const items = makeContentItems()
+      const parsed = {
+        personalInfo: { name: 'Test', title: 'Dev', summary: '', contact: { email: '' } },
+        professionalSummary: 'Summary',
+        experience: [{ company: 'Acme Corp', role: 'Dev', startDate: '2022', endDate: '', highlights: ['Did stuff'] }],
+        skills: [
+          { category: 'Languages', items: ['JavaScript', 'AWS', 'Kafka'] },
+          { category: 'Cloud', items: ['AWS', 'Kubernetes'] }
+        ],
+        education: []
+      }
+
+      const result = callGround(parsed, items)
+
+      // 'AWS', 'Kafka', 'Kubernetes' are not in source skills — should be dropped
+      expect(result.skills).toHaveLength(1)
+      expect(result.skills[0].category).toBe('Languages')
+      expect(result.skills[0].items).toEqual(['JavaScript'])
+    })
+
+    it('matches skills case-insensitively', () => {
+      const items = makeContentItems()
+      const parsed = {
+        personalInfo: { name: 'Test', title: 'Dev', summary: '', contact: { email: '' } },
+        professionalSummary: 'Summary',
+        experience: [{ company: 'Acme Corp', role: 'Dev', startDate: '2022', endDate: '', highlights: [] }],
+        skills: [{ category: 'Core', items: ['javascript', 'TYPESCRIPT', 'node.js'] }],
+        education: []
+      }
+
+      const result = callGround(parsed, items)
+      expect(result.skills[0].items).toEqual(['javascript', 'TYPESCRIPT', 'node.js'])
+    })
+
+    it('includes skills from description of skills-context items', () => {
+      const items = makeContentItems([
+        { aiContext: 'work', title: 'Acme Corp', skills: ['JavaScript'] },
+        { aiContext: 'skills', title: 'Cloud & DevOps', description: 'Docker, Terraform, CI/CD', skills: [] }
+      ])
+      const parsed = {
+        personalInfo: { name: 'Test', title: 'Dev', summary: '', contact: { email: '' } },
+        professionalSummary: 'Summary',
+        experience: [{ company: 'Acme Corp', role: 'Dev', startDate: '2022', endDate: '', highlights: [] }],
+        skills: [{ category: 'DevOps', items: ['Docker', 'Terraform', 'AWS'] }],
+        education: []
+      }
+
+      const result = callGround(parsed, items)
+      // Docker and Terraform are in description; AWS is not
+      expect(result.skills[0].items).toEqual(['Docker', 'Terraform'])
+    })
+
+    it('falls back to source skills when validation empties everything', () => {
+      const items = makeContentItems([
+        { aiContext: 'work', title: 'Acme Corp', skills: ['JavaScript', 'TypeScript'] },
+        { aiContext: 'skills', title: 'Languages', description: 'JavaScript, TypeScript, Python', skills: [] }
+      ])
+      const parsed = {
+        personalInfo: { name: 'Test', title: 'Dev', summary: '', contact: { email: '' } },
+        professionalSummary: 'Summary',
+        experience: [{ company: 'Acme Corp', role: 'Dev', startDate: '2022', endDate: '', highlights: [] }],
+        // AI returns completely wrong skills — all should be filtered out
+        skills: [{ category: 'Cloud', items: ['AWS', 'GCP', 'Azure'] }],
+        education: []
+      }
+
+      const result = callGround(parsed, items)
+      // Should fall back to skills-context items
+      expect(result.skills.length).toBeGreaterThan(0)
+      expect(result.skills[0].category).toBe('Languages')
+      expect(result.skills[0].items).toContain('JavaScript')
+    })
+
+    it('drops entire category when all items are invalid', () => {
+      const items = makeContentItems([
+        { aiContext: 'work', title: 'Acme Corp', skills: ['JavaScript'] }
+      ])
+      const parsed = {
+        personalInfo: { name: 'Test', title: 'Dev', summary: '', contact: { email: '' } },
+        professionalSummary: 'Summary',
+        experience: [{ company: 'Acme Corp', role: 'Dev', startDate: '2022', endDate: '', highlights: [] }],
+        skills: [
+          { category: 'Valid', items: ['JavaScript'] },
+          { category: 'AllInvalid', items: ['AWS', 'Kafka'] }
+        ],
+        education: []
+      }
+
+      const result = callGround(parsed, items)
+      expect(result.skills).toHaveLength(1)
+      expect(result.skills[0].category).toBe('Valid')
     })
   })
 })
