@@ -1,6 +1,8 @@
 export const sharedCss = `
   @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600&display=swap');
 
+  /* Page margin: 0.5in — keep in sync with DEFAULT_MARGIN in html-pdf.service.ts
+     and the line-budget constants in content-fit.service.ts */
   @page { margin: 0.5in; size: Letter; }
 
   :root {
@@ -30,7 +32,10 @@ export const sharedCss = `
 
   a { color: var(--accent); text-decoration: none; }
 
-  /* Two-column layout - single page only */
+  /* Two-column layout - single page only.
+     Height = 11in (Letter) - 2 × 0.5in margin = 10in.
+     Keep in sync with DEFAULT_MARGIN in html-pdf.service.ts
+     and MAIN_COLUMN_MAX_LINES in content-fit.service.ts */
   .page {
     display: grid;
     grid-template-columns: 2in 1fr;

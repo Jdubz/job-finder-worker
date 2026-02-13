@@ -11,6 +11,10 @@ import type { ResumeContent } from '@shared/types'
  * Main column at 10px font with 1.45 line-height ≈ 66 lines raw,
  * minus padding (20px top + 20px bottom ≈ 3 lines) = ~63 lines.
  * Use 55 as conservative max to account for section gaps, footer, etc.
+ *
+ * Margin value (0.5in) must stay in sync with:
+ *   - DEFAULT_MARGIN in html-pdf.service.ts
+ *   - @page margin and .page height in html-style.ts
  */
 
 export interface FitEstimate {

@@ -659,28 +659,57 @@ export class GeneratorWorkflowService {
 
     // Hard-validate skills: only allow skills that exist in the candidate's source content items.
     // This prevents the AI from inventing technologies like AWS, Kafka, etc.
+    // Include skills from both item.skills[] and description text of skills-context items,
+    // since both are presented to the model as authoritative data.
     const allSourceSkills = new Set<string>(
-      contentItems.flatMap((item) => (item.skills || []).map((s) => s.toLowerCase().trim()))
+      contentItems.flatMap((item) => {
+        const skillsFromField = (item.skills || []).map((s) => s.toLowerCase().trim())
+        const skillsFromDescription: string[] =
+          item.aiContext === 'skills' && typeof item.description === 'string'
+            ? item.description.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase())
+            : []
+        return [...skillsFromField, ...skillsFromDescription]
+      })
     )
 
-    const validateSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
+    const validateSkills = (skills: ResumeContent['skills']): NonNullable<ResumeContent['skills']> => {
       if (!Array.isArray(skills)) return []
 
       return skills
-        .filter((s) => typeof s === 'object' && s !== null)
-        .map((s) => {
-          const category = ((s as { category?: unknown }).category ?? '').toString().trim() || 'Skills'
-          const items = Array.isArray((s as { items?: unknown }).items)
-            ? ((s as { items?: unknown[] }).items || [])
-                .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-                .filter((item) => allSourceSkills.has(item.toLowerCase().trim()))
-            : []
-          return { category, items }
-        })
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map(({ category, items }) => ({
+          category: (category || '').toString().trim() || 'Skills',
+          items: (Array.isArray(items) ? items : [])
+            .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            .filter((item) => allSourceSkills.has(item.toLowerCase().trim())),
+        }))
         .filter((s) => s.items.length > 0)
     }
 
-    parsed.skills = validateSkills(parsed.skills || [])
+    // Validate AI skills, then fall back to source skills if validation removed everything
+    // (e.g., due to aliasing like "JS" vs "JavaScript")
+    const validatedSkills = validateSkills(parsed.skills || [])
+    if (validatedSkills.length > 0) {
+      parsed.skills = validatedSkills
+    } else {
+      // Rebuild skills from authoritative skills-context content items
+      const skillsItems = contentItems.filter((item) => item.aiContext === 'skills')
+      if (skillsItems.length > 0) {
+        parsed.skills = skillsItems
+          .map((item) => {
+            const category = (item.title || '').trim() || 'Skills'
+            const items = item.description
+              ? item.description.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
+              : item.skills || []
+            return { category, items }
+          })
+          .filter((s) => s.items.length > 0)
+      } else {
+        // Last resort: flatten all source skills into a single category
+        const flatSkills = Array.from(allSourceSkills).filter(Boolean).sort()
+        parsed.skills = flatSkills.length ? [{ category: 'Skills', items: flatSkills }] : []
+      }
+    }
 
     // Enhance education data: use AI output but fill in missing fields from content items
     if (Array.isArray(parsed.education) && parsed.education.length > 0) {

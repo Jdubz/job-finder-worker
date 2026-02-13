@@ -4,6 +4,8 @@ import { cleanText } from './text.util'
 import { sharedCss, icons } from './html-style'
 import { normalizeUrl } from './url.util'
 
+/** Page margin — keep in sync with @page margin in html-style.ts
+ *  and the line-budget constants in content-fit.service.ts */
 const DEFAULT_MARGIN = '0.5in'
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
