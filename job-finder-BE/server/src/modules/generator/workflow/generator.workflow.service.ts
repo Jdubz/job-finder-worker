@@ -644,7 +644,12 @@ export class GeneratorWorkflowService {
           startDate: source.startDate || aiExp.startDate || '',
           endDate: source.endDate || aiExp.endDate || '',
           highlights: aiHighlights.length > 0 ? aiHighlights : source.highlights,
-          technologies: source.technologies
+          // Let AI select a subset of source technologies (for relevance/space), but only allow known ones
+          technologies: Array.isArray(aiExp.technologies) && aiExp.technologies.length > 0
+            ? source.technologies.filter((t) =>
+                aiExp.technologies!.some((ait) => (ait || '').toLowerCase() === t.toLowerCase())
+              )
+            : source.technologies
         }
       })
       .filter(Boolean) as ResumeContent['experience']
@@ -685,7 +690,7 @@ export class GeneratorWorkflowService {
           return {
             institution: contentEdu.institution || aiEdu.institution || '',
             degree: contentEdu.degree || aiEdu.degree || '',
-            field: aiEdu.field || contentEdu.field || '',
+            field: aiEdu.field || '',
             startDate: contentEdu.startDate || aiEdu.startDate || '',
             endDate: contentEdu.endDate || aiEdu.endDate || ''
           }
@@ -696,32 +701,38 @@ export class GeneratorWorkflowService {
       parsed.education = mappedEducation
     }
 
-    // Ground projects against actual content items (drop hallucinated projects)
+    // Ground projects against actual content items (drop hallucinated projects).
+    // Projects must exist in content items — AI selects which to include, not invents new ones.
     const projectItems = contentItems.filter((item) => item.aiContext === 'project')
-    if (Array.isArray(parsed.projects) && parsed.projects.length > 0 && projectItems.length > 0) {
-      const projectLookup = new Map(
-        projectItems.map((item) => [normalizeKey(item.title), item])
-      )
+    if (Array.isArray(parsed.projects) && parsed.projects.length > 0) {
+      if (projectItems.length === 0) {
+        // No project content items — AI cannot include projects it doesn't have source data for
+        parsed.projects = []
+      } else {
+        const projectLookup = new Map(
+          projectItems.map((item) => [normalizeKey(item.title), item])
+        )
 
-      parsed.projects = parsed.projects
-        .map((aiProject) => {
-          const key = normalizeKey(aiProject.name)
-          const source = projectLookup.get(key)
-          if (!source) return null // drop hallucinated projects
+        parsed.projects = parsed.projects
+          .map((aiProject) => {
+            const key = normalizeKey(aiProject.name)
+            const source = projectLookup.get(key)
+            if (!source) return null // drop hallucinated projects
 
-          return {
-            name: source.title || aiProject.name,
-            description: aiProject.description || '',
-            highlights: Array.isArray(aiProject.highlights)
-              ? aiProject.highlights.filter((h: unknown) => typeof h === 'string' && h.trim())
-              : [],
-            technologies: source.skills?.length ? source.skills : (aiProject.technologies || []),
-            ...(source.website ? { link: source.website } : {})
-          }
-        })
-        .filter(Boolean) as NonNullable<ResumeContent['projects']>
+            return {
+              name: source.title || aiProject.name,
+              description: aiProject.description || '',
+              highlights: Array.isArray(aiProject.highlights)
+                ? aiProject.highlights.filter((h: unknown) => typeof h === 'string' && h.trim())
+                : [],
+              technologies: source.skills?.length ? source.skills : (aiProject.technologies || []),
+              ...(source.website ? { link: source.website } : {})
+            }
+          })
+          .filter(Boolean) as NonNullable<ResumeContent['projects']>
+      }
     } else {
-      parsed.projects = parsed.projects || []
+      parsed.projects = []
     }
 
     parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''

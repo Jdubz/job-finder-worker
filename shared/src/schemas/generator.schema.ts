@@ -159,7 +159,7 @@ export const resumeEducationSchema = z.object({
 /** Project entry in resume (gap-filling only) */
 export const resumeProjectSchema = z.object({
   name: z.string(),
-  description: z.string(),
+  description: z.string().default(''),
   highlights: z.array(z.string()).optional(),
   technologies: z.array(z.string()).optional(),
   link: z.string().optional(),

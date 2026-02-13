@@ -229,6 +229,81 @@ describe('AI Output Schema Validation', () => {
       expect(result.success).toBe(true)
       expect(result.data?.experience[0].endDate).toBeNull()
     })
+
+    it('normalizes projects with standard fields', () => {
+      const resumeWithProjects = JSON.stringify({
+        professionalSummary: 'Test',
+        experience: [],
+        projects: [
+          {
+            name: 'My Project',
+            description: 'A cool project',
+            highlights: ['Built it', 'Shipped it'],
+            technologies: ['TypeScript', 'React'],
+            link: 'https://example.com'
+          }
+        ]
+      })
+
+      const result = validateResumeContent(resumeWithProjects)
+      expect(result.success).toBe(true)
+      expect(result.data?.projects).toHaveLength(1)
+      expect(result.data?.projects?.[0].name).toBe('My Project')
+      expect(result.data?.projects?.[0].highlights).toEqual(['Built it', 'Shipped it'])
+      expect(result.data?.projects?.[0].link).toBe('https://example.com')
+    })
+
+    it('normalizes projects with alternative field names', () => {
+      const resumeWithAltProjects = JSON.stringify({
+        professionalSummary: 'Test',
+        experience: [],
+        projects: [
+          {
+            title: 'Alt Project',       // alternative for 'name'
+            summary: 'A description',   // alternative for 'description'
+            bullets: ['Point 1'],       // alternative for 'highlights'
+            tech: ['Python'],           // alternative for 'technologies'
+            url: 'https://alt.com'      // alternative for 'link'
+          }
+        ]
+      })
+
+      const result = validateResumeContent(resumeWithAltProjects)
+      expect(result.success).toBe(true)
+      expect(result.data?.projects).toHaveLength(1)
+      expect(result.data?.projects?.[0].name).toBe('Alt Project')
+      expect(result.data?.projects?.[0].description).toBe('A description')
+      expect(result.data?.projects?.[0].highlights).toEqual(['Point 1'])
+      expect(result.data?.projects?.[0].technologies).toEqual(['Python'])
+      expect(result.data?.projects?.[0].link).toBe('https://alt.com')
+    })
+
+    it('drops projects without a name', () => {
+      const resumeWithNamelessProject = JSON.stringify({
+        professionalSummary: 'Test',
+        experience: [],
+        projects: [
+          { description: 'No name project', highlights: [] },
+          { name: 'Named Project', description: 'Has a name' }
+        ]
+      })
+
+      const result = validateResumeContent(resumeWithNamelessProject)
+      expect(result.success).toBe(true)
+      expect(result.data?.projects).toHaveLength(1)
+      expect(result.data?.projects?.[0].name).toBe('Named Project')
+    })
+
+    it('defaults to empty projects array when not provided', () => {
+      const resumeNoProjects = JSON.stringify({
+        professionalSummary: 'Test',
+        experience: []
+      })
+
+      const result = validateResumeContent(resumeNoProjects)
+      expect(result.success).toBe(true)
+      expect(result.data?.projects).toEqual([])
+    })
   })
 
   describe('validateCoverLetterContent', () => {
