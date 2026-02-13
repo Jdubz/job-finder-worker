@@ -56,6 +56,17 @@ const resumeSkillsCategorySchema = z.object({
 }).passthrough()
 
 /**
+ * Resume project entry schema
+ */
+const resumeProjectSchema = z.object({
+  name: z.string(),
+  description: z.string().default(''),
+  highlights: z.array(z.string()).default([]),
+  technologies: z.array(z.string()).default([]),
+  link: z.string().optional()
+}).passthrough()
+
+/**
  * Resume education entry schema
  */
 const resumeEducationSchema = z.object({
@@ -73,6 +84,7 @@ export const resumeContentSchema = z.object({
   personalInfo: resumePersonalInfoSchema.default({}),
   professionalSummary: z.string().default(''),
   experience: z.array(resumeExperienceSchema).default([]),
+  projects: z.array(resumeProjectSchema).default([]),
   skills: z.array(resumeSkillsCategorySchema).default([]),
   education: z.array(resumeEducationSchema).default([])
 }).passthrough()
@@ -293,6 +305,43 @@ function normalizeExperience(exp: unknown): Array<{
     .filter((e) => e.company || e.role) // Must have at least company or role
 }
 
+/**
+ * Normalizes project entries which may have various field name variations
+ */
+function normalizeProjects(projects: unknown): Array<{
+  name: string
+  description: string
+  highlights: string[]
+  technologies: string[]
+  link?: string
+}> {
+  if (!Array.isArray(projects)) return []
+
+  return projects
+    .filter((p): p is object => p !== null && typeof p === 'object')
+    .map((p) => {
+      const obj = p as Record<string, unknown>
+      return {
+        name: String(obj.name || obj.title || obj.projectName || ''),
+        description: String(obj.description || obj.summary || ''),
+        highlights: Array.isArray(obj.highlights)
+          ? obj.highlights.filter((h): h is string => typeof h === 'string')
+          : Array.isArray(obj.bullets)
+            ? (obj.bullets as unknown[]).filter((h): h is string => typeof h === 'string')
+            : [],
+        technologies: Array.isArray(obj.technologies)
+          ? obj.technologies.filter((t): t is string => typeof t === 'string')
+          : Array.isArray(obj.tech)
+            ? (obj.tech as unknown[]).filter((t): t is string => typeof t === 'string')
+            : Array.isArray(obj.skills)
+              ? (obj.skills as unknown[]).filter((t): t is string => typeof t === 'string')
+              : [],
+        ...(obj.link || obj.url ? { link: String(obj.link || obj.url) } : {})
+      }
+    })
+    .filter((p) => p.name) // Must have at least a name
+}
+
 // =============================================================================
 // Main Validation & Recovery Functions
 // =============================================================================
@@ -365,6 +414,17 @@ export function validateResumeContent(
     parsed.experience = normalizeExperience(parsed.experience)
     if (hadAlternativeFields) {
       recoveryActions.push('Normalized experience entries')
+    }
+  }
+
+  // Track if projects needed normalization (check for alternative field names)
+  if (parsed.projects && Array.isArray(parsed.projects)) {
+    const hadAlternativeFields = parsed.projects.some((p: Record<string, unknown>) =>
+      p && typeof p === 'object' && ('title' in p || 'projectName' in p || 'url' in p)
+    )
+    parsed.projects = normalizeProjects(parsed.projects)
+    if (hadAlternativeFields) {
+      recoveryActions.push('Normalized project entries')
     }
   }
 

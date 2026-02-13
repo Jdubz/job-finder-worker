@@ -18,6 +18,9 @@ export default defineConfig({
       '**/dist/**',
       '**/.{git,cache,output,temp}/**',
     ],
+    env: {
+      DATABASE_PATH: 'file:memory:?cache=shared',
+    },
     environment: 'node',
     setupFiles: ['tests/setup-env.ts'],
     allowOnly: false,

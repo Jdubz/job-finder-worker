@@ -156,6 +156,15 @@ export const resumeEducationSchema = z.object({
   endDate: z.string().optional(),
 })
 
+/** Project entry in resume (gap-filling only) */
+export const resumeProjectSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  highlights: z.array(z.string()).optional(),
+  technologies: z.array(z.string()).optional(),
+  link: z.string().optional(),
+})
+
 /**
  * Schema for ResumeContent - AI-generated resume structure
  */
@@ -163,6 +172,7 @@ export const resumeContentSchema = z.object({
   personalInfo: resumePersonalInfoSchema,
   professionalSummary: z.string(),
   experience: z.array(resumeExperienceSchema),
+  projects: z.array(resumeProjectSchema).optional(),
   skills: z.array(resumeSkillSchema).optional(),
   education: z.array(resumeEducationSchema).optional(),
 })

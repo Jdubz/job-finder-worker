@@ -142,6 +142,74 @@ export function ResumeReviewForm({
                 </div>
               </div>
 
+              {/* Projects (conditional) */}
+              {resume.projects && resume.projects.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <Label className="text-sm font-semibold">Projects ({resume.projects.length})</Label>
+                    <div className="space-y-4 mt-2">
+                      {resume.projects.map((proj, idx) => (
+                        <div key={idx} className="border rounded-lg p-3">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <Input
+                                value={proj.name}
+                                onChange={(e) => {
+                                  const newProjects = [...(resume.projects || [])]
+                                  newProjects[idx] = { ...newProjects[idx], name: e.target.value }
+                                  setEditedContent({ ...resume, projects: newProjects })
+                                }}
+                                className="font-medium h-7 text-sm mb-1"
+                              />
+                              <Textarea
+                                value={proj.description || ""}
+                                onChange={(e) => {
+                                  const newProjects = [...(resume.projects || [])]
+                                  newProjects[idx] = { ...newProjects[idx], description: e.target.value }
+                                  setEditedContent({ ...resume, projects: newProjects })
+                                }}
+                                className="text-sm mt-1"
+                                rows={2}
+                              />
+                            </div>
+                          </div>
+                          {proj.highlights && proj.highlights.length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {proj.highlights.map((highlight, hIdx) => (
+                                <li key={hIdx} className="text-sm flex items-start gap-2">
+                                  <span className="text-muted-foreground">•</span>
+                                  <Input
+                                    value={highlight}
+                                    onChange={(e) => {
+                                      const newProjects = [...(resume.projects || [])]
+                                      const newHighlights = [...(newProjects[idx].highlights || [])]
+                                      newHighlights[hIdx] = e.target.value
+                                      newProjects[idx] = { ...newProjects[idx], highlights: newHighlights }
+                                      setEditedContent({ ...resume, projects: newProjects })
+                                    }}
+                                    className="flex-1 h-7 text-sm"
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {proj.technologies && proj.technologies.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {proj.technologies.map((tech, tIdx) => (
+                                <Badge key={tIdx} variant="secondary" className="text-xs">
+                                  {tech}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
               <Separator />
 
               {/* Skills */}

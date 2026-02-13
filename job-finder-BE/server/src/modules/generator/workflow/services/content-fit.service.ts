@@ -11,7 +11,7 @@ import type { ResumeContent } from '@shared/types'
  * Main column at 10px font with 1.45 line-height ≈ 70 lines
  */
 
-interface FitEstimate {
+export interface FitEstimate {
   mainColumnLines: number
   sidebarLines: number
   fits: boolean
@@ -32,6 +32,12 @@ const LAYOUT = {
   EXP_BULLET_LINES: 1.3,      // Each bullet ~1.3 lines avg (wrapped)
   EXP_TECH_LINES: 1,          // Technologies line
   EXP_SPACING: 1.5,           // Space between entries
+
+  // Projects
+  PROJECT_HEADER_LINES: 2,    // Project name + link line
+  PROJECT_BULLET_LINES: 1.3,  // Each highlight ~1.3 lines avg
+  PROJECT_TECH_LINES: 1,      // Technologies line
+  PROJECT_SPACING: 1.5,       // Space between entries
 
   // Sidebar
   SIDEBAR_HEADER_LINES: 8,    // Avatar + spacing
@@ -69,6 +75,21 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       mainLines += LAYOUT.EXP_TECH_LINES
     }
     mainLines += LAYOUT.EXP_SPACING
+  }
+
+  // Projects section (optional, only if projects exist)
+  const projectCount = content.projects?.length || 0
+  if (projectCount > 0) {
+    mainLines += LAYOUT.SECTION_TITLE_LINES
+    for (const proj of content.projects || []) {
+      mainLines += LAYOUT.PROJECT_HEADER_LINES
+      const bulletCount = proj.highlights?.length || (proj.description ? 1 : 0)
+      mainLines += bulletCount * LAYOUT.PROJECT_BULLET_LINES
+      if (proj.technologies?.length) {
+        mainLines += LAYOUT.PROJECT_TECH_LINES
+      }
+      mainLines += LAYOUT.PROJECT_SPACING
+    }
   }
 
   // Sidebar: Avatar + Contact + Skills + Education
@@ -234,5 +255,6 @@ export function getBalancedContentGuidance(experienceCount: number = 4): string 
 - For ${experienceCount} experience entries with ~4 bullets each, use ${recommendedSkillCats} skill categories
 - Each skill category should have 3-5 items
 - Include 2-3 education entries
+- Include 1-2 projects ONLY if they fill skill gaps not covered by work experience
 - Aim for similar visual weight in both columns`
 }

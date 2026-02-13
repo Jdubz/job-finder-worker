@@ -4,6 +4,7 @@ import type {
   ResumeContent,
   CoverLetterContent,
   PersonalInfo,
+  ContentItem,
   JobMatchWithListing,
   DraftContentResponse,
   ReviewDocumentType
@@ -18,10 +19,11 @@ import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
-import { buildCoverLetterPrompt, buildResumePrompt } from './prompts'
+import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
 import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
+import { estimateContentFit, getContentBudget } from './services/content-fit.service'
 
 export class UserFacingError extends Error {}
 
@@ -568,6 +570,165 @@ export class GeneratorWorkflowService {
     return jobMatch
   }
 
+  /**
+   * Ground AI-generated resume content against authoritative content items and personal info.
+   * Ensures factual accuracy by replacing hallucinated data with source-of-truth data.
+   */
+  private groundResumeContent(
+    parsed: ResumeContent,
+    contentItems: ContentItem[],
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload
+  ): ResumeContent {
+    const workItems = contentItems.filter((item) => item.aiContext === 'work')
+    const educationItems = contentItems.filter((item) => item.aiContext === 'education')
+    const normalizeKey = (value?: string | null) => (value || '').toLowerCase().trim()
+
+    const mappedExperience = workItems.map((item) => ({
+      role: item.role ?? '',
+      company: item.title ?? '',
+      location: item.location ?? '',
+      startDate: item.startDate ?? '',
+      endDate: item.endDate ?? '',
+      highlights: (item.description || '')
+        .split(/\r?\n/)
+        .map((l) => l.replace(/^[–\-•]\s*/, '').trim())
+        .filter(Boolean),
+      technologies: item.skills ?? []
+    }))
+
+    const mappedEducation = educationItems
+      .filter((item) => item.title)
+      .map((item) => ({
+        institution: item.title ?? '',
+        degree: item.role ?? '',
+        field: '',
+        startDate: item.startDate ?? '',
+        endDate: item.endDate ?? ''
+      }))
+
+    // Normalize and fill missing data using authoritative content items and personal info
+    parsed.personalInfo = {
+      name: personalInfo.name,
+      title: parsed.personalInfo?.title || payload.job.role,
+      summary: parsed.personalInfo?.summary || parsed.professionalSummary || personalInfo.summary || '',
+      contact: {
+        email: personalInfo.email || parsed.personalInfo?.contact?.email || '',
+        location: personalInfo.location || parsed.personalInfo?.contact?.location || '',
+        website: personalInfo.website || parsed.personalInfo?.contact?.website || '',
+        linkedin: personalInfo.linkedin || parsed.personalInfo?.contact?.linkedin || '',
+        github: personalInfo.github || parsed.personalInfo?.contact?.github || ''
+      }
+    }
+
+    // Create lookup for authoritative experience by company name (normalized)
+    const contentExperienceLookup = new Map(
+      mappedExperience.map((exp) => [normalizeKey(exp.company), exp])
+    )
+
+    // Allow AI to choose/reorder relevant experiences, but keep facts grounded in source data
+    const validatedExperience = (parsed.experience || [])
+      .map((aiExp) => {
+        const key = normalizeKey(aiExp.company)
+        const source = contentExperienceLookup.get(key)
+        if (!source) return null // drop hallucinated or unknown companies
+
+        const aiHighlights = Array.isArray(aiExp.highlights)
+          ? aiExp.highlights.map((h) => (h || '').trim()).filter(Boolean)
+          : []
+
+        return {
+          role: source.role || aiExp.role || '',
+          company: source.company,
+          location: source.location || aiExp.location || '',
+          startDate: source.startDate || aiExp.startDate || '',
+          endDate: source.endDate || aiExp.endDate || '',
+          highlights: aiHighlights.length > 0 ? aiHighlights : source.highlights,
+          technologies: source.technologies
+        }
+      })
+      .filter(Boolean) as ResumeContent['experience']
+
+    // If AI dropped everything or returned none, fall back to full mapped list
+    parsed.experience = validatedExperience.length ? validatedExperience : mappedExperience
+
+    // Soft‑validate skills: keep whatever the model returns, but coerce to the expected shape and drop empties.
+    const sanitizeSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
+      if (!Array.isArray(skills)) return []
+
+      return skills
+        .filter((s) => typeof s === 'object' && s !== null)
+        .map((s) => {
+          const category = ((s as { category?: unknown }).category ?? '').toString().trim() || 'Skills'
+          const items = Array.isArray((s as { items?: unknown }).items)
+            ? ((s as { items?: unknown[] }).items || []).filter(
+                (item): item is string => typeof item === 'string' && item.trim().length > 0
+              )
+            : []
+          return { category, items }
+        })
+        .filter((s) => s.items.length > 0)
+    }
+
+    parsed.skills = sanitizeSkills(parsed.skills || [])
+
+    // Enhance education data: use AI output but fill in missing fields from content items
+    if (Array.isArray(parsed.education) && parsed.education.length > 0) {
+      const educationLookup = new Map(
+        mappedEducation.map((edu) => [normalizeKey(edu.institution), edu])
+      )
+
+      parsed.education = parsed.education.map((aiEdu) => {
+        const instKey = normalizeKey(aiEdu.institution)
+        const contentEdu = educationLookup.get(instKey)
+        if (contentEdu) {
+          return {
+            institution: contentEdu.institution || aiEdu.institution || '',
+            degree: contentEdu.degree || aiEdu.degree || '',
+            field: aiEdu.field || contentEdu.field || '',
+            startDate: contentEdu.startDate || aiEdu.startDate || '',
+            endDate: contentEdu.endDate || aiEdu.endDate || ''
+          }
+        }
+        return aiEdu
+      })
+    } else {
+      parsed.education = mappedEducation
+    }
+
+    // Ground projects against actual content items (drop hallucinated projects)
+    const projectItems = contentItems.filter((item) => item.aiContext === 'project')
+    if (Array.isArray(parsed.projects) && parsed.projects.length > 0 && projectItems.length > 0) {
+      const projectLookup = new Map(
+        projectItems.map((item) => [normalizeKey(item.title), item])
+      )
+
+      parsed.projects = parsed.projects
+        .map((aiProject) => {
+          const key = normalizeKey(aiProject.name)
+          const source = projectLookup.get(key)
+          if (!source) return null // drop hallucinated projects
+
+          return {
+            name: source.title || aiProject.name,
+            description: aiProject.description || '',
+            highlights: Array.isArray(aiProject.highlights)
+              ? aiProject.highlights.filter((h: unknown) => typeof h === 'string' && h.trim())
+              : [],
+            technologies: source.skills?.length ? source.skills : (aiProject.technologies || []),
+            ...(source.website ? { link: source.website } : {})
+          }
+        })
+        .filter(Boolean) as NonNullable<ResumeContent['projects']>
+    } else {
+      parsed.projects = parsed.projects || []
+    }
+
+    parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
+
+    return parsed
+  }
+
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
@@ -603,132 +764,55 @@ export class GeneratorWorkflowService {
     }
 
     try {
-      const parsed = validation.data as ResumeContent
+      let parsed = validation.data as ResumeContent
+      parsed = this.groundResumeContent(parsed, contentItems, personalInfo, payload)
 
-      // Filter work experience items (new taxonomy: 'work')
-      const workItems = contentItems.filter((item) => item.aiContext === 'work')
-
-      // Filter education items
-      const educationItems = contentItems.filter((item) => item.aiContext === 'education')
-
-      const normalizeKey = (value?: string | null) => (value || '').toLowerCase().trim()
-
-      const mappedExperience = workItems.map((item) => ({
-        role: item.role ?? '',
-        company: item.title ?? '',
-        location: item.location ?? '',
-        startDate: item.startDate ?? '',
-        endDate: item.endDate ?? '',
-        highlights: (item.description || '')
-          .split(/\r?\n/)
-          .map((l) => l.replace(/^[–\-•]\s*/, '').trim())
-          .filter(Boolean),
-        technologies: item.skills ?? []
-      }))
-
-      const mappedEducation = educationItems
-        .filter((item) => item.title)
-        .map((item) => ({
-          institution: item.title ?? '',
-          degree: item.role ?? '',
-          field: '',
-          startDate: item.startDate ?? '',
-          endDate: item.endDate ?? ''
-        }))
-
-      // Normalize and fill missing data using authoritative content items and personal info
-      parsed.personalInfo = {
-        name: personalInfo.name,
-        title: parsed.personalInfo?.title || payload.job.role,
-        summary: parsed.personalInfo?.summary || parsed.professionalSummary || personalInfo.summary || '',
-        contact: {
-          email: personalInfo.email || parsed.personalInfo?.contact?.email || '',
-          location: personalInfo.location || parsed.personalInfo?.contact?.location || '',
-          website: personalInfo.website || parsed.personalInfo?.contact?.website || '',
-          linkedin: personalInfo.linkedin || parsed.personalInfo?.contact?.linkedin || '',
-          github: personalInfo.github || parsed.personalInfo?.contact?.github || ''
-        }
-      }
-
-      // Create lookup for authoritative experience by company name (normalized)
-      const contentExperienceLookup = new Map(
-        mappedExperience.map((exp) => [normalizeKey(exp.company), exp])
-      )
-
-      // Allow AI to choose/reorder relevant experiences, but keep facts grounded in source data
-      const validatedExperience = (parsed.experience || [])
-        .map((aiExp) => {
-          const key = normalizeKey(aiExp.company)
-          const source = contentExperienceLookup.get(key)
-          if (!source) return null // drop hallucinated or unknown companies
-
-          const aiHighlights = Array.isArray(aiExp.highlights)
-            ? aiExp.highlights.map((h) => (h || '').trim()).filter(Boolean)
-            : []
-
-          return {
-            role: source.role || aiExp.role || '',
-            company: source.company,
-            location: source.location || aiExp.location || '',
-            startDate: source.startDate || aiExp.startDate || '',
-            endDate: source.endDate || aiExp.endDate || '',
-            highlights: aiHighlights.length > 0 ? aiHighlights : source.highlights,
-            technologies: source.technologies
-          }
-        })
-        .filter(Boolean) as ResumeContent['experience']
-
-      // If AI dropped everything or returned none, fall back to full mapped list
-      parsed.experience = validatedExperience.length ? validatedExperience : mappedExperience
-
-      // Soft‑validate skills: keep whatever the model returns, but coerce to the expected shape and drop empties.
-      const sanitizeSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
-        if (!Array.isArray(skills)) return []
-
-        return skills
-          .filter((s) => typeof s === 'object' && s !== null)
-          .map((s) => {
-            const category = ((s as { category?: unknown }).category ?? '').toString().trim() || 'Skills'
-            const items = Array.isArray((s as { items?: unknown }).items)
-              ? ((s as { items?: unknown[] }).items || []).filter(
-                  (item): item is string => typeof item === 'string' && item.trim().length > 0
-                )
-              : []
-            return { category, items }
-          })
-          .filter((s) => s.items.length > 0)
-      }
-
-      parsed.skills = sanitizeSkills(parsed.skills || [])
-
-      // Enhance education data: use AI output but fill in missing fields from content items
-      if (Array.isArray(parsed.education) && parsed.education.length > 0) {
-        // Create a lookup map from institution name (normalized) to content item education
-        const educationLookup = new Map(
-          mappedEducation.map((edu) => [normalizeKey(edu.institution), edu])
+      // Post-generation single-page fit check with LLM-powered refit
+      const fitCheck = estimateContentFit(parsed)
+      if (!fitCheck.fits) {
+        this.log.info(
+          { overflow: fitCheck.overflow, mainLines: fitCheck.mainColumnLines, suggestions: fitCheck.suggestions },
+          'Resume content exceeds single-page estimate, requesting LLM refit'
         )
 
-        parsed.education = parsed.education.map((aiEdu) => {
-          const instKey = normalizeKey(aiEdu.institution)
-          const contentEdu = educationLookup.get(instKey)
-          if (contentEdu) {
-            // Merge: use content item data as authoritative, AI data as fallback
-            return {
-              institution: contentEdu.institution || aiEdu.institution || '',
-              degree: contentEdu.degree || aiEdu.degree || '',
-              field: aiEdu.field || contentEdu.field || '',
-              startDate: contentEdu.startDate || aiEdu.startDate || '',
-              endDate: contentEdu.endDate || aiEdu.endDate || ''
-            }
-          }
-          return aiEdu
-        })
-      } else {
-        // No AI education - use content items directly
-        parsed.education = mappedEducation
-      }
+        try {
+          const contentBudget = getContentBudget()
+          const refitPrompt = buildRefitPrompt(parsed, fitCheck, contentBudget, payload, jobMatch)
+          const refitResult = await this.agentManager.execute('document', refitPrompt)
 
-      parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
+          this.log.info(
+            { outputPreview: refitResult.output.slice(0, 400) },
+            'AI refit raw output preview'
+          )
+
+          const refitValidation = validateResumeContent(refitResult.output, this.log)
+          if (refitValidation.success) {
+            let refitParsed = refitValidation.data as ResumeContent
+            refitParsed = this.groundResumeContent(refitParsed, contentItems, personalInfo, payload)
+
+            const refitFitCheck = estimateContentFit(refitParsed)
+            if (refitFitCheck.fits) {
+              this.log.info('LLM refit resolved overflow successfully')
+            } else {
+              this.log.warn(
+                { overflow: refitFitCheck.overflow, mainLines: refitFitCheck.mainColumnLines },
+                'LLM refit still overflows — returning refit result (closer to fitting)'
+              )
+            }
+            parsed = refitParsed
+          } else {
+            this.log.warn(
+              { errors: refitValidation.errors, recoveryActions: refitValidation.recoveryActions },
+              'LLM refit validation failed — keeping original content'
+            )
+          }
+        } catch (refitError) {
+          this.log.warn(
+            { err: refitError },
+            'LLM refit call failed — keeping original content'
+          )
+        }
+      }
 
       return parsed
     } catch (error) {
@@ -781,11 +865,13 @@ export class GeneratorWorkflowService {
     contentItems: Array<{ title?: string | null; skills?: string[] | null; aiContext?: string | null }>,
     payload: GenerateDocumentPayload
   ): void {
-    // Build set of allowed company names (target company + work experience companies)
+    // Build set of allowed company names (target company + work experience companies + project names)
     const workItems = contentItems.filter((item) => item.aiContext === 'work')
+    const projectItems = contentItems.filter((item) => item.aiContext === 'project')
     const allowedCompanies = new Set<string>([
       payload.job.company.toLowerCase().trim(),
-      ...workItems.map((item) => (item.title || '').toLowerCase().trim()).filter(Boolean)
+      ...workItems.map((item) => (item.title || '').toLowerCase().trim()).filter(Boolean),
+      ...projectItems.map((item) => (item.title || '').toLowerCase().trim()).filter(Boolean)
     ])
 
     // Build set of allowed skills from content items
