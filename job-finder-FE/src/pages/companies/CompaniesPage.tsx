@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react"
-import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useQueueItems } from "@/hooks/useQueueItems"
@@ -98,7 +97,6 @@ function CompanyStatusBadge({ company, status }: { company: Company; status?: { 
 
 export function CompaniesPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const { companies, loading, deleteCompany, setFilters } = useCompanies({ limit: 100 })
   const { submitCompany } = useQueueItems({
     // Backend caps queue list at 100; keep in sync to avoid 500s from validation.
@@ -153,7 +151,6 @@ export function CompaniesPage() {
       })
       resetForm()
       setIsAddModalOpen(false)
-      navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit company:", err)
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.")

@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react"
 import { formatDistanceToNowStrict } from "date-fns"
 import { normalizeDateValue } from "@/utils/dateFormat"
-import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { useJobSources } from "@/hooks/useJobSources"
@@ -74,7 +73,6 @@ const formatRelativeTime = (value: unknown): string => {
 
 export function SourcesPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const { openModal } = useEntityModal()
   const { sources, loading, updateSource, deleteSource, refetch, setFilters } = useJobSources({ limit: 100 })
   const { submitSourceDiscovery, submitSourceRecover } = useQueueItems()
@@ -118,7 +116,6 @@ export function SourcesPage() {
       })
       resetForm()
       setIsAddModalOpen(false)
-      navigate("/queue-management")
     } catch (err) {
       console.error("Failed to submit source:", err)
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.")
