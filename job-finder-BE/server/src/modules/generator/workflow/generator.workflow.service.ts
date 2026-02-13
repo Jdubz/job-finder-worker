@@ -657,8 +657,13 @@ export class GeneratorWorkflowService {
     // If AI dropped everything or returned none, fall back to full mapped list
     parsed.experience = validatedExperience.length ? validatedExperience : mappedExperience
 
-    // Soft‑validate skills: keep whatever the model returns, but coerce to the expected shape and drop empties.
-    const sanitizeSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
+    // Hard-validate skills: only allow skills that exist in the candidate's source content items.
+    // This prevents the AI from inventing technologies like AWS, Kafka, etc.
+    const allSourceSkills = new Set<string>(
+      contentItems.flatMap((item) => (item.skills || []).map((s) => s.toLowerCase().trim()))
+    )
+
+    const validateSkills = (skills: ResumeContent['skills']): ResumeContent['skills'] => {
       if (!Array.isArray(skills)) return []
 
       return skills
@@ -666,16 +671,16 @@ export class GeneratorWorkflowService {
         .map((s) => {
           const category = ((s as { category?: unknown }).category ?? '').toString().trim() || 'Skills'
           const items = Array.isArray((s as { items?: unknown }).items)
-            ? ((s as { items?: unknown[] }).items || []).filter(
-                (item): item is string => typeof item === 'string' && item.trim().length > 0
-              )
+            ? ((s as { items?: unknown[] }).items || [])
+                .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                .filter((item) => allSourceSkills.has(item.toLowerCase().trim()))
             : []
           return { category, items }
         })
         .filter((s) => s.items.length > 0)
     }
 
-    parsed.skills = sanitizeSkills(parsed.skills || [])
+    parsed.skills = validateSkills(parsed.skills || [])
 
     // Enhance education data: use AI output but fill in missing fields from content items
     if (Array.isArray(parsed.education) && parsed.education.length > 0) {

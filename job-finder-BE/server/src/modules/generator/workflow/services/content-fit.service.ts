@@ -7,8 +7,10 @@ import type { ResumeContent } from '@shared/types'
  * - Left sidebar (2in / ~25%): Avatar, Contact, Skills, Education
  * - Right main area (~5.5in / 75%): Name/Title header, Summary, Experience
  *
- * Letter page: 11in height - 0.8in total margins (0.4in × 2) = 10.2in usable
- * Main column at 10px font with 1.45 line-height ≈ 70 lines
+ * Letter page: 11in height - 1.0in total margins (0.5in × 2) = 10.0in usable
+ * Main column at 10px font with 1.45 line-height ≈ 66 lines raw,
+ * minus padding (20px top + 20px bottom ≈ 3 lines) = ~63 lines.
+ * Use 55 as conservative max to account for section gaps, footer, etc.
  */
 
 export interface FitEstimate {
@@ -46,9 +48,9 @@ const LAYOUT = {
   EDUCATION_ENTRY_LINES: 2.5, // Degree + school + date
   SIDEBAR_SECTION_SPACING: 2, // Space between sidebar sections
 
-  // Page limits (conservative for clean look)
-  MAIN_COLUMN_MAX_LINES: 65,
-  SIDEBAR_MAX_LINES: 60,
+  // Page limits (conservative — accounts for 0.5in margins, padding, footer)
+  MAIN_COLUMN_MAX_LINES: 55,
+  SIDEBAR_MAX_LINES: 55,
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
@@ -162,12 +164,16 @@ export function getContentBudget(): {
   maxBulletsPerExperience: number
   maxSummaryWords: number
   maxSkillCategories: number
+  maxProjects: number
+  maxBulletsPerProject: number
 } {
   return {
     maxExperiences: 4,
     maxBulletsPerExperience: 4,
     maxSummaryWords: 50,
-    maxSkillCategories: 5 // 4-6 range, balanced with sidebar
+    maxSkillCategories: 5, // 4-6 range, balanced with sidebar
+    maxProjects: 2,
+    maxBulletsPerProject: 2
   }
 }
 

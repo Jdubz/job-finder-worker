@@ -1,7 +1,7 @@
 export const sharedCss = `
   @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;500;600&display=swap');
 
-  @page { margin: 0.4in; size: Letter; }
+  @page { margin: 0.5in; size: Letter; }
 
   :root {
     --accent: #2563eb;
@@ -34,8 +34,8 @@ export const sharedCss = `
   .page {
     display: grid;
     grid-template-columns: 2in 1fr;
-    height: 10.2in;
-    max-height: 10.2in;
+    height: 10in;
+    max-height: 10in;
     gap: 0;
     overflow: hidden;
     page-break-after: always;
