@@ -2,12 +2,7 @@ import { renderHook, act } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { useAddJobForm } from "../useAddJobForm"
 
-const mockNavigate = vi.fn()
 const mockSubmitJob = vi.fn()
-
-vi.mock("react-router-dom", () => ({
-  useNavigate: () => mockNavigate,
-}))
 
 vi.mock("@/hooks/useQueueItems", () => ({
   useQueueItems: () => ({
@@ -31,12 +26,6 @@ describe("useAddJobForm", () => {
 
     expect(result.current.formState).toEqual({
       jobUrl: "",
-      jobTitle: "",
-      jobDescription: "",
-      jobLocation: "",
-      jobTechStack: "",
-      bypassFilter: false,
-      companyName: "",
     })
     expect(result.current.isSubmitting).toBe(false)
     expect(result.current.submitError).toBeNull()
@@ -50,16 +39,6 @@ describe("useAddJobForm", () => {
       result.current.setField("jobUrl", "https://example.com/job")
     })
     expect(result.current.formState.jobUrl).toBe("https://example.com/job")
-
-    act(() => {
-      result.current.setField("jobTitle", "Software Engineer")
-    })
-    expect(result.current.formState.jobTitle).toBe("Software Engineer")
-
-    act(() => {
-      result.current.setField("bypassFilter", true)
-    })
-    expect(result.current.formState.bypassFilter).toBe(true)
   })
 
   it("resets form to initial state", () => {
@@ -67,7 +46,6 @@ describe("useAddJobForm", () => {
 
     act(() => {
       result.current.setField("jobUrl", "https://example.com/job")
-      result.current.setField("jobTitle", "Test Title")
     })
 
     expect(result.current.formState.jobUrl).toBe("https://example.com/job")
@@ -78,12 +56,6 @@ describe("useAddJobForm", () => {
 
     expect(result.current.formState).toEqual({
       jobUrl: "",
-      jobTitle: "",
-      jobDescription: "",
-      jobLocation: "",
-      jobTechStack: "",
-      bypassFilter: false,
-      companyName: "",
     })
   })
 
@@ -101,43 +73,13 @@ describe("useAddJobForm", () => {
     expect(mockSubmitJob).not.toHaveBeenCalled()
   })
 
-  it("allows submission with URL only (no title or description required)", async () => {
+  it("submits form successfully with URL only", async () => {
     mockSubmitJob.mockResolvedValue({ id: "job-123" })
 
     const { result } = renderHook(() => useAddJobForm())
 
     act(() => {
       result.current.setField("jobUrl", "https://example.com/job")
-    })
-
-    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
-
-    await act(async () => {
-      await result.current.handleSubmit(mockEvent)
-    })
-
-    expect(result.current.submitError).toBeNull()
-    expect(mockSubmitJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: "https://example.com/job",
-        title: undefined,
-        description: undefined,
-      })
-    )
-  })
-
-  it("submits form successfully", async () => {
-    mockSubmitJob.mockResolvedValue({ id: "job-123" })
-
-    const { result } = renderHook(() => useAddJobForm())
-
-    act(() => {
-      result.current.setField("jobUrl", "https://example.com/job")
-      result.current.setField("jobTitle", "Software Engineer")
-      result.current.setField("jobDescription", "Build cool stuff")
-      result.current.setField("companyName", "Acme Corp")
-      result.current.setField("jobLocation", "Remote")
-      result.current.setField("bypassFilter", true)
     })
 
     const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
@@ -148,17 +90,30 @@ describe("useAddJobForm", () => {
 
     expect(mockSubmitJob).toHaveBeenCalledWith({
       url: "https://example.com/job",
-      title: "Software Engineer",
-      description: "Build cool stuff",
-      companyName: "Acme Corp",
-      location: "Remote",
-      techStack: undefined,
-      bypassFilter: true,
     })
 
     expect(result.current.submitError).toBeNull()
     expect(result.current.isModalOpen).toBe(false)
-    expect(mockNavigate).toHaveBeenCalledWith("/queue-management")
+  })
+
+  it("does not navigate after successful submission", async () => {
+    mockSubmitJob.mockResolvedValue({ id: "job-123" })
+
+    const { result } = renderHook(() => useAddJobForm())
+
+    act(() => {
+      result.current.setField("jobUrl", "https://example.com/job")
+    })
+
+    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
+
+    await act(async () => {
+      await result.current.handleSubmit(mockEvent)
+    })
+
+    // Modal should close but no navigation should occur
+    expect(result.current.isModalOpen).toBe(false)
+    expect(result.current.formState.jobUrl).toBe("")
   })
 
   it("handles submission error", async () => {
@@ -168,8 +123,6 @@ describe("useAddJobForm", () => {
 
     act(() => {
       result.current.setField("jobUrl", "https://example.com/job")
-      result.current.setField("jobTitle", "Software Engineer")
-      result.current.setField("jobDescription", "Build cool stuff")
     })
 
     const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
@@ -180,7 +133,6 @@ describe("useAddJobForm", () => {
 
     expect(result.current.submitError).toBe("Server error")
     expect(result.current.isSubmitting).toBe(false)
-    expect(mockNavigate).not.toHaveBeenCalled()
   })
 
   it("manages modal open/close state", () => {
@@ -207,7 +159,6 @@ describe("useAddJobForm", () => {
     act(() => {
       result.current.setIsModalOpen(true)
       result.current.setField("jobUrl", "https://example.com/job")
-      result.current.setField("jobTitle", "Test Job")
     })
 
     expect(result.current.formState.jobUrl).toBe("https://example.com/job")
@@ -217,45 +168,15 @@ describe("useAddJobForm", () => {
     })
 
     expect(result.current.formState.jobUrl).toBe("")
-    expect(result.current.formState.jobTitle).toBe("")
   })
 
-  it("trims whitespace from form values on submit", async () => {
+  it("trims whitespace from URL on submit", async () => {
     mockSubmitJob.mockResolvedValue({ id: "job-123" })
 
     const { result } = renderHook(() => useAddJobForm())
 
     act(() => {
       result.current.setField("jobUrl", "  https://example.com/job  ")
-      result.current.setField("jobTitle", "  Software Engineer  ")
-      result.current.setField("jobDescription", "  Build cool stuff  ")
-    })
-
-    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
-
-    await act(async () => {
-      await result.current.handleSubmit(mockEvent)
-    })
-
-    expect(mockSubmitJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: "https://example.com/job",
-        title: "Software Engineer",
-        description: "Build cool stuff",
-      })
-    )
-  })
-
-  it("omits empty optional fields from payload", async () => {
-    mockSubmitJob.mockResolvedValue({ id: "job-123" })
-
-    const { result } = renderHook(() => useAddJobForm())
-
-    act(() => {
-      result.current.setField("jobUrl", "https://example.com/job")
-      result.current.setField("jobTitle", "Software Engineer")
-      result.current.setField("jobDescription", "Build cool stuff")
-      // Leave optional fields empty
     })
 
     const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent
@@ -266,12 +187,6 @@ describe("useAddJobForm", () => {
 
     expect(mockSubmitJob).toHaveBeenCalledWith({
       url: "https://example.com/job",
-      title: "Software Engineer",
-      description: "Build cool stuff",
-      companyName: undefined,
-      location: undefined,
-      techStack: undefined,
-      bypassFilter: false,
     })
   })
 })
