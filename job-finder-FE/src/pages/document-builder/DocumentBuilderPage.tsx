@@ -28,7 +28,16 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Sparkles, Download } from "lucide-react"
+import { Loader2, Sparkles, Download, Check, ChevronsUpDown } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { GenerationProgress } from "@/components/GenerationProgress"
 import { ResumeReviewForm } from "@/components/ResumeReviewForm"
 import { toast } from "@/components/toast"
@@ -154,6 +163,7 @@ export function DocumentBuilderPage() {
   const location = useLocation()
   const [jobMatches, setJobMatches] = useState<JobMatch[]>([])
   const [selectedJobMatchId, setSelectedJobMatchId] = useState<string>("")
+  const [jobMatchPopoverOpen, setJobMatchPopoverOpen] = useState(false)
   const [documentType, setDocumentType] = useState<"resume" | "cover_letter" | "both">("resume")
   const [customJobTitle, setCustomJobTitle] = useState("")
   const [customCompanyName, setCustomCompanyName] = useState("")
@@ -613,46 +623,83 @@ export function DocumentBuilderPage() {
             {/* Job Selection */}
             <div className="space-y-2">
               <Label>Select Job Match (Optional)</Label>
-              <Select value={selectedJobMatchId} onValueChange={setSelectedJobMatchId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a job match or enter manually" />
-                </SelectTrigger>
-                <SelectContent>
-                  {loadingMatches ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      Loading matches...
-                    </div>
-                  ) : jobMatches.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      <div className="space-y-2">
-                        <p>No job matches found.</p>
-                        <p className="text-xs">
-                          You can still generate documents by entering job details manually below.
-                        </p>
+              <Popover open={jobMatchPopoverOpen} onOpenChange={setJobMatchPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={jobMatchPopoverOpen}
+                    className="w-full justify-between font-normal h-auto min-h-9"
+                  >
+                    {selectedJobMatchId && selectedMatch ? (
+                      <div className="flex flex-col items-start py-1">
+                        <span className="font-medium">
+                          {normalizeJobMatch(selectedMatch).jobTitle}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {normalizeJobMatch(selectedMatch).companyName} •{" "}
+                          {normalizeJobMatch(selectedMatch).location}
+                        </span>
                       </div>
-                    </div>
-                  ) : (
-                    jobMatches.map((match) => {
-                      const normalized = normalizeJobMatch(match)
-                      return (
-                        <SelectItem key={match.id} value={match.id || ""}>
-                          <div className="flex items-center justify-between w-full">
-                            <div className="flex flex-col items-start">
-                              <span className="font-medium">{normalized.jobTitle}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {normalized.companyName} • {normalized.location}
-                              </span>
-                            </div>
-                            <Badge variant="secondary" className="ml-2">
-                              {normalized.matchScore}%
-                            </Badge>
-                          </div>
-                        </SelectItem>
-                      )
-                    })
-                  )}
-                </SelectContent>
-              </Select>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Select a job match or enter manually
+                      </span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0">
+                  <Command>
+                    <CommandInput placeholder="Search by title, company, or location..." />
+                    <CommandList>
+                      <CommandEmpty>
+                        {loadingMatches
+                          ? "Loading matches..."
+                          : jobMatches.length === 0
+                            ? "No job matches found. Enter job details manually below."
+                            : "No matching jobs found."}
+                      </CommandEmpty>
+                      {!loadingMatches && (
+                        <CommandGroup>
+                          {jobMatches.map((match) => {
+                            const normalized = normalizeJobMatch(match)
+                            return (
+                              <CommandItem
+                                key={match.id}
+                                value={`${normalized.jobTitle} ${normalized.companyName} ${normalized.location}`}
+                                onSelect={() => {
+                                  setSelectedJobMatchId(
+                                    match.id === selectedJobMatchId ? "" : match.id || ""
+                                  )
+                                  setJobMatchPopoverOpen(false)
+                                }}
+                              >
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    selectedJobMatchId === match.id ? "opacity-100" : "opacity-0"
+                                  }`}
+                                />
+                                <div className="flex items-center justify-between w-full">
+                                  <div className="flex flex-col items-start">
+                                    <span className="font-medium">{normalized.jobTitle}</span>
+                                    <span className="text-sm text-muted-foreground">
+                                      {normalized.companyName} • {normalized.location}
+                                    </span>
+                                  </div>
+                                  <Badge variant="secondary" className="ml-2">
+                                    {normalized.matchScore}%
+                                  </Badge>
+                                </div>
+                              </CommandItem>
+                            )
+                          })}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {selectedMatch && (
                 <p className="text-sm text-muted-foreground">
                   Match Score: {normalizeJobMatch(selectedMatch).matchScore}% • Analyzed{" "}

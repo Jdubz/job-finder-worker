@@ -171,6 +171,13 @@ export interface ResumeContent {
     highlights: string[]
     technologies?: string[]
   }>
+  projects?: Array<{
+    name: string
+    description: string
+    highlights?: string[]
+    technologies?: string[]
+    link?: string
+  }>
   skills?: Array<{
     category: string
     items: string[]

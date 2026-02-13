@@ -2,6 +2,8 @@ import type { GenerateDocumentPayload } from './generator.workflow.service'
 import type { PersonalInfo, ContentItem, JobMatchWithListing } from '@shared/types'
 import { PromptsRepository } from '../../prompts/prompts.repository'
 import { getBalancedContentGuidance } from './services/content-fit.service'
+import type { FitEstimate, getContentBudget } from './services/content-fit.service'
+import type { ResumeContent } from '@shared/types'
 
 const promptsRepo = new PromptsRepository()
 
@@ -251,13 +253,11 @@ function formatEducationItem(item: ContentItem): string {
 
 /** Format personal project item */
 function formatProjectItem(item: ContentItem): string {
-  const desc = item.description
-    ? item.description.split(/\r?\n/)[0]?.slice(0, 200) || ''
-    : ''
+  const bullets = parseDescriptionToBullets(item.description)
 
   return [
     `- Project: ${item.title || 'Untitled Project'}`,
-    desc ? `  Description: ${desc}` : null,
+    ...bullets.map((b) => `  - ${b}`),
     item.skills?.length ? `  Technologies: ${item.skills.join(', ')}` : null,
     item.website ? `  Link: ${item.website}` : null
   ]
@@ -306,6 +306,31 @@ export function buildResumePrompt(
   const prompt = replaceVariables(prompts.resumeGeneration, variables)
   const dataBlock = buildDataBlock(variables, content)
 
+  // Build conditional project guidance based on resumeIntakeData
+  const resumeIntakeData = jobMatch?.resumeIntakeData
+  let projectGuidance = ''
+  if (resumeIntakeData?.projectsToInclude?.length) {
+    const projectLines = resumeIntakeData.projectsToInclude
+      .map((p) => `- ${p.name}: ${p.whyRelevant}\n  Emphasize: ${p.pointsToHighlight.join(', ')}`)
+      .join('\n')
+    projectGuidance = `
+
+PROJECTS (gap-filling only):
+Include projects ONLY when they demonstrate skills or experience NOT already
+covered by your work history. If work experience fully covers the job requirements,
+return "projects": [].
+
+Recommended projects for this role (from job analysis):
+${projectLines}`
+  } else {
+    projectGuidance = `
+
+PROJECTS (gap-filling only):
+Include projects ONLY if they clearly address missing skills from the job description
+that work experience doesn't cover. If work experience fully covers the job requirements,
+return "projects": [].`
+  }
+
   // JSON schema and output format instructions (content guidance is in database prompt)
   const jsonSchema = `
 OUTPUT FORMAT (STRICT):
@@ -321,11 +346,13 @@ Return the result as a JSON object with this exact structure:
   "personalInfo": { "title": "Job Title matching target role" },
   "professionalSummary": "2-3 sentence summary",
   "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
+  "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
   "skills": [
     { "category": "CategoryName", "items": ["Skill1", "Skill2", "Skill3"] }
   ],
   "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
 }
+${projectGuidance}
 
 ${getBalancedContentGuidance(4)}`
 
@@ -362,6 +389,22 @@ export function buildCoverLetterPrompt(
   const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
   const dataBlock = buildDataBlock(variables, content, 'AUTHORITATIVE CANDIDATE DATA (use ONLY this information):')
 
+  // Build conditional gap mitigation guidance from resumeIntakeData
+  const resumeIntakeData = jobMatch?.resumeIntakeData
+  let gapMitigationGuidance = ''
+  if (resumeIntakeData?.gapMitigation?.length) {
+    const mitigationLines = resumeIntakeData.gapMitigation
+      .map((g) => `- Missing: ${g.missingSkill} → ${g.coverLetterPoint}`)
+      .join('\n')
+    gapMitigationGuidance = `
+
+GAP MITIGATION:
+When addressing skill gaps, reference the candidate's side projects as evidence
+of hands-on experience:
+${mitigationLines}
+`
+  }
+
   const jsonSchema = `
 OUTPUT FORMAT (STRICT):
 - You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
@@ -385,5 +428,115 @@ Return the JSON object with exactly these keys:
   "signature": "e.g., Best,"
 }`
 
-  return prompt + dataBlock + jsonSchema
+  return prompt + dataBlock + gapMitigationGuidance + jsonSchema
+}
+
+export function buildRefitPrompt(
+  firstAttempt: ResumeContent,
+  fitEstimate: FitEstimate,
+  contentBudget: ReturnType<typeof getContentBudget>,
+  payload: GenerateDocumentPayload,
+  jobMatch: JobMatchWithListing | null
+): string {
+  const resumeIntakeData = jobMatch?.resumeIntakeData
+
+  // Job context
+  const jobContext = [
+    `Role: ${payload.job.role}`,
+    `Company: ${payload.job.company}`,
+    payload.job.location ? `Location: ${payload.job.location}` : null,
+    payload.job.jobDescriptionText
+      ? `Job Description:\n${payload.job.jobDescriptionText}`
+      : null
+  ].filter(Boolean).join('\n')
+
+  // ResumeIntakeData relevance signals
+  let intakeGuidance = ''
+  if (resumeIntakeData) {
+    const parts: string[] = []
+    if (resumeIntakeData.projectsToInclude?.length) {
+      const projectLines = resumeIntakeData.projectsToInclude
+        .map((p) => `  - ${p.name}: ${p.whyRelevant}`)
+        .join('\n')
+      parts.push(`Recommended projects (from job analysis):\n${projectLines}`)
+    }
+    if (resumeIntakeData.skillsPriority?.length) {
+      parts.push(`Skills priority order: ${resumeIntakeData.skillsPriority.join(', ')}`)
+    }
+    if (resumeIntakeData.experienceHighlights?.length) {
+      const expLines = resumeIntakeData.experienceHighlights
+        .map((e) => `  - ${e.company} (${e.title}): ${e.pointsToEmphasize.join(', ')}`)
+        .join('\n')
+      parts.push(`Experience relevance:\n${expLines}`)
+    }
+    if (parts.length) {
+      intakeGuidance = `\nJOB ANALYSIS RELEVANCE SIGNALS:\n${parts.join('\n\n')}\n`
+    }
+  }
+
+  // Match context
+  let matchContext = ''
+  if (jobMatch) {
+    const parts: string[] = []
+    if (jobMatch.matchedSkills?.length) {
+      parts.push(`Matched skills: ${jobMatch.matchedSkills.join(', ')}`)
+    }
+    if (jobMatch.keyStrengths?.length) {
+      parts.push(`Key strengths: ${jobMatch.keyStrengths.join(', ')}`)
+    }
+    if (resumeIntakeData?.atsKeywords?.length) {
+      parts.push(`ATS keywords: ${resumeIntakeData.atsKeywords.join(', ')}`)
+    }
+    if (parts.length) {
+      matchContext = `\n${parts.join('\n')}\n`
+    }
+  }
+
+  return `You are a resume EDITOR, not a writer. Your job is to trim an overflowing resume to fit a single-page layout.
+
+FIRST ATTEMPT (the resume content that overflowed):
+${JSON.stringify(firstAttempt, null, 2)}
+
+OVERFLOW DIAGNOSIS:
+- Main column lines: ${fitEstimate.mainColumnLines} (max: 65)
+- Sidebar lines: ${fitEstimate.sidebarLines} (max: 60)
+- Overflow: ${fitEstimate.overflow} lines over limit
+- Suggestions: ${fitEstimate.suggestions.length ? fitEstimate.suggestions.join('; ') : 'none'}
+
+STRICT CONTENT BUDGET (do NOT exceed):
+- Max experience entries: ${contentBudget.maxExperiences}
+- Max bullets per experience: ${contentBudget.maxBulletsPerExperience}
+- Max summary words: ${contentBudget.maxSummaryWords}
+- Max skill categories: ${contentBudget.maxSkillCategories}
+
+JOB CONTEXT:
+${jobContext}
+${matchContext}${intakeGuidance}
+EDITORIAL INSTRUCTIONS:
+1. You are an editor, not a writer. Trim content to fit the budget — do NOT rewrite bullets or invent new content.
+2. A project that fills a skill gap is more valuable than a 4th bullet on an old role.
+3. Prioritize: matched skills > key strengths > ATS keywords > general experience.
+4. Cut the LEAST relevant content first: redundant bullets, older/less-relevant experience entries, generic skills.
+5. Keep all factual data (dates, company names, role titles) exactly as-is.
+6. Reduce bullets on less-relevant roles first; keep more bullets on highly-relevant roles.
+7. Only remove an entire experience entry as a last resort.
+8. If projects fill genuine skill gaps for this role, keep them (trimmed if needed). If they don't, remove them.
+9. Consolidate or remove the least-relevant skill categories to stay within budget.
+
+OUTPUT FORMAT (STRICT):
+- Respond with the JSON object ONLY — no prose, no markdown, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- Use the exact same JSON structure as the first attempt.
+
+Return the trimmed resume as a JSON object with this exact structure:
+{
+  "personalInfo": { "title": "Job Title matching target role" },
+  "professionalSummary": "2-3 sentence summary",
+  "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
+  "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
+  "skills": [
+    { "category": "CategoryName", "items": ["Skill1", "Skill2", "Skill3"] }
+  ],
+  "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
+}`
 }
