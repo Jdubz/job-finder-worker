@@ -541,8 +541,8 @@ EDITORIAL INSTRUCTIONS:
 5. Cut the LEAST relevant content first: redundant bullets, older/less-relevant experience entries, generic skills.
 6. Keep all factual data (dates, company names, role titles) exactly as-is.
 7. Reduce bullets on less-relevant roles first; keep more bullets on highly-relevant roles.
-9. If projects fill genuine skill gaps for this role, keep them (trimmed if needed). If they don't, remove them.
-10. Consolidate or remove the least-relevant skill categories to stay within budget.
+8. If projects fill genuine skill gaps for this role, keep them (trimmed if needed). If they don't, remove them.
+9. Consolidate or remove the least-relevant skill categories to stay within budget.
 
 OUTPUT FORMAT (STRICT):
 - Respond with the JSON object ONLY — no prose, no markdown, no explanations.

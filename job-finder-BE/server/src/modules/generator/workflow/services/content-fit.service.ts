@@ -36,6 +36,10 @@ const CHARS_PER_LINE = {
   TECH: 78,
 }
 
+// Heuristic averages for functions that don't have actual text to measure
+const AVG_LINES_PER_BULLET = 2
+const AVG_LINES_PER_TECH = 1.5
+
 /** Estimate how many rendered lines a text string occupies. */
 function textToLines(text: string, charsPerLine: number): number {
   if (!text || text.length === 0) return 0
@@ -239,7 +243,7 @@ export function analyzeColumnBalance(content: ResumeContent): ColumnBalance {
   } else if (difference < -threshold) {
     // Sidebar is too tall - suggest more main content
     const absD = Math.abs(difference)
-    const bulletsNeeded = Math.ceil(absD / 2) // ~2 lines per bullet average
+    const bulletsNeeded = Math.ceil(absD / AVG_LINES_PER_BULLET)
     suggestion = `Sidebar is ${absD} lines taller. Add ${bulletsNeeded} more bullet points to experiences.`
   }
 
@@ -261,7 +265,7 @@ export function getRecommendedSkillCategories(experienceCount: number, avgBullet
   const mainLines = LAYOUT.HEADER_LINES +
     LAYOUT.SECTION_TITLE_LINES + 3 + // Summary ~3 lines
     LAYOUT.SECTION_TITLE_LINES +
-    experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * 2 + 1.5 + LAYOUT.EXP_SPACING)
+    experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * AVG_LINES_PER_BULLET + AVG_LINES_PER_TECH + LAYOUT.EXP_SPACING)
 
   // Target sidebar to match
   const targetSidebarLines = mainLines
