@@ -1692,3 +1692,784 @@ class TestRssFieldNormalization:
         assert isinstance(GenericScraper._RSS_TO_FEEDPARSER_MAP, dict)
         assert "pubDate" in GenericScraper._RSS_TO_FEEDPARSER_MAP
         assert GenericScraper._RSS_TO_FEEDPARSER_MAP["pubDate"] == "published"
+
+
+class TestPaginationConfigValidation:
+    """Test SourceConfig pagination field validation."""
+
+    def test_pagination_fields_round_trip(self):
+        """Test from_dict/to_dict round-trip for pagination fields."""
+        data = {
+            "type": "api",
+            "url": "https://api.example.com/jobs",
+            "fields": {"title": "title", "url": "url"},
+            "pagination_type": "page_num",
+            "pagination_param": "page",
+            "page_size": 20,
+            "max_pages": 10,
+            "page_start": 0,
+        }
+        config = SourceConfig.from_dict(data)
+        assert config.pagination_type == "page_num"
+        assert config.pagination_param == "page"
+        assert config.page_size == 20
+        assert config.max_pages == 10
+        assert config.page_start == 0
+
+        result = config.to_dict()
+        assert result["pagination_type"] == "page_num"
+        assert result["pagination_param"] == "page"
+        assert result["page_size"] == 20
+        assert result["max_pages"] == 10
+        assert result["page_start"] == 0
+
+    def test_cursor_fields_round_trip(self):
+        """Test from_dict/to_dict round-trip for cursor pagination fields."""
+        data = {
+            "type": "api",
+            "url": "https://api.example.com/jobs",
+            "fields": {"title": "title", "url": "url"},
+            "pagination_type": "cursor",
+            "pagination_param": "pageToken",
+            "cursor_response_path": "meta.nextPageToken",
+            "cursor_send_in": "query",
+        }
+        config = SourceConfig.from_dict(data)
+        assert config.cursor_response_path == "meta.nextPageToken"
+        assert config.cursor_send_in == "query"
+
+        result = config.to_dict()
+        assert result["cursor_response_path"] == "meta.nextPageToken"
+        assert result["cursor_send_in"] == "query"
+
+    def test_embedded_json_selector_round_trip(self):
+        """Test from_dict/to_dict round-trip for embedded_json_selector."""
+        data = {
+            "type": "html",
+            "url": "https://example.com/jobs",
+            "fields": {"title": "title", "url": "url"},
+            "job_selector": ".job",
+            "embedded_json_selector": "div.hidden-json",
+            "pagination_type": "page_num",
+            "pagination_param": "page",
+        }
+        config = SourceConfig.from_dict(data)
+        assert config.embedded_json_selector == "div.hidden-json"
+        result = config.to_dict()
+        assert result["embedded_json_selector"] == "div.hidden-json"
+
+    def test_invalid_pagination_type_raises(self):
+        """Invalid pagination_type should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="invalid",
+        )
+        with pytest.raises(ValueError, match="Invalid pagination_type"):
+            config.validate()
+
+    def test_page_num_without_param_raises(self):
+        """page_num without pagination_param should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="page_num",
+            pagination_param="",
+        )
+        with pytest.raises(ValueError, match="pagination_param is required"):
+            config.validate()
+
+    def test_offset_without_param_raises(self):
+        """offset without pagination_param should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="offset",
+            pagination_param="",
+            page_size=20,
+        )
+        with pytest.raises(ValueError, match="pagination_param is required"):
+            config.validate()
+
+    def test_cursor_without_param_raises(self):
+        """cursor without pagination_param should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="cursor",
+            pagination_param="",
+            cursor_response_path="next",
+        )
+        with pytest.raises(ValueError, match="pagination_param is required"):
+            config.validate()
+
+    def test_cursor_without_response_path_raises(self):
+        """cursor without cursor_response_path should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="cursor",
+            pagination_param="pageToken",
+            cursor_response_path="",
+        )
+        with pytest.raises(ValueError, match="cursor_response_path is required"):
+            config.validate()
+
+    def test_offset_requires_positive_page_size(self):
+        """offset with page_size=0 should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="offset",
+            pagination_param="start",
+            page_size=0,
+        )
+        with pytest.raises(ValueError, match="page_size must be greater than 0"):
+            config.validate()
+
+    def test_url_template_offset_requires_positive_page_size(self):
+        """url_template with {offset} and page_size=0 should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs?skip={offset}",
+            fields={"title": "title", "url": "url"},
+            pagination_type="url_template",
+            page_size=0,
+        )
+        with pytest.raises(ValueError, match="page_size must be greater than 0"):
+            config.validate()
+
+    def test_url_template_without_placeholder_raises(self):
+        """url_template without {page} or {offset} in URL should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="url_template",
+        )
+        with pytest.raises(ValueError, match="must contain .page. or .offset. placeholder"):
+            config.validate()
+
+    def test_pagination_unsupported_source_type_raises(self):
+        """pagination_type on unsupported source type (rss) should raise ValueError."""
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/feed.xml",
+            fields={"title": "title", "url": "link"},
+            pagination_type="page_num",
+            pagination_param="page",
+        )
+        with pytest.raises(ValueError, match="not supported for source type"):
+            config.validate()
+
+    def test_invalid_cursor_send_in_raises(self):
+        """Invalid cursor_send_in should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="cursor",
+            pagination_param="token",
+            cursor_response_path="next",
+            cursor_send_in="header",
+        )
+        with pytest.raises(ValueError, match="Invalid cursor_send_in"):
+            config.validate()
+
+    def test_default_values_not_emitted_in_to_dict(self):
+        """to_dict should not emit default values for pagination fields."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+        )
+        result = config.to_dict()
+        assert "pagination_type" not in result
+        assert "pagination_param" not in result
+        assert "page_size" not in result
+        assert "max_pages" not in result
+        assert "page_start" not in result
+        assert "cursor_response_path" not in result
+        assert "cursor_send_in" not in result
+        assert "embedded_json_selector" not in result
+
+
+class TestPageNumPagination:
+    """Test page_num pagination type."""
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_basic_two_page_fetch(self, mock_get, _mock_delay):
+        """Test basic 2-page fetch with correct ?page=N URLs."""
+        page1 = Mock()
+        page1.json.return_value = {"jobs": [{"title": "Job A", "link": "/job/a"}]}
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = {"jobs": [{"title": "Job B", "link": "/job/b"}]}
+        page2.raise_for_status = Mock()
+
+        page3 = Mock()
+        page3.json.return_value = {"jobs": []}
+        page3.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2, page3]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="page_num",
+            pagination_param="page",
+            page_size=1,
+            page_start=1,
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 2
+        # Verify correct page param values
+        assert "page=1" in mock_get.call_args_list[0][0][0]
+        assert "page=2" in mock_get.call_args_list[1][0][0]
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_stops_on_empty_page(self, mock_get, _mock_delay):
+        """Pagination should stop when an empty page is returned."""
+        page1 = Mock()
+        page1.json.return_value = {"jobs": [{"title": "Job", "link": "/job/1"}]}
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = {"jobs": []}
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="page_num",
+            pagination_param="page",
+            page_start=1,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert mock_get.call_count == 2
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_respects_page_start_zero(self, mock_get, _mock_delay):
+        """page_start=0 should start page numbering from 0."""
+        page1 = Mock()
+        page1.json.return_value = {"jobs": [{"title": "Job", "link": "/j"}]}
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = {"jobs": []}
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="page_num",
+            pagination_param="page",
+            page_start=0,
+        )
+        GenericScraper(config).scrape()
+
+        assert "page=0" in mock_get.call_args_list[0][0][0]
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    @patch("job_finder.scrapers.generic_scraper.logger")
+    def test_stops_at_max_pages_with_warning(self, mock_logger, mock_get, _mock_delay):
+        """Should stop at max_pages and log a warning."""
+        page = Mock()
+        page.json.return_value = {"jobs": [{"title": "Job", "link": "/j"}]}
+        page.raise_for_status = Mock()
+        mock_get.side_effect = [page] * 3
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="page_num",
+            pagination_param="page",
+            page_size=1,
+            max_pages=3,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 3
+        assert mock_get.call_count == 3
+        mock_logger.warning.assert_called()
+
+
+class TestOffsetPagination:
+    """Test offset pagination type."""
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_offset_params(self, mock_get, _mock_delay):
+        """Verify ?start=0 and ?start=20 with page_size=20."""
+        page1 = Mock()
+        page1.json.return_value = [{"title": f"Job {i}", "link": f"/j/{i}"} for i in range(20)]
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = [{"title": f"Job {i}", "link": f"/j/{i}"} for i in range(20, 30)]
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="offset",
+            pagination_param="start",
+            page_size=20,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 30
+        assert "start=0" in mock_get.call_args_list[0][0][0]
+        assert "start=20" in mock_get.call_args_list[1][0][0]
+        # page2 had only 10 items < page_size=20, so pagination stopped
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_stops_when_items_less_than_page_size(self, mock_get, _mock_delay):
+        """Pagination should stop when items < page_size."""
+        page = Mock()
+        page.json.return_value = [{"title": "Only", "link": "/j/1"}]
+        page.raise_for_status = Mock()
+        mock_get.side_effect = [page]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="offset",
+            pagination_param="start",
+            page_size=20,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert mock_get.call_count == 1
+
+
+class TestUrlTemplatePagination:
+    """Test url_template pagination type."""
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_page_replacement_in_url_path(self, mock_get, _mock_delay):
+        """{page} should be replaced in URL path."""
+        page1 = Mock()
+        page1.json.return_value = [{"title": "Job A", "link": "/j/a"}]
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = []
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://example.com/jobs/{page}/",
+            fields={"title": "title", "url": "link"},
+            pagination_type="url_template",
+            page_size=10,
+            page_start=1,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert "/jobs/1/" in mock_get.call_args_list[0][0][0]
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_offset_replacement_in_url(self, mock_get, _mock_delay):
+        """{offset} should be replaced with page_num * page_size."""
+        page1 = Mock()
+        page1.json.return_value = [{"title": f"Job {i}", "link": f"/j/{i}"} for i in range(10)]
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = []
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://example.com/jobs?skip={offset}&limit=10",
+            fields={"title": "title", "url": "link"},
+            pagination_type="url_template",
+            page_size=10,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 10
+        assert "skip=0" in mock_get.call_args_list[0][0][0]
+        assert "skip=10" in mock_get.call_args_list[1][0][0]
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.get_renderer")
+    def test_works_with_playwright_renderer(self, mock_get_renderer, _mock_delay):
+        """url_template should work with requires_js=True."""
+        renderer = Mock()
+        page1_html = """
+        <html><body>
+          <div class="job"><span class="t">JS Job</span><a href="/j/1">Apply</a></div>
+        </body></html>
+        """
+        page2_html = "<html><body></body></html>"
+        renderer.render.side_effect = [
+            RenderResult(
+                final_url="u",
+                status="ok",
+                html=page1_html,
+                duration_ms=100,
+                request_count=1,
+                console_logs=[],
+                errors=[],
+            ),
+            RenderResult(
+                final_url="u",
+                status="ok",
+                html=page2_html,
+                duration_ms=100,
+                request_count=1,
+                console_logs=[],
+                errors=[],
+            ),
+        ]
+        mock_get_renderer.return_value = renderer
+
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/jobs/{page}/",
+            job_selector=".job",
+            fields={"title": ".t", "url": "a@href"},
+            pagination_type="url_template",
+            page_size=0,  # disable stop-on-undercount so we hit page 2
+            page_start=1,
+            requires_js=True,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert jobs[0]["title"] == "JS Job"
+        assert renderer.render.call_count == 2
+
+
+class TestCursorPagination:
+    """Test cursor-based pagination type."""
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_cursor_injected_in_post_body(self, mock_post, _mock_delay):
+        """POST with cursor should inject cursor in body."""
+        page1 = Mock()
+        page1.json.return_value = {
+            "jobs": [{"title": "A", "link": "/a"}],
+            "meta": {"nextPageToken": "abc123"},
+        }
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = {
+            "jobs": [{"title": "B", "link": "/b"}],
+            "meta": {"nextPageToken": ""},
+        }
+        page2.raise_for_status = Mock()
+
+        mock_post.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            method="POST",
+            post_body={"filter": "US"},
+            fields={"title": "title", "url": "link"},
+            pagination_type="cursor",
+            pagination_param="pageToken",
+            cursor_response_path="meta.nextPageToken",
+            cursor_send_in="body",
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 2
+        # First call should NOT have pageToken in body
+        first_body = mock_post.call_args_list[0].kwargs["json"]
+        assert "pageToken" not in first_body
+        # Second call should have pageToken=abc123
+        second_body = mock_post.call_args_list[1].kwargs["json"]
+        assert second_body["pageToken"] == "abc123"
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_stops_when_no_cursor_in_response(self, mock_post, _mock_delay):
+        """Pagination should stop when cursor is missing/empty."""
+        page = Mock()
+        page.json.return_value = {
+            "jobs": [{"title": "Job", "link": "/j"}],
+            "meta": {},
+        }
+        page.raise_for_status = Mock()
+        mock_post.side_effect = [page]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            method="POST",
+            fields={"title": "title", "url": "link"},
+            pagination_type="cursor",
+            pagination_param="pageToken",
+            cursor_response_path="meta.nextPageToken",
+            page_size=0,
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert mock_post.call_count == 1
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_cursor_send_in_query(self, mock_get, _mock_delay):
+        """cursor_send_in=query should append cursor as query param."""
+        page1 = Mock()
+        page1.json.return_value = {
+            "jobs": [{"title": "A", "link": "/a"}],
+            "next": "cursor_xyz",
+        }
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = {"jobs": [], "next": ""}
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            fields={"title": "title", "url": "link"},
+            pagination_type="cursor",
+            pagination_param="cursor",
+            cursor_response_path="next",
+            cursor_send_in="query",
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        # Second call should have cursor=cursor_xyz in URL
+        assert "cursor=cursor_xyz" in mock_get.call_args_list[1][0][0]
+
+    @patch("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", return_value=0)
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_cursor_with_bearer_auth(self, mock_post, _mock_delay):
+        """Cursor pagination should work with bearer auth."""
+        page = Mock()
+        page.json.return_value = {"jobs": [{"title": "Job", "link": "/j"}], "next": ""}
+        page.raise_for_status = Mock()
+        mock_post.side_effect = [page]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            response_path="jobs",
+            method="POST",
+            fields={"title": "title", "url": "link"},
+            pagination_type="cursor",
+            pagination_param="pageToken",
+            cursor_response_path="next",
+            api_key="bearer_secret",
+            auth_type="bearer",
+        )
+        GenericScraper(config).scrape()
+
+        headers = mock_post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer bearer_secret"
+
+
+class TestEmbeddedJson:
+    """Test embedded JSON extraction from HTML sources."""
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_basic_extraction_from_hidden_div(self, mock_get):
+        """Extract JSON from hidden div elements."""
+        mock_response = Mock()
+        mock_response.text = """
+        <html><body>
+          <div class="job-data" style="display:none">
+            {"title": "Engineer", "link": "/job/1", "location": "Remote"}
+          </div>
+          <div class="job-data" style="display:none">
+            {"title": "Designer", "link": "/job/2", "location": "NYC"}
+          </div>
+        </body></html>
+        """
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/jobs",
+            job_selector=".job-data",
+            fields={"title": "title", "url": "link", "location": "location"},
+            embedded_json_selector=".job-data",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 2
+        assert jobs[0]["title"] == "Engineer"
+        assert jobs[0]["location"] == "Remote"
+        assert jobs[1]["title"] == "Designer"
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_uses_response_path_to_navigate_wrapper(self, mock_get):
+        """embedded_json with response_path should navigate wrapper."""
+        mock_response = Mock()
+        mock_response.text = """
+        <html><body>
+          <script class="json-data">
+            {"results": [{"title": "Job 1", "link": "/j/1"}, {"title": "Job 2", "link": "/j/2"}]}
+          </script>
+        </body></html>
+        """
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/jobs",
+            job_selector=".placeholder",
+            fields={"title": "title", "url": "link"},
+            response_path="results",
+            embedded_json_selector="script.json-data",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 2
+        assert jobs[0]["title"] == "Job 1"
+        assert jobs[1]["title"] == "Job 2"
+
+    def test_get_value_routes_dict_items_to_dot_access(self):
+        """_get_value should use _dot_access for dict items even with type=html."""
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/jobs",
+            job_selector=".job",
+            fields={"title": "title", "url": "url"},
+        )
+        scraper = GenericScraper(config)
+
+        # Dict item (from embedded JSON) should use dot access
+        item = {"title": "Test Job", "nested": {"url": "/job/1"}}
+        assert scraper._get_value(item, "title") == "Test Job"
+        assert scraper._get_value(item, "nested.url") == "/job/1"
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_invalid_json_elements_skipped(self, mock_get):
+        """Non-JSON elements should be skipped gracefully."""
+        mock_response = Mock()
+        mock_response.text = """
+        <html><body>
+          <div class="data">not valid json</div>
+          <div class="data">{"title": "Valid", "link": "/j/1"}</div>
+          <div class="data"></div>
+        </body></html>
+        """
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/jobs",
+            job_selector=".data",
+            fields={"title": "title", "url": "link"},
+            embedded_json_selector=".data",
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 1
+        assert jobs[0]["title"] == "Valid"
+
+
+class TestPaginationBackwardCompat:
+    """Test backward compatibility with existing non-paginated configs."""
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_config_without_pagination_type_does_single_fetch(self, mock_get):
+        """Config without pagination_type still does single fetch."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {"title": "Job", "url": "https://example.com/j", "posted_date": "2025-01-01"}
+        ]
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url", "posted_date": "posted_date"},
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert mock_get.call_count == 1
+
+    @patch("job_finder.scrapers.generic_scraper.requests.post")
+    def test_existing_workday_pagination_still_works(self, mock_post):
+        """Existing Workday offset/limit (non-pagination_type) path should still work."""
+        first = Mock()
+        first.json.return_value = {
+            "jobPostings": [{"title": "A", "externalPath": "j/1", "postedOn": "2024-01-01"}]
+        }
+        first.raise_for_status = Mock()
+
+        second = Mock()
+        second.json.return_value = {"jobPostings": []}
+        second.raise_for_status = Mock()
+
+        mock_post.side_effect = [first, second]
+
+        config = SourceConfig(
+            type="api",
+            url="https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs",
+            response_path="jobPostings",
+            method="POST",
+            post_body={"limit": 1, "offset": 0},
+            fields={"title": "title", "url": "externalPath", "posted_date": "postedOn"},
+        )
+        jobs = GenericScraper(config).scrape()
+
+        assert len(jobs) == 1
+        assert mock_post.call_count == 2

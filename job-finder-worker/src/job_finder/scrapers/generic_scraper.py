@@ -272,7 +272,9 @@ class GenericScraper:
                 logger.info(f"Scraping {self.config.type} source: {self.config.url}")
 
             # Fetch data based on source type
-            if self.config.type == "api":
+            if self.config.pagination_type:
+                data = self._fetch_paginated()
+            elif self.config.type == "api":
                 data = self._fetch_json()
             elif self.config.type == "rss":
                 data = self._fetch_rss()
@@ -571,6 +573,145 @@ class GenericScraper:
             List of BeautifulSoup elements matching job_selector
         """
         url = self._get_effective_url()
+        return self._fetch_html_page(url)
+
+    # ── Generic pagination engine ──────────────────────────────────────
+
+    def _fetch_paginated(self) -> List[Any]:
+        """
+        Fetch multiple pages from a paginated source.
+
+        Dispatches to the appropriate per-page fetcher based on config.type
+        and assembles results across pages. Stops on: empty page, items <
+        page_size (when page_size > 0), no cursor token, or max_pages reached.
+        """
+        results: List[Any] = []
+        cursor: Optional[str] = None
+        delay = get_fetch_delay_seconds()
+        hit_max_pages = True
+
+        for page_num in range(self.config.max_pages):
+            # Build URL for this page
+            if self.config.pagination_type == "cursor" and page_num > 0:
+                url = self._build_cursor_url(cursor)
+            else:
+                url = self._build_page_url(page_num)
+
+            # Fetch one page
+            items, raw_response = self._fetch_single_page(url, cursor if page_num > 0 else None)
+
+            if not items:
+                hit_max_pages = False
+                break
+
+            results.extend(items)
+
+            # Stop if fewer items than page_size (last page)
+            if self.config.page_size and len(items) < self.config.page_size:
+                hit_max_pages = False
+                break
+
+            # For cursor pagination, extract next cursor
+            if self.config.pagination_type == "cursor":
+                cursor = self._extract_cursor(raw_response)
+                if not cursor:
+                    hit_max_pages = False
+                    break
+
+            # Rate-limit between pages
+            if delay > 0 and page_num < self.config.max_pages - 1:
+                time.sleep(delay)
+
+        if hit_max_pages and results:
+            logger.warning(
+                "Pagination hit max_pages=%s for %s; results may be truncated",
+                self.config.max_pages,
+                self.config.url,
+            )
+        return results
+
+    def _build_page_url(self, page_num: int) -> str:
+        """Build URL for a numbered/offset page."""
+        base_url = self._get_effective_url()
+
+        if self.config.pagination_type == "url_template":
+            url = base_url.replace("{page}", str(page_num + self.config.page_start))
+            url = url.replace("{offset}", str(page_num * self.config.page_size))
+            return url
+
+        if self.config.pagination_type == "page_num":
+            param_value = str(page_num + self.config.page_start)
+        elif self.config.pagination_type == "offset":
+            param_value = str(page_num * self.config.page_size)
+        else:
+            return base_url
+
+        parsed = urlparse(base_url)
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        params[self.config.pagination_param] = [param_value]
+        new_query = urlencode(params, doseq=True)
+        return urlunparse(parsed._replace(query=new_query))
+
+    def _build_cursor_url(self, cursor_token: Optional[str]) -> str:
+        """Build URL for cursor-based pagination."""
+        base_url = self._get_effective_url()
+        if self.config.cursor_send_in == "query" and cursor_token:
+            parsed = urlparse(base_url)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            params[self.config.pagination_param] = [cursor_token]
+            new_query = urlencode(params, doseq=True)
+            return urlunparse(parsed._replace(query=new_query))
+        return base_url
+
+    def _fetch_single_page(
+        self, url: str, cursor_token: Optional[str]
+    ) -> tuple[List[Any], Optional[dict]]:
+        """
+        Fetch a single page and return (items, raw_response_dict).
+
+        raw_response_dict is the parsed JSON dict for API sources (needed for
+        cursor extraction); None for HTML sources.
+        """
+        if self.config.type == "api":
+            return self._fetch_json_page(url, cursor_token)
+        elif self.config.type == "html":
+            items = self._fetch_html_page(url)
+            return items, None
+        else:
+            logger.error(f"Pagination not supported for source type: {self.config.type}")
+            return [], None
+
+    def _fetch_json_page(self, url: str, cursor_token: Optional[str]) -> tuple[List[Any], dict]:
+        """Fetch a single page from a JSON API."""
+        headers, url = self._apply_auth_and_headers(url)
+
+        if self.config.method.upper() == "POST":
+            headers["Content-Type"] = "application/json"
+            body = dict(self.config.post_body or {})
+            if cursor_token and self.config.cursor_send_in == "body":
+                body[self.config.pagination_param] = cursor_token
+            response = requests.post(url, headers=headers, json=body, timeout=30)
+        else:
+            response = requests.get(url, headers=headers, timeout=30)
+
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            content = ""
+            try:
+                content = response.text[:5000]
+            except Exception:
+                pass
+            raise classify_http_error(
+                self.config.url, response.status_code, response.reason, content, is_api=True
+            ) from e
+
+        data = response.json()
+        items = self._navigate_path(data, self.config.response_path)
+        return items, data
+
+    def _fetch_html_page(self, url: str) -> List[Any]:
+        """Fetch a single page from an HTML source."""
         headers = {**DEFAULT_HEADERS, **self.config.headers}
 
         if self.config.requires_js:
@@ -578,7 +719,11 @@ class GenericScraper:
                 result = get_renderer().render(
                     RenderRequest(
                         url=url,
-                        wait_for_selector=self.config.render_wait_for or self.config.job_selector,
+                        wait_for_selector=(
+                            self.config.render_wait_for
+                            or self.config.embedded_json_selector
+                            or self.config.job_selector
+                        ),
                         wait_timeout_ms=self.config.render_timeout_ms,
                         block_resources=True,
                         headers=headers,
@@ -586,7 +731,6 @@ class GenericScraper:
                 )
                 soup = BeautifulSoup(result.html, "html.parser")
             except RuntimeError as exc:
-                # Playwright render errors - analyze error message for classification
                 error_msg = str(exc).lower()
                 if "timeout" in error_msg:
                     raise ScrapeTransientError(
@@ -603,18 +747,55 @@ class GenericScraper:
                 try:
                     content = response.text[:5000]
                 except Exception:
-                    pass  # Best-effort retrieval; continue with empty content if this fails
+                    pass
                 raise classify_http_error(
                     self.config.url, response.status_code, response.reason, content, is_api=False
                 ) from e
-
             soup = BeautifulSoup(response.text, "html.parser")
 
-        if not self.config.job_selector:
-            logger.error("job_selector is required for HTML sources")
-            return []
+        if self.config.embedded_json_selector:
+            return self._extract_embedded_json(soup)
 
-        return soup.select(self.config.job_selector)
+        if self.config.job_selector:
+            return soup.select(self.config.job_selector)
+
+        return []
+
+    def _extract_cursor(self, response_data: Optional[dict]) -> Optional[str]:
+        """Extract next-page cursor from a JSON response using cursor_response_path."""
+        if not response_data or not self.config.cursor_response_path:
+            return None
+        value = self._dot_access(response_data, self.config.cursor_response_path)
+        if value is not None and str(value).strip():
+            return str(value)
+        return None
+
+    def _extract_embedded_json(self, soup: BeautifulSoup) -> List[Dict]:
+        """
+        Extract job data from embedded JSON elements in HTML.
+
+        Selects elements via embedded_json_selector, parses each element's
+        text as JSON. If response_path is set, navigates it within each element.
+        """
+        elements = soup.select(self.config.embedded_json_selector)
+        results: List[Dict] = []
+        for el in elements:
+            text = el.get_text(strip=True)
+            if not text:
+                continue
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                logger.debug("Skipping non-JSON element: %.100s", text)
+                continue
+            if self.config.response_path:
+                items = self._navigate_path(data, self.config.response_path)
+                results.extend(items)
+            elif isinstance(data, list):
+                results.extend(data)
+            elif isinstance(data, dict):
+                results.append(data)
+        return results
 
     def _enrich_from_detail(self, job: Dict[str, Any]) -> Dict[str, Any]:
         """Enrich a job by fetching its detail page.
@@ -1322,7 +1503,9 @@ class GenericScraper:
         Returns:
             Extracted value or None
         """
-        if self.config.type == "html":
+        if isinstance(item, dict):
+            return self._dot_access(item, path)
+        elif self.config.type == "html":
             return self._css_select(item, path)
         elif self.config.type == "rss":
             return self._rss_access(item, path)
