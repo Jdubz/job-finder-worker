@@ -540,6 +540,22 @@ export interface SourceConfigJson {
    * Use for remote-only job boards like RemoteOK, WeWorkRemotely, Remotive, etc.
    */
   is_remote_source?: boolean
+  /** Pagination type for multi-page sources */
+  pagination_type?: "page_num" | "offset" | "cursor" | "url_template"
+  /** Query/body param name for pagination (e.g. "page", "start", "pageToken") */
+  pagination_param?: string
+  /** Items per page (for offset calc + stop detection) */
+  page_size?: number
+  /** Safety cap on number of pages to fetch */
+  max_pages?: number
+  /** First page number (for page_num/url_template types) */
+  page_start?: number
+  /** Dot-path to next cursor in JSON response */
+  cursor_response_path?: string
+  /** Where to inject cursor value - "body" | "query" */
+  cursor_send_in?: "body" | "query"
+  /** CSS selector for elements containing embedded JSON text */
+  embedded_json_selector?: string
 }
 
 /**
