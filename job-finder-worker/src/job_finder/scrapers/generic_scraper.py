@@ -573,53 +573,7 @@ class GenericScraper:
             List of BeautifulSoup elements matching job_selector
         """
         url = self._get_effective_url()
-        headers = {**DEFAULT_HEADERS, **self.config.headers}
-
-        if self.config.requires_js:
-            try:
-                result = get_renderer().render(
-                    RenderRequest(
-                        url=url,
-                        wait_for_selector=self.config.render_wait_for or self.config.job_selector,
-                        wait_timeout_ms=self.config.render_timeout_ms,
-                        block_resources=True,
-                        headers=headers,
-                    )
-                )
-                soup = BeautifulSoup(result.html, "html.parser")
-            except RuntimeError as exc:
-                # Playwright render errors - analyze error message for classification
-                error_msg = str(exc).lower()
-                if "timeout" in error_msg:
-                    raise ScrapeTransientError(
-                        self.config.url, f"Render timeout: {exc}", status_code=None
-                    ) from exc
-                else:
-                    raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}") from exc
-        else:
-            response = requests.get(url, headers=headers, timeout=30)
-            try:
-                response.raise_for_status()
-            except requests.HTTPError as e:
-                content = ""
-                try:
-                    content = response.text[:5000]
-                except Exception:
-                    pass  # Best-effort retrieval; continue with empty content if this fails
-                raise classify_http_error(
-                    self.config.url, response.status_code, response.reason, content, is_api=False
-                ) from e
-
-            soup = BeautifulSoup(response.text, "html.parser")
-
-        if self.config.embedded_json_selector:
-            return self._extract_embedded_json(soup)
-
-        if not self.config.job_selector:
-            logger.error("job_selector is required for HTML sources")
-            return []
-
-        return soup.select(self.config.job_selector)
+        return self._fetch_html_page(url)
 
     # ── Generic pagination engine ──────────────────────────────────────
 
@@ -634,6 +588,7 @@ class GenericScraper:
         results: List[Any] = []
         cursor: Optional[str] = None
         delay = get_fetch_delay_seconds()
+        hit_max_pages = True
 
         for page_num in range(self.config.max_pages):
             # Build URL for this page
@@ -646,25 +601,28 @@ class GenericScraper:
             items, raw_response = self._fetch_single_page(url, cursor if page_num > 0 else None)
 
             if not items:
+                hit_max_pages = False
                 break
 
             results.extend(items)
 
             # Stop if fewer items than page_size (last page)
             if self.config.page_size and len(items) < self.config.page_size:
+                hit_max_pages = False
                 break
 
             # For cursor pagination, extract next cursor
             if self.config.pagination_type == "cursor":
                 cursor = self._extract_cursor(raw_response)
                 if not cursor:
+                    hit_max_pages = False
                     break
 
             # Rate-limit between pages
             if delay > 0 and page_num < self.config.max_pages - 1:
                 time.sleep(delay)
 
-        if results and len(results) / max(self.config.page_size, 1) >= self.config.max_pages:
+        if hit_max_pages and results:
             logger.warning(
                 "Pagination hit max_pages=%s for %s; results may be truncated",
                 self.config.max_pages,

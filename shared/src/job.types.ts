@@ -542,7 +542,7 @@ export interface SourceConfigJson {
   is_remote_source?: boolean
   /** Pagination type for multi-page sources */
   pagination_type?: "page_num" | "offset" | "cursor" | "url_template"
-  /** Query/body param name for pagination (e.g. "page", "start", "pageToken") */
+  /** Query param name for page/offset pagination (e.g. "page", "start", "pageToken") */
   pagination_param?: string
   /** Items per page (for offset calc + stop detection) */
   page_size?: number

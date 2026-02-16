@@ -274,7 +274,13 @@ class SourceConfig:
                 f"Must be one of {valid_pagination_types}"
             )
 
-        if self.pagination_type in ("page_num", "offset") and not self.pagination_param:
+        if self.pagination_type and self.type not in ("api", "html"):
+            raise ValueError(
+                f"pagination_type '{self.pagination_type}' is not supported for source type "
+                f"'{self.type}'. Only 'api' and 'html' sources support pagination"
+            )
+
+        if self.pagination_type in ("page_num", "offset", "cursor") and not self.pagination_param:
             raise ValueError(
                 f"pagination_param is required when pagination_type is '{self.pagination_type}'"
             )
@@ -282,11 +288,19 @@ class SourceConfig:
         if self.pagination_type == "cursor" and not self.cursor_response_path:
             raise ValueError("cursor_response_path is required when pagination_type is 'cursor'")
 
+        if self.pagination_type == "offset" and self.page_size <= 0:
+            raise ValueError("page_size must be greater than 0 when pagination_type is 'offset'")
+
         if self.pagination_type == "url_template":
             if "{page}" not in self.url and "{offset}" not in self.url:
                 raise ValueError(
                     "URL must contain {page} or {offset} placeholder "
                     "when pagination_type is 'url_template'"
+                )
+            if "{offset}" in self.url and self.page_size <= 0:
+                raise ValueError(
+                    "page_size must be greater than 0 when pagination_type is 'url_template' "
+                    "and URL contains an {offset} placeholder"
                 )
 
         if self.cursor_send_in not in ("body", "query"):

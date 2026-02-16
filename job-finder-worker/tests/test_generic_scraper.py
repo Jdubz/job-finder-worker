@@ -1789,6 +1789,20 @@ class TestPaginationConfigValidation:
             fields={"title": "title", "url": "url"},
             pagination_type="offset",
             pagination_param="",
+            page_size=20,
+        )
+        with pytest.raises(ValueError, match="pagination_param is required"):
+            config.validate()
+
+    def test_cursor_without_param_raises(self):
+        """cursor without pagination_param should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="cursor",
+            pagination_param="",
+            cursor_response_path="next",
         )
         with pytest.raises(ValueError, match="pagination_param is required"):
             config.validate()
@@ -1806,6 +1820,31 @@ class TestPaginationConfigValidation:
         with pytest.raises(ValueError, match="cursor_response_path is required"):
             config.validate()
 
+    def test_offset_requires_positive_page_size(self):
+        """offset with page_size=0 should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+            pagination_type="offset",
+            pagination_param="start",
+            page_size=0,
+        )
+        with pytest.raises(ValueError, match="page_size must be greater than 0"):
+            config.validate()
+
+    def test_url_template_offset_requires_positive_page_size(self):
+        """url_template with {offset} and page_size=0 should raise ValueError."""
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs?skip={offset}",
+            fields={"title": "title", "url": "url"},
+            pagination_type="url_template",
+            page_size=0,
+        )
+        with pytest.raises(ValueError, match="page_size must be greater than 0"):
+            config.validate()
+
     def test_url_template_without_placeholder_raises(self):
         """url_template without {page} or {offset} in URL should raise ValueError."""
         config = SourceConfig(
@@ -1815,6 +1854,18 @@ class TestPaginationConfigValidation:
             pagination_type="url_template",
         )
         with pytest.raises(ValueError, match="must contain .page. or .offset. placeholder"):
+            config.validate()
+
+    def test_pagination_unsupported_source_type_raises(self):
+        """pagination_type on unsupported source type (rss) should raise ValueError."""
+        config = SourceConfig(
+            type="rss",
+            url="https://example.com/feed.xml",
+            fields={"title": "title", "url": "link"},
+            pagination_type="page_num",
+            pagination_param="page",
+        )
+        with pytest.raises(ValueError, match="not supported for source type"):
             config.validate()
 
     def test_invalid_cursor_send_in_raises(self):
