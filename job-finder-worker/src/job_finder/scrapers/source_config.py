@@ -61,8 +61,7 @@ class SourceConfig:
     # Base URL for constructing full URLs from relative paths (e.g., Workday)
     base_url: str = ""
 
-    # Discovery/validation hints
-    validation_policy: str = "fail_on_empty"  # "fail_on_empty" | "allow_empty"
+    # Discovery hints
     disabled_notes: str = ""
 
     # Company extraction strategy
@@ -130,7 +129,6 @@ class SourceConfig:
             method=data.get("method", "GET"),
             post_body=data.get("post_body", {}),
             base_url=data.get("base_url", ""),
-            validation_policy=data.get("validation_policy", "fail_on_empty"),
             disabled_notes=data.get("disabled_notes", ""),
             company_extraction=data.get("company_extraction", ""),
             follow_detail=bool(data.get("follow_detail", False)),
@@ -183,8 +181,6 @@ class SourceConfig:
             result["post_body"] = self.post_body
         if self.base_url:
             result["base_url"] = self.base_url
-        if self.validation_policy:
-            result["validation_policy"] = self.validation_policy
         if self.disabled_notes:
             result["disabled_notes"] = self.disabled_notes
         if self.company_extraction:
@@ -243,12 +239,6 @@ class SourceConfig:
 
         if "title" not in self.fields or "url" not in self.fields:
             raise ValueError("fields must include at least 'title' and 'url'")
-
-        if self.validation_policy not in ("fail_on_empty", "allow_empty"):
-            raise ValueError(
-                f"Invalid validation_policy: {self.validation_policy}. "
-                "Must be 'fail_on_empty' or 'allow_empty'"
-            )
 
         if self.auth_type and self.auth_type not in ("header", "query", "bearer"):
             raise ValueError(
