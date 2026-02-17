@@ -9,10 +9,12 @@ visible page text.
 import ipaddress
 import json
 import logging
+import re
 import socket
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+import requests
 from bs4 import BeautifulSoup
 
 from job_finder.ai.agent_manager import AgentManager
@@ -121,7 +123,17 @@ class PageDataExtractor:
         has_title = bool(result.get("title"))
         has_description = bool(result.get("description"))
 
-        # If JSON-LD didn't give us title+description, try AI extraction
+        # If JSON-LD didn't work, try detecting Greenhouse embeds
+        if not has_title or not has_description:
+            embed_result = self._try_greenhouse_embed(soup, url)
+            if embed_result:
+                for key, val in embed_result.items():
+                    if not result.get(key) and val:
+                        result[key] = val
+                has_title = bool(result.get("title"))
+                has_description = bool(result.get("description"))
+
+        # If still missing title+description, try AI extraction
         if not has_title or not has_description:
             page_text = self._extract_visible_text(soup)
             if page_text:
@@ -163,6 +175,73 @@ class PageDataExtractor:
         req = RenderRequest(url=url, wait_timeout_ms=30_000)
         result = renderer.render(req)
         return result.html
+
+    def _try_greenhouse_embed(self, soup: BeautifulSoup, url: str) -> Optional[Dict[str, Any]]:
+        """Detect Greenhouse iframe embeds and fetch job data from their API.
+
+        Many companies embed Greenhouse job listings in cross-origin iframes on
+        their own careers pages. Playwright's page.content() only captures the
+        main frame, so the job data is invisible. This method detects the embed
+        and fetches directly from Greenhouse's public API.
+        """
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+
+        # Check for gh_jid parameter (Greenhouse job ID in embed URLs)
+        gh_jid_list = params.get("gh_jid")
+        if not gh_jid_list or not gh_jid_list[0]:
+            return None
+
+        job_id = gh_jid_list[0]
+
+        # Find board token from Greenhouse embed script: ?for={board_token}
+        board_token = None
+        for script in soup.find_all("script", src=re.compile("greenhouse.io")):
+            match = re.search(r"[?&]for=([^&#]+)", script["src"])
+            if match:
+                board_token = match.group(1)
+                break
+
+        # Also try iframe src: greenhouse.io/{board_token}/...
+        if not board_token:
+            for iframe in soup.find_all("iframe", src=re.compile("greenhouse.io")):
+                match = re.search(r"greenhouse\.io/(?:embed/)?([^/?#]+)", iframe["src"])
+                if match:
+                    board_token = match.group(1)
+                    break
+
+        if not board_token:
+            logger.debug("gh_jid=%s found but no Greenhouse board token in page", job_id)
+            return None
+
+        # Fetch single job from Greenhouse public API
+        api_url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}"
+        try:
+            resp = requests.get(api_url, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("Greenhouse API request failed for %s: %s", api_url, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning("Greenhouse API returned invalid JSON for %s: %s", api_url, e)
+            return None
+
+        location = ""
+        loc_obj = data.get("location")
+        if isinstance(loc_obj, dict):
+            location = loc_obj.get("name", "")
+        elif isinstance(loc_obj, str):
+            location = loc_obj
+
+        raw_company = data.get("company_name", "")
+        return {
+            "title": data.get("title", ""),
+            "description": data.get("content", ""),
+            "company": sanitize_html_description(raw_company) if raw_company else "",
+            "location": sanitize_html_description(location) if location else "",
+            "posted_date": data.get("updated_at", ""),
+        }
 
     def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> None:
         """Extract job data from JSON-LD JobPosting schema.
