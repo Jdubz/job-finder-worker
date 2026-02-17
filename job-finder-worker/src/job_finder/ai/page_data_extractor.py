@@ -123,7 +123,7 @@ class PageDataExtractor:
         has_title = bool(result.get("title"))
         has_description = bool(result.get("description"))
 
-        # If JSON-LD didn't work, try detecting ATS embeds (e.g. Greenhouse iframes)
+        # If JSON-LD didn't work, try detecting Greenhouse embeds
         if not has_title or not has_description:
             embed_result = self._try_greenhouse_embed(soup, url)
             if embed_result:
@@ -196,19 +196,16 @@ class PageDataExtractor:
 
         # Find board token from Greenhouse embed script: ?for={board_token}
         board_token = None
-        for script in soup.find_all("script", src=True):
-            src = script.get("src", "")
-            if "greenhouse.io" in src:
-                match = re.search(r"[?&]for=([^&#]+)", src)
-                if match:
-                    board_token = match.group(1)
-                    break
+        for script in soup.find_all("script", src=re.compile("greenhouse.io")):
+            match = re.search(r"[?&]for=([^&#]+)", script["src"])
+            if match:
+                board_token = match.group(1)
+                break
 
         # Also try iframe src: greenhouse.io/{board_token}/...
         if not board_token:
-            for iframe in soup.find_all("iframe"):
-                src = iframe.get("src", "")
-                match = re.search(r"greenhouse\.io/(?:embed/)?([^/?#]+)", src)
+            for iframe in soup.find_all("iframe", src=re.compile("greenhouse.io")):
+                match = re.search(r"greenhouse\.io/(?:embed/)?([^/?#]+)", iframe["src"])
                 if match:
                     board_token = match.group(1)
                     break
@@ -223,20 +220,26 @@ class PageDataExtractor:
             resp = requests.get(api_url, timeout=15)
             resp.raise_for_status()
             data = resp.json()
-        except Exception as e:
-            logger.warning("Greenhouse API fetch failed for %s: %s", api_url, e)
+        except requests.exceptions.RequestException as e:
+            logger.warning("Greenhouse API request failed for %s: %s", api_url, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning("Greenhouse API returned invalid JSON for %s: %s", api_url, e)
             return None
 
         location = ""
         loc_obj = data.get("location")
         if isinstance(loc_obj, dict):
             location = loc_obj.get("name", "")
+        elif isinstance(loc_obj, str):
+            location = loc_obj
 
+        raw_company = data.get("company_name", "")
         return {
             "title": data.get("title", ""),
             "description": data.get("content", ""),
-            "company": data.get("company_name", ""),
-            "location": location,
+            "company": sanitize_html_description(raw_company) if raw_company else "",
+            "location": sanitize_html_description(location) if location else "",
             "posted_date": data.get("updated_at", ""),
         }
 

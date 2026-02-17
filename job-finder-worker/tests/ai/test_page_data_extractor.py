@@ -411,12 +411,52 @@ class TestGreenhouseEmbed:
 
     @patch("job_finder.ai.page_data_extractor.requests.get")
     def test_returns_none_when_api_fails(self, mock_get):
+        from requests.exceptions import ConnectionError as ReqConnectionError
+
         extractor, agent = _make_extractor()
         html = _greenhouse_embed_html("twochairs")
         url = "https://www.twochairs.com/careers?gh_jid=999"
 
-        mock_get.side_effect = Exception("Connection error")
+        mock_get.side_effect = ReqConnectionError("Connection error")
         agent.execute.side_effect = Exception("AI also failed")
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            result = extractor.extract(url)
+
+        assert result is None
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_returns_none_when_api_returns_404(self, mock_get):
+        """Verify raise_for_status() catches non-2xx responses."""
+        from requests.exceptions import HTTPError
+
+        extractor, agent = _make_extractor()
+        html = _greenhouse_embed_html("twochairs")
+        url = "https://www.twochairs.com/careers?gh_jid=999"
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = HTTPError("404 Not Found")
+        mock_get.return_value = mock_resp
+        agent.execute.side_effect = Exception("AI also failed")
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            result = extractor.extract(url)
+
+        assert result is None
+        mock_resp.raise_for_status.assert_called_once()
+
+    def test_returns_none_when_gh_jid_but_no_greenhouse_elements(self):
+        """gh_jid in URL but page has no Greenhouse script or iframe."""
+        extractor, agent = _make_extractor()
+        html = "<html><body><p>Regular page content</p></body></html>"
+        url = "https://example.com/careers?gh_jid=12345"
+        agent.execute.side_effect = Exception("AI failed")
 
         with (
             patch.object(extractor, "_render_page", return_value=html),
