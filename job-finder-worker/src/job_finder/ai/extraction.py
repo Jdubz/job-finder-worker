@@ -266,7 +266,7 @@ class JobExtractor:
         result = self.agent_manager.execute(
             task_type="extraction",
             prompt=prompt,
-            max_tokens=500,
+            max_tokens=2048,
             temperature=0.1,  # Low temperature for consistent extraction
         )
         return self._parse_response(result.text)
