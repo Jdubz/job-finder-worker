@@ -75,6 +75,10 @@ def extract_json_from_response(response: Optional[str], max_depth: int = 8) -> s
         content = cleaned[3:].strip()
         if content.startswith("json"):
             content = content[4:].strip()
+        # Strip a trailing closing fence if present (e.g. "true\n```")
+        fence_pos = content.rfind("```")
+        if fence_pos != -1:
+            content = content[:fence_pos].rstrip()
         if content:
             return content
 

@@ -141,16 +141,15 @@ class GeminiProvider(AIProvider):
                 if candidates and len(candidates) > 0:
                     finish_reason = getattr(candidates[0], "finish_reason", None)
                     reason_name = getattr(finish_reason, "name", str(finish_reason))
-                    if reason_name in ("MAX_TOKENS", "STOP"):
-                        pass  # STOP is normal, MAX_TOKENS we'll log below
+                    # STOP is a normal completion; MAX_TOKENS indicates truncation.
                     if reason_name == "MAX_TOKENS":
                         logger.warning(
                             "Gemini response truncated (finish_reason=MAX_TOKENS, "
                             "max_output_tokens=%d). Increase max_tokens.",
                             max_tokens,
                         )
-            except Exception:
-                pass  # Don't let finish_reason check break the response flow
+            except Exception as e:
+                logger.warning("Could not check Gemini finish_reason: %s", e)
 
             # The .text property is the idiomatic way to get text from response.
             # It raises ValueError if the response is blocked or empty.
