@@ -146,15 +146,27 @@ class TestSourceConfig:
             config.validate()
 
     def test_validate_html_missing_selector(self):
-        """Test validation fails for HTML without job_selector."""
+        """Test validation fails for HTML without job_selector or embedded_json_selector."""
         config = SourceConfig(
             type="html",
             url="https://example.com/careers",
             fields={"title": ".title", "url": "a@href"},
             job_selector="",
         )
-        with pytest.raises(ValueError, match="job_selector is required"):
+        with pytest.raises(ValueError, match="job_selector or embedded_json_selector"):
             config.validate()
+
+    def test_validate_html_embedded_json_no_job_selector(self):
+        """Test validation passes for HTML with embedded_json_selector but no job_selector."""
+        config = SourceConfig(
+            type="html",
+            url="https://example.com/jobs",
+            fields={"title": "name", "url": "url"},
+            job_selector="",
+            embedded_json_selector='script[type="application/ld+json"]',
+            response_path="@graph.1.itemListElement",
+        )
+        config.validate()  # Should not raise
 
     def test_validate_requires_js_only_for_html(self):
         """requires_js should only be allowed on HTML sources."""
