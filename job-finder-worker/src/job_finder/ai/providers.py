@@ -121,14 +121,36 @@ class GeminiProvider(AIProvider):
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
         """Generate a response using Gemini API."""
         try:
+            from google.genai import types
+
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config={
                     "max_output_tokens": max_tokens,
                     "temperature": temperature,
+                    # Disable thinking tokens for models that support it (e.g. 2.5 Flash).
+                    # Thinking tokens count against max_output_tokens, causing truncated
+                    # responses for structured-output tasks like JSON extraction.
+                    "thinking_config": types.ThinkingConfig(thinking_budget=0),
                 },
             )
+            # Check for truncation (finish_reason=MAX_TOKENS) before returning
+            try:
+                candidates = getattr(response, "candidates", None)
+                if candidates and len(candidates) > 0:
+                    finish_reason = getattr(candidates[0], "finish_reason", None)
+                    reason_name = getattr(finish_reason, "name", str(finish_reason))
+                    # STOP is a normal completion; MAX_TOKENS indicates truncation.
+                    if reason_name == "MAX_TOKENS":
+                        logger.warning(
+                            "Gemini response truncated (finish_reason=MAX_TOKENS, "
+                            "max_output_tokens=%d). Increase max_tokens.",
+                            max_tokens,
+                        )
+            except Exception as e:
+                logger.warning("Could not check Gemini finish_reason: %s", e)
+
             # The .text property is the idiomatic way to get text from response.
             # It raises ValueError if the response is blocked or empty.
             try:

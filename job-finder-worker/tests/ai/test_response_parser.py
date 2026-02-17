@@ -84,6 +84,30 @@ class TestExtractJsonFromResponse:
         result = extract_json_from_response(response)
         assert "key" in result
 
+    def test_generic_fence_truncated_no_braces(self):
+        """Test generic ``` block truncated before any braces appear."""
+        response = '```\n"seniority": "senior", "work'
+        result = extract_json_from_response(response)
+        assert result == '"seniority": "senior", "work'
+
+    def test_generic_fence_truncated_with_json_tag(self):
+        """Test generic ```json block truncated before braces."""
+        response = '```json\n"key": "val'
+        result = extract_json_from_response(response)
+        assert result == '"key": "val'
+
+    def test_generic_fence_with_trailing_close(self):
+        """Test generic ``` block with content but no JSON braces and closing fence."""
+        response = "```\ntrue\n```"
+        result = extract_json_from_response(response)
+        assert result == "true"
+
+    def test_generic_fence_json_tag_with_trailing_close(self):
+        """Test ```json block with non-brace content and closing fence."""
+        response = "```json\n42\n```"
+        result = extract_json_from_response(response)
+        assert result == "42"
+
     def test_envelope_object_with_embedded_json_block(self):
         """Handle envelopes like {"type":"result","result":"```json ...```"}."""
         response = (

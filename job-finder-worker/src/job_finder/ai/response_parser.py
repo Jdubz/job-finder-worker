@@ -51,6 +51,11 @@ def extract_json_from_response(response: Optional[str], max_depth: int = 8) -> s
         end = cleaned.find("```", start)
         if end != -1 and end > start:
             return cleaned[start:end].strip()
+        # No closing ``` — response was likely truncated (e.g., max_tokens hit).
+        # Extract whatever JSON content follows the opening fence.
+        content_after_fence = cleaned[start:].strip()
+        if content_after_fence:
+            return content_after_fence
 
     # Handle generic ``` ... ``` blocks by finding JSON object or array
     if cleaned.startswith("```"):
@@ -66,6 +71,16 @@ def extract_json_from_response(response: Optional[str], max_depth: int = 8) -> s
             end = cleaned.rfind("]")
             if end > arr_start:
                 return cleaned[arr_start : end + 1]
+        # No matching braces found — truncated response, extract content after fence
+        content = cleaned[3:].strip()
+        if content.startswith("json"):
+            content = content[4:].strip()
+        # Strip a trailing closing fence if present (e.g. "true\n```")
+        fence_pos = content.rfind("```")
+        if fence_pos != -1:
+            content = content[:fence_pos].rstrip()
+        if content:
+            return content
 
     # Handle ``` blocks that don't start at the beginning
     if "```" in cleaned:
