@@ -121,12 +121,18 @@ class GeminiProvider(AIProvider):
     def generate(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
         """Generate a response using Gemini API."""
         try:
+            from google.genai import types
+
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config={
                     "max_output_tokens": max_tokens,
                     "temperature": temperature,
+                    # Disable thinking tokens for models that support it (e.g. 2.5 Flash).
+                    # Thinking tokens count against max_output_tokens, causing truncated
+                    # responses for structured-output tasks like JSON extraction.
+                    "thinking_config": types.ThinkingConfig(thinking_budget=0),
                 },
             )
             # Check for truncation (finish_reason=MAX_TOKENS) before returning
