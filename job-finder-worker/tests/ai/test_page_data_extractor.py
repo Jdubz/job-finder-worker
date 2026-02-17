@@ -319,3 +319,109 @@ class TestAIFallback:
             result = extractor.extract("https://example.com/job")
 
         assert result is None
+
+
+# ── Greenhouse embed detection ───────────────────────────────────
+
+
+def _greenhouse_embed_html(board_token="acmecorp"):
+    """Build HTML with a Greenhouse embed script tag."""
+    return f"""<html><head>
+    <script src="https://boards.greenhouse.io/embed/job_board/js?for={board_token}"></script>
+    </head><body>
+    <div id="grnhse_app"></div>
+    <p>Company marketing content</p>
+    </body></html>"""
+
+
+class TestGreenhouseEmbed:
+    """Test Greenhouse iframe/embed detection and API fetch."""
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_detects_embed_script_and_fetches_api(self, mock_get):
+        extractor, _ = _make_extractor()
+        html = _greenhouse_embed_html("twochairs")
+        url = "https://www.twochairs.com/careers?gh_jid=8298038002"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "title": "Senior Software Engineer",
+            "content": "<p>Build great things</p>",
+            "company_name": "Two Chairs",
+            "location": {"name": "Remote, United States"},
+            "updated_at": "2026-02-11T21:17:49-05:00",
+        }
+        mock_get.return_value = mock_resp
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Senior Software Engineer"
+        assert "great things" in result["description"]
+        assert result["company"] == "Two Chairs"
+        assert result["location"] == "Remote, United States"
+        mock_get.assert_called_once_with(
+            "https://boards-api.greenhouse.io/v1/boards/twochairs/jobs/8298038002",
+            timeout=15,
+        )
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_detects_greenhouse_iframe_src(self, mock_get):
+        extractor, _ = _make_extractor()
+        html = """<html><body>
+        <iframe src="https://boards.greenhouse.io/acmecorp/jobs/12345"></iframe>
+        </body></html>"""
+        url = "https://acme.com/careers?gh_jid=12345"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "title": "Engineer",
+            "content": "Description",
+            "company_name": "Acme",
+            "location": {"name": "NYC"},
+        }
+        mock_get.return_value = mock_resp
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Engineer"
+
+    def test_skips_when_no_gh_jid_param(self):
+        extractor, agent = _make_extractor()
+        html = _greenhouse_embed_html("twochairs")
+        agent.execute.side_effect = Exception("AI failed")
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            # No gh_jid param → Greenhouse detection skipped, AI fails → None
+            result = extractor.extract("https://www.twochairs.com/careers")
+
+        assert result is None
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_returns_none_when_api_fails(self, mock_get):
+        extractor, agent = _make_extractor()
+        html = _greenhouse_embed_html("twochairs")
+        url = "https://www.twochairs.com/careers?gh_jid=999"
+
+        mock_get.side_effect = Exception("Connection error")
+        agent.execute.side_effect = Exception("AI also failed")
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            result = extractor.extract(url)
+
+        assert result is None
