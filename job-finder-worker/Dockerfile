@@ -89,7 +89,9 @@ RUN chmod +x /app/entrypoint.sh && \
 
 # Make PATH include user-installed packages (node user)
 ENV PATH=/home/node/.local/bin:$PATH
-# PYTHONPATH is set dynamically in entrypoint.sh to avoid hardcoding Python version
+# Include app source and user site-packages so Python finds all deps
+# (also set in entrypoint.sh, but ENV ensures docker exec sessions work too)
+ENV PYTHONPATH=/app/src:/app:/home/node/.local/lib/python3.12/site-packages
 # Tell Playwright where to find browsers (installed during build)
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
 

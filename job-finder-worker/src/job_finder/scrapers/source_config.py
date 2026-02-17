@@ -235,8 +235,10 @@ class SourceConfig:
         if not self.url:
             raise ValueError("URL is required")
 
-        if self.type == "html" and not self.job_selector:
-            raise ValueError("job_selector is required for HTML sources")
+        if self.type == "html" and not self.job_selector and not self.embedded_json_selector:
+            raise ValueError(
+                "job_selector or embedded_json_selector is required for HTML sources"
+            )
 
         if not self.fields:
             raise ValueError("fields mapping is required")
