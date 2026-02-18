@@ -315,33 +315,34 @@ export function buildResumePrompt(
       .join('\n')
     projectGuidance = `
 
+EXPERIENCE PRIORITY:
+- ALWAYS include ALL relevant professional work experience. Work experience is the most valuable section.
+- Include as many experience entries as possible (up to the budget). Do NOT drop work experience to make room for projects.
+- When you have fewer experience entries, use MORE bullets per entry (up to 5-6) to showcase depth. Fill the page with work experience first.
+
 PROJECTS:
-Include 1-2 projects that best showcase skills relevant to this role. Projects can be MORE
-valuable than older or less-relevant work experience — if a personal project demonstrates
-key skills for this role better than a work entry, prefer the project and drop the weaker
-experience entry.
+Projects should ONLY be included if they are HIGHLY relevant to the job description AND
+the candidate lacks professional experience in that specific area. Projects exist to fill
+genuine gaps — they should never replace or displace work experience.
 
-Prioritize projects that:
-- Demonstrate technologies or skills mentioned in the job description
-- Fill gaps not covered by work experience
-- Show initiative, technical depth, and breadth beyond day-job responsibilities
+If including projects, limit to 1-2 that directly address skill gaps:
+${projectLines}
 
-Recommended projects for this role (from job analysis):
-${projectLines}`
+If the candidate's work experience already covers the key requirements, return "projects": [].`
   } else {
     projectGuidance = `
 
-PROJECTS:
-Include 1-2 projects that best showcase skills relevant to this role. Projects can be MORE
-valuable than older or less-relevant work experience — if a personal project demonstrates
-key skills for this role better than a work entry, prefer the project and drop the weaker
-experience entry.
+EXPERIENCE PRIORITY:
+- ALWAYS include ALL relevant professional work experience. Work experience is the most valuable section.
+- Include as many experience entries as possible (up to the budget). Do NOT drop work experience to make room for projects.
+- When you have fewer experience entries, use MORE bullets per entry (up to 5-6) to showcase depth. Fill the page with work experience first.
 
-Prioritize projects that:
-- Demonstrate technologies or skills mentioned in the job description
-- Fill gaps not covered by work experience
-- Show initiative, technical depth, and breadth beyond day-job responsibilities
-If no projects are relevant, return "projects": [].`
+PROJECTS:
+Projects should ONLY be included if they are HIGHLY relevant to the job description AND
+the candidate lacks professional experience in that specific area. Projects exist to fill
+genuine gaps — they should never replace or displace work experience.
+
+If the candidate's work experience already covers the key requirements, return "projects": [].`
   }
 
   // JSON schema and output format instructions (content guidance is in database prompt)
@@ -536,13 +537,12 @@ ${matchContext}${intakeGuidance}
 EDITORIAL INSTRUCTIONS:
 1. You are an editor, not a writer. Trim content to fit the budget — do NOT rewrite bullets or invent new content.
 2. Do NOT add any technologies, skills, tools, or achievements that are not in the first attempt. You may ONLY remove content, never add.
-3. A relevant project is MORE valuable than a less-relevant work experience entry. Drop weaker experience entries before dropping projects that demonstrate key skills for this role.
+3. Work experience is MORE valuable than projects. Drop projects before dropping work experience entries. Only keep projects that fill genuine skill gaps not covered by any work experience.
 4. Prioritize: matched skills > key strengths > ATS keywords > general experience.
-5. Cut the LEAST relevant content first: redundant bullets, older/less-relevant experience entries, generic skills.
+5. Cut the LEAST relevant content first: projects, redundant bullets, generic skills, then older experience entries as a last resort.
 6. Keep all factual data (dates, company names, role titles) exactly as-is.
 7. Reduce bullets on less-relevant roles first; keep more bullets on highly-relevant roles.
-8. If projects fill genuine skill gaps for this role, keep them (trimmed if needed). If they don't, remove them.
-9. Consolidate or remove the least-relevant skill categories to stay within budget.
+8. Consolidate or remove the least-relevant skill categories to stay within budget.
 
 OUTPUT FORMAT (STRICT):
 - Respond with the JSON object ONLY — no prose, no markdown, no explanations.

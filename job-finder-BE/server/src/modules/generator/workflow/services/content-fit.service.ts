@@ -198,7 +198,7 @@ export function getContentBudget(): {
 } {
   return {
     maxExperiences: 4,
-    maxBulletsPerExperience: 3,
+    maxBulletsPerExperience: 5, // AI should use more bullets when fewer experiences
     maxSummaryWords: 50,
     maxSkillCategories: 5, // 4-6 range, balanced with sidebar
     maxProjects: 2,
@@ -287,9 +287,9 @@ export function getBalancedContentGuidance(experienceCount: number = 4): string 
   const recommendedSkillCats = getRecommendedSkillCategories(experienceCount, 3)
 
   return `COLUMN BALANCE GUIDANCE:
-- For ${experienceCount} experience entries with ~3 bullets each, use ${recommendedSkillCats} skill categories
-- Each skill category should have 3-5 items
+- Include up to ${experienceCount} experience entries. Use more bullets per entry (4-5) when you have fewer entries to fill the page.
+- Use ${recommendedSkillCats} skill categories with 3-5 items each
 - Include 2-3 education entries
-- Include 1-2 projects that best showcase skills relevant to this role
+- Only include projects if they fill genuine skill gaps not covered by work experience. Prefer an empty projects section over irrelevant projects.
 - Aim for similar visual weight in both columns`
 }
