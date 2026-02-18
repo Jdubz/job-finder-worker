@@ -106,6 +106,9 @@ const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 // Timeout for closing orphaned popup windows (5 seconds)
 const POPUP_CLEANUP_TIMEOUT_MS = 5000
 
+// Timeout for OAuth/SSO popups (2 minutes — user may need to enter credentials)
+const OAUTH_POPUP_TIMEOUT_MS = 120_000
+
 /**
  * Download a document from the API to a temporary file
  * @param documentUrl - API path like "/api/generator/artifacts/2025-12-11/file.pdf"
@@ -324,6 +327,22 @@ async function executeRemainingSteps(
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
 
+/** Check if the BrowserView's webContents are alive and usable. */
+function isBrowserViewAlive(): boolean {
+  return !!browserView?.webContents && !browserView.webContents.isDestroyed()
+}
+
+/** Detect OAuth/SSO popup URLs that must open as real windows. */
+function isOAuthPopup(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.has("redirect_uri")) return true
+    return /\/(oauth|authorize|saml|sso)\b/i.test(parsed.pathname)
+  } catch {
+    return false
+  }
+}
+
 // Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
 function updateBrowserViewBounds(): void {
   if (!browserView || !mainWindow) return
@@ -372,6 +391,9 @@ async function createWindow(): Promise<void> {
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
+  // Track whether the next popup is an OAuth/SSO flow that needs a real window
+  let nextPopupIsOAuth = false
+
   // Intercept new window/tab requests and navigate in the same BrowserView
   // This prevents job application pages from opening in separate windows
   // which would break the form fill flow
@@ -386,13 +408,41 @@ async function createWindow(): Promise<void> {
       return { action: "allow" }
     }
 
+    // OAuth/SSO popups must open as real windows so the original page
+    // (the opener) stays intact to receive the auth callback via postMessage.
+    if (isOAuthPopup(url)) {
+      logger.info(`Allowing OAuth/SSO popup: ${url}`)
+      nextPopupIsOAuth = true
+      return { action: "allow" }
+    }
+
     // For real URLs, navigate in the same BrowserView
-    browserView?.webContents.loadURL(url)
+    if (isBrowserViewAlive()) {
+      browserView!.webContents.loadURL(url)
+    }
     return { action: "deny" }
   })
 
   // Capture child windows (popups) and redirect their navigation to main BrowserView
   browserView.webContents.on("did-create-window", (childWindow) => {
+    // OAuth/SSO popups must complete their flow uninterrupted — the opener
+    // page needs the popup alive to receive the auth callback.
+    if (nextPopupIsOAuth) {
+      nextPopupIsOAuth = false
+      logger.info("OAuth popup opened, letting it complete without interception")
+
+      // Still set a generous cleanup timeout in case the popup gets stuck
+      const oauthTimeout = setTimeout(() => {
+        if (!childWindow.isDestroyed()) {
+          logger.info("Closing stale OAuth popup after timeout")
+          childWindow.close()
+        }
+      }, OAUTH_POPUP_TIMEOUT_MS)
+
+      childWindow.on("closed", () => clearTimeout(oauthTimeout))
+      return
+    }
+
     logger.info(`Child window created, setting up redirect capture`)
 
     // Track timeout for cleanup
@@ -402,7 +452,9 @@ async function createWindow(): Promise<void> {
     const handleNavigation = (_event: Electron.Event, url: string) => {
       if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
         logger.info(`Capturing child window navigation: ${url}`)
-        browserView?.webContents.loadURL(url)
+        if (isBrowserViewAlive()) {
+          browserView!.webContents.loadURL(url)
+        }
         childWindow.close()
       }
     }
@@ -514,7 +566,7 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
 // Navigate to URL
 ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string; aborted?: boolean }> => {
   try {
-    if (!browserView) {
+    if (!isBrowserViewAlive()) {
       return { success: false, message: "Browser not initialized. Please restart the application." }
     }
     // Basic URL validation
@@ -523,7 +575,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
     } catch {
       return { success: false, message: "Invalid URL format" }
     }
-    await browserView.webContents.loadURL(url)
+    await browserView!.webContents.loadURL(url)
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -552,27 +604,27 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 
 // Get current URL
 ipcMain.handle("get-url", async (): Promise<string> => {
-  if (!browserView) return ""
-  return browserView.webContents.getURL()
+  if (!isBrowserViewAlive()) return ""
+  return browserView!.webContents.getURL()
 })
 
 // Get navigation state (URL + back availability)
 ipcMain.handle("get-navigation-state", async (): Promise<{ url: string; canGoBack: boolean }> => {
-  if (!browserView) return { url: "", canGoBack: false }
+  if (!isBrowserViewAlive()) return { url: "", canGoBack: false }
   return {
-    url: browserView.webContents.getURL(),
-    canGoBack: browserView.webContents.canGoBack(),
+    url: browserView!.webContents.getURL(),
+    canGoBack: browserView!.webContents.canGoBack(),
   }
 })
 
 // Navigate back if possible
 ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boolean; message?: string }> => {
-  if (!browserView) {
+  if (!isBrowserViewAlive()) {
     return { success: false, canGoBack: false, message: "Browser not initialized" }
   }
-  if (browserView.webContents.canGoBack()) {
-    await browserView.webContents.goBack()
-    return { success: true, canGoBack: browserView.webContents.canGoBack() }
+  if (browserView!.webContents.canGoBack()) {
+    await browserView!.webContents.goBack()
+    return { success: true, canGoBack: browserView!.webContents.canGoBack() }
   }
   return { success: false, canGoBack: false, message: "No page to go back to" }
 })
