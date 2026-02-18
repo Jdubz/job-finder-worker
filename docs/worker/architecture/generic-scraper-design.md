@@ -103,11 +103,16 @@ class SourceConfig:
     pagination_param: str = ""      # Query/body param name
     page_size: int = 0
     max_pages: int = 50
+    page_start: int = 1             # First page number (for page_num/url_template)
+    cursor_response_path: str = ""  # Dot-path to next cursor in JSON response
+    cursor_send_in: str = "body"    # "body" | "query" — where to inject cursor value
 
     # Other
+    disabled_notes: str = ""        # Notes on why a source is disabled
     company_extraction: str = ""    # "from_title" | "from_description"
     is_remote_source: bool = False  # All jobs assumed remote
     company_filter: str = ""        # Filter to specific company on aggregators
+    company_filter_param: str = ""  # Query param for server-side company filtering
     embedded_json_selector: str = "" # CSS selector for elements containing JSON
     follow_detail: bool = False     # Fetch each job's detail page
 ```
