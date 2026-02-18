@@ -280,6 +280,63 @@ def test_successful_scrape_resets_consecutive_failures(mock_scraper_cls, source_
     assert updated_config.get("consecutive_failures") == 0
 
 
+@patch("job_finder.job_queue.processors.source_processor.GenericScraper")
+def test_scrape_passes_source_context_to_submit_jobs(mock_scraper_cls, source_processor):
+    """submit_jobs must receive source_id, source_label, source_type, and is_remote_source."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = [
+        {
+            "title": "Backend Engineer",
+            "url": "https://boards.greenhouse.io/acme/jobs/123",
+            "description": "Build awesome things.",
+        }
+    ]
+    mock_scraper_cls.return_value = scraper_instance
+
+    source_record = {
+        "id": "source-456",
+        "name": "Acme Jobs",
+        "sourceType": "greenhouse",
+        "companyId": "company-789",
+        "config": {
+            "type": "api",
+            "url": "https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true",
+            "response_path": "jobs",
+            "fields": {
+                "title": "title",
+                "url": "absolute_url",
+                "description": "content",
+            },
+            "is_remote_source": True,
+        },
+    }
+
+    source_processor.sources_manager.get_source_by_id.return_value = source_record
+    source_processor.companies_manager.get_company_by_id.return_value = {
+        "id": "company-789",
+        "name": "Acme Corp",
+    }
+
+    # Mock scraper_intake so submit_jobs is captured (it gets rebuilt in _refresh_runtime_config)
+    mock_intake = MagicMock()
+    mock_intake.submit_jobs.return_value = 1
+    source_processor.scraper_intake = mock_intake
+    # Prevent _refresh_runtime_config from replacing our mock
+    source_processor._refresh_runtime_config = lambda: None
+
+    item = make_scrape_item(source_record["id"])
+    source_processor.process_scrape_source(item)
+
+    mock_intake.submit_jobs.assert_called_once()
+    _, kwargs = mock_intake.submit_jobs.call_args
+    assert kwargs["source_id"] == "source-456"
+    assert kwargs["source_type"] == "greenhouse"
+    assert kwargs["source_label"] == "greenhouse:Acme Jobs"
+    assert kwargs["is_remote_source"] is True
+    assert kwargs["company_id"] == "company-789"
+    assert kwargs["source"] == "scraper"
+
+
 def test_scrape_skips_disabled_source(source_processor):
     """SCRAPE_SOURCE should respect disabled status and skip execution."""
     source_record = {

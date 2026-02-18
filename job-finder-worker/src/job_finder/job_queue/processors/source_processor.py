@@ -1326,8 +1326,12 @@ class SourceProcessor(BaseProcessor):
                     source_label = f"{source_type}:{source_name}"
                     jobs_added = self.scraper_intake.submit_jobs(
                         jobs=jobs,
-                        source=source_label,
+                        source="scraper",
+                        source_id=source_id,
+                        source_label=source_label,
+                        source_type=source_type,
                         company_id=company_id,
+                        is_remote_source=source_config.is_remote_source,
                     )
                     logger.info(f"Submitted {jobs_added} jobs to queue from {source_name}")
 
