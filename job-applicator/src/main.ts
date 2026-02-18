@@ -337,7 +337,13 @@ function isOAuthPopup(url: string): boolean {
   try {
     const parsed = new URL(url)
     if (parsed.searchParams.has("redirect_uri")) return true
-    return /\/(oauth|authorize|saml|sso)\b/i.test(parsed.pathname)
+    // Match common auth paths: /oauth, /oauth2, /authorize, /auth, /saml, /sso
+    if (/\/(oauth2?|authorize|auth|saml|sso)\b/i.test(parsed.pathname)) return true
+    // Match query param names referencing OAuth (e.g., oauthurl=...)
+    for (const key of parsed.searchParams.keys()) {
+      if (/oauth/i.test(key)) return true
+    }
+    return false
   } catch {
     return false
   }
@@ -431,15 +437,45 @@ async function createWindow(): Promise<void> {
       nextPopupIsOAuth = false
       logger.info("OAuth popup opened, letting it complete without interception")
 
+      // Block the popup from navigating the main BrowserView via
+      // window.opener.location. Some ATS providers (e.g. eightfold.ai)
+      // redirect the opener during OAuth, which navigates the application
+      // page away and leaves the user on a broken callback page.
+      // will-navigate only fires for script-initiated navigations, so our
+      // own loadURL() calls from IPC handlers are unaffected.
+      const blockOpenerRedirect = (event: Electron.Event, url: string) => {
+        logger.info(`[OAuth] Blocking opener navigation during active popup: ${url}`)
+        event.preventDefault()
+      }
+      if (isBrowserViewAlive()) {
+        browserView!.webContents.on("will-navigate", blockOpenerRedirect)
+      }
+
+      // Log popup navigations for debugging
+      childWindow.webContents.on("did-navigate", (_event: Electron.Event, url: string) => {
+        logger.info(`[OAuth popup] Navigated to: ${url}`)
+      })
+
+      const cleanupOAuth = () => {
+        if (isBrowserViewAlive()) {
+          browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
+        }
+      }
+
       // Still set a generous cleanup timeout in case the popup gets stuck
       const oauthTimeout = setTimeout(() => {
         if (!childWindow.isDestroyed()) {
           logger.info("Closing stale OAuth popup after timeout")
           childWindow.close()
         }
+        cleanupOAuth()
       }, OAUTH_POPUP_TIMEOUT_MS)
 
-      childWindow.on("closed", () => clearTimeout(oauthTimeout))
+      childWindow.on("closed", () => {
+        clearTimeout(oauthTimeout)
+        cleanupOAuth()
+        logger.info("[OAuth] Popup closed, opener navigation unblocked")
+      })
       return
     }
 
@@ -931,11 +967,11 @@ ipcMain.handle(
     let resolvedPath: string | null = null
 
     try {
-      if (!browserView) throw new Error("BrowserView not initialized")
+      if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
       // Find file input selector based on document type
       const targetType = options?.type || "resume"
-      const fileInputSelector = await browserView.webContents.executeJavaScript(
+      const fileInputSelector = await browserView!.webContents.executeJavaScript(
         buildFileInputDetectionScript(targetType)
       )
 
@@ -955,7 +991,7 @@ ipcMain.handle(
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
-      await setFileInputFiles(browserView.webContents, fileInputSelector, [resolvedPath])
+      await setFileInputFiles(browserView!.webContents, fileInputSelector, [resolvedPath])
 
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
       return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
@@ -976,10 +1012,10 @@ ipcMain.handle(
   "submit-job",
   async (_event: IpcMainInvokeEvent, _provider: CliProvider): Promise<{ success: boolean; message: string }> => {
     try {
-      if (!browserView) throw new Error("BrowserView not initialized")
+      if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
       // 1. Get current URL
-      const url = browserView.webContents.getURL()
+      const url = browserView!.webContents.getURL()
       if (!url || url === "about:blank") {
         return { success: false, message: "No page loaded - navigate to a job listing first" }
       }
@@ -987,7 +1023,7 @@ ipcMain.handle(
       logger.info(`Extracting job details from: ${url}`)
 
       // 2. Extract page content (text only, limited to 10k chars)
-      const pageContent: string = await browserView.webContents.executeJavaScript(`
+      const pageContent: string = await browserView!.webContents.executeJavaScript(`
         document.body.innerText.slice(0, 10000)
       `)
 
