@@ -374,8 +374,8 @@ function scheduleNextTick() {
 export function startCronScheduler() {
   logger.info({ NODE_ENV: env.NODE_ENV, timezone: getContainerTimezone() }, 'Cron scheduler config')
 
-  if (env.NODE_ENV !== 'production') {
-    logger.info('Cron scheduler skipped outside production environment')
+  if (env.NODE_ENV === 'test') {
+    logger.info('Cron scheduler skipped in test environment')
     return
   }
 

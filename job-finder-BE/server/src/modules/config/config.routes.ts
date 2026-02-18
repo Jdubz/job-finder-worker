@@ -59,14 +59,15 @@ function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['op
     reason: claudeCliEnabled ? undefined : 'CLAUDE_CODE_OAUTH_TOKEN not set'
   }
 
-  // Gemini API - check GEMINI_API_KEY or GOOGLE_API_KEY (backend uses @google/generative-ai with API keys)
+  // Gemini API - check GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_CLOUD_PROJECT (Vertex AI)
   const geminiApiEnabled = !!(
     process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_CLOUD_PROJECT
   )
   availability['gemini/api'] = {
     enabled: geminiApiEnabled,
-    reason: geminiApiEnabled ? undefined : 'GEMINI_API_KEY or GOOGLE_API_KEY not set'
+    reason: geminiApiEnabled ? undefined : 'GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_CLOUD_PROJECT not set'
   }
 
   return configuredOptions.map((provider) => ({

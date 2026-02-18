@@ -20,7 +20,7 @@
     "@anthropic-ai/claude-code": "^2.0.45",
     "@anthropic-ai/sdk": "^0.71.2",
     "@deepgram/sdk": "^4.11.3",
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^1.41.0",
     "@shared/types": "file:../../shared",
     "@types/pdfmake": "^0.2.12",
     "better-sqlite3": "^11.7.0",
