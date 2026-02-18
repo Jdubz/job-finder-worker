@@ -1,6 +1,6 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2026-01-09
+> Last Updated: 2026-02-17
 
 # Job Finder Worker
 
@@ -16,6 +16,8 @@ Python worker service for job processing, company enrichment, and AI-powered ana
 │    - JobProcessor: Job extraction, matching, scoring            │
 │    - CompanyProcessor: Company enrichment via search/AI         │
 │    - SourceProcessor: Job source discovery and scraping         │
+│    - GenericScraper: Config-driven scraping (API/RSS/HTML)      │
+│    - PlaywrightRenderer: Headless Chromium for JS-rendered pages│
 ├─────────────────────────────────────────────────────────────────┤
 │  AI Integration (via AgentManager):                             │
 │    - Supported agents: claude.cli, gemini.api                   │
@@ -129,19 +131,28 @@ curl -s http://localhost:5555/health
 ```
 src/job_finder/
 ├── ai/
-│   ├── agent_manager.py      # AI provider orchestration
-│   ├── providers.py          # Provider implementations (Claude CLI, Gemini API)
-│   └── search_client.py      # Tavily/Brave clients
+│   ├── agent_manager.py         # AI provider orchestration
+│   ├── providers.py             # Provider implementations (Claude CLI, Gemini API)
+│   ├── source_analysis_agent.py # AI-powered source classification
+│   └── search_client.py         # Tavily/Brave clients
 ├── job_queue/
 │   ├── processors/
 │   │   ├── job_processor.py
 │   │   ├── company_processor.py
 │   │   └── source_processor.py
-│   └── config_loader.py      # Config from database
+│   └── config_loader.py         # Config from database
+├── rendering/
+│   └── playwright_renderer.py   # Headless Chromium via Playwright (JS rendering)
+├── scrapers/
+│   ├── generic_scraper.py       # Single scraper for all source types
+│   ├── source_config.py         # SourceConfig dataclass
+│   ├── config_expander.py       # Legacy config → full config expansion
+│   ├── platform_patterns.py     # Known ATS field mappings
+│   └── text_sanitizer.py        # HTML → text utilities
 ├── profile/
-│   └── reducer.py            # Content-items → ScoringProfile
+│   └── reducer.py               # Content-items → ScoringProfile
 ├── scoring/
-│   └── engine.py             # Job-candidate fit scoring
-├── company_info_fetcher.py   # Company enrichment
-└── flask_worker.py           # Main entry point
+│   └── engine.py                # Job-candidate fit scoring
+├── company_info_fetcher.py      # Company enrichment
+└── flask_worker.py              # Main entry point
 ```

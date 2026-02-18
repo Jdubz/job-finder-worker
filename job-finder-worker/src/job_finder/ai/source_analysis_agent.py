@@ -110,10 +110,18 @@ job discovery system. Your analysis will determine how the source is classified 
 - Can scrape JSON APIs (REST endpoints returning job listings)
 - Can parse RSS/Atom feeds
 - Can scrape static HTML pages with CSS selectors
-- Can render JavaScript-driven pages via Playwright **when `requires_js: true` is set in the source_config**. Always include a CSS selector for readiness (job list container or first job card).
+- **Full JavaScript rendering** via headless Chromium (Playwright). Set `requires_js: true` in
+  source_config and provide a `render_wait_for` CSS selector (job list container or first job card).
+  This handles SPAs (React, Angular, Vue), enterprise ATS portals (SuccessFactors, Oracle Cloud HCM,
+  Taleo, Bullhorn), and any page that loads jobs dynamically via XHR/fetch.
 - Supports pagination for APIs with offset/page parameters
 - **ATS API probing**: The system automatically probes known ATS providers before calling you.
   If ATS probe results are provided below, USE THEM - they are verified API responses.
+
+**CRITICAL — JavaScript rendering is FULLY SUPPORTED.** NEVER claim the system cannot render
+JavaScript. NEVER disable a source because it requires JavaScript. Instead, propose a config with
+`requires_js: true`, `render_wait_for`, and appropriate CSS selectors. If the page is publicly
+accessible, it can be scraped.
 - Known ATS patterns (preferred when detected):
   - Greenhouse: GET https://boards-api.greenhouse.io/v1/boards/{{slug}}/jobs?content=true, response_path=jobs, fields.title=title, url=absolute_url, location=location.name, description=content, posted_date=updated_at
   - Lever: GET https://api.lever.co/v0/postings/{{slug}}?mode=json, fields.title=text, url=hostedUrl, location=categories.location, description=descriptionPlain, posted_date=createdAt
@@ -180,6 +188,7 @@ verify which provider actually belongs to the company in question.
 - **No authentication**: Cannot handle login-required or OAuth-protected sources
 - **No CAPTCHA solving**: Will fail on bot-protected sites
 - Most major aggregators (Indeed, LinkedIn, Glassdoor, ZipRecruiter) are bot-protected
+- NOTE: JavaScript rendering is NOT a limitation — it is fully supported via Playwright
 
 ### Source Classification Rules
 
@@ -213,6 +222,12 @@ Always disable with clear notes explaining WHY:
 - URL is a single job listing
 - URL is an ATS provider's own site
 - No discoverable API/RSS/HTML/JS-rendered endpoint for jobs
+
+**NEVER disable because:**
+- The page requires JavaScript — use `requires_js: true` instead
+- The page is a Single Page Application (React/Angular/Vue) — Playwright handles these
+- You see an empty HTML body or minimal server-rendered markup — this means JS rendering is needed
+- Zero jobs were found — having 0 current openings is a valid state, not an error
 
 ### HTTP Error Classification Guide (CRITICAL)
 

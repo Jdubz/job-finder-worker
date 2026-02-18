@@ -2219,8 +2219,9 @@ Include a config object with:
 - job_selector: CSS selector matching each job card/row
 - fields.title: CSS selector for title within each job card
 - fields.url: CSS selector with attribute for link (e.g., "a@href")
-- requires_js: true if JavaScript rendering is needed
-- render_wait_for: CSS selector to wait for when requires_js is true
+- requires_js: true if JavaScript rendering is needed (SPAs, React/Angular/Vue, dynamic content)
+- render_wait_for: CSS selector to wait for when requires_js is true (REQUIRED for JS sources)
+- render_timeout_ms: Custom timeout in ms (default 20000, use 30000 for slow enterprise portals)
 
 ### For API sources (type: "api"):
 - type: "api"
@@ -2237,6 +2238,9 @@ Include a config object with:
 2. All CSS selectors must be REAL selectors found in the content sample
 3. NEVER invent or guess API URLs
 4. If you see bot protection or auth walls, set can_recover=false
+5. NEVER claim the system cannot render JavaScript — Playwright (headless Chromium) is fully supported.
+   If the page requires JS, set requires_js=true with render_wait_for and appropriate CSS selectors.
+6. Zero jobs found is a VALID state (company has no openings) — do NOT set can_recover=false for this
 
 Return ONLY valid JSON (no markdown, no explanation outside the JSON).
 """

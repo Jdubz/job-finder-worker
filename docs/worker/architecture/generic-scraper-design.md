@@ -1,122 +1,125 @@
 > Status: Active
 > Owner: @jdubz
-> Last Updated: 2025-11-25
+> Last Updated: 2026-02-17
 
-# Generic Scraper Design
+# Generic Scraper Architecture
 
-## Problem
+## Overview
 
-Automatically onboard new job sources (like Netflix) without writing custom code.
+One generic scraper handles all job sources via config-driven parsing. No per-vendor scraper classes.
 
-## Solution
+## Source Types
 
-One generic scraper driven by a config that tells it how to parse each source.
+| Type | Fetch Method | Field Extraction |
+|------|-------------|-----------------|
+| `api` | HTTP GET/POST (requests) | Dot-notation paths into JSON (`location.name`) |
+| `rss` | feedparser | RSS field names (`title`, `link`, `summary`) |
+| `html` | requests.get OR **Playwright** | CSS selectors (`.job-title`, `a@href`) |
 
----
+## JavaScript Rendering (Playwright)
 
-# Full Replacement Plan
+The system **fully supports JavaScript-rendered pages** via a headless Chromium browser powered by Playwright.
 
-This is a **complete replacement** of the legacy scraper system. No backwards compatibility. No legacy code left behind.
+When `requires_js: true` is set in the source config:
+1. The page is loaded in headless Chromium instead of plain HTTP
+2. JavaScript executes and the DOM renders fully
+3. The scraper waits for `render_wait_for` selector to appear (or `job_selector` as fallback)
+4. CSS selectors in `fields` are applied to the rendered DOM
 
-## Current State (To Be Deleted)
+This means **any publicly accessible page can be scraped**, including:
+- Single Page Applications (React, Angular, Vue, Remix, etc.)
+- Enterprise ATS portals (SuccessFactors, Oracle Cloud HCM, Taleo, Bullhorn)
+- WordPress sites with dynamically loaded job widgets
+- Any page that loads job listings via XHR/fetch after initial page load
 
-### Files to DELETE
+### JS Rendering Config Fields
 
-```
-src/job_finder/scrapers/
-├── base.py                 # DELETE - Abstract base class
-├── greenhouse_scraper.py   # DELETE - Custom Greenhouse implementation
-├── rss_scraper.py          # DELETE - Custom RSS implementation
-├── remoteok_scraper.py     # DELETE - Custom RemoteOK implementation
-├── text_sanitizer.py       # KEEP - Shared utility, still needed
-└── __init__.py             # UPDATE - Remove old exports
+| Field | Required | Description |
+|-------|----------|-------------|
+| `requires_js` | Yes | Set `true` to use Playwright instead of requests |
+| `render_wait_for` | Recommended | CSS selector to wait for before scraping (e.g., `.job-card`, `[data-job-id]`) |
+| `render_timeout_ms` | Optional | Max wait time in ms (default: 20000, use 30000+ for slow enterprise portals) |
 
-src/job_finder/ai/
-└── selector_discovery.py   # DELETE - Replaced by source_discovery.py
+### Implementation
 
-src/job_finder/utils/
-└── source_type_detector.py # DELETE - Detection now happens in AI discovery
+- **Renderer**: `rendering/playwright_renderer.py` — singleton headless Chromium
+- **Integration**: `generic_scraper.py:_fetch_html_page()` checks `requires_js` and routes to Playwright or requests
+- **Probe support**: `source_processor.py:_probe_config()` uses Playwright for JS sources during discovery
 
-tests/
-├── test_greenhouse_scraper.py  # DELETE - Replace with generic scraper tests
-└── test_rss_scraper.py         # DELETE - Replace with generic scraper tests
-```
-
-### Current Config Formats in DB (To Be Migrated)
-
-| sourceType | Current config_json | New config_json |
-|------------|---------------------|-----------------|
-| `greenhouse` | `{"board_token":"coinbase"}` | `{"type":"api","url":"https://boards-api.greenhouse.io/v1/boards/coinbase/jobs?content=true","response_path":"jobs","fields":{...}}` |
-| `rss` | `{"url":"...","title_field":"title",...}` | `{"type":"rss","url":"...","fields":{"title":"title",...}}` |
-| `api` | `{"base_url":"https://remoteok.com/api"}` | `{"type":"api","url":"...","response_path":"[1:]","fields":{...}}` |
-| `company-page` | `{"api_endpoint":"...","selectors":{...}}` | `{"type":"html","url":"...","job_selector":"...","fields":{...}}` |
-
-### Code Locations That Import Scrapers
-
-1. `scrape_runner.py:29` - `from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper`
-2. `scrape_runner.py:277` - `from job_finder.scrapers.rss_scraper import RSSJobScraper`
-3. `scrape_runner.py:296` - `from job_finder.scrapers.remoteok_scraper import RemoteOKScraper`
-4. `source_processor.py:453` - `from job_finder.scrapers.greenhouse_scraper import GreenhouseScraper`
-5. `source_processor.py:464` - `from job_finder.scrapers.rss_scraper import RSSJobScraper`
-6. `source_processor.py:341` - `from job_finder.ai.selector_discovery import SelectorDiscovery`
-
----
-
-## New Architecture
-
-### Files to CREATE
+## File Layout
 
 ```
-src/job_finder/scrapers/
-├── __init__.py             # Export GenericScraper only
-├── generic_scraper.py      # Single scraper for all source types
-├── source_config.py        # SourceConfig dataclass
-└── text_sanitizer.py       # KEEP existing
-
-src/job_finder/ai/
-└── source_discovery.py     # AI-powered config generation (replaces selector_discovery.py)
+src/job_finder/
+├── scrapers/
+│   ├── generic_scraper.py      # Single scraper for all source types
+│   ├── source_config.py        # SourceConfig dataclass
+│   ├── config_expander.py      # Legacy config → full config expansion
+│   ├── platform_patterns.py    # Known ATS field mappings
+│   └── text_sanitizer.py       # HTML → text utilities
+├── rendering/
+│   └── playwright_renderer.py  # Headless Chromium via Playwright
+└── ai/
+    └── source_analysis_agent.py # AI-powered source classification
 ```
 
-### Config Schema
+## SourceConfig Schema
 
 ```python
 @dataclass
 class SourceConfig:
     type: str              # "api" | "rss" | "html"
-    url: str               # Endpoint or feed URL
+    url: str               # Endpoint URL, RSS feed URL, or page URL
 
-    # Field mappings - path to each field in response
-    fields: Dict[str, str] # {"title": "position", "company": "company_name", ...}
+    # Field mappings — path to each field in response
+    fields: Dict[str, str] # {"title": "position", "url": "hostedUrl", ...}
 
-    # Optional
+    # Common optional
     response_path: str = ""         # Path to jobs array: "jobs", "data.results", "[1:]"
-    job_selector: str = ""          # CSS selector for job items (HTML only)
-    company_name: str = ""          # Override company name
-    headers: Dict[str, str] = {}    # Custom headers
+    job_selector: str = ""          # CSS selector for each job item (HTML only)
+    company_name: str = ""          # Override company name for all jobs
+    headers: Dict[str, str] = {}    # Custom HTTP headers
 
-    # Authentication (for Workday, Adzuna, etc.)
-    api_key: str = ""               # API key (stored encrypted in DB)
+    # Authentication
+    api_key: str = ""               # API key
     auth_type: str = ""             # "header" | "query" | "bearer"
-    auth_param: str = ""            # Header name or query param name (e.g., "X-API-Key", "api_key")
+    auth_param: str = ""            # Header/query param name
 
-    # Salary handling (when split into min/max fields)
-    salary_min_field: str = ""      # e.g., "salaryMin", "salary_min"
-    salary_max_field: str = ""      # e.g., "salaryMax", "salary_max"
+    # Salary handling
+    salary_min_field: str = ""
+    salary_max_field: str = ""
+
+    # POST APIs (e.g., Workday)
+    method: str = "GET"             # "GET" | "POST"
+    post_body: Dict = {}            # Request body for POST
+    base_url: str = ""              # Base URL for relative paths
+
+    # JS rendering (Playwright)
+    requires_js: bool = False       # Use Playwright instead of requests
+    render_wait_for: str = ""       # CSS selector to wait for after page load
+    render_timeout_ms: int = 20000  # Render timeout in milliseconds
+
+    # Pagination
+    pagination_type: str = ""       # "page_num" | "offset" | "cursor" | "url_template"
+    pagination_param: str = ""      # Query/body param name
+    page_size: int = 0
+    max_pages: int = 50
+    page_start: int = 1             # First page number (for page_num/url_template)
+    cursor_response_path: str = ""  # Dot-path to next cursor in JSON response
+    cursor_send_in: str = "body"    # "body" | "query" — where to inject cursor value
+
+    # Other
+    disabled_notes: str = ""        # Notes on why a source is disabled
+    company_extraction: str = ""    # "from_title" | "from_description"
+    is_remote_source: bool = False  # All jobs assumed remote
+    company_filter: str = ""        # Filter to specific company on aggregators
+    company_filter_param: str = ""  # Query param for server-side company filtering
+    embedded_json_selector: str = "" # CSS selector for elements containing JSON
+    follow_detail: bool = False     # Fetch each job's detail page
 ```
-
-### Authentication Types
-
-| auth_type | Behavior |
-|-----------|----------|
-| `header` | Adds `{auth_param}: {api_key}` to request headers |
-| `query` | Adds `?{auth_param}={api_key}` to URL |
-| `bearer` | Adds `Authorization: Bearer {api_key}` header |
-
----
 
 ## Config Examples
 
-### Greenhouse
+### API — Greenhouse
 ```json
 {
   "type": "api",
@@ -133,19 +136,20 @@ class SourceConfig:
 }
 ```
 
-### RemoteOK
+### API — Workday (POST)
 ```json
 {
   "type": "api",
-  "url": "https://remoteok.com/api",
-  "response_path": "[1:]",
+  "url": "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs",
+  "method": "POST",
+  "post_body": {"limit": 50, "offset": 0},
+  "response_path": "jobPostings",
+  "base_url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite",
   "fields": {
-    "title": "position",
-    "company": "company",
-    "location": "location",
-    "description": "description",
-    "url": "url",
-    "posted_date": "date"
+    "title": "title",
+    "url": "externalPath",
+    "location": "locationsText",
+    "posted_date": "postedOn"
   }
 }
 ```
@@ -164,7 +168,7 @@ class SourceConfig:
 }
 ```
 
-### HTML Page
+### HTML — Static Page
 ```json
 {
   "type": "html",
@@ -172,306 +176,40 @@ class SourceConfig:
   "job_selector": ".job-listing",
   "fields": {
     "title": ".job-title",
-    "company": ".company-name",
     "location": ".location",
-    "description": ".description",
     "url": "a@href"
   }
 }
 ```
 
-### Adzuna (Authenticated)
+### HTML — JavaScript-Rendered (Playwright)
 ```json
 {
-  "type": "api",
-  "url": "https://api.adzuna.com/v1/api/jobs/us/search/1",
-  "response_path": "results",
-  "auth_type": "query",
-  "auth_param": "app_key",
-  "api_key": "{{ADZUNA_API_KEY}}",
-  "headers": {"app_id": "{{ADZUNA_APP_ID}}"},
+  "type": "html",
+  "url": "https://careers.steris.com/?locale=en_GB",
+  "requires_js": true,
+  "render_wait_for": ".job-card",
+  "render_timeout_ms": 30000,
+  "job_selector": ".job-card",
+  "company_name": "STERIS",
   "fields": {
-    "title": "title",
-    "company": "company.display_name",
-    "location": "location.display_name",
-    "description": "description",
-    "url": "redirect_url",
-    "posted_date": "created"
-  },
-  "salary_min_field": "salary_min",
-  "salary_max_field": "salary_max"
+    "title": ".job-title",
+    "location": ".job-location",
+    "url": "a@href"
+  }
 }
 ```
 
-### Jobicy (with salary fields)
-```json
-{
-  "type": "api",
-  "url": "https://jobicy.com/api/v2/remote-jobs",
-  "response_path": "jobs",
-  "fields": {
-    "title": "jobTitle",
-    "company": "companyName",
-    "location": "jobGeo",
-    "description": "jobDescription",
-    "url": "url",
-    "posted_date": "pubDate"
-  },
-  "salary_min_field": "salaryMin",
-  "salary_max_field": "salaryMax"
-}
-```
+## Key Behaviors
 
----
+### Empty Results Are Valid
 
-## Implementation
+A scrape returning 0 jobs is a **valid state** — the company simply has no current openings. The system records this as a successful scrape and does NOT disable the source. Sources are only disabled for actual errors (endpoint gone, bot protection, auth required).
 
-### GenericScraper Class
+### Self-Healing
 
-```python
-class GenericScraper:
-    def __init__(self, config: SourceConfig):
-        self.config = config
+When a scrape returns sparse or malformed results, the system asks an AI agent to propose a fixed config and retries once. If the healed config produces better results, it's persisted.
 
-    def scrape(self) -> List[Dict]:
-        # 1. Fetch based on type
-        if self.config.type == "api":
-            data = self._fetch_json()
-        elif self.config.type == "rss":
-            data = self._fetch_rss()
-        elif self.config.type == "html":
-            data = self._fetch_html()
+### Probing
 
-        # 2. Parse each item
-        jobs = []
-        for item in data:
-            job = self._extract_fields(item)
-            if job.get("title") and job.get("url"):
-                jobs.append(job)
-
-        return jobs
-
-    def _fetch_json(self) -> List[Dict]:
-        """Fetch JSON API with optional auth."""
-        url = self.config.url
-        headers = dict(self.config.headers)
-
-        # Apply authentication
-        if self.config.api_key:
-            if self.config.auth_type == "bearer":
-                headers["Authorization"] = f"Bearer {self.config.api_key}"
-            elif self.config.auth_type == "header":
-                headers[self.config.auth_param] = self.config.api_key
-            elif self.config.auth_type == "query":
-                sep = "&" if "?" in url else "?"
-                url = f"{url}{sep}{self.config.auth_param}={self.config.api_key}"
-
-        response = requests.get(url, headers=headers)
-        data = response.json()
-
-        # Navigate to jobs array using response_path
-        return self._navigate_path(data, self.config.response_path)
-
-    def _fetch_rss(self) -> List[Dict]:
-        """Fetch and parse RSS feed."""
-        feed = feedparser.parse(self.config.url)
-        return feed.entries
-
-    def _fetch_html(self) -> List[Any]:
-        """Fetch HTML and select job elements."""
-        response = requests.get(self.config.url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        return soup.select(self.config.job_selector)
-
-    def _extract_fields(self, item) -> Dict:
-        """Extract fields using config mappings."""
-        job = {}
-        for field, path in self.config.fields.items():
-            value = self._get_value(item, path)
-
-            # Convert timestamps to ISO format
-            if field == "posted_date" and isinstance(value, (int, float)):
-                value = datetime.fromtimestamp(value).isoformat()
-
-            job[field] = value
-
-        # Combine salary min/max if specified
-        if self.config.salary_min_field:
-            min_val = self._get_value(item, self.config.salary_min_field)
-            max_val = self._get_value(item, self.config.salary_max_field) if self.config.salary_max_field else None
-            if min_val:
-                job["salary"] = f"${min_val:,}-${max_val:,}" if max_val else f"${min_val:,}+"
-
-        # Override company if specified
-        if self.config.company_name:
-            job["company"] = self.config.company_name
-
-        return job
-
-    def _get_value(self, item, path: str):
-        """Get value using dot notation (api/rss) or CSS selector (html)."""
-        if self.config.type == "html":
-            return self._css_select(item, path)
-        else:
-            return self._dot_access(item, path)
-
-    def _dot_access(self, item, path: str):
-        """Navigate nested dict with dot notation: 'company.display_name'"""
-        for key in path.split("."):
-            if item is None:
-                return None
-            item = item.get(key) if isinstance(item, dict) else None
-        return item
-
-    def _css_select(self, element, selector: str):
-        """Extract value using CSS selector or attribute."""
-        if "@" in selector:
-            # Attribute selector: "a@href"
-            sel, attr = selector.split("@")
-            el = element.select_one(sel) if sel else element
-            return el.get(attr) if el else None
-        else:
-            el = element.select_one(selector)
-            return el.get_text(strip=True) if el else None
-
-    def _navigate_path(self, data, path: str) -> List:
-        """Navigate to jobs array. Supports: 'jobs', 'data.results', '[1:]'
-
-        WARNING: Never use eval() here - parse slices safely instead.
-        """
-        if not path:
-            return data if isinstance(data, list) else [data]
-        if path.startswith("[") and path.endswith("]"):
-            # Safe slice parsing (see generic_scraper.py for full implementation)
-            slice_str = path[1:-1]
-            if ":" in slice_str:
-                parts = slice_str.split(":")
-                start = int(parts[0]) if parts[0] else None
-                end = int(parts[1]) if len(parts) > 1 and parts[1] else None
-                return data[start:end] if isinstance(data, list) else []
-        return self._dot_access(data, path) or []
-```
-
----
-
-## AI Discovery
-
-When user submits a new careers URL:
-
-1. Fetch the URL
-2. Detect type (check for RSS headers, JSON response, or HTML)
-3. Send sample to AI with prompt:
-
-```
-Analyze this careers page and generate a scraper config.
-
-URL: {url}
-Type: {detected_type}
-Sample:
-{truncated_sample}
-
-Return JSON config with:
-- type: "api" | "rss" | "html"
-- response_path: path to jobs array (if api)
-- job_selector: CSS selector for job items (if html)
-- fields: mapping of {title, company, location, description, url, posted_date}
-
-Only include fields you can identify. Use dot notation for nested JSON, CSS selectors for HTML.
-```
-
-4. Validate by test scraping
-5. Save config to `job_sources` table
-
----
-
-## Migration Strategy
-
-### Step 1: Create new files
-- `scrapers/source_config.py`
-- `scrapers/generic_scraper.py`
-- `ai/source_discovery.py`
-
-### Step 2: Update scrape_runner.py
-Replace all scraper instantiation with GenericScraper:
-
-```python
-# OLD:
-if source_type == "greenhouse":
-    scraper = GreenhouseScraper(config)
-elif source_type == "rss":
-    scraper = RSSJobScraper(config, listing_config)
-...
-
-# NEW:
-source_config = SourceConfig.from_dict(config)
-scraper = GenericScraper(source_config)
-jobs = scraper.scrape()
-```
-
-### Step 3: Update source_processor.py
-- Replace `SelectorDiscovery` with new `SourceDiscovery`
-- Remove type-specific discovery methods
-- Use unified config format
-
-### Step 4: Migrate existing job_sources configs
-SQL migration script to convert old configs to new format.
-
-### Step 5: Delete legacy files
-- `scrapers/base.py`
-- `scrapers/greenhouse_scraper.py`
-- `scrapers/rss_scraper.py`
-- `scrapers/remoteok_scraper.py`
-- `ai/selector_discovery.py`
-- `utils/source_type_detector.py`
-
-### Step 6: Update tests
-- Delete `test_greenhouse_scraper.py`
-- Delete `test_rss_scraper.py`
-- Create `test_generic_scraper.py`
-
----
-
-## Output
-
-Same standardized job dict as existing scrapers:
-
-```python
-{
-    "title": str,
-    "company": str,
-    "location": str,
-    "description": str,
-    "url": str,
-    "posted_date": str,  # optional
-    "salary": str,       # optional
-}
-```
-
----
-
-## Database Changes
-
-The `job_sources` table `config_json` column format changes. The `sourceType` column becomes redundant (type is inside config) but can be kept for quick filtering.
-
-### Migration SQL
-
-```sql
--- Example: Convert greenhouse sources
-UPDATE job_sources
-SET config_json = json_object(
-    'type', 'api',
-    'url', 'https://boards-api.greenhouse.io/v1/boards/' || json_extract(config_json, '$.board_token') || '/jobs?content=true',
-    'response_path', 'jobs',
-    'company_name', name,
-    'fields', json_object(
-        'title', 'title',
-        'location', 'location.name',
-        'description', 'content',
-        'url', 'absolute_url',
-        'posted_date', 'updated_at'
-    )
-)
-WHERE sourceType = 'greenhouse';
-```
-
-Similar migrations needed for RSS and other source types.
+During source discovery, configs are validated by a "probe" that fetches the endpoint and checks for job items. The probe uses Playwright for `requires_js` sources, with a shorter timeout for fast failure on bad selectors.
