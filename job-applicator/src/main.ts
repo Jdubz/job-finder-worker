@@ -441,10 +441,25 @@ async function createWindow(): Promise<void> {
       // window.opener.location. Some ATS providers (e.g. eightfold.ai)
       // redirect the opener during OAuth, which navigates the application
       // page away and leaves the user on a broken callback page.
-      // will-navigate only fires for script-initiated navigations, so our
-      // own loadURL() calls from IPC handlers are unaffected.
+      //
+      // Scope: only block cross-origin navigations (the OAuth redirect chain
+      // goes to different domains like LinkedIn/Google), while allowing
+      // same-origin navigations the application page itself may trigger.
+      //
+      // Note: will-navigate fires for renderer-initiated navigations only
+      // (JS, links, form submits). Our own loadURL() calls from the main
+      // process do NOT trigger will-navigate, so IPC handlers are unaffected.
+      const preAuthOrigin = isBrowserViewAlive()
+        ? new URL(browserView!.webContents.getURL()).origin
+        : null
       const blockOpenerRedirect = (event: Electron.Event, url: string) => {
-        logger.info(`[OAuth] Blocking opener navigation during active popup: ${url}`)
+        try {
+          const navOrigin = new URL(url).origin
+          if (preAuthOrigin && navOrigin === preAuthOrigin) {
+            return // Allow same-origin navigations
+          }
+        } catch { /* malformed URL — block it */ }
+        logger.info(`[OAuth] Blocking cross-origin opener navigation during active popup: ${url}`)
         event.preventDefault()
       }
       if (isBrowserViewAlive()) {

@@ -29,6 +29,9 @@ const EnvSchema = z.object({
   LOG_ROTATE_MAX_BYTES: z.coerce.number().positive().default(100 * 1024 * 1024),
   LOG_ROTATE_RETENTION_DAYS: z.coerce.number().positive().int().default(7),
 
+  // Cron scheduler
+  CRON_ENABLED: z.string().optional(),
+
   // Network storage (SMB/CIFS) for document backup
   NETWORK_STORAGE_ENABLED: z.string().optional(),
   NETWORK_STORAGE_HOST: z.string().optional(),
