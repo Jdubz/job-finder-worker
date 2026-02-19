@@ -168,10 +168,14 @@ class CompaniesManager:
         # JSON-decoded on read, unlike tech_stack).
         def _text(val: object) -> Optional[str]:
             if isinstance(val, dict):
-                return " ".join(str(v) for v in val.values() if v)
+                parts = [str(v) for v in val.values() if v]
+                return " ".join(parts) if parts else None
             if isinstance(val, list):
-                return "\n".join(str(v) for v in val if v)
-            return val  # type: ignore[return-value]
+                parts = [str(v) for v in val if v]
+                return "\n".join(parts) if parts else None
+            if val is None or isinstance(val, str):
+                return val  # type: ignore[return-value]
+            return str(val)
 
         fields = {
             "name": cleaned_name,

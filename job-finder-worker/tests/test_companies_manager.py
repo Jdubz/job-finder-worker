@@ -134,3 +134,65 @@ def test_save_company_coerces_dict_text_fields_on_update(tmp_path: Path):
     tech_stack_parsed = json.loads(row["tech_stack"])
     assert isinstance(tech_stack_parsed, list)
     assert "React" in tech_stack_parsed
+
+
+def test_save_company_handles_none_and_empty_values(tmp_path: Path):
+    """save_company should handle None and empty container values without SQLite binding errors."""
+    db_path = tmp_path / "companies.db"
+    _apply_migrations(db_path)
+
+    manager = CompaniesManager(str(db_path))
+
+    company_id = manager.save_company(
+        {
+            "name": "EdgeCaseCorp",
+            "website": "https://edgecase.example",
+            "about": None,
+            "culture": {},
+            "mission": [],
+            "techStack": [],
+        }
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT about, culture, mission, tech_stack FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+    assert row is not None
+    for field in ("about", "culture", "mission", "tech_stack"):
+        value = row[field]
+        assert value is None or isinstance(value, str)
+
+
+def test_save_company_handles_non_string_scalar_values(tmp_path: Path):
+    """save_company should tolerate scalar non-string values (bool/int/float) for text fields."""
+    db_path = tmp_path / "companies.db"
+    _apply_migrations(db_path)
+
+    manager = CompaniesManager(str(db_path))
+
+    company_id = manager.save_company(
+        {
+            "name": "ScalarCorp",
+            "website": "https://scalar.example",
+            "about": True,
+            "culture": 42,
+            "mission": 3.14,
+            "techStack": "Python",
+        }
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT about, culture, mission, tech_stack FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+    assert row is not None
+    for field in ("about", "culture", "mission"):
+        assert row[field] is not None
+        assert isinstance(row[field], str)
