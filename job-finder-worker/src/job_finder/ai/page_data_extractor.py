@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import socket
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -21,7 +22,11 @@ from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import NoAgentsAvailableError
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
-from job_finder.scrapers.text_sanitizer import sanitize_html_description, sanitize_title
+from job_finder.scrapers.text_sanitizer import (
+    sanitize_company_name,
+    sanitize_html_description,
+    sanitize_title,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +48,7 @@ _GREENHOUSE_JOB_RE = re.compile(
 #   jobs.lever.co/{company}/{posting_uuid}
 #   jobs.lever.co/{company}/{posting_uuid}/apply
 _LEVER_POSTING_RE = re.compile(
-    r"https?://jobs\.lever\.co/(?P<company>[^/?#]+)/(?P<posting_id>[0-9a-f-]+)",
+    r"https?://jobs\.lever\.co/(?P<company>[^/?#]+)/(?P<posting_id>[0-9a-f-]+)(?:/apply)?(?:[?#]|$)",
     re.IGNORECASE,
 )
 
@@ -116,23 +121,28 @@ class PageDataExtractor:
         if gh_match:
             board_token = gh_match.group("board")
             job_id = gh_match.group("job_id")
-            logger.info("Greenhouse direct URL detected: board=%s job=%s", board_token, job_id)
+            logger.debug("Greenhouse direct URL detected: board=%s job=%s", board_token, job_id)
             return self._fetch_greenhouse_job(board_token, job_id)
 
         lever_match = _LEVER_POSTING_RE.match(url)
         if lever_match:
             company = lever_match.group("company")
             posting_id = lever_match.group("posting_id")
-            logger.info("Lever direct URL detected: company=%s posting=%s", company, posting_id)
+            logger.debug("Lever direct URL detected: company=%s posting=%s", company, posting_id)
             return self._fetch_lever_posting(company, posting_id)
 
         return None
+
+    _API_HEADERS = {
+        "User-Agent": "JobFinderBot/1.0",
+        "Accept": "application/json",
+    }
 
     def _fetch_greenhouse_job(self, board_token: str, job_id: str) -> Optional[Dict[str, Any]]:
         """Fetch a single job from the Greenhouse public API."""
         api_url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}"
         try:
-            resp = requests.get(api_url, timeout=10)
+            resp = requests.get(api_url, headers=self._API_HEADERS, timeout=10)
             resp.raise_for_status()
             data = resp.json()
         except requests.exceptions.RequestException as e:
@@ -153,7 +163,7 @@ class PageDataExtractor:
         return {
             "title": data.get("title", ""),
             "description": data.get("content", ""),
-            "company": sanitize_html_description(raw_company) if raw_company else "",
+            "company": sanitize_company_name(raw_company) if raw_company else "",
             "location": sanitize_html_description(location) if location else "",
             "posted_date": data.get("updated_at", ""),
         }
@@ -162,7 +172,7 @@ class PageDataExtractor:
         """Fetch a single posting from the Lever public API."""
         api_url = f"https://api.lever.co/v0/postings/{company}/{posting_id}?mode=json"
         try:
-            resp = requests.get(api_url, timeout=10)
+            resp = requests.get(api_url, headers=self._API_HEADERS, timeout=10)
             resp.raise_for_status()
             data = resp.json()
         except requests.exceptions.RequestException as e:
@@ -180,8 +190,6 @@ class PageDataExtractor:
         posted_date = ""
         created_at = data.get("createdAt")
         if created_at and isinstance(created_at, int):
-            from datetime import datetime, timezone
-
             posted_date = datetime.fromtimestamp(created_at / 1000, tz=timezone.utc).strftime(
                 "%Y-%m-%d"
             )
@@ -216,10 +224,8 @@ class PageDataExtractor:
         api_result = self._try_api_probe(url)
         if api_result and api_result.get("title") and api_result.get("description"):
             api_result["url"] = url
-            if api_result.get("title"):
-                api_result["title"] = sanitize_title(api_result["title"])
-            if api_result.get("description"):
-                api_result["description"] = sanitize_html_description(api_result["description"])
+            api_result["title"] = sanitize_title(api_result["title"])
+            api_result["description"] = sanitize_html_description(api_result["description"])
             return api_result
 
         try:

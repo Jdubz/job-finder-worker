@@ -366,6 +366,7 @@ class TestGreenhouseEmbed:
         assert result["location"] == "Remote, United States"
         mock_get.assert_called_once_with(
             "https://boards-api.greenhouse.io/v1/boards/twochairs/jobs/8298038002",
+            headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
             timeout=10,
         )
 
@@ -502,6 +503,7 @@ class TestAPIProbe:
         mock_render.assert_not_called()
         mock_get.assert_called_once_with(
             "https://boards-api.greenhouse.io/v1/boards/acmecorp/jobs/4567890",
+            headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
             timeout=10,
         )
 
@@ -580,6 +582,7 @@ class TestAPIProbe:
         mock_render.assert_not_called()
         mock_get.assert_called_once_with(
             "https://api.lever.co/v0/postings/stripe/a0b1c2d3-e4f5-6789-abcd-ef0123456789?mode=json",
+            headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
             timeout=10,
         )
 
