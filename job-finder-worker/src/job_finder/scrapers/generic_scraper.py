@@ -305,13 +305,16 @@ class GenericScraper:
                     "field_extraction_total_failure: %d elements matched selector=%r "
                     "but 0 produced title+url; field mappings likely wrong. "
                     "fields=%r url=%s",
-                    skipped_no_title_url, self.config.job_selector,
-                    dict(self.config.fields), self.config.url,
+                    skipped_no_title_url,
+                    self.config.job_selector,
+                    dict(self.config.fields),
+                    self.config.url,
                 )
             elif skipped_no_title_url:
                 logger.debug(
                     "field_extraction: skipped %d/%d items missing title or url",
-                    skipped_no_title_url, skipped_no_title_url + len(jobs),
+                    skipped_no_title_url,
+                    skipped_no_title_url + len(jobs),
                 )
 
             # Apply company filter if configured (for company-specific aggregator sources)
@@ -797,13 +800,20 @@ class GenericScraper:
         return []
 
     _JOB_HINT_SELECTORS = [
-        "[class*='job']", "[class*='Job']",
-        "[class*='position']", "[class*='Position']",
-        "[class*='opening']", "[class*='Opening']",
-        "[class*='career']", "[class*='Career']",
-        "[class*='listing']", "[class*='Listing']",
-        "[id*='job']", "[id*='Job']",
-        "[data-job]", "[data-job-id]",
+        "[class*='job']",
+        "[class*='Job']",
+        "[class*='position']",
+        "[class*='Position']",
+        "[class*='opening']",
+        "[class*='Opening']",
+        "[class*='career']",
+        "[class*='Career']",
+        "[class*='listing']",
+        "[class*='Listing']",
+        "[id*='job']",
+        "[id*='Job']",
+        "[data-job]",
+        "[data-job-id]",
     ]
 
     def _diagnose_empty_selector(self, soup: BeautifulSoup) -> None:
@@ -819,8 +829,7 @@ class GenericScraper:
                     el = found[0]
                     cls = " ".join(el.get("class", []))
                     hints.append(
-                        f"{sel} → {len(found)} hits "
-                        f"(first: <{el.name} class=\"{cls}\">)"
+                        f"{sel} → {len(found)} hits " f'(first: <{el.name} class="{cls}">)'
                     )
             except Exception:
                 pass
@@ -828,8 +837,11 @@ class GenericScraper:
         logger.warning(
             "js_render_zero_jobs: selector=%r matched 0 elements "
             "url=%s html_size=%d text_preview=%r hints=[%s]",
-            self.config.job_selector, self.config.url, html_len,
-            text_preview, "; ".join(hints[:5]) if hints else "none",
+            self.config.job_selector,
+            self.config.url,
+            html_len,
+            text_preview,
+            "; ".join(hints[:5]) if hints else "none",
         )
 
     def _extract_cursor(self, response_data: Optional[dict]) -> Optional[str]:

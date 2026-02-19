@@ -367,7 +367,9 @@ class PlaywrightRenderer:
             logger.warning(
                 "playwright_render status=partial url_hash=%s: selector %r not found, "
                 "returning partial HTML (%d bytes)",
-                url_hash, req.wait_for_selector, len(html),
+                url_hash,
+                req.wait_for_selector,
+                len(html),
             )
             # Fall through — return HTML so scraper can diagnose the DOM
         elif status != "ok":

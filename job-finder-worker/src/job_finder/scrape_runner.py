@@ -463,8 +463,11 @@ class ScrapeRunner:
                 logger.warning(
                     "zero_jobs_js_source: source=%s url=%s job_selector=%r "
                     "render_wait_for=%r elapsed=%ss",
-                    source_name, source_config.url, source_config.job_selector,
-                    source_config.render_wait_for, int(time.monotonic() - start),
+                    source_name,
+                    source_config.url,
+                    source_config.job_selector,
+                    source_config.render_wait_for,
+                    int(time.monotonic() - start),
                 )
             else:
                 logger.info("  Found 0 jobs (elapsed=%ss)", int(time.monotonic() - start))

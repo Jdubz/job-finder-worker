@@ -43,9 +43,11 @@ def test_partial_render_returns_html():
     mock_context.new_page.return_value = mock_page
 
     # Patch _ensure_browser and browser.new_context
-    with patch.object(renderer, "_ensure_browser"), \
-         patch.object(renderer, "_sem", MagicMock()), \
-         patch.object(renderer, "_browser", MagicMock()) as mock_browser:
+    with (
+        patch.object(renderer, "_ensure_browser"),
+        patch.object(renderer, "_sem", MagicMock()),
+        patch.object(renderer, "_browser", MagicMock()) as mock_browser,
+    ):
         mock_browser.new_context.return_value = mock_context
 
         # Call _render_internal directly to avoid thread pool complexity
@@ -108,7 +110,7 @@ def test_js_render_auth_wall_raises():
 
     auth_html = (
         "<html><body>"
-        '<h1>Sign in to continue</h1>'
+        "<h1>Sign in to continue</h1>"
         '<form><input type="password" name="password"></form>'
         "</body></html>"
     )
@@ -192,9 +194,7 @@ def test_field_extraction_total_failure_logs_warning(caplog):
                 jobs = scraper.scrape()
 
     assert jobs == []
-    assert any(
-        "field_extraction_total_failure" in record.message for record in caplog.records
-    )
+    assert any("field_extraction_total_failure" in record.message for record in caplog.records)
 
 
 # ── Test 6: Scrape runner zero-jobs JS source warning ──
