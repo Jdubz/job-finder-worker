@@ -457,10 +457,23 @@ class ScrapeRunner:
             )
 
         stats["jobs_found"] = len(jobs)
-        logger.info("  Found %s jobs (elapsed=%ss)", len(jobs), int(time.monotonic() - start))
 
         if not jobs:
+            if source_config.requires_js:
+                logger.warning(
+                    "zero_jobs_js_source: source=%s url=%s job_selector=%r "
+                    "render_wait_for=%r elapsed=%ss",
+                    source_name,
+                    source_config.url,
+                    source_config.job_selector,
+                    source_config.render_wait_for,
+                    int(time.monotonic() - start),
+                )
+            else:
+                logger.info("  Found 0 jobs (elapsed=%ss)", int(time.monotonic() - start))
             return stats
+
+        logger.info("  Found %s jobs (elapsed=%ss)", len(jobs), int(time.monotonic() - start))
 
         # Submit jobs to queue - use source_type from database as the authoritative type
         source_label = f"{source_type}:{source_name}"

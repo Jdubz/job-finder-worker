@@ -100,6 +100,7 @@ export const tools: Tool[] = [
       properties: {
         selector: { type: "string", description: "CSS selector for the field (from get_form_fields)" },
         value: { type: "string", description: "Value to fill in" },
+        force: { type: "boolean", description: "Set true to overwrite an existing value. Default: false (skip fields that already have values)." },
       },
       required: ["selector", "value"],
     },
@@ -115,6 +116,7 @@ export const tools: Tool[] = [
       properties: {
         selector: { type: "string", description: "CSS selector for the select element" },
         value: { type: "string", description: "Option value to select (use 'value' from options, or 'text' if value is empty)" },
+        force: { type: "boolean", description: "Set true to overwrite an existing value. Default: false (skip fields that already have values)." },
       },
       required: ["selector", "value"],
     },
@@ -132,6 +134,7 @@ export const tools: Tool[] = [
       properties: {
         selector: { type: "string", description: "CSS selector for the input field" },
         value: { type: "string", description: "Value to search for - will match best available option" },
+        force: { type: "boolean", description: "Set true to overwrite an existing value. Default: false (skip fields that already have values)." },
       },
       required: ["selector", "value"],
     },

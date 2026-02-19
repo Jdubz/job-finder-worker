@@ -286,6 +286,7 @@ class GenericScraper:
 
             # Parse each item into standardized job format
             jobs = []
+            skipped_no_title_url = 0
             for item in data:
                 job = self._extract_fields(item)
 
@@ -296,6 +297,26 @@ class GenericScraper:
 
                 if job.get("title") and job.get("url"):
                     jobs.append(job)
+                else:
+                    skipped_no_title_url += 1
+
+            if skipped_no_title_url and not jobs:
+                logger.warning(
+                    "field_extraction_total_failure: %d items matched but 0 produced "
+                    "title+url; field mappings likely wrong. "
+                    "source_type=%s job_selector=%r fields=%r url=%s",
+                    skipped_no_title_url,
+                    self.config.type,
+                    self.config.job_selector or "(n/a)",
+                    dict(self.config.fields),
+                    self.config.url,
+                )
+            elif skipped_no_title_url:
+                logger.debug(
+                    "field_extraction: skipped %d/%d items missing title or url",
+                    skipped_no_title_url,
+                    skipped_no_title_url + len(jobs),
+                )
 
             # Apply company filter if configured (for company-specific aggregator sources)
             if self.config.company_filter and jobs:
@@ -730,6 +751,21 @@ class GenericScraper:
                     )
                 )
                 soup = BeautifulSoup(result.html, "html.parser")
+
+                # JS pages may return 200 with a CAPTCHA/login body
+                rendered_text = result.html[:10000]
+                if _detect_bot_protection(rendered_text):
+                    raise ScrapeBotProtectionError(
+                        url,
+                        "Bot protection detected in JS-rendered page",
+                        status_code=None,
+                    )
+                if _detect_auth_wall(rendered_text):
+                    raise ScrapeAuthError(
+                        url,
+                        "Authentication wall detected in JS-rendered page",
+                        status_code=None,
+                    )
             except RuntimeError as exc:
                 error_msg = str(exc).lower()
                 if "timeout" in error_msg:
@@ -757,9 +793,59 @@ class GenericScraper:
             return self._extract_embedded_json(soup)
 
         if self.config.job_selector:
-            return soup.select(self.config.job_selector)
+            items = soup.select(self.config.job_selector)
+            if not items and self.config.requires_js:
+                self._diagnose_empty_selector(soup, len(result.html), url)
+            return items
 
         return []
+
+    _JOB_HINT_SELECTORS = [
+        "[class*='job']",
+        "[class*='Job']",
+        "[class*='position']",
+        "[class*='Position']",
+        "[class*='opening']",
+        "[class*='Opening']",
+        "[class*='career']",
+        "[class*='Career']",
+        "[class*='listing']",
+        "[class*='Listing']",
+        "[id*='job']",
+        "[id*='Job']",
+        "[data-job]",
+        "[data-job-id]",
+    ]
+
+    def _diagnose_empty_selector(self, soup: BeautifulSoup, html_len: int, url: str) -> None:
+        """Log diagnostic info when job_selector matches zero elements on a JS-rendered page."""
+        title_tag = soup.find("title")
+        page_title = title_tag.get_text(strip=True) if title_tag else "(no <title>)"
+        text_preview = soup.get_text(separator=" ", strip=True)[:300].replace("\n", " ")
+
+        hints = []
+        for sel in self._JOB_HINT_SELECTORS:
+            try:
+                found = soup.select(sel)
+                if found:
+                    el = found[0]
+                    cls = " ".join(el.get("class", []))
+                    hints.append(
+                        f"{sel} → {len(found)} hits " f'(first: <{el.name} class="{cls}">)'
+                    )
+            except Exception:
+                pass
+
+        logger.warning(
+            "js_render_zero_jobs: selector=%r matched 0 elements "
+            "url=%s html_size=%d page_title=%r text_preview=%r hints=[%s]",
+            self.config.job_selector,
+            url,
+            html_len,
+            page_title,
+            text_preview,
+            "; ".join(hints[:5]) if hints else "none",
+        )
 
     def _extract_cursor(self, response_data: Optional[dict]) -> Optional[str]:
         """Extract next-page cursor from a JSON response using cursor_response_path."""
