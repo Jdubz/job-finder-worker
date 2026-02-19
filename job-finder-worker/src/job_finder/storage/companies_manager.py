@@ -155,24 +155,38 @@ class CompaniesManager:
         )
 
         tech_stack = company_data.get("techStack") or company_data.get("tech_stack") or []
-        if isinstance(tech_stack, str):
+        if isinstance(tech_stack, dict):
+            tech_stack = list(tech_stack.values()) if tech_stack else []
+        elif isinstance(tech_stack, str):
             tech_stack = [tech_stack]
 
         # Validate website - reject aggregator domains
         website = self._validate_website(company_data.get("website"))
 
+        # Coerce text fields — AI responses occasionally return dicts for string fields,
+        # which SQLite cannot bind.  Convert to JSON string if dict, else use as-is.
+        def _text(val: object) -> object:
+            if isinstance(val, dict):
+                return json.dumps(val)
+            if isinstance(val, list):
+                return json.dumps(val)
+            return val
+
         fields = {
             "name": cleaned_name,
             "name_lower": normalized,
             "website": website,
-            "about": company_data.get("about"),
-            "culture": company_data.get("culture"),
-            "mission": company_data.get("mission"),
-            "company_size_category": company_data.get("companySizeCategory")
-            or company_data.get("company_size_category"),
-            "industry": company_data.get("industry"),
-            "headquarters_location": company_data.get("headquartersLocation")
-            or company_data.get("headquarters_location"),
+            "about": _text(company_data.get("about")),
+            "culture": _text(company_data.get("culture")),
+            "mission": _text(company_data.get("mission")),
+            "company_size_category": _text(
+                company_data.get("companySizeCategory") or company_data.get("company_size_category")
+            ),
+            "industry": _text(company_data.get("industry")),
+            "headquarters_location": _text(
+                company_data.get("headquartersLocation")
+                or company_data.get("headquarters_location")
+            ),
             "has_portland_office": 1 if has_portland_office else 0,
             "is_remote_first": (
                 1 if company_data.get("isRemoteFirst") or company_data.get("is_remote_first") else 0

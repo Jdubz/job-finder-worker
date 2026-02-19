@@ -52,3 +52,38 @@ def test_stub_creation_returns_clean_name(tmp_path: Path):
 
     assert row["name"] == "Cloudflare"
     assert row["name_lower"] == "cloudflare"
+
+
+def test_save_company_coerces_dict_text_fields(tmp_path: Path):
+    """AI occasionally returns dicts for text fields — save_company must coerce them."""
+    db_path = tmp_path / "companies.db"
+    _apply_migrations(db_path)
+
+    manager = CompaniesManager(str(db_path))
+
+    company_id = manager.save_company(
+        {
+            "name": "Instructure",
+            "website": "https://instructure.com",
+            "about": {"summary": "Ed-tech company", "details": "Canvas LMS"},
+            "culture": {"values": ["innovation", "collaboration"]},
+            "mission": {"statement": "Inspire learning"},
+            "techStack": {"frontend": "React", "backend": "Ruby"},
+        }
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT about, culture, mission, tech_stack FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+    # Dict fields should be JSON-serialized strings, not raw dicts
+    assert isinstance(row["about"], str)
+    assert "Ed-tech company" in row["about"]
+    assert isinstance(row["culture"], str)
+    assert isinstance(row["mission"], str)
+    # tech_stack dict should have been converted to a list of values
+    assert isinstance(row["tech_stack"], str)
+    assert "React" in row["tech_stack"]
