@@ -973,10 +973,14 @@ async function handleSelectOption(params: { selector: string; value: string; for
         if (el.tagName !== 'SELECT') return { success: false, error: 'Element is not a select: ' + el.tagName };
         if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
 
-        // If a non-default option is already selected, skip
-        const currentValue = el.value || '';
-        if (!force && currentValue !== '') {
-          return { success: true, skipped: true, currentValue };
+        // Skip if a user-set (non-placeholder) option is already selected
+        if (!force && el.selectedIndex > 0) {
+          const selectedOpt = el.options[el.selectedIndex];
+          // Also skip only if the selected option isn't a disabled placeholder
+          if (!selectedOpt.disabled && !selectedOpt.hidden) {
+            const currentValue = el.value || '';
+            return { success: true, skipped: true, currentValue };
+          }
         }
 
         // Focus the element first
@@ -1327,6 +1331,10 @@ async function handleSelectCombobox(params: { selector: string; value: string; f
         return { success: true };
       })()
     `)
+
+    if (!openResult.success) {
+      return { success: false, error: `Failed to open combobox: element not found for ${selector}` }
+    }
 
     if (openResult.skipped) {
       return { success: true, skipped: true, currentValue: openResult.currentValue }
