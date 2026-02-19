@@ -147,9 +147,8 @@ describe("SystemHealthPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Agent CLI Tools")).toBeInTheDocument()
+      expect(screen.getByText("Healthy")).toBeInTheDocument()
     })
-
-    expect(screen.getByText("Healthy")).toBeInTheDocument()
   })
 
   it("renders refresh button", async () => {

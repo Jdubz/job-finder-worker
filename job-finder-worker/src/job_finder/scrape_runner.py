@@ -18,7 +18,16 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Any, Dict, List, Optional
 
-from job_finder.exceptions import ConfigurationError, ScrapeBlockedError
+from job_finder.exceptions import (
+    ConfigurationError,
+    ScrapeAuthError,
+    ScrapeBlockedError,
+    ScrapeBotProtectionError,
+    ScrapeConfigError,
+    ScrapeNotFoundError,
+    ScrapeProtectedApiError,
+    ScrapeTransientError,
+)
 from job_finder.filters.prefilter import PreFilter
 from job_finder.filters.title_filter import TitleFilter
 from job_finder.job_queue.config_loader import ConfigLoader
@@ -39,6 +48,7 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 
 logger = logging.getLogger(__name__)
 SOURCE_SCRAPE_TIMEOUT_SEC = 90  # watchdog per source to avoid hangs (JS render, huge APIs)
+TRANSIENT_FAILURE_THRESHOLD = 3  # disable source after N consecutive recoverable failures
 
 
 class ScrapeRunner:
@@ -166,21 +176,77 @@ class ScrapeRunner:
                     source["id"],
                     status="success",
                 )
+                self._reset_consecutive_failures(source["id"])
 
                 stats["sources_scraped"] += 1
                 stats["total_jobs_found"] += source_stats["jobs_found"]
                 stats["jobs_submitted"] += source_stats["jobs_submitted"]
                 potential_matches += source_stats["jobs_submitted"]
 
+            except (ScrapeBotProtectionError, ScrapeAuthError, ScrapeProtectedApiError) as e:
+                # Permanent errors — disable immediately with tag
+                if isinstance(e, ScrapeBotProtectionError):
+                    error_type_str = "Bot protection"
+                    disable_reason_prefix = "Bot protection detected"
+                    disable_tag = "anti_bot"
+                elif isinstance(e, ScrapeAuthError):
+                    error_type_str = "Auth required"
+                    disable_reason_prefix = "Authentication required"
+                    disable_tag = "auth_required"
+                else:  # ScrapeProtectedApiError
+                    error_type_str = "Protected API"
+                    disable_reason_prefix = "Protected API"
+                    disable_tag = "protected_api"
+
+                error_msg = f"{error_type_str}: {source.get('name')} - {e.reason}"
+                logger.warning(error_msg)
+                stats["errors"].append(error_msg)
+                self.sources_manager.disable_source_with_tags(
+                    source["id"],
+                    f"{disable_reason_prefix}: {e.reason}",
+                    tags=[disable_tag],
+                )
+
+            except (ScrapeConfigError, ScrapeNotFoundError, ScrapeTransientError) as e:
+                # Recoverable errors — strike system, disable after threshold
+                count = self._increment_consecutive_failures(source["id"])
+
+                if isinstance(e, ScrapeConfigError):
+                    error_type_str = "Config error"
+                    disable_reason_prefix = f"Config error ({count} consecutive)"
+                elif isinstance(e, ScrapeNotFoundError):
+                    error_type_str = "Not found"
+                    disable_reason_prefix = f"Endpoint not found ({count} consecutive)"
+                else:  # ScrapeTransientError
+                    error_type_str = "Transient error"
+                    disable_reason_prefix = f"Disabled after {count} transient errors"
+
+                error_msg = f"{error_type_str}: {source.get('name')} - {e.reason} (strike {count}/{TRANSIENT_FAILURE_THRESHOLD})"
+                logger.warning(error_msg)
+                stats["errors"].append(error_msg)
+
+                if count >= TRANSIENT_FAILURE_THRESHOLD:
+                    self.sources_manager.disable_source_with_note(
+                        source["id"],
+                        f"{disable_reason_prefix}: {e.reason}",
+                    )
+
             except ScrapeBlockedError as e:
-                # Anti-bot protection detected - disable source with note
+                # Base fallback for any other ScrapeBlockedError subclass
                 error_msg = f"Source blocked: {source.get('name')} - {e.reason}"
                 logger.warning(error_msg)
                 stats["errors"].append(error_msg)
-                self.sources_manager.disable_source_with_note(
-                    source["id"],
-                    f"Anti-bot protection: {e.reason}",
-                )
+                if e.disable_tag:
+                    self.sources_manager.disable_source_with_tags(
+                        source["id"],
+                        f"Blocked: {e.reason}",
+                        tags=[e.disable_tag],
+                    )
+                else:
+                    self.sources_manager.disable_source_with_note(
+                        source["id"],
+                        f"Blocked: {e.reason}",
+                    )
 
             except ConfigurationError as e:
                 # Invalid config - auto-disable to prevent repeated failures
@@ -213,6 +279,47 @@ class ScrapeRunner:
                 logger.warning(f"  - {error}")
 
         return stats
+
+    def _increment_consecutive_failures(self, source_id: str) -> int:
+        """
+        Increment and return the consecutive failure count for a source.
+
+        The count is stored in config.consecutive_failures and reset to 0
+        on successful scrape. Used for recoverable errors (transient, config,
+        not-found) to allow retries before disabling.
+        """
+        try:
+            source = self.sources_manager.get_source_by_id(source_id)
+            if not source:
+                return 1
+
+            config = source.get("config", {})
+            current_count = config.get("consecutive_failures", 0)
+            new_count = current_count + 1
+
+            config["consecutive_failures"] = new_count
+            self.sources_manager.update_config(source_id, config)
+
+            return new_count
+
+        except Exception as e:
+            logger.warning("Failed to track consecutive failures for %s: %s", source_id, e)
+            return 1
+
+    def _reset_consecutive_failures(self, source_id: str) -> None:
+        """Reset the consecutive failure count for a source after successful scrape."""
+        try:
+            source = self.sources_manager.get_source_by_id(source_id)
+            if not source:
+                return
+
+            config = source.get("config", {})
+            if config.get("consecutive_failures", 0) > 0:
+                config["consecutive_failures"] = 0
+                self.sources_manager.update_config(source_id, config)
+
+        except Exception as e:
+            logger.warning("Failed to reset consecutive failures for %s: %s", source_id, e)
 
     def _get_sources(
         self, max_sources: Optional[int], source_ids: Optional[List[str]]
