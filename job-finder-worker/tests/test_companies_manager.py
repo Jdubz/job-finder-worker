@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -52,3 +53,84 @@ def test_stub_creation_returns_clean_name(tmp_path: Path):
 
     assert row["name"] == "Cloudflare"
     assert row["name_lower"] == "cloudflare"
+
+
+def test_save_company_coerces_dict_text_fields(tmp_path: Path):
+    """AI occasionally returns dicts for text fields — save_company must coerce them."""
+    db_path = tmp_path / "companies.db"
+    _apply_migrations(db_path)
+
+    manager = CompaniesManager(str(db_path))
+
+    company_id = manager.save_company(
+        {
+            "name": "Instructure",
+            "website": "https://instructure.com",
+            "about": {"summary": "Ed-tech company", "details": "Canvas LMS"},
+            "culture": {"values": ["innovation", "collaboration"]},
+            "mission": {"statement": "Inspire learning"},
+            "techStack": {"frontend": "React", "backend": "Ruby"},
+        }
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT about, culture, mission, tech_stack FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+    # Dict fields should be coerced to human-readable strings
+    assert isinstance(row["about"], str)
+    assert "Ed-tech company" in row["about"]
+    assert "Canvas LMS" in row["about"]
+    assert isinstance(row["culture"], str)
+    assert isinstance(row["mission"], str)
+    assert "Inspire learning" in row["mission"]
+    # tech_stack dict should have been converted to a JSON list of its values
+    assert isinstance(row["tech_stack"], str)
+    tech_stack_parsed = json.loads(row["tech_stack"])
+    assert isinstance(tech_stack_parsed, list)
+    assert "React" in tech_stack_parsed
+    assert "Ruby" in tech_stack_parsed
+
+
+def test_save_company_coerces_dict_text_fields_on_update(tmp_path: Path):
+    """Dict coercion should also work when updating an existing company."""
+    db_path = tmp_path / "companies.db"
+    _apply_migrations(db_path)
+
+    manager = CompaniesManager(str(db_path))
+
+    # First create a stub company so there is an existing row to update
+    stub = manager.create_company_stub("Instructure Careers", "https://instructure.com")
+
+    # Now update that company, passing dicts for text fields to exercise UPDATE path
+    updated_id = manager.save_company(
+        {
+            "id": stub["id"],
+            "name": "Instructure",
+            "website": "https://instructure.com",
+            "about": {"summary": "Ed-tech company", "details": "Canvas LMS"},
+            "culture": {"values": ["innovation", "collaboration"]},
+            "mission": {"statement": "Inspire learning"},
+            "techStack": {"frontend": "React", "backend": "Ruby"},
+        }
+    )
+
+    assert updated_id == stub["id"]
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT about, culture, mission, tech_stack FROM companies WHERE id = ?",
+            (updated_id,),
+        ).fetchone()
+
+    assert isinstance(row["about"], str)
+    assert "Ed-tech company" in row["about"]
+    assert isinstance(row["culture"], str)
+    assert isinstance(row["mission"], str)
+    tech_stack_parsed = json.loads(row["tech_stack"])
+    assert isinstance(tech_stack_parsed, list)
+    assert "React" in tech_stack_parsed

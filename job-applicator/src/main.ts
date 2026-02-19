@@ -924,8 +924,10 @@ function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): st
 
       // Helper to build a unique selector for an input
       function buildSelector(input) {
-        if (input.id) return \`#\${CSS.escape(input.id)}\`;
-        if (input.name) return \`input[type="file"][name="\${CSS.escape(input.name)}"]\`;
+        const inputId = input.getAttribute('id');
+        const inputName = input.getAttribute('name');
+        if (inputId) return \`#\${CSS.escape(inputId)}\`;
+        if (inputName) return \`input[type="file"][name="\${CSS.escape(inputName)}"]\`;
 
         // Build an nth-of-type selector as fallback
         const allInputs = Array.from(document.querySelectorAll('input[type="file"]'));
@@ -1089,27 +1091,65 @@ ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message
   return { connected: true }
 })
 
-// Check if a file input exists on the current page
+// Check if a file input exists on the current page (including iframes)
 ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; selector?: string }> => {
   if (!browserView) {
+    logger.info("[check-file-input] No browserView")
     return { hasFileInput: false }
   }
 
-  try {
-    const result = await browserView.webContents.executeJavaScript(`
-      (() => {
-        const fileInput = document.querySelector('input[type="file"]');
-        if (!fileInput) return { hasFileInput: false };
-        let selector = 'input[type="file"]';
-        if (fileInput.id) selector = '#' + CSS.escape(fileInput.id);
-        else if (fileInput.name) selector = 'input[type="file"][name="' + CSS.escape(fileInput.name) + '"]';
-        return { hasFileInput: true, selector };
-      })()
-    `)
-    return result
-  } catch {
-    return { hasFileInput: false }
+  const script = `
+    (() => {
+      const fileInput = document.querySelector('input[type="file"]');
+      if (!fileInput) return { hasFileInput: false };
+      let selector = 'input[type="file"]';
+      const id = fileInput.getAttribute('id');
+      const name = fileInput.getAttribute('name');
+      if (id) selector = '#' + CSS.escape(id);
+      else if (name) selector = 'input[type="file"][name="' + CSS.escape(name) + '"]';
+      return { hasFileInput: true, selector };
+    })()
+  `
+
+  // Search the top frame first, then walk child frames (e.g. Greenhouse iframes)
+  const webContents = browserView.webContents as unknown as { mainFrame?: { executeJavaScript?: (code: string) => Promise<unknown>; frames?: unknown[]; url?: string } }
+  const root = webContents.mainFrame
+  if (!root || typeof root.executeJavaScript !== "function") {
+    // Fallback: top-level only
+    try {
+      const result = await browserView.webContents.executeJavaScript(script) as { hasFileInput: boolean; selector?: string }
+      logger.info(`[check-file-input] top-level only: hasFileInput=${result.hasFileInput}`)
+      return result
+    } catch {
+      logger.warn("[check-file-input] top-level execution failed")
+      return { hasFileInput: false }
+    }
   }
+
+  // Walk all frames (root + iframes)
+  type FrameLike = { executeJavaScript?: (code: string) => Promise<unknown>; frames?: FrameLike[]; url?: string }
+  const allFrames: FrameLike[] = []
+  const visit = (frame: FrameLike) => {
+    allFrames.push(frame)
+    for (const child of (frame.frames || []) as FrameLike[]) visit(child)
+  }
+  visit(root as FrameLike)
+
+  for (const frame of allFrames) {
+    if (typeof frame.executeJavaScript !== "function") continue
+    try {
+      const result = await frame.executeJavaScript(script) as { hasFileInput: boolean; selector?: string }
+      if (result?.hasFileInput) {
+        logger.info(`[check-file-input] Found file input in frame: ${frame.url || "top"}`)
+        return result
+      }
+    } catch {
+      // Frame may have been navigated away or cross-origin without access
+    }
+  }
+
+  logger.info(`[check-file-input] No file inputs found across ${allFrames.length} frame(s)`)
+  return { hasFileInput: false }
 })
 
 // Get job matches from backend using typed API client
