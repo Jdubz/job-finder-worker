@@ -1952,12 +1952,17 @@ class GenericScraper:
         # Unix timestamp
         if isinstance(value, (int, float)):
             try:
+                timestamp = float(value)
+                # Reject zero/negative timestamps — these are missing/placeholder values,
+                # not real job posting dates.  Also reject timestamps before 2000-01-01
+                # (946684800) since online job postings didn't exist before then.
+                if timestamp < 946_684_800:
+                    return ""
                 # Heuristic to detect millisecond timestamps: if a numeric timestamp
                 # is >= 10,000,000,000 (11+ digits), we assume it's in milliseconds.
                 # A 10-digit timestamp in seconds can represent dates up to year 2286,
                 # so this is a reasonable assumption for job posting dates.
                 # Examples: 1752761621698 (ms) vs 1704067200 (s)
-                timestamp = float(value)
                 if timestamp >= 10_000_000_000:
                     timestamp = timestamp / 1000.0
                 dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
