@@ -366,7 +366,8 @@ class TestGreenhouseEmbed:
         assert result["location"] == "Remote, United States"
         mock_get.assert_called_once_with(
             "https://boards-api.greenhouse.io/v1/boards/twochairs/jobs/8298038002",
-            timeout=15,
+            headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
+            timeout=10,
         )
 
     @patch("job_finder.ai.page_data_extractor.requests.get")
@@ -465,3 +466,279 @@ class TestGreenhouseEmbed:
             result = extractor.extract(url)
 
         assert result is None
+
+
+# ── API probe (Greenhouse/Lever direct URLs) ─────────────────────
+
+
+class TestAPIProbe:
+    """Test API-first probe for direct Greenhouse/Lever URLs."""
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_greenhouse_direct_url_skips_playwright(self, mock_get):
+        """Direct Greenhouse URL fetches from API without rendering."""
+        extractor, _ = _make_extractor()
+        url = "https://boards.greenhouse.io/acmecorp/jobs/4567890"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "title": "Staff Engineer",
+            "content": "<p>Lead technical projects</p>",
+            "company_name": "Acme Corp",
+            "location": {"name": "San Francisco, CA"},
+            "updated_at": "2026-01-15T10:00:00-08:00",
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Staff Engineer"
+        assert "Lead technical projects" in result["description"]
+        assert result["company"] == "Acme Corp"
+        assert result["location"] == "San Francisco, CA"
+        assert result["url"] == url
+        mock_render.assert_not_called()
+        mock_get.assert_called_once_with(
+            "https://boards-api.greenhouse.io/v1/boards/acmecorp/jobs/4567890",
+            headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
+            timeout=10,
+        )
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_job_boards_subdomain_recognized(self, mock_get):
+        """job-boards.greenhouse.io subdomain is recognized."""
+        extractor, _ = _make_extractor()
+        url = "https://job-boards.greenhouse.io/acmecorp/jobs/4567890"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "title": "Engineer",
+            "content": "Description",
+            "company_name": "Acme",
+            "location": {"name": "Remote"},
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Engineer"
+        mock_render.assert_not_called()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_regional_greenhouse_url_recognized(self, mock_get):
+        """Regional URLs like job-boards.eu.greenhouse.io work."""
+        extractor, _ = _make_extractor()
+        url = "https://job-boards.eu.greenhouse.io/europecorp/jobs/789"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "title": "EU Engineer",
+            "content": "European role",
+            "company_name": "EuropeCorp",
+            "location": "Berlin, Germany",
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "EU Engineer"
+        assert result["location"] == "Berlin, Germany"
+        mock_render.assert_not_called()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_lever_direct_url_skips_playwright(self, mock_get):
+        """Direct Lever URL fetches from API without rendering."""
+        extractor, _ = _make_extractor()
+        url = "https://jobs.lever.co/stripe/a0b1c2d3-e4f5-6789-abcd-ef0123456789"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "text": "Backend Engineer",
+            "descriptionPlain": "Build payment infrastructure",
+            "categories": {"location": "Seattle, WA"},
+            "createdAt": 1700000000000,  # 2023-11-14
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Backend Engineer"
+        assert "payment infrastructure" in result["description"]
+        assert result["location"] == "Seattle, WA"
+        assert result["posted_date"] == "2023-11-14"
+        assert result["url"] == url
+        mock_render.assert_not_called()
+        mock_get.assert_called_once_with(
+            "https://api.lever.co/v0/postings/stripe/a0b1c2d3-e4f5-6789-abcd-ef0123456789?mode=json",
+            headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
+            timeout=10,
+        )
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_lever_apply_suffix_handled(self, mock_get):
+        """Lever URL with /apply suffix still matches."""
+        extractor, _ = _make_extractor()
+        url = "https://jobs.lever.co/company/a0b1c2d3-e4f5-6789-abcd-ef0123456789/apply"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "text": "Frontend Engineer",
+            "descriptionPlain": "Build UIs",
+            "categories": {"location": "Remote"},
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Frontend Engineer"
+        mock_render.assert_not_called()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_api_probe_failure_falls_through_to_rendering(self, mock_get):
+        """When API probe fails, extraction falls through to Playwright pipeline."""
+        from requests.exceptions import ConnectionError as ReqConnectionError
+
+        extractor, agent = _make_extractor()
+        url = "https://boards.greenhouse.io/acmecorp/jobs/999"
+
+        mock_get.side_effect = ReqConnectionError("Connection refused")
+        agent.execute.side_effect = Exception("AI also failed")
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(
+                extractor,
+                "_render_page",
+                return_value="<html><body><p>Fallback content</p></body></html>",
+            ) as mock_render:
+                result = extractor.extract(url)
+
+        # API probe failed, fell through to Playwright, AI also failed → None
+        assert result is None
+        mock_render.assert_called_once()
+
+    def test_non_ats_url_does_not_trigger_probe(self):
+        """Non-ATS URLs skip the API probe entirely."""
+        extractor, agent = _make_extractor()
+        url = "https://example.com/careers/engineer"
+        ai_response = MagicMock()
+        ai_response.text = json.dumps(
+            {
+                "title": "Engineer",
+                "description": "A job at Example",
+                "company": "Example",
+                "location": "Remote",
+            }
+        )
+        agent.execute.return_value = ai_response
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(
+                extractor,
+                "_render_page",
+                return_value="<html><body><p>Job posting</p></body></html>",
+            ) as mock_render:
+                with patch("job_finder.ai.page_data_extractor.requests.get") as mock_get:
+                    result = extractor.extract(url)
+
+        assert result is not None
+        mock_render.assert_called_once()
+        mock_get.assert_not_called()
+
+    def test_board_only_url_does_not_trigger_probe(self):
+        """Board-level URL without /jobs/{id} doesn't trigger API probe."""
+        extractor, agent = _make_extractor()
+        url = "https://boards.greenhouse.io/acmecorp"
+        agent.execute.side_effect = Exception("AI failed")
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(
+                extractor,
+                "_render_page",
+                return_value="<html><body><p>Job board</p></body></html>",
+            ):
+                with patch("job_finder.ai.page_data_extractor.requests.get") as mock_get:
+                    extractor.extract(url)
+
+        mock_get.assert_not_called()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_api_probe_partial_data_falls_through(self, mock_get):
+        """API probe returning title but no description falls through to rendering."""
+        extractor, agent = _make_extractor()
+        url = "https://boards.greenhouse.io/acmecorp/jobs/123"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "title": "Engineer",
+            "content": "",  # Empty description
+            "company_name": "Acme",
+        }
+        mock_get.return_value = mock_resp
+
+        ai_response = MagicMock()
+        ai_response.text = json.dumps(
+            {
+                "title": "Engineer",
+                "description": "AI filled description",
+                "company": "Acme",
+                "location": "Remote",
+            }
+        )
+        agent.execute.return_value = ai_response
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(
+                extractor,
+                "_render_page",
+                return_value="<html><body><p>Job content</p></body></html>",
+            ) as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        mock_render.assert_called_once()
+
+
+# ── Max tokens ────────────────────────────────────────────────────
+
+
+class TestMaxTokens:
+    """Test that AI extraction uses the correct max_tokens value."""
+
+    def test_ai_extraction_uses_4096_max_tokens(self):
+        extractor, agent = _make_extractor()
+        html = "<html><body><h1>Engineer</h1><p>Build stuff</p></body></html>"
+        ai_response = MagicMock()
+        ai_response.text = json.dumps(
+            {
+                "title": "Engineer",
+                "description": "Build stuff",
+                "company": "Co",
+                "location": "Remote",
+            }
+        )
+        agent.execute.return_value = ai_response
+
+        with (
+            patch.object(extractor, "_render_page", return_value=html),
+            patch.object(extractor, "_validate_url"),
+        ):
+            extractor.extract("https://example.com/job")
+
+        agent.execute.assert_called_once()
+        _, kwargs = agent.execute.call_args
+        assert kwargs["max_tokens"] == 4096

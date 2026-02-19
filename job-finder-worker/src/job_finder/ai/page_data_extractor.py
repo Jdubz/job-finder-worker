@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import socket
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -21,12 +22,35 @@ from job_finder.ai.agent_manager import AgentManager
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import NoAgentsAvailableError
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
-from job_finder.scrapers.text_sanitizer import sanitize_html_description, sanitize_title
+from job_finder.scrapers.text_sanitizer import (
+    sanitize_company_name,
+    sanitize_html_description,
+    sanitize_title,
+)
 
 logger = logging.getLogger(__name__)
 
 # Cap visible text sent to AI to avoid token limits
 MAX_PAGE_TEXT_CHARS = 10_000
+
+# Direct Greenhouse job URL patterns:
+#   jobs.greenhouse.io/{board}/jobs/{id}
+#   boards.greenhouse.io/{board}/jobs/{id}
+#   job-boards.greenhouse.io/{board}/jobs/{id}
+#   job-boards.eu.greenhouse.io/{board}/jobs/{id}  (regional)
+_GREENHOUSE_JOB_RE = re.compile(
+    r"https?://(?:jobs|boards|job-boards)(?:\.[a-z]{2})?\.greenhouse\.io/"
+    r"(?P<board>[^/?#]+)/jobs/(?P<job_id>\d+)",
+    re.IGNORECASE,
+)
+
+# Lever posting URL pattern:
+#   jobs.lever.co/{company}/{posting_uuid}
+#   jobs.lever.co/{company}/{posting_uuid}/apply
+_LEVER_POSTING_RE = re.compile(
+    r"https?://jobs\.lever\.co/(?P<company>[^/?#]+)/(?P<posting_id>[0-9a-f-]+)(?:/apply)?(?:[?#]|$)",
+    re.IGNORECASE,
+)
 
 EXTRACTION_PROMPT = """\
 You are a job posting data extractor. Given the text content of a web page,
@@ -87,10 +111,102 @@ class PageDataExtractor:
         except socket.gaierror:
             pass  # DNS resolution failed; let Playwright handle the error
 
+    def _try_api_probe(self, url: str) -> Optional[Dict[str, Any]]:
+        """Try to fetch job data directly from ATS APIs before rendering.
+
+        Matches the URL against known Greenhouse/Lever patterns and fetches
+        from their public APIs, bypassing Playwright entirely.
+        """
+        gh_match = _GREENHOUSE_JOB_RE.match(url)
+        if gh_match:
+            board_token = gh_match.group("board")
+            job_id = gh_match.group("job_id")
+            logger.debug("Greenhouse direct URL detected: board=%s job=%s", board_token, job_id)
+            return self._fetch_greenhouse_job(board_token, job_id)
+
+        lever_match = _LEVER_POSTING_RE.match(url)
+        if lever_match:
+            company = lever_match.group("company")
+            posting_id = lever_match.group("posting_id")
+            logger.debug("Lever direct URL detected: company=%s posting=%s", company, posting_id)
+            return self._fetch_lever_posting(company, posting_id)
+
+        return None
+
+    _API_HEADERS = {
+        "User-Agent": "JobFinderBot/1.0",
+        "Accept": "application/json",
+    }
+
+    def _fetch_greenhouse_job(self, board_token: str, job_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single job from the Greenhouse public API."""
+        api_url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}"
+        try:
+            resp = requests.get(api_url, headers=self._API_HEADERS, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("Greenhouse API request failed for %s: %s", api_url, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning("Greenhouse API returned invalid JSON for %s: %s", api_url, e)
+            return None
+
+        location = ""
+        loc_obj = data.get("location")
+        if isinstance(loc_obj, dict):
+            location = loc_obj.get("name", "")
+        elif isinstance(loc_obj, str):
+            location = loc_obj
+
+        raw_company = data.get("company_name", "")
+        return {
+            "title": data.get("title", ""),
+            "description": data.get("content", ""),
+            "company": sanitize_company_name(raw_company) if raw_company else "",
+            "location": sanitize_html_description(location) if location else "",
+            "posted_date": data.get("updated_at", ""),
+        }
+
+    def _fetch_lever_posting(self, company: str, posting_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single posting from the Lever public API."""
+        api_url = f"https://api.lever.co/v0/postings/{company}/{posting_id}?mode=json"
+        try:
+            resp = requests.get(api_url, headers=self._API_HEADERS, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("Lever API request failed for %s: %s", api_url, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning("Lever API returned invalid JSON for %s: %s", api_url, e)
+            return None
+
+        location = ""
+        categories = data.get("categories")
+        if isinstance(categories, dict):
+            location = categories.get("location", "")
+
+        posted_date = ""
+        created_at = data.get("createdAt")
+        if created_at and isinstance(created_at, int):
+            posted_date = datetime.fromtimestamp(created_at / 1000, tz=timezone.utc).strftime(
+                "%Y-%m-%d"
+            )
+
+        return {
+            "title": data.get("text", ""),
+            "description": data.get("descriptionPlain", ""),
+            "company": "",  # Lever API doesn't include company name
+            "location": location,
+            "posted_date": posted_date,
+        }
+
     def extract(self, url: str) -> Optional[Dict[str, Any]]:
         """Render a URL and extract job posting data.
 
-        Tries JSON-LD structured data first, then AI extraction from page text.
+        Tries ATS APIs first (Greenhouse/Lever), then renders with Playwright
+        and tries JSON-LD structured data, then AI extraction from page text.
 
         Args:
             url: The job posting URL to extract from.
@@ -103,6 +219,14 @@ class PageDataExtractor:
             ValueError: If the URL fails SSRF validation.
         """
         self._validate_url(url)
+
+        # Try ATS API probe before rendering (skips Playwright entirely)
+        api_result = self._try_api_probe(url)
+        if api_result and api_result.get("title") and api_result.get("description"):
+            api_result["url"] = url
+            api_result["title"] = sanitize_title(api_result["title"])
+            api_result["description"] = sanitize_html_description(api_result["description"])
+            return api_result
 
         try:
             html = self._render_page(url)
@@ -214,34 +338,7 @@ class PageDataExtractor:
             logger.debug("gh_jid=%s found but no Greenhouse board token in page", job_id)
             return None
 
-        # Fetch single job from Greenhouse public API
-        api_url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}"
-        try:
-            resp = requests.get(api_url, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-        except requests.exceptions.RequestException as e:
-            logger.warning("Greenhouse API request failed for %s: %s", api_url, e)
-            return None
-        except json.JSONDecodeError as e:
-            logger.warning("Greenhouse API returned invalid JSON for %s: %s", api_url, e)
-            return None
-
-        location = ""
-        loc_obj = data.get("location")
-        if isinstance(loc_obj, dict):
-            location = loc_obj.get("name", "")
-        elif isinstance(loc_obj, str):
-            location = loc_obj
-
-        raw_company = data.get("company_name", "")
-        return {
-            "title": data.get("title", ""),
-            "description": data.get("content", ""),
-            "company": sanitize_html_description(raw_company) if raw_company else "",
-            "location": sanitize_html_description(location) if location else "",
-            "posted_date": data.get("updated_at", ""),
-        }
+        return self._fetch_greenhouse_job(board_token, job_id)
 
     def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> None:
         """Extract job data from JSON-LD JobPosting schema.
@@ -352,7 +449,7 @@ class PageDataExtractor:
             result = self.agent_manager.execute(
                 task_type="extraction",
                 prompt=prompt,
-                max_tokens=2000,
+                max_tokens=4096,
                 temperature=0.3,
             )
             json_str = extract_json_from_response(result.text)
