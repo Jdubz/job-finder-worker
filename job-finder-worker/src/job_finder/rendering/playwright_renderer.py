@@ -326,10 +326,19 @@ class PlaywrightRenderer:
             try:
                 page.goto(req.url, wait_until="domcontentloaded", timeout=timeout)
                 if req.wait_for_selector:
-                    page.wait_for_selector(req.wait_for_selector, timeout=timeout)
+                    try:
+                        page.wait_for_selector(req.wait_for_selector, timeout=timeout)
+                    except PlaywrightTimeoutError as exc:
+                        # Page loaded but selector not found — capture partial HTML
+                        status = "partial"
+                        errors.append(
+                            f"wait_for_selector timeout ({req.wait_for_selector}): "
+                            f"{str(exc)[:300]}"
+                        )
                 html = page.content()
                 final_url = page.url
             except PlaywrightTimeoutError as exc:
+                # Page navigation itself timed out — no usable HTML
                 status = "timeout"
                 errors.append(str(exc)[:500])
             except Exception as exc:  # pragma: no cover - best-effort logging
@@ -354,7 +363,14 @@ class PlaywrightRenderer:
             len(errors),
         )
 
-        if status != "ok":
+        if status == "partial":
+            logger.warning(
+                "playwright_render status=partial url_hash=%s: selector %r not found, "
+                "returning partial HTML (%d bytes)",
+                url_hash, req.wait_for_selector, len(html),
+            )
+            # Fall through — return HTML so scraper can diagnose the DOM
+        elif status != "ok":
             raise RuntimeError(
                 f"Render failed ({status}): {errors[0] if errors else 'unknown error'}"
             )
