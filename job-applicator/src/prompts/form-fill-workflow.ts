@@ -42,6 +42,10 @@ Do NOT overwrite existing values, even if they appear incorrect.
 The user may have intentionally entered different data for this application.
 When in doubt, always leave existing values alone.
 
+The tools enforce this automatically: fill_field, select_option, and select_combobox
+will SKIP fields that already have values and return { skipped: true }.
+If you see a skipped result, move on to the next field — do not retry with force.
+
 For work experience and education sections:
 - If entries already exist with data → DO NOT re-enter them
 - If no entries exist OR more entries are needed → ADD them
