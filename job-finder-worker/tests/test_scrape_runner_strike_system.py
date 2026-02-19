@@ -18,7 +18,11 @@ from job_finder.exceptions import (
     ScrapeProtectedApiError,
     ScrapeTransientError,
 )
-from job_finder.scrape_runner import ScrapeRunner, TRANSIENT_FAILURE_THRESHOLD
+from job_finder.scrape_runner import (
+    ScrapeRunner,
+    TRANSIENT_FAILURE_THRESHOLD,
+    ZERO_JOBS_RECOVERY_THRESHOLD,
+)
 
 
 @pytest.fixture
@@ -294,3 +298,108 @@ def test_successful_scrape_skips_reset_when_no_prior_failures(mock_scraper_cls, 
 
     # Should NOT call update_config (no failures to reset)
     scrape_runner.sources_manager.update_config.assert_not_called()
+
+
+# ── 429 rate-limit awareness ──
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_429_with_retry_after_skips_strike(mock_scraper_cls, scrape_runner):
+    """429 with Retry-After should NOT increment consecutive_failures."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.side_effect = ScrapeTransientError(
+        "https://example.com/api", "HTTP 429: Too Many Requests - rate limited", 429, retry_after=60
+    )
+    mock_scraper_cls.return_value = scraper_instance
+
+    source = make_source(consecutive_failures=0)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    stats = scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Should NOT increment consecutive_failures
+    scrape_runner.sources_manager.update_config.assert_not_called()
+    # Should NOT disable
+    scrape_runner.sources_manager.disable_source_with_note.assert_not_called()
+    scrape_runner.sources_manager.disable_source_with_tags.assert_not_called()
+    # Error should still be recorded
+    assert len(stats["errors"]) == 1
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_429_without_retry_after_still_counts_strike(mock_scraper_cls, scrape_runner):
+    """429 without Retry-After should still use the normal strike system."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.side_effect = ScrapeTransientError(
+        "https://example.com/api",
+        "HTTP 429: Too Many Requests - rate limited",
+        429,
+        retry_after=None,
+    )
+    mock_scraper_cls.return_value = scraper_instance
+
+    source = make_source(consecutive_failures=0)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Should increment consecutive_failures (normal strike behavior)
+    scrape_runner.sources_manager.update_config.assert_called_once()
+    call_args = scrape_runner.sources_manager.update_config.call_args
+    updated_config = call_args[0][1]
+    assert updated_config["consecutive_failures"] == 1
+
+
+# ── Zero-job JS source recovery ──
+
+
+def make_js_source(source_id="js-source-1", name="JS Careers Page", consecutive_zero_jobs=0):
+    """Create a minimal JS source dict for testing."""
+    config = {
+        "type": "html",
+        "url": "https://example.com/careers",
+        "fields": {"title": ".title", "url": "a@href"},
+        "job_selector": ".job-card",
+        "requires_js": True,
+        "render_wait_for": ".job-card",
+    }
+    if consecutive_zero_jobs > 0:
+        config["consecutive_zero_jobs"] = consecutive_zero_jobs
+    return {
+        "id": source_id,
+        "name": name,
+        "sourceType": "html",
+        "config": config,
+    }
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_zero_jobs_js_spawns_recovery_at_threshold(mock_scraper_cls, scrape_runner):
+    """JS source hitting ZERO_JOBS_RECOVERY_THRESHOLD should spawn SOURCE_RECOVER."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = []
+    mock_scraper_cls.return_value = scraper_instance
+
+    # One below threshold — this scrape should push it to threshold
+    source = make_js_source(consecutive_zero_jobs=ZERO_JOBS_RECOVERY_THRESHOLD - 1)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Should have updated config with incremented consecutive_zero_jobs
+    scrape_runner.sources_manager.update_config.assert_called()
+    config_calls = scrape_runner.sources_manager.update_config.call_args_list
+    # Find the call that sets consecutive_zero_jobs
+    zero_job_configs = [c[0][1] for c in config_calls if "consecutive_zero_jobs" in c[0][1]]
+    assert len(zero_job_configs) >= 1
+    assert zero_job_configs[0]["consecutive_zero_jobs"] == ZERO_JOBS_RECOVERY_THRESHOLD
+
+    # Should have spawned SOURCE_RECOVER via queue_manager.add_item
+    scrape_runner.queue_manager.add_item.assert_called_once()
+    queued_item = scrape_runner.queue_manager.add_item.call_args[0][0]
+    item_type = queued_item.type
+    assert (item_type.value if hasattr(item_type, "value") else item_type) == "source_recover"
+    assert queued_item.input["error_reason"] == "zero_jobs_js_source"

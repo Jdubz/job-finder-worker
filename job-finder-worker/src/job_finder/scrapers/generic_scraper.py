@@ -3,6 +3,7 @@
 import logging
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
@@ -100,7 +101,12 @@ def _detect_auth_wall(content: Optional[str]) -> bool:
 
 
 def classify_http_error(
-    url: str, status_code: int, reason: str, content: str = "", is_api: bool = False
+    url: str,
+    status_code: int,
+    reason: str,
+    content: str = "",
+    is_api: bool = False,
+    headers: Optional[dict] = None,
 ) -> ScrapeBlockedError:
     """
     Classify an HTTP error into the appropriate exception type.
@@ -114,6 +120,7 @@ def classify_http_error(
         reason: HTTP reason phrase
         content: Response content (for content analysis)
         is_api: Whether this is an API endpoint (affects 401/403 handling)
+        headers: Response headers (used to extract Retry-After for 429s)
 
     Returns:
         Appropriate ScrapeBlockedError subclass
@@ -173,7 +180,14 @@ def classify_http_error(
 
     elif status_code == 429:
         # Too Many Requests - rate limiting (transient)
-        retry_after = None  # Could extract from Retry-After header if available
+        retry_after = None
+        if headers:
+            raw = headers.get("Retry-After") or headers.get("retry-after")
+            if raw:
+                try:
+                    retry_after = int(raw)
+                except (ValueError, TypeError):
+                    pass
         return ScrapeTransientError(
             url, f"HTTP 429: {reason} - rate limited", status_code, retry_after
         )
@@ -187,6 +201,17 @@ def classify_http_error(
     else:
         # Unknown status - generic error
         return ScrapeBlockedError(url, f"HTTP {status_code}: {reason}", status_code)
+
+
+@dataclass
+class PreExtractedJob:
+    """Wrapper for jobs already extracted (e.g., from JSON-LD fallback).
+
+    When _extract_fields encounters this type, it returns the inner dict
+    unchanged instead of applying CSS/dot-notation field extraction.
+    """
+
+    data: Dict[str, Any]
 
 
 class GenericScraper:
@@ -368,12 +393,22 @@ class GenericScraper:
         except requests.HTTPError as e:
             # Classify HTTP error properly based on status and content
             content = ""
+            resp_headers = None
             try:
                 content = response.text[:5000]  # Get content sample for analysis
             except Exception:
                 pass  # Best-effort retrieval; continue with empty content if this fails
+            try:
+                resp_headers = dict(response.headers)
+            except Exception:
+                pass
             raise classify_http_error(
-                self.config.url, response.status_code, response.reason, content, is_api=True
+                self.config.url,
+                response.status_code,
+                response.reason,
+                content,
+                is_api=True,
+                headers=resp_headers,
             ) from e
         data = response.json()
 
@@ -719,12 +754,22 @@ class GenericScraper:
             response.raise_for_status()
         except requests.HTTPError as e:
             content = ""
+            resp_headers = None
             try:
                 content = response.text[:5000]
             except Exception:
                 pass
+            try:
+                resp_headers = dict(response.headers)
+            except Exception:
+                pass
             raise classify_http_error(
-                self.config.url, response.status_code, response.reason, content, is_api=True
+                self.config.url,
+                response.status_code,
+                response.reason,
+                content,
+                is_api=True,
+                headers=resp_headers,
             ) from e
 
         data = response.json()
@@ -780,12 +825,22 @@ class GenericScraper:
                 response.raise_for_status()
             except requests.HTTPError as e:
                 content = ""
+                resp_headers = None
                 try:
                     content = response.text[:5000]
                 except Exception:
                     pass
+                try:
+                    resp_headers = dict(response.headers)
+                except Exception:
+                    pass
                 raise classify_http_error(
-                    self.config.url, response.status_code, response.reason, content, is_api=False
+                    self.config.url,
+                    response.status_code,
+                    response.reason,
+                    content,
+                    is_api=False,
+                    headers=resp_headers,
                 ) from e
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -796,6 +851,11 @@ class GenericScraper:
             items = soup.select(self.config.job_selector)
             if not items and self.config.requires_js:
                 self._diagnose_empty_selector(soup, len(result.html), url)
+            if not items:
+                # Fallback: try JSON-LD structured data
+                jsonld_jobs = self._try_jsonld_listing_fallback(soup)
+                if jsonld_jobs:
+                    return jsonld_jobs
             return items
 
         return []
@@ -846,6 +906,67 @@ class GenericScraper:
             text_preview,
             "; ".join(hints[:5]) if hints else "none",
         )
+
+    def _try_jsonld_listing_fallback(self, soup: BeautifulSoup) -> List[PreExtractedJob]:
+        """Try to extract job listings from JSON-LD when CSS selectors fail."""
+        postings = []
+        for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+            try:
+                data = json.loads(script.string or "{}")
+            except json.JSONDecodeError:
+                continue
+            # Collect all JobPosting objects (direct, array, @graph)
+            if isinstance(data, list):
+                postings.extend(
+                    d for d in data if isinstance(d, dict) and d.get("@type") == "JobPosting"
+                )
+            elif isinstance(data, dict):
+                graph = data.get("@graph")
+                if graph and isinstance(graph, list):
+                    postings.extend(
+                        g for g in graph if isinstance(g, dict) and g.get("@type") == "JobPosting"
+                    )
+                elif data.get("@type") == "JobPosting":
+                    postings.append(data)
+
+        if not postings:
+            return []
+
+        jobs = []
+        for jp in postings:
+            job: Dict[str, Any] = {}
+            job["title"] = jp.get("title") or ""
+            hiring_org = jp.get("hiringOrganization") or {}
+            job["company"] = (
+                hiring_org.get("name", "") if isinstance(hiring_org, dict) else str(hiring_org)
+            )
+            job["description"] = jp.get("description", "")
+            job["url"] = jp.get("url") or jp.get("sameAs") or ""
+            # Location
+            place = jp.get("jobLocation")
+            if isinstance(place, list):
+                place = place[0] if place else None
+            if isinstance(place, dict):
+                addr = place.get("address") or {}
+                parts = [
+                    addr.get("addressLocality"),
+                    addr.get("addressRegion"),
+                    addr.get("addressCountry"),
+                ]
+                parts = [(p.get("name", "") if isinstance(p, dict) else p or "") for p in parts]
+                job["location"] = ", ".join(p for p in parts if p)
+            if jp.get("datePosted"):
+                job["posted_date"] = jp["datePosted"]
+            if job.get("title") and job.get("url"):
+                jobs.append(PreExtractedJob(data=job))
+
+        if jobs:
+            logger.info(
+                "jsonld_listing_fallback: extracted %d jobs from JSON-LD (selector=%r failed)",
+                len(jobs),
+                self.config.job_selector,
+            )
+        return jobs
 
     def _extract_cursor(self, response_data: Optional[dict]) -> Optional[str]:
         """Extract next-page cursor from a JSON response using cursor_response_path."""
@@ -1279,6 +1400,9 @@ class GenericScraper:
         Returns:
             Standardized job dictionary
         """
+        if isinstance(item, PreExtractedJob):
+            return item.data
+
         job: Dict[str, Any] = {}
 
         for field, path in self.config.fields.items():

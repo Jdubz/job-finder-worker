@@ -339,3 +339,100 @@ def test_partial_render_with_bot_html_raises():
         mock_get.return_value.render.return_value = partial_result
         with pytest.raises(ScrapeBotProtectionError, match="Bot protection detected"):
             scraper._fetch_html_page("https://example.com/careers")
+
+
+# ── Test 9: JSON-LD listing fallback extracts jobs when selector fails ──
+
+
+def test_jsonld_listing_fallback_extracts_jobs():
+    """When job_selector matches nothing but JSON-LD has JobPosting data, extract jobs."""
+    from job_finder.scrapers.generic_scraper import PreExtractedJob
+
+    config = SourceConfig(
+        type="html",
+        url="https://example.com/careers",
+        fields={"title": ".title", "url": "a@href"},
+        job_selector=".nonexistent-selector",
+        requires_js=True,
+    )
+    scraper = GenericScraper(config)
+
+    html_with_jsonld = (
+        "<html><head><title>Careers</title></head><body>"
+        '<script type="application/ld+json">'
+        '[{"@type": "JobPosting", "title": "Engineer",'
+        ' "url": "https://example.com/job/1",'
+        ' "hiringOrganization": {"name": "Acme"},'
+        ' "description": "Build things",'
+        ' "jobLocation": {"address": {"addressLocality": "NYC", "addressRegion": "NY"}}},'
+        ' {"@type": "JobPosting", "title": "Designer",'
+        ' "url": "https://example.com/job/2",'
+        ' "hiringOrganization": {"name": "Acme"},'
+        ' "description": "Design things"}]'
+        "</script>"
+        "</body></html>"
+    )
+    mock_result = MagicMock()
+    mock_result.html = html_with_jsonld
+
+    with patch("job_finder.scrapers.generic_scraper.get_renderer") as mock_get:
+        mock_get.return_value.render.return_value = mock_result
+        items = scraper._fetch_html_page("https://example.com/careers")
+
+    assert len(items) == 2
+    assert all(isinstance(item, PreExtractedJob) for item in items)
+    assert items[0].data["title"] == "Engineer"
+    assert items[0].data["url"] == "https://example.com/job/1"
+    assert items[1].data["title"] == "Designer"
+
+    # Verify scrape() processes PreExtractedJob items into job dicts
+    with patch("job_finder.scrapers.generic_scraper.get_renderer") as mock_get:
+        mock_get.return_value.render.return_value = mock_result
+        with patch.object(scraper, "_should_enrich", return_value=False):
+            jobs = scraper.scrape()
+
+    assert len(jobs) == 2
+    assert jobs[0]["title"] == "Engineer"
+    assert jobs[0]["url"] == "https://example.com/job/1"
+    assert jobs[1]["title"] == "Designer"
+
+
+# ── Test 10: JSON-LD fallback skipped when CSS selector matches ──
+
+
+def test_jsonld_fallback_skipped_when_selector_matches():
+    """When CSS selector matches elements, JSON-LD fallback should NOT be used."""
+    config = SourceConfig(
+        type="html",
+        url="https://example.com/careers",
+        fields={"title": ".title", "url": "a@href"},
+        job_selector=".job-card",
+        requires_js=True,
+    )
+    scraper = GenericScraper(config)
+
+    # HTML with BOTH matching CSS elements AND JSON-LD data
+    html_with_both = (
+        "<html><head><title>Careers</title></head><body>"
+        '<div class="job-card"><span class="title">Engineer</span>'
+        '<a href="/job/1">Apply</a></div>'
+        '<div class="job-card"><span class="title">Designer</span>'
+        '<a href="/job/2">Apply</a></div>'
+        '<script type="application/ld+json">'
+        '[{"@type": "JobPosting", "title": "JSON-LD Job",'
+        ' "url": "https://example.com/jsonld-job"}]'
+        "</script>"
+        "</body></html>"
+    )
+    mock_result = MagicMock()
+    mock_result.html = html_with_both
+
+    with patch("job_finder.scrapers.generic_scraper.get_renderer") as mock_get:
+        mock_get.return_value.render.return_value = mock_result
+        items = scraper._fetch_html_page("https://example.com/careers")
+
+    # CSS selector results returned, not JSON-LD
+    assert len(items) == 2
+    from job_finder.scrapers.generic_scraper import PreExtractedJob
+
+    assert not any(isinstance(item, PreExtractedJob) for item in items)

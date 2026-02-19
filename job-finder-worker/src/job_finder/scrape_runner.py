@@ -49,6 +49,7 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 logger = logging.getLogger(__name__)
 SOURCE_SCRAPE_TIMEOUT_SEC = 90  # watchdog per source to avoid hangs (JS render, huge APIs)
 TRANSIENT_FAILURE_THRESHOLD = 3  # disable source after N consecutive recoverable failures
+ZERO_JOBS_RECOVERY_THRESHOLD = 2  # spawn recovery after N consecutive zero-job runs (JS sources)
 
 
 class ScrapeRunner:
@@ -208,6 +209,16 @@ class ScrapeRunner:
                 )
 
             except (ScrapeConfigError, ScrapeNotFoundError, ScrapeTransientError) as e:
+                # 429 with Retry-After: source is healthy, just rate-limited — skip strike
+                if isinstance(e, ScrapeTransientError) and e.retry_after and e.status_code == 429:
+                    logger.warning(
+                        "rate_limited: source=%s retry_after=%ss, skipping strike",
+                        source.get("name"),
+                        e.retry_after,
+                    )
+                    stats["errors"].append(str(e))
+                    continue
+
                 # Recoverable errors — strike system, disable after threshold
                 count = self._increment_consecutive_failures(source["id"])
 
@@ -320,6 +331,44 @@ class ScrapeRunner:
 
         except Exception as e:
             logger.warning("Failed to reset consecutive failures for %s: %s", source_id, e)
+
+    def _increment_zero_jobs(self, source: dict, source_config) -> None:
+        """Track consecutive zero-job results for JS sources; spawn recovery at threshold."""
+        config = dict(source.get("config", {}))
+        count = config.get("consecutive_zero_jobs", 0) + 1
+        config["consecutive_zero_jobs"] = count
+        self.sources_manager.update_config(source["id"], config)
+
+        if count >= ZERO_JOBS_RECOVERY_THRESHOLD:
+            logger.warning(
+                "zero_jobs_recovery: source=%s has %d consecutive zero-job runs, spawning recovery",
+                source.get("name", source["id"]),
+                count,
+            )
+            self._spawn_zero_jobs_recovery(source)
+
+    def _reset_zero_jobs(self, source: dict) -> None:
+        """Reset zero-job counter after successful scrape."""
+        config = dict(source.get("config", {}))
+        if config.get("consecutive_zero_jobs", 0) > 0:
+            config["consecutive_zero_jobs"] = 0
+            self.sources_manager.update_config(source["id"], config)
+
+    def _spawn_zero_jobs_recovery(self, source: dict) -> None:
+        """Spawn SOURCE_RECOVER task for a JS source with persistent zero jobs."""
+        try:
+            item = JobQueueItem(
+                type=QueueItemType.SOURCE_RECOVER,
+                url=source.get("config", {}).get("url", ""),
+                input={
+                    "source_id": source["id"],
+                    "error_reason": "zero_jobs_js_source",
+                    "triggered_by": "zero_jobs_threshold",
+                },
+            )
+            self.queue_manager.add_item(item)
+        except Exception as e:
+            logger.error("Failed to spawn zero-jobs recovery for %s: %s", source["id"], e)
 
     def _get_sources(
         self, max_sources: Optional[int], source_ids: Optional[List[str]]
@@ -469,11 +518,17 @@ class ScrapeRunner:
                     source_config.render_wait_for,
                     int(time.monotonic() - start),
                 )
+                # Track consecutive zero-job runs for JS sources
+                self._increment_zero_jobs(source, source_config)
             else:
                 logger.info("  Found 0 jobs (elapsed=%ss)", int(time.monotonic() - start))
             return stats
 
         logger.info("  Found %s jobs (elapsed=%ss)", len(jobs), int(time.monotonic() - start))
+
+        # Reset zero-job counter on success (JS sources only)
+        if source_config.requires_js:
+            self._reset_zero_jobs(source)
 
         # Submit jobs to queue - use source_type from database as the authoritative type
         source_label = f"{source_type}:{source_name}"
