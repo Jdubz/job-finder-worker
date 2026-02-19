@@ -51,7 +51,7 @@ Extract and return this exact JSON structure (use null for unknown values, false
   "isRepost": <true if this appears to be a reposted job, false otherwise>,
   "relocationRequired": <true if explicitly requires relocation, false otherwise>,
   "includesEquity": <true if compensation includes equity/stock, false otherwise>,
-  "isContract": <true if contract/temporary position, false otherwise>,
+  "isContract": <true if contract/temporary/freelance/hourly position, false otherwise>,
   "isManagement": <true if people management responsibilities, false otherwise>,
   "isLead": <true if technical lead role, false otherwise>,
   "roleTypes": ["<role-type-1>", "<role-type-2>", ...]
