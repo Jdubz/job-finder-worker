@@ -889,15 +889,16 @@ function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): st
         const texts = [];
 
         // Check id and name attributes
-        if (input.id) texts.push(input.id);
-        if (input.name) texts.push(input.name);
+        if (input.getAttribute('id')) texts.push(input.getAttribute('id'));
+        if (input.getAttribute('name')) texts.push(input.getAttribute('name'));
         if (input.getAttribute('aria-label')) texts.push(input.getAttribute('aria-label'));
         if (input.getAttribute('placeholder')) texts.push(input.getAttribute('placeholder'));
         if (input.getAttribute('data-testid')) texts.push(input.getAttribute('data-testid'));
 
         // Check for associated label
-        if (input.id) {
-          const label = document.querySelector('label[for="' + CSS.escape(input.id) + '"]');
+        const inputId = input.getAttribute('id');
+        if (inputId) {
+          const label = document.querySelector('label[for="' + CSS.escape(inputId) + '"]');
           if (label) texts.push(label.textContent);
         }
 
@@ -909,7 +910,7 @@ function buildFileInputDetectionScript(targetType: "resume" | "coverLetter"): st
         let parent = input.parentElement;
         for (let i = 0; i < 4 && parent; i++) {
           // Get direct text content or nearby labels/spans
-          const nearbyLabels = parent.querySelectorAll('label, span, p, div, h1, h2, h3, h4, h5, h6');
+          const nearbyLabels = parent.querySelectorAll(':scope > label, :scope > span, :scope > p, :scope > div, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
           nearbyLabels.forEach(el => {
             if (el.textContent && el.textContent.length < 100) {
               texts.push(el.textContent);

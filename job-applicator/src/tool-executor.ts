@@ -2067,6 +2067,55 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
     const ctx = await resolveExecContextForSelector(selector)
     const frameUrl = ctx?.frameUrl || null
 
+    // Cross-validate: check that the target input matches the requested document type
+    const selectorJson = JSON.stringify(selector)
+    const detectedLabel = type === "coverLetter" ? "resume" : "cover letter"
+    const verifyScript = `
+      (() => {
+        const el = document.querySelector(${selectorJson});
+        if (!el) return null;
+        const texts = [];
+        const elId = el.getAttribute('id');
+        const elName = el.getAttribute('name');
+        if (elId) texts.push(elId);
+        if (elName) texts.push(elName);
+        if (el.getAttribute('aria-label')) texts.push(el.getAttribute('aria-label'));
+        if (elId) {
+          const label = document.querySelector('label[for="' + CSS.escape(elId) + '"]');
+          if (label) texts.push(label.textContent);
+        }
+        const parentLabel = el.closest('label');
+        if (parentLabel) texts.push(parentLabel.textContent);
+        let parent = el.parentElement;
+        for (let i = 0; i < 3 && parent; i++) {
+          const nearby = parent.querySelectorAll(':scope > label, :scope > span, :scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+          nearby.forEach(ne => { const t = ne.textContent?.trim(); if (t && t.length < 100) texts.push(t); });
+          parent = parent.parentElement;
+        }
+        const ctx = texts.join(' ').toLowerCase();
+        const hasResume = /resume|cv|curriculum/i.test(ctx);
+        const hasCover = /cover.?letter/i.test(ctx);
+        if (hasResume && !hasCover) return 'resume';
+        if (hasCover && !hasResume) return 'coverLetter';
+        return 'unknown';
+      })()
+    `
+    if (ctx) {
+      try {
+        const detectedType = await ctx.exec<string | null>(verifyScript)
+        if (detectedType && detectedType !== 'unknown' && detectedType !== type) {
+          return {
+            success: false,
+            error: `WRONG INPUT: You are trying to upload a ${typeLabel} to an input detected as "${detectedLabel}". ` +
+              `The resume and cover letter inputs are NEVER the same element. ` +
+              `Call find_upload_areas to find the correct selector for each document type.`,
+          }
+        }
+      } catch {
+        // Non-fatal: proceed with upload
+      }
+    }
+
     const result = await uploadCallback(selector, type, documentUrl, frameUrl)
 
     if (result.success) {
@@ -2199,11 +2248,14 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
         const inputName = input.getAttribute('name');
         const baseContext = (label + ' ' + (inputName || '') + ' ' + (inputId || '') + ' ' + extraContext.join(' ')).toLowerCase();
         let documentType = 'unknown';
-        if (/resume|cv|curriculum/i.test(baseContext)) {
+        const baseHasResume = /resume|cv|curriculum/i.test(baseContext);
+        const baseHasCover = /cover.?letter/i.test(baseContext);
+        if (baseHasResume && !baseHasCover) {
           documentType = 'resume';
-        } else if (/cover.?letter/i.test(baseContext)) {
+        } else if (baseHasCover && !baseHasResume) {
           documentType = 'coverLetter';
         }
+        // Both match → stays 'unknown', parent walk below will disambiguate
 
         // If still unknown, walk parent elements for nearby text (level by level)
         // Use :scope > to select direct children only, preventing cross-contamination
@@ -2230,6 +2282,16 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
               label = levelText.trim().slice(0, 50);
             }
             textParent = textParent.parentElement;
+          }
+        }
+
+        // Position-based fallback: first unknown = resume, second = cover letter
+        if (documentType === 'unknown') {
+          const unknownsSoFar = results.filter(r => r.documentType === 'unknown').length;
+          if (unknownsSoFar === 0) {
+            documentType = 'resume';
+          } else if (unknownsSoFar === 1) {
+            documentType = 'coverLetter';
           }
         }
 
@@ -2269,7 +2331,13 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
               label: text.slice(0, 50) || 'Drop zone',
               accept: '*',
               isHidden: false,
-              documentType: /resume|cv/i.test(text) ? 'resume' : (/cover/i.test(text) ? 'coverLetter' : 'unknown'),
+              documentType: (() => {
+                const r = /resume|cv/i.test(text);
+                const c = /cover.?letter/i.test(text);
+                if (r && !c) return 'resume';
+                if (c && !r) return 'coverLetter';
+                return 'unknown';
+              })(),
               x: Math.round(rect.left + rect.width / 2),
               y: Math.round(rect.top + rect.height / 2),
               note: 'Drop zone without direct file input - may need to click to open file dialog'
@@ -2283,7 +2351,19 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
   `
 
   const frames = getAllFramesFromWebContents()
-  const uploadAreas = await extractFromAllFrames<unknown>(extractionScript, "find_upload_areas")
+
+  // Retry with increasing delays if the first scan returns 0 results
+  // (handles dynamic forms that reveal upload inputs after earlier field transitions)
+  const delays = [0, 800, 1500]
+  let uploadAreas: unknown[] = []
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (attempt > 0) {
+      logger.info(`[ToolExecutor] find_upload_areas retry ${attempt} after ${delays[attempt]}ms`)
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+    }
+    uploadAreas = await extractFromAllFrames<unknown>(extractionScript, "find_upload_areas")
+    if (uploadAreas.length > 0) break
+  }
 
   const frameMsg = frames && frames.length > 0 ? ` across ${frames.length} frames` : ""
   logger.info(`[ToolExecutor] Found ${uploadAreas.length} upload areas${frameMsg}`)
@@ -2293,8 +2373,8 @@ async function handleFindUploadAreas(): Promise<ToolResult> {
     data: {
       uploadAreas,
       hint: uploadAreas.length === 0
-        ? "No file upload areas found. Scroll down to reveal more of the form."
-        : "Use upload_file with the inputSelector. If isHidden=true, the triggerSelector can be clicked to open file dialog."
+        ? "No file upload areas found. Scroll down to reveal more of the form, then call find_upload_areas again."
+        : "Use upload_file with the inputSelector and match the documentType to the type parameter. If isHidden=true, the triggerSelector can be clicked to open file dialog."
     }
   }
 }
