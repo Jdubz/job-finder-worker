@@ -302,11 +302,12 @@ class GenericScraper:
 
             if skipped_no_title_url and not jobs:
                 logger.warning(
-                    "field_extraction_total_failure: %d elements matched selector=%r "
-                    "but 0 produced title+url; field mappings likely wrong. "
-                    "fields=%r url=%s",
+                    "field_extraction_total_failure: %d items matched but 0 produced "
+                    "title+url; field mappings likely wrong. "
+                    "source_type=%s job_selector=%r fields=%r url=%s",
                     skipped_no_title_url,
-                    self.config.job_selector,
+                    self.config.type,
+                    self.config.job_selector or "(n/a)",
                     dict(self.config.fields),
                     self.config.url,
                 )
@@ -794,7 +795,7 @@ class GenericScraper:
         if self.config.job_selector:
             items = soup.select(self.config.job_selector)
             if not items and self.config.requires_js:
-                self._diagnose_empty_selector(soup)
+                self._diagnose_empty_selector(soup, len(result.html))
             return items
 
         return []
@@ -816,9 +817,10 @@ class GenericScraper:
         "[data-job-id]",
     ]
 
-    def _diagnose_empty_selector(self, soup: BeautifulSoup) -> None:
+    def _diagnose_empty_selector(self, soup: BeautifulSoup, html_len: int) -> None:
         """Log diagnostic info when job_selector matches zero elements on a JS-rendered page."""
-        html_len = len(str(soup))
+        title_tag = soup.find("title")
+        page_title = title_tag.get_text(strip=True) if title_tag else "(no <title>)"
         text_preview = soup.get_text(separator=" ", strip=True)[:300].replace("\n", " ")
 
         hints = []
@@ -836,10 +838,11 @@ class GenericScraper:
 
         logger.warning(
             "js_render_zero_jobs: selector=%r matched 0 elements "
-            "url=%s html_size=%d text_preview=%r hints=[%s]",
+            "url=%s html_size=%d page_title=%r text_preview=%r hints=[%s]",
             self.config.job_selector,
             self.config.url,
             html_len,
+            page_title,
             text_preview,
             "; ".join(hints[:5]) if hints else "none",
         )

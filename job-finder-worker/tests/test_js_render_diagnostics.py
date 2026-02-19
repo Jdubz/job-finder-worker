@@ -4,9 +4,11 @@ Covers:
 1. Partial render returns HTML on selector timeout
 2. Bot protection detection in JS-rendered pages
 3. Auth wall detection in JS-rendered pages
-4. Zero-match diagnostic logging
+4. Zero-match diagnostic logging (including page title + hint selectors)
 5. Field extraction total failure logging
 6. Scrape runner zero-jobs JS source warning
+7. Partial render flows through to zero-match diagnostics (end-to-end)
+8. Partial render with bot protection HTML still raises (end-to-end)
 """
 
 import logging
@@ -19,6 +21,7 @@ from job_finder.rendering.playwright_renderer import (
     PlaywrightRenderer,
     PlaywrightTimeoutError,
     RenderRequest,
+    RenderResult,
 )
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
@@ -122,7 +125,7 @@ def test_js_render_auth_wall_raises():
             scraper._fetch_html_page("https://example.com/careers")
 
 
-# ── Test 4: Zero-match logs diagnostic warning ──
+# ── Test 4: Zero-match logs diagnostic warning with title and hints ──
 
 
 def test_zero_match_logs_diagnostic(caplog):
@@ -138,7 +141,7 @@ def test_zero_match_logs_diagnostic(caplog):
 
     # HTML that has job-related classes but NOT the configured selector
     valid_html = (
-        "<html><body>"
+        "<html><head><title>Acme Corp - Careers</title></head><body>"
         '<div class="job-listing"><a href="/job/1">Engineer</a></div>'
         '<div class="job-listing"><a href="/job/2">Designer</a></div>'
         "</body></html>"
@@ -152,11 +155,13 @@ def test_zero_match_logs_diagnostic(caplog):
             items = scraper._fetch_html_page("https://example.com/careers")
 
     assert items == []
-    assert any("js_render_zero_jobs" in record.message for record in caplog.records)
-    # Should include hint about existing job-related selectors
     warning_msgs = [r.message for r in caplog.records if "js_render_zero_jobs" in r.message]
     assert len(warning_msgs) == 1
-    assert "job-listing" in warning_msgs[0]
+    msg = warning_msgs[0]
+    # Should include page title for quick identification
+    assert "Acme Corp - Careers" in msg
+    # Should include hint about existing job-related selectors
+    assert "job-listing" in msg
 
 
 # ── Test 5: Field extraction total failure logs warning ──
@@ -193,7 +198,12 @@ def test_field_extraction_total_failure_logs_warning(caplog):
                 jobs = scraper.scrape()
 
     assert jobs == []
-    assert any("field_extraction_total_failure" in record.message for record in caplog.records)
+    warning_msgs = [
+        r.message for r in caplog.records if "field_extraction_total_failure" in r.message
+    ]
+    assert len(warning_msgs) == 1
+    # Should include source_type for context
+    assert "source_type=" in warning_msgs[0]
 
 
 # ── Test 6: Scrape runner zero-jobs JS source warning ──
@@ -244,3 +254,88 @@ def test_scrape_runner_zero_jobs_js_warning(mock_scraper_cls, caplog):
     assert len(warning_msgs) == 1
     assert "JS Careers Page" in warning_msgs[0]
     assert ".job-card" in warning_msgs[0]
+
+
+# ── Test 7: Partial render → scraper zero-match diagnostic (end-to-end) ──
+
+
+def test_partial_render_triggers_zero_match_diagnostic(caplog):
+    """When renderer returns partial HTML (selector timeout), the scraper should
+    still parse it and fire the zero-match diagnostic when job_selector misses."""
+    config = SourceConfig(
+        type="html",
+        url="https://example.com/careers",
+        fields={"title": ".title", "url": "a@href"},
+        job_selector=".job-card",
+        requires_js=True,
+        render_wait_for=".job-card",
+    )
+    scraper = GenericScraper(config)
+
+    # Partial render: page loaded but has different selectors than expected
+    partial_html = (
+        "<html><head><title>Careers at WidgetCo</title></head><body>"
+        '<div class="career-opening">Software Engineer</div>'
+        "</body></html>"
+    )
+    partial_result = RenderResult(
+        final_url="https://example.com/careers",
+        status="partial",
+        html=partial_html,
+        duration_ms=20100,
+        request_count=5,
+        console_logs=[],
+        errors=["wait_for_selector timeout (.job-card): Timeout 20000ms exceeded"],
+    )
+
+    with patch("job_finder.scrapers.generic_scraper.get_renderer") as mock_get:
+        mock_get.return_value.render.return_value = partial_result
+        with caplog.at_level(logging.WARNING, logger="job_finder.scrapers.generic_scraper"):
+            items = scraper._fetch_html_page("https://example.com/careers")
+
+    assert items == []
+    # Zero-match diagnostic should have fired with page title and hints
+    warning_msgs = [r.message for r in caplog.records if "js_render_zero_jobs" in r.message]
+    assert len(warning_msgs) == 1
+    msg = warning_msgs[0]
+    assert "Careers at WidgetCo" in msg
+    assert "career" in msg.lower()  # hint selector should find career-opening
+
+
+# ── Test 8: Partial render with bot HTML still raises bot protection ──
+
+
+def test_partial_render_with_bot_html_raises():
+    """When renderer returns partial HTML that contains bot protection markers,
+    the scraper should detect and raise ScrapeBotProtectionError."""
+    config = SourceConfig(
+        type="html",
+        url="https://example.com/careers",
+        fields={"title": ".title", "url": "a@href"},
+        job_selector=".job-card",
+        requires_js=True,
+        render_wait_for=".job-card",
+    )
+    scraper = GenericScraper(config)
+
+    # Selector timed out because the page is a Cloudflare challenge
+    captcha_html = (
+        "<html><head><title>Just a moment...</title></head><body>"
+        '<div id="challenge-platform">Checking your browser before accessing</div>'
+        '<div class="cf-browser-verification">Please wait</div>'
+        "</body></html>"
+    )
+    partial_result = RenderResult(
+        final_url="https://example.com/careers",
+        status="partial",
+        html=captcha_html,
+        duration_ms=20100,
+        request_count=3,
+        console_logs=[],
+        errors=["wait_for_selector timeout (.job-card): Timeout 20000ms exceeded"],
+    )
+
+    with patch("job_finder.scrapers.generic_scraper.get_renderer") as mock_get:
+        mock_get.return_value.render.return_value = partial_result
+        with pytest.raises(ScrapeBotProtectionError, match="Bot protection detected"):
+            scraper._fetch_html_page("https://example.com/careers")
