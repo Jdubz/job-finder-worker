@@ -156,7 +156,7 @@ class CompaniesManager:
 
         tech_stack = company_data.get("techStack") or company_data.get("tech_stack") or []
         if isinstance(tech_stack, dict):
-            tech_stack = list(tech_stack.values()) if tech_stack else []
+            tech_stack = list(tech_stack.values())
         elif isinstance(tech_stack, str):
             tech_stack = [tech_stack]
 
@@ -164,13 +164,14 @@ class CompaniesManager:
         website = self._validate_website(company_data.get("website"))
 
         # Coerce text fields — AI responses occasionally return dicts for string fields,
-        # which SQLite cannot bind.  Convert to JSON string if dict, else use as-is.
-        def _text(val: object) -> object:
+        # which SQLite cannot bind.  Join values as readable text (these fields are not
+        # JSON-decoded on read, unlike tech_stack).
+        def _text(val: object) -> Optional[str]:
             if isinstance(val, dict):
-                return json.dumps(val)
+                return " ".join(str(v) for v in val.values() if v)
             if isinstance(val, list):
-                return json.dumps(val)
-            return val
+                return "\n".join(str(v) for v in val if v)
+            return val  # type: ignore[return-value]
 
         fields = {
             "name": cleaned_name,
