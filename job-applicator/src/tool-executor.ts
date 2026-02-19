@@ -790,7 +790,7 @@ async function handleFillField(params: { selector: string; value: string; force?
         // If field already has a value and force is not set, skip it
         const currentValue = el.value || '';
         if (!force && currentValue !== '') {
-          return { success: false, skipped: true, currentValue, error: 'Field already has a value' };
+          return { success: true, skipped: true, currentValue };
         }
 
         // Determine element type for proper native setter
@@ -976,7 +976,7 @@ async function handleSelectOption(params: { selector: string; value: string; for
         // If a non-default option is already selected, skip
         const currentValue = el.value || '';
         if (!force && currentValue !== '') {
-          return { success: false, skipped: true, currentValue, error: 'Dropdown already has a selection' };
+          return { success: true, skipped: true, currentValue };
         }
 
         // Focus the element first
@@ -1207,15 +1207,6 @@ async function handleSelectCombobox(params: { selector: string; value: string; f
       return { success: false, error: "BrowserView not initialized" }
     }
 
-    // Read current value; skip if already filled
-    if (!force) {
-      const selectorJsonCheck = JSON.stringify(selector)
-      const currentValue = await ctx.exec<string>(`document.querySelector(${selectorJsonCheck})?.value || ''`)
-      if (currentValue !== '') {
-        return { success: false, skipped: true, currentValue, error: 'Combobox already has a value' }
-      }
-    }
-
     const selectorJson = JSON.stringify(selector)
     const selectorsJson = JSON.stringify(DROPDOWN_OPTION_SELECTORS)
 
@@ -1314,11 +1305,20 @@ async function handleSelectCombobox(params: { selector: string; value: string; f
       return selectResult
     }
 
-    // Step 1: Open dropdown by focusing/clicking without typing
-    await ctx.exec<SimpleSuccessResult>(`
+    // Step 1: Check for existing value (skip if filled) and open dropdown — atomic
+    const forceJson = JSON.stringify(!!force)
+    const openResult = await ctx.exec<{ success: boolean; skipped?: boolean; currentValue?: string }>(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false };
+
+        // Atomic skip check: if already filled and force is not set, bail out
+        const force = ${forceJson};
+        const currentValue = el.value || '';
+        if (!force && currentValue !== '') {
+          return { success: true, skipped: true, currentValue };
+        }
+
         el.focus();
         el.click();
         el.dispatchEvent(new Event('focus', { bubbles: true }));
@@ -1327,6 +1327,10 @@ async function handleSelectCombobox(params: { selector: string; value: string; f
         return { success: true };
       })()
     `)
+
+    if (openResult.skipped) {
+      return { success: true, skipped: true, currentValue: openResult.currentValue }
+    }
 
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
 

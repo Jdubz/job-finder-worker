@@ -756,13 +756,13 @@ class GenericScraper:
                 rendered_text = result.html[:10000]
                 if _detect_bot_protection(rendered_text):
                     raise ScrapeBotProtectionError(
-                        self.config.url,
+                        url,
                         "Bot protection detected in JS-rendered page",
                         status_code=None,
                     )
                 if _detect_auth_wall(rendered_text):
                     raise ScrapeAuthError(
-                        self.config.url,
+                        url,
                         "Authentication wall detected in JS-rendered page",
                         status_code=None,
                     )
@@ -795,7 +795,7 @@ class GenericScraper:
         if self.config.job_selector:
             items = soup.select(self.config.job_selector)
             if not items and self.config.requires_js:
-                self._diagnose_empty_selector(soup, len(result.html))
+                self._diagnose_empty_selector(soup, len(result.html), url)
             return items
 
         return []
@@ -817,7 +817,7 @@ class GenericScraper:
         "[data-job-id]",
     ]
 
-    def _diagnose_empty_selector(self, soup: BeautifulSoup, html_len: int) -> None:
+    def _diagnose_empty_selector(self, soup: BeautifulSoup, html_len: int, url: str) -> None:
         """Log diagnostic info when job_selector matches zero elements on a JS-rendered page."""
         title_tag = soup.find("title")
         page_title = title_tag.get_text(strip=True) if title_tag else "(no <title>)"
@@ -840,7 +840,7 @@ class GenericScraper:
             "js_render_zero_jobs: selector=%r matched 0 elements "
             "url=%s html_size=%d page_title=%r text_preview=%r hints=[%s]",
             self.config.job_selector,
-            self.config.url,
+            url,
             html_len,
             page_title,
             text_preview,
