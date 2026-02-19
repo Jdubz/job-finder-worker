@@ -323,6 +323,8 @@ def test_429_with_retry_after_skips_strike(mock_scraper_cls, scrape_runner):
     # Should NOT disable
     scrape_runner.sources_manager.disable_source_with_note.assert_not_called()
     scrape_runner.sources_manager.disable_source_with_tags.assert_not_called()
+    # Should NOT record as "success" (the scrape didn't actually succeed)
+    scrape_runner.sources_manager.update_scrape_status.assert_not_called()
     # Error should still be recorded
     assert len(stats["errors"]) == 1
 
@@ -402,4 +404,26 @@ def test_zero_jobs_js_spawns_recovery_at_threshold(mock_scraper_cls, scrape_runn
     queued_item = scrape_runner.queue_manager.add_item.call_args[0][0]
     item_type = queued_item.type
     assert (item_type.value if hasattr(item_type, "value") else item_type) == "source_recover"
+    assert queued_item.source_id == "js-source-1"
     assert queued_item.input["error_reason"] == "zero_jobs_js_source"
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_zero_jobs_js_does_not_re_spawn_above_threshold(mock_scraper_cls, scrape_runner):
+    """Above ZERO_JOBS_RECOVERY_THRESHOLD, recovery should NOT be spawned again."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = []
+    mock_scraper_cls.return_value = scraper_instance
+
+    # Already AT threshold — next run is above, should NOT spawn again
+    source = make_js_source(consecutive_zero_jobs=ZERO_JOBS_RECOVERY_THRESHOLD)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Config should still be updated (count incremented)
+    scrape_runner.sources_manager.update_config.assert_called()
+
+    # But no recovery task should be spawned
+    scrape_runner.queue_manager.add_item.assert_not_called()

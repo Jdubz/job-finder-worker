@@ -332,20 +332,24 @@ class ScrapeRunner:
         except Exception as e:
             logger.warning("Failed to reset consecutive failures for %s: %s", source_id, e)
 
-    def _increment_zero_jobs(self, source: dict, source_config) -> None:
+    def _increment_zero_jobs(self, source: dict) -> None:
         """Track consecutive zero-job results for JS sources; spawn recovery at threshold."""
-        config = dict(source.get("config", {}))
-        count = config.get("consecutive_zero_jobs", 0) + 1
-        config["consecutive_zero_jobs"] = count
-        self.sources_manager.update_config(source["id"], config)
+        try:
+            config = dict(source.get("config", {}))
+            count = config.get("consecutive_zero_jobs", 0) + 1
+            config["consecutive_zero_jobs"] = count
+            self.sources_manager.update_config(source["id"], config)
 
-        if count >= ZERO_JOBS_RECOVERY_THRESHOLD:
-            logger.warning(
-                "zero_jobs_recovery: source=%s has %d consecutive zero-job runs, spawning recovery",
-                source.get("name", source["id"]),
-                count,
-            )
-            self._spawn_zero_jobs_recovery(source)
+            if count == ZERO_JOBS_RECOVERY_THRESHOLD:
+                logger.warning(
+                    "zero_jobs_recovery: source=%s has %d consecutive zero-job runs, "
+                    "spawning recovery",
+                    source.get("name", source["id"]),
+                    count,
+                )
+                self._spawn_zero_jobs_recovery(source)
+        except Exception as e:
+            logger.warning("Failed to track zero-job count for %s: %s", source["id"], e)
 
     def _reset_zero_jobs(self, source: dict) -> None:
         """Reset zero-job counter after successful scrape."""
@@ -360,8 +364,8 @@ class ScrapeRunner:
             item = JobQueueItem(
                 type=QueueItemType.SOURCE_RECOVER,
                 url=source.get("config", {}).get("url", ""),
+                source_id=source["id"],
                 input={
-                    "source_id": source["id"],
                     "error_reason": "zero_jobs_js_source",
                     "triggered_by": "zero_jobs_threshold",
                 },
@@ -519,7 +523,7 @@ class ScrapeRunner:
                     int(time.monotonic() - start),
                 )
                 # Track consecutive zero-job runs for JS sources
-                self._increment_zero_jobs(source, source_config)
+                self._increment_zero_jobs(source)
             else:
                 logger.info("  Found 0 jobs (elapsed=%ss)", int(time.monotonic() - start))
             return stats
