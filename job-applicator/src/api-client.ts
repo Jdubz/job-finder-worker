@@ -429,6 +429,32 @@ export async function submitDocumentReview(
   return data.data
 }
 
+/**
+ * Reject document review with feedback and request AI retry
+ */
+export async function rejectDocumentReview(
+  requestId: string,
+  documentType: "resume" | "coverLetter",
+  feedback: string
+): Promise<{ content: ResumeContent | CoverLetterContent }> {
+  const res = await fetchWithRetry(
+    `${getApiUrl()}/generator/requests/${requestId}/reject-review`,
+    fetchOptions({
+      method: "POST",
+      body: JSON.stringify({ documentType, feedback }),
+    }),
+    { maxRetries: 1, timeoutMs: 60000 } // longer timeout for AI retry
+  )
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to reject review: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<{ content: ResumeContent | CoverLetterContent }> = await res.json()
+  return data.data
+}
+
 // ============================================================================
 // Queue API
 // ============================================================================

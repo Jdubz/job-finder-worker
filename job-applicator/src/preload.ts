@@ -119,6 +119,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   }): Promise<{ success: boolean; data?: GenerationProgress; message?: string }> =>
     ipcRenderer.invoke("submit-document-review", options),
 
+  // Reject document review with feedback (AI retry)
+  rejectDocumentReview: (options: {
+    requestId: string
+    documentType: "resume" | "coverLetter"
+    feedback: string
+  }): Promise<{ success: boolean; data?: { content: ResumeContent | CoverLetterContent }; message?: string }> =>
+    ipcRenderer.invoke("reject-document-review", options),
+
   // Event listener for refresh job matches (triggered by global Ctrl+R shortcut)
   onRefreshJobMatches: (callback: () => void) => {
     const handler = () => callback()

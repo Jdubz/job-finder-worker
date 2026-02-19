@@ -93,6 +93,7 @@ import {
   executeGenerationStep,
   fetchDraftContent,
   submitDocumentReview,
+  rejectDocumentReview,
   submitJobToQueue,
   getApiUrl,
 } from "./api-client.js"
@@ -106,8 +107,17 @@ const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 // Timeout for closing orphaned popup windows (5 seconds)
 const POPUP_CLEANUP_TIMEOUT_MS = 5000
 
-// Timeout for OAuth/SSO popups (2 minutes — user may need to enter credentials)
-const OAUTH_POPUP_TIMEOUT_MS = 120_000
+// Timeout for OAuth/SSO popups (default 2 min — configurable for enterprise SSO with 2FA)
+const OAUTH_POPUP_TIMEOUT_MS = (() => {
+  const raw = process.env.OAUTH_POPUP_TIMEOUT_MS
+  if (!raw) return 120_000
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    logger.warn(`[CONFIG] Invalid OAUTH_POPUP_TIMEOUT_MS="${raw}", falling back to default 120000ms`)
+    return 120_000
+  }
+  return parsed
+})()
 
 /**
  * Download a document from the API to a temporary file
@@ -1334,6 +1344,33 @@ ipcMain.handle(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error("Submit review error:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+// Reject document review with feedback (AI retry)
+ipcMain.handle(
+  "reject-document-review",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: {
+      requestId: string
+      documentType: "resume" | "coverLetter"
+      feedback: string
+    }
+  ): Promise<{ success: boolean; data?: { content: ResumeContent | CoverLetterContent }; message?: string }> => {
+    try {
+      logger.info(`Rejecting document review for ${options.documentType} with feedback`)
+      const result = await rejectDocumentReview(
+        options.requestId,
+        options.documentType,
+        options.feedback
+      )
+      return { success: true, data: result }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("Reject review error:", message)
       return { success: false, message }
     }
   }

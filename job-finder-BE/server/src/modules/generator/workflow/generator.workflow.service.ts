@@ -19,7 +19,7 @@ import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
-import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt } from './prompts'
+import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildResumeRetryPrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
 import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
@@ -161,6 +161,95 @@ export class GeneratorWorkflowService {
 
     // Continue to the next step
     return this.runNextStep(requestId)
+  }
+
+  /**
+   * Reject review with feedback and regenerate the document using AI.
+   * The request stays in awaiting_review so the user can review the new draft.
+   */
+  async rejectReview(
+    requestId: string,
+    documentType: ReviewDocumentType,
+    feedback: string
+  ): Promise<{ content: ResumeContent | CoverLetterContent } | null> {
+    const request = this.workflowRepo.getRequest(requestId)
+    if (!request || request.status !== 'awaiting_review') {
+      return null
+    }
+
+    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? null
+    if (!personalInfo) {
+      throw new UserFacingError('Personal info not configured.')
+    }
+
+    const payload: GenerateDocumentPayload = {
+      generateType: request.generateType,
+      job: request.job as GenerateDocumentPayload['job'],
+      preferences: request.preferences as GenerateDocumentPayload['preferences'],
+      jobMatchId: request.jobMatchId ?? undefined
+    }
+
+    if (documentType === 'resume') {
+      const firstAttempt = request.intermediateResults?.resumeContent
+      if (!firstAttempt) {
+        throw new Error('No resume content found for retry')
+      }
+
+      const contentItems = this.contentItemRepo.list()
+      const jobMatch = this.enrichPayloadWithJobMatch(payload)
+      const originalPrompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
+      const retryPrompt = buildResumeRetryPrompt(originalPrompt, firstAttempt, feedback)
+
+      const agentResult = await this.agentManager.execute('document', retryPrompt)
+
+      const validation = validateResumeContent(agentResult.output, this.log)
+      if (!validation.success) {
+        throw new Error(`AI returned invalid resume content on retry: ${validation.errors?.join(', ')}`)
+      }
+
+      let parsed = validation.data as ResumeContent
+      parsed = this.groundResumeContent(parsed, contentItems, personalInfo, payload)
+
+      // Update intermediate results with new content (keep status as awaiting_review)
+      this.workflowRepo.updateRequest(requestId, {
+        intermediateResults: {
+          ...request.intermediateResults,
+          resumeContent: parsed
+        }
+      })
+
+      return { content: parsed }
+    } else {
+      // Cover letter retry
+      const firstAttempt = request.intermediateResults?.coverLetterContent
+      if (!firstAttempt) {
+        throw new Error('No cover letter content found for retry')
+      }
+
+      const contentItems = this.contentItemRepo.list()
+      const jobMatch = this.enrichPayloadWithJobMatch(payload)
+      const originalPrompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
+      const retryPrompt = buildResumeRetryPrompt(originalPrompt, firstAttempt, feedback)
+
+      const agentResult = await this.agentManager.execute('document', retryPrompt)
+
+      const validation = validateCoverLetterContent(agentResult.output, this.log)
+      if (!validation.success) {
+        throw new Error(`AI returned invalid cover letter content on retry: ${validation.errors?.join(', ')}`)
+      }
+
+      const parsed = validation.data as CoverLetterContent
+
+      // Update intermediate results with new content (keep status as awaiting_review)
+      this.workflowRepo.updateRequest(requestId, {
+        intermediateResults: {
+          ...request.intermediateResults,
+          coverLetterContent: parsed
+        }
+      })
+
+      return { content: parsed }
+    }
   }
 
   private async ensureProviderAvailable(): Promise<void> {

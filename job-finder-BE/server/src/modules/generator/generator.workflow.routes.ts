@@ -189,5 +189,41 @@ export function buildGeneratorWorkflowRouter() {
     })
   )
 
+  // Reject review with feedback — AI regenerates the document
+  router.post(
+    '/requests/:id/reject-review',
+    asyncHandler(async (req, res) => {
+      const requestId = req.params.id
+      const body = req.body ?? {}
+
+      // Validate document type
+      let documentType: 'resume' | 'coverLetter'
+      try {
+        documentType = reviewDocumentTypeSchema.parse(body.documentType)
+      } catch (err) {
+        if (err instanceof ZodError) {
+          const message = err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, `Validation error: ${message}`))
+          return
+        }
+        throw err
+      }
+
+      const feedback = typeof body.feedback === 'string' ? body.feedback.trim() : ''
+      if (!feedback) {
+        res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Feedback is required'))
+        return
+      }
+
+      const result = await service.rejectReview(requestId, documentType, feedback)
+      if (!result) {
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Request not found or not awaiting review'))
+        return
+      }
+
+      res.json(success({ content: result.content }))
+    })
+  )
+
   return router
 }

@@ -176,8 +176,15 @@
           <!-- Content populated dynamically -->
         </div>
         <div class="review-modal-footer">
-          <button class="btn-cancel-review" id="cancelReviewBtn">Cancel</button>
-          <button class="btn-approve" id="approveReviewBtn">Approve & Continue</button>
+          <div class="review-feedback-area hidden" id="reviewFeedbackArea">
+            <textarea class="review-textarea" id="reviewFeedbackInput" rows="3"
+              placeholder="What should the AI change? e.g., 'Include more backend experience', 'Drop the projects section'"></textarea>
+          </div>
+          <div class="review-modal-actions">
+            <button class="btn-cancel-review" id="cancelReviewBtn">Cancel</button>
+            <button class="btn-reject-review" id="rejectReviewBtn">Reject & Retry</button>
+            <button class="btn-approve" id="approveReviewBtn">Approve & Continue</button>
+          </div>
         </div>
       </div>
     </div>
