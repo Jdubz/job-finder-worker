@@ -51,7 +51,7 @@ Extract and return this exact JSON structure (use null for unknown values, false
   "isRepost": <true if this appears to be a reposted job, false otherwise>,
   "relocationRequired": <true if explicitly requires relocation, false otherwise>,
   "includesEquity": <true if compensation includes equity/stock, false otherwise>,
-  "isContract": <true if contract/temporary position, false otherwise>,
+  "isContract": <true if contract/temporary/freelance/hourly position, false otherwise>,
   "isManagement": <true if people management responsibilities, false otherwise>,
   "isLead": <true if technical lead role, false otherwise>,
   "roleTypes": ["<role-type-1>", "<role-type-2>", ...]
@@ -108,7 +108,7 @@ Rules:
    - "data": data engineering, ETL, data pipelines
    - "security": security engineer, appsec, infosec
    - "clearance-required": mentions security clearance, TS/SCI, secret clearance
-   - "consulting": consulting firm, agency, client-facing delivery
+   - "consulting": the COMPANY is a consulting firm, staffing agency, or IT services company (e.g. Accenture, Deloitte, Wipro). Do NOT use for product companies that happen to have client-facing roles
    - "mobile": iOS, Android, React Native, Flutter mobile development
    - "embedded": embedded systems, firmware, IoT
    - "qa": quality assurance, test engineering, SDET
