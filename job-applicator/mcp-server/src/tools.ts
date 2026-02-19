@@ -244,9 +244,10 @@ export const tools: Tool[] = [
     name: "upload_file",
     description:
       "Upload a document (resume or cover letter) to a file input on the page. " +
-      "This uploads the user's pre-selected document - it does NOT generate a new document. " +
-      "Use this when you encounter a file upload field for resume or cover letter. " +
-      "You must provide the CSS selector for the file input element.",
+      "IMPORTANT: The 'type' parameter must match the documentType from find_upload_areas " +
+      "for the given selector. The resume and cover letter inputs are NEVER the same element — " +
+      "do NOT upload a resume to a cover letter input or vice versa. " +
+      "This uploads the user's pre-selected document - it does NOT generate a new document.",
     inputSchema: {
       type: "object",
       properties: {
@@ -257,7 +258,7 @@ export const tools: Tool[] = [
         type: {
           type: "string",
           enum: ["resume", "coverLetter"],
-          description: "The type of document to upload: 'resume' or 'coverLetter'",
+          description: "Must match the documentType from find_upload_areas for this selector: 'resume' or 'coverLetter'",
         },
       },
       required: ["selector", "type"],

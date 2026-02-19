@@ -256,9 +256,16 @@ If all entries exist: verify and move on - do NOT duplicate
 
 STEP 7: UPLOAD FILES
 - Call find_upload_areas to locate file inputs
-- Use upload_file(selector, "resume") for resume
-- Use upload_file(selector, "coverLetter") for cover letter
-- Take screenshot to verify uploads show as attached
+- CRITICAL: The resume input and cover letter input are NEVER the same element.
+  Match each result's documentType to the correct upload_file type parameter:
+  - documentType="resume" → upload_file(inputSelector, "resume")
+  - documentType="coverLetter" → upload_file(inputSelector, "coverLetter")
+  - documentType="unknown" → infer from the label text. Resume inputs mention
+    "resume" or "CV"; cover letter inputs mention "cover letter". When unsure,
+    the first file input is typically resume, the second is cover letter
+- NEVER upload a cover letter to a resume input or vice versa
+- If find_upload_areas returns 0 results, scroll down and call it again
+- Take screenshot to verify each upload shows as attached
 
 STEP 8: FILL REMAINING EMPTY FIELDS
 - Call get_form_fields again to find any remaining fields
