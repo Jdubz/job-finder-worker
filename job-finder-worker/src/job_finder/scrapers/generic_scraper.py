@@ -399,7 +399,7 @@ class GenericScraper:
             except Exception:
                 pass  # Best-effort retrieval; continue with empty content if this fails
             try:
-                resp_headers = dict(response.headers)
+                resp_headers = response.headers
             except Exception:
                 pass
             raise classify_http_error(
@@ -760,7 +760,7 @@ class GenericScraper:
             except Exception:
                 pass
             try:
-                resp_headers = dict(response.headers)
+                resp_headers = response.headers
             except Exception:
                 pass
             raise classify_http_error(
@@ -831,7 +831,7 @@ class GenericScraper:
                 except Exception:
                     pass
                 try:
-                    resp_headers = dict(response.headers)
+                    resp_headers = response.headers
                 except Exception:
                     pass
                 raise classify_http_error(
@@ -935,14 +935,24 @@ class GenericScraper:
         jobs = []
         for jp in postings:
             job: Dict[str, Any] = {}
-            job["title"] = jp.get("title") or ""
+            job["title"] = sanitize_title(jp.get("title") or "")
             hiring_org = jp.get("hiringOrganization") or {}
-            job["company"] = (
+            company_raw = (
                 hiring_org.get("name", "") if isinstance(hiring_org, dict) else str(hiring_org)
             )
-            job["description"] = jp.get("description", "")
-            job["url"] = jp.get("url") or jp.get("sameAs") or ""
-            # Location
+            job["company"] = sanitize_company_name(company_raw)
+            job["description"] = sanitize_html_description(jp.get("description", ""))
+            # URL: reconstruct relative URLs using base_url
+            raw_url = jp.get("url") or jp.get("sameAs") or ""
+            if raw_url and self.config.base_url and not re.match(r"^https?://", raw_url):
+                base = self.config.base_url.rstrip("/")
+                relative = raw_url.lstrip("/")
+                job["url"] = f"{base}/{relative}"
+            else:
+                job["url"] = raw_url
+            # Location (default to empty string if not a dict)
+            job["location"] = ""
+            job["company_website"] = ""
             place = jp.get("jobLocation")
             if isinstance(place, list):
                 place = place[0] if place else None
@@ -956,7 +966,10 @@ class GenericScraper:
                 parts = [(p.get("name", "") if isinstance(p, dict) else p or "") for p in parts]
                 job["location"] = ", ".join(p for p in parts if p)
             if jp.get("datePosted"):
-                job["posted_date"] = jp["datePosted"]
+                job["posted_date"] = self._normalize_date(jp["datePosted"])
+            # Override company name from config if specified
+            if self.config.company_name:
+                job["company"] = self.config.company_name
             if job.get("title") and job.get("url"):
                 jobs.append(PreExtractedJob(data=job))
 

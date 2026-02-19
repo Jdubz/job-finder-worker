@@ -210,7 +210,11 @@ class ScrapeRunner:
 
             except (ScrapeConfigError, ScrapeNotFoundError, ScrapeTransientError) as e:
                 # 429 with Retry-After: source is healthy, just rate-limited — skip strike
-                if isinstance(e, ScrapeTransientError) and e.retry_after and e.status_code == 429:
+                if (
+                    isinstance(e, ScrapeTransientError)
+                    and e.retry_after is not None
+                    and e.status_code == 429
+                ):
                     logger.warning(
                         "rate_limited: source=%s retry_after=%ss, skipping strike",
                         source.get("name"),

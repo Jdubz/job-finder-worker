@@ -383,7 +383,11 @@ def test_jsonld_listing_fallback_extracts_jobs():
     assert all(isinstance(item, PreExtractedJob) for item in items)
     assert items[0].data["title"] == "Engineer"
     assert items[0].data["url"] == "https://example.com/job/1"
+    assert items[0].data["location"] == "NYC, NY"
+    assert items[0].data["company_website"] == ""
     assert items[1].data["title"] == "Designer"
+    assert items[1].data["location"] == ""
+    assert items[1].data["company_website"] == ""
 
     # Verify scrape() processes PreExtractedJob items into job dicts
     with patch("job_finder.scrapers.generic_scraper.get_renderer") as mock_get:
@@ -394,7 +398,10 @@ def test_jsonld_listing_fallback_extracts_jobs():
     assert len(jobs) == 2
     assert jobs[0]["title"] == "Engineer"
     assert jobs[0]["url"] == "https://example.com/job/1"
+    assert jobs[0]["location"] == "NYC, NY"
+    assert jobs[0]["company_website"] == ""
     assert jobs[1]["title"] == "Designer"
+    assert jobs[1]["location"] == ""
 
 
 # ── Test 10: JSON-LD fallback skipped when CSS selector matches ──
