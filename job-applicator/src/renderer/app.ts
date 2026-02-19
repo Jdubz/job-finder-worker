@@ -319,6 +319,11 @@ interface ElectronAPI {
     documentType: "resume" | "coverLetter"
     content: ResumeContent | CoverLetterContent
   }) => Promise<{ success: boolean; data?: GenerationProgress; message?: string }>
+  rejectDocumentReview: (options: {
+    requestId: string
+    documentType: "resume" | "coverLetter"
+    feedback: string
+  }) => Promise<{ success: boolean; data?: { content: ResumeContent | CoverLetterContent }; message?: string }>
   onRefreshJobMatches: (callback: () => void) => () => void
 }
 
@@ -438,6 +443,9 @@ const reviewTitle = getElement<HTMLHeadingElement>("reviewTitle")
 const reviewContent = getElement<HTMLDivElement>("reviewContent")
 const approveReviewBtn = getElement<HTMLButtonElement>("approveReviewBtn")
 const cancelReviewBtn = getElement<HTMLButtonElement>("cancelReviewBtn")
+const rejectReviewBtn = getElement<HTMLButtonElement>("rejectReviewBtn")
+const reviewFeedbackArea = getElement<HTMLDivElement>("reviewFeedbackArea")
+const reviewFeedbackInput = getElement<HTMLTextAreaElement>("reviewFeedbackInput")
 
 // DOM elements - Agent Panel
 const agentStatus = getElement<HTMLDivElement>("agentStatus")
@@ -991,6 +999,29 @@ function renderResumeReviewForm(content: ResumeContent) {
     })
   }
 
+  // Add projects section (only if projects exist)
+  if (Array.isArray(content.projects) && content.projects.length > 0) {
+    html += `<div class="review-field-label">Projects</div>`
+    content.projects.forEach((proj, projIndex) => {
+      const name = proj.name || "Project"
+      html += `
+        <div class="review-experience-group" data-proj-index="${projIndex}">
+          <div class="review-experience-header">${escapeHtml(name)}</div>
+          <div class="review-highlights" id="review-proj-highlights-${projIndex}">
+      `
+      if (Array.isArray(proj.highlights) && proj.highlights.length > 0) {
+        proj.highlights.forEach((h: string, hlIndex: number) => {
+          html += `
+            <div class="review-highlight-item">
+              <textarea class="review-textarea" data-proj="${projIndex}" data-proj-hl="${hlIndex}" rows="2">${escapeHtml(h || "")}</textarea>
+            </div>
+          `
+        })
+      }
+      html += `</div></div>`
+    })
+  }
+
   reviewContent.innerHTML = html
 }
 
@@ -1090,6 +1121,15 @@ function collectResumeContent(original: ResumeContent): ResumeContent {
     return { ...exp, highlights }
   })
 
+  // Collect updated project highlights
+  const projects = (original.projects || []).map((proj, projIndex) => {
+    const highlightEls = document.querySelectorAll(
+      `textarea[data-proj="${projIndex}"]`
+    ) as NodeListOf<HTMLTextAreaElement>
+    const highlights = Array.from(highlightEls).map((el) => el.value.trim()).filter(Boolean)
+    return { ...proj, highlights }
+  })
+
   return {
     ...original,
     personalInfo: {
@@ -1098,6 +1138,7 @@ function collectResumeContent(original: ResumeContent): ResumeContent {
     },
     professionalSummary: summary,
     experience,
+    projects,
   }
 }
 
@@ -1166,6 +1207,10 @@ async function submitReview() {
       currentReviewRequestId = null
       currentReviewDocumentType = null
       currentReviewContent = null
+      // Reset feedback area
+      reviewFeedbackArea.classList.add("hidden")
+      reviewFeedbackInput.value = ""
+      rejectReviewBtn.textContent = "Reject & Retry"
 
       // Check if there's another review needed or if generation is complete
       if (result.data.status === "awaiting_review") {
@@ -1205,10 +1250,58 @@ async function cancelReview() {
   currentReviewRequestId = null
   currentReviewDocumentType = null
   currentReviewContent = null
+  // Reset feedback area
+  reviewFeedbackArea.classList.add("hidden")
+  reviewFeedbackInput.value = ""
+  rejectReviewBtn.textContent = "Reject & Retry"
   cleanupGenerationProgressListener()
   // Reset workflow step to allow retry
   setWorkflowStep("docs", "active")
   setStatus("Review cancelled", "")
+}
+
+// Reject review with feedback and request AI retry
+async function rejectReview() {
+  if (!currentReviewRequestId || !currentReviewDocumentType) {
+    setStatus("No review in progress", "error")
+    return
+  }
+
+  const feedback = reviewFeedbackInput.value.trim()
+  if (!feedback) {
+    setStatus("Please enter feedback for the AI", "error")
+    return
+  }
+
+  setStatus("Regenerating with feedback...", "loading")
+  rejectReviewBtn.disabled = true
+  approveReviewBtn.disabled = true
+
+  try {
+    const result = await api.rejectDocumentReview({
+      requestId: currentReviewRequestId,
+      documentType: currentReviewDocumentType,
+      feedback,
+    })
+
+    if (result.success && result.data) {
+      // AI regenerated — show new draft for review
+      currentReviewContent = result.data.content
+      renderReviewForm(currentReviewDocumentType!, result.data.content)
+      reviewFeedbackArea.classList.add("hidden")
+      reviewFeedbackInput.value = ""
+      rejectReviewBtn.textContent = "Reject & Retry"
+      setStatus("Review the updated draft", "")
+    } else {
+      setStatus(result.message || "Retry failed", "error")
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Retry failed"
+    setStatus(message, "error")
+  }
+
+  rejectReviewBtn.disabled = false
+  approveReviewBtn.disabled = false
 }
 
 // Generate new document
@@ -1833,6 +1926,17 @@ function initializeApp() {
   cancelReviewBtn.addEventListener("click", () => {
     log.info("Cancel button clicked!")
     cancelReview()
+  })
+  rejectReviewBtn.addEventListener("click", () => {
+    log.info("Reject & Retry button clicked!")
+    // First click reveals feedback area, second click sends feedback
+    if (reviewFeedbackArea.classList.contains("hidden")) {
+      reviewFeedbackArea.classList.remove("hidden")
+      rejectReviewBtn.textContent = "Send Feedback"
+      reviewFeedbackInput.focus()
+    } else {
+      rejectReview()
+    }
   })
 
   // Subscribe to generation review events

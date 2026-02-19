@@ -3,7 +3,7 @@ import type { PersonalInfo, ContentItem, JobMatchWithListing } from '@shared/typ
 import { PromptsRepository } from '../../prompts/prompts.repository'
 import { getBalancedContentGuidance } from './services/content-fit.service'
 import type { FitEstimate, getContentBudget } from './services/content-fit.service'
-import type { ResumeContent } from '@shared/types'
+import type { ResumeContent, CoverLetterContent } from '@shared/types'
 
 const promptsRepo = new PromptsRepository()
 
@@ -254,11 +254,24 @@ function formatEducationItem(item: ContentItem): string {
 /** Format personal project item */
 function formatProjectItem(item: ContentItem): string {
   const bullets = parseDescriptionToBullets(item.description)
+  const skills = item.skills || []
+  const skillsLower = skills.map((s) => s.toLowerCase())
+
+  // Tag each bullet as [DOMAIN] or [GENERIC] based on whether it references project technologies.
+  // This helps the AI prioritize domain-relevant highlights over generic engineering ones.
+  const genericPatterns = /\b(unit test|integration test|test coverage|ci\/cd|code review|documentation|refactor|linting|deploy|monitoring)\b/i
+  const taggedBullets = bullets.map((b) => {
+    const lower = b.toLowerCase()
+    const mentionsTech = skillsLower.some((s) => lower.includes(s))
+    const isGeneric = genericPatterns.test(b)
+    const tag = mentionsTech && !isGeneric ? '[DOMAIN]' : isGeneric ? '[GENERIC]' : '[OTHER]'
+    return `  - ${tag} ${b}`
+  })
 
   return [
     `- Project: ${item.title || 'Untitled Project'}`,
-    ...bullets.map((b) => `  - ${b}`),
-    item.skills?.length ? `  Technologies: ${item.skills.join(', ')}` : null,
+    ...taggedBullets,
+    skills.length ? `  Technologies: ${skills.join(', ')}` : null,
     item.website ? `  Link: ${item.website}` : null
   ]
     .filter(Boolean)
@@ -315,33 +328,50 @@ export function buildResumePrompt(
       .join('\n')
     projectGuidance = `
 
+EXPERIENCE PRIORITY:
+- ALWAYS include ALL relevant professional work experience. Work experience is the most valuable section.
+- Include as many experience entries as possible (up to the budget). Do NOT drop work experience to make room for projects.
+- When you have fewer experience entries, use MORE bullets per entry (up to 5-6) to showcase depth. Fill the page with work experience first.
+
 PROJECTS:
-Include 1-2 projects that best showcase skills relevant to this role. Projects can be MORE
-valuable than older or less-relevant work experience — if a personal project demonstrates
-key skills for this role better than a work entry, prefer the project and drop the weaker
-experience entry.
+Projects should ONLY be included if they are HIGHLY relevant to the job description AND
+the candidate lacks professional experience in that specific area. Projects exist to fill
+genuine gaps — they should never replace or displace work experience.
 
-Prioritize projects that:
-- Demonstrate technologies or skills mentioned in the job description
-- Fill gaps not covered by work experience
-- Show initiative, technical depth, and breadth beyond day-job responsibilities
+If including projects, limit to 1-2 that directly address skill gaps:
+${projectLines}
 
-Recommended projects for this role (from job analysis):
-${projectLines}`
+PROJECT HIGHLIGHT SELECTION (CRITICAL):
+A project is included to demonstrate a SPECIFIC skill gap. Its highlights MUST prove that skill.
+- Select ONLY highlights that directly demonstrate the skill gap the project fills.
+- Project bullets in the INPUT DATA are tagged [DOMAIN], [GENERIC], or [OTHER]. STRONGLY prefer [DOMAIN]-tagged bullets — these mention the project's core technologies. Avoid [GENERIC] bullets (testing, CI/CD, docs) unless no [DOMAIN] bullets exist.
+- If the project fills an AI/ML gap, pick bullets about model integration, embeddings, vector search, inference, RAG, etc. — NOT about testing or deployment.
+- Drop generic highlights (testing, documentation, refactoring) unless they are the only ones available.
+- Rewrite/tailor selected highlights to emphasize the gap-filling skill when appropriate.
+
+If the candidate's work experience already covers the key requirements, return "projects": [].`
   } else {
     projectGuidance = `
 
-PROJECTS:
-Include 1-2 projects that best showcase skills relevant to this role. Projects can be MORE
-valuable than older or less-relevant work experience — if a personal project demonstrates
-key skills for this role better than a work entry, prefer the project and drop the weaker
-experience entry.
+EXPERIENCE PRIORITY:
+- ALWAYS include ALL relevant professional work experience. Work experience is the most valuable section.
+- Include as many experience entries as possible (up to the budget). Do NOT drop work experience to make room for projects.
+- When you have fewer experience entries, use MORE bullets per entry (up to 5-6) to showcase depth. Fill the page with work experience first.
 
-Prioritize projects that:
-- Demonstrate technologies or skills mentioned in the job description
-- Fill gaps not covered by work experience
-- Show initiative, technical depth, and breadth beyond day-job responsibilities
-If no projects are relevant, return "projects": [].`
+PROJECTS:
+Projects should ONLY be included if they are HIGHLY relevant to the job description AND
+the candidate lacks professional experience in that specific area. Projects exist to fill
+genuine gaps — they should never replace or displace work experience.
+
+PROJECT HIGHLIGHT SELECTION (CRITICAL):
+A project is included to demonstrate a SPECIFIC skill gap. Its highlights MUST prove that skill.
+- Select ONLY highlights that directly demonstrate the skill gap the project fills.
+- Project bullets in the INPUT DATA are tagged [DOMAIN], [GENERIC], or [OTHER]. STRONGLY prefer [DOMAIN]-tagged bullets — these mention the project's core technologies. Avoid [GENERIC] bullets (testing, CI/CD, docs) unless no [DOMAIN] bullets exist.
+- If the project fills an AI/ML gap, pick bullets about model integration, embeddings, vector search, inference, RAG, etc. — NOT about testing or deployment.
+- Drop generic highlights (testing, documentation, refactoring) unless they are the only ones available.
+- Rewrite/tailor selected highlights to emphasize the gap-filling skill when appropriate.
+
+If the candidate's work experience already covers the key requirements, return "projects": [].`
   }
 
   // JSON schema and output format instructions (content guidance is in database prompt)
@@ -536,13 +566,13 @@ ${matchContext}${intakeGuidance}
 EDITORIAL INSTRUCTIONS:
 1. You are an editor, not a writer. Trim content to fit the budget — do NOT rewrite bullets or invent new content.
 2. Do NOT add any technologies, skills, tools, or achievements that are not in the first attempt. You may ONLY remove content, never add.
-3. A relevant project is MORE valuable than a less-relevant work experience entry. Drop weaker experience entries before dropping projects that demonstrate key skills for this role.
+3. Work experience is MORE valuable than projects. Drop projects before dropping work experience entries. Only keep projects that fill genuine skill gaps not covered by any work experience.
 4. Prioritize: matched skills > key strengths > ATS keywords > general experience.
-5. Cut the LEAST relevant content first: redundant bullets, older/less-relevant experience entries, generic skills.
+5. Cut the LEAST relevant content first: projects, redundant bullets, generic skills, then older experience entries as a last resort.
+   When trimming project highlights, drop generic bullets (testing, CI/CD, documentation) BEFORE domain-relevant ones (the core technologies the project demonstrates).
 6. Keep all factual data (dates, company names, role titles) exactly as-is.
 7. Reduce bullets on less-relevant roles first; keep more bullets on highly-relevant roles.
-8. If projects fill genuine skill gaps for this role, keep them (trimmed if needed). If they don't, remove them.
-9. Consolidate or remove the least-relevant skill categories to stay within budget.
+8. Consolidate or remove the least-relevant skill categories to stay within budget.
 
 OUTPUT FORMAT (STRICT):
 - Respond with the JSON object ONLY — no prose, no markdown, no explanations.
@@ -560,4 +590,29 @@ Return the trimmed resume as a JSON object with this exact structure:
   ],
   "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
 }`
+}
+
+export function buildResumeRetryPrompt(
+  originalPrompt: string,
+  firstAttempt: ResumeContent | CoverLetterContent,
+  feedback: string
+): string {
+  return `You previously generated a document that the user wants revised.
+
+ORIGINAL GENERATION PROMPT:
+${originalPrompt}
+
+YOUR FIRST ATTEMPT (JSON):
+${JSON.stringify(firstAttempt, null, 2)}
+
+USER FEEDBACK — REVISE BASED ON THIS:
+${feedback}
+
+Generate a revised document incorporating the user's feedback.
+Return ONLY valid JSON in the same schema as the first attempt.
+Keep all content that the user did not mention — only change what they asked for.
+
+OUTPUT FORMAT (STRICT):
+- You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.`
 }

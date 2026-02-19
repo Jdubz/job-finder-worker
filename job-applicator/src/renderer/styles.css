@@ -1367,9 +1367,24 @@ select:focus {
   padding: 16px 24px;
   border-top: 1px solid #0f3460;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.review-modal-actions {
+  display: flex;
   gap: 12px;
   justify-content: flex-end;
-  flex-shrink: 0;
+}
+
+.review-feedback-area {
+  width: 100%;
+}
+
+.review-feedback-area .review-textarea {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .review-modal-footer .btn-approve {
@@ -1380,6 +1395,29 @@ select:focus {
 .review-modal-footer .btn-cancel-review {
   padding: 10px 20px;
   font-size: 14px;
+}
+
+.btn-reject-review {
+  padding: 10px 20px;
+  font-size: 14px;
+  background: #92400e;
+  color: #fbbf24;
+  border: 1px solid #b45309;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-reject-review:hover {
+  background: #b45309;
+  color: #fef3c7;
+}
+
+.btn-reject-review:disabled {
+  background: #374151;
+  color: #6b7280;
+  border-color: #4b5563;
+  cursor: not-allowed;
 }
 
 .review-field {

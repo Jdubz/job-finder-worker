@@ -7,7 +7,7 @@ import { ConfigRepository } from '../../config/config.repository'
 import { logger } from '../../../logger'
 import { runCliProvider, type CliProvider, type CliErrorType } from '../workflow/services/cli-runner'
 import { UserFacingError } from '../workflow/generator.workflow.service'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 
 type AgentExecutionResult = {
   output: string
@@ -242,21 +242,43 @@ export class AgentManager {
       throw new UserFacingError(`API interface only supported for gemini provider, got ${agent.provider}`)
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-    if (!apiKey) {
-      throw new AgentExecutionError('GEMINI_API_KEY or GOOGLE_API_KEY not set', agentId, 'auth')
-    }
-
     const modelName = model || 'gemini-2.5-flash'
 
+    // Build unified client — same pattern as the Python worker:
+    //   1. API key (GEMINI_API_KEY / GOOGLE_API_KEY) → Gemini API
+    //   2. GOOGLE_CLOUD_PROJECT + ADC → Vertex AI
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    const gcpProject = process.env.GOOGLE_CLOUD_PROJECT
+
+    let client: GoogleGenAI
+    if (apiKey) {
+      client = new GoogleGenAI({ apiKey })
+    } else if (gcpProject) {
+      client = new GoogleGenAI({
+        vertexai: true,
+        project: gcpProject,
+        location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+      })
+    } else {
+      throw new AgentExecutionError(
+        'Gemini auth not configured. Set GEMINI_API_KEY / GOOGLE_API_KEY for API key auth, or GOOGLE_CLOUD_PROJECT for Vertex AI.',
+        agentId,
+        'auth'
+      )
+    }
+
     try {
-      const genAI = new GoogleGenerativeAI(apiKey)
-      const generativeModel = genAI.getGenerativeModel({ model: modelName })
+      const response = await client.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: {
+          // Disable thinking tokens to prevent truncated structured-output responses
+          // (matches worker's ThinkingConfig(thinking_budget=0))
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      })
 
-      const result = await generativeModel.generateContent(prompt)
-      const response = result.response
-      const text = response.text()
-
+      const text = response.text
       if (!text) {
         throw new AgentExecutionError('Gemini API returned empty response', agentId, 'other')
       }

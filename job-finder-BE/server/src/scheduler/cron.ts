@@ -372,10 +372,17 @@ function scheduleNextTick() {
 }
 
 export function startCronScheduler() {
-  logger.info({ NODE_ENV: env.NODE_ENV, timezone: getContainerTimezone() }, 'Cron scheduler config')
+  // CRON_ENABLED controls whether the scheduler runs. Defaults to true in
+  // production, false otherwise. Set CRON_ENABLED=true in dev/staging to
+  // enable cron jobs (e.g. agentReset) without changing NODE_ENV.
+  const cronEnabled = env.CRON_ENABLED != null
+    ? env.CRON_ENABLED === 'true'
+    : env.NODE_ENV === 'production'
 
-  if (env.NODE_ENV !== 'production') {
-    logger.info('Cron scheduler skipped outside production environment')
+  logger.info({ NODE_ENV: env.NODE_ENV, cronEnabled, timezone: getContainerTimezone() }, 'Cron scheduler config')
+
+  if (!cronEnabled) {
+    logger.info('Cron scheduler disabled (set CRON_ENABLED=true to enable)')
     return
   }
 

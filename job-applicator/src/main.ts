@@ -93,6 +93,7 @@ import {
   executeGenerationStep,
   fetchDraftContent,
   submitDocumentReview,
+  rejectDocumentReview,
   submitJobToQueue,
   getApiUrl,
 } from "./api-client.js"
@@ -105,6 +106,18 @@ const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
 // Timeout for closing orphaned popup windows (5 seconds)
 const POPUP_CLEANUP_TIMEOUT_MS = 5000
+
+// Timeout for OAuth/SSO popups (default 2 min — configurable for enterprise SSO with 2FA)
+const OAUTH_POPUP_TIMEOUT_MS = (() => {
+  const raw = process.env.OAUTH_POPUP_TIMEOUT_MS
+  if (!raw) return 120_000
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    logger.warn(`[CONFIG] Invalid OAUTH_POPUP_TIMEOUT_MS="${raw}", falling back to default 120000ms`)
+    return 120_000
+  }
+  return parsed
+})()
 
 /**
  * Download a document from the API to a temporary file
@@ -324,6 +337,28 @@ async function executeRemainingSteps(
 let mainWindow: BrowserWindow | null = null
 let browserView: BrowserView | null = null
 
+/** Check if the BrowserView's webContents are alive and usable. */
+function isBrowserViewAlive(): boolean {
+  return !!browserView?.webContents && !browserView.webContents.isDestroyed()
+}
+
+/** Detect OAuth/SSO popup URLs that must open as real windows. */
+function isOAuthPopup(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.has("redirect_uri")) return true
+    // Match common auth paths: /oauth, /oauth2, /authorize, /auth, /saml, /sso
+    if (/\/(oauth2?|authorize|auth|saml|sso)\b/i.test(parsed.pathname)) return true
+    // Match query param names referencing OAuth (e.g., oauthurl=...)
+    for (const key of parsed.searchParams.keys()) {
+      if (/oauth/i.test(key)) return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 // Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
 function updateBrowserViewBounds(): void {
   if (!browserView || !mainWindow) return
@@ -372,6 +407,9 @@ async function createWindow(): Promise<void> {
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
+  // Track whether the next popup is an OAuth/SSO flow that needs a real window
+  let nextPopupIsOAuth = false
+
   // Intercept new window/tab requests and navigate in the same BrowserView
   // This prevents job application pages from opening in separate windows
   // which would break the form fill flow
@@ -386,13 +424,86 @@ async function createWindow(): Promise<void> {
       return { action: "allow" }
     }
 
+    // OAuth/SSO popups must open as real windows so the original page
+    // (the opener) stays intact to receive the auth callback via postMessage.
+    if (isOAuthPopup(url)) {
+      logger.info(`Allowing OAuth/SSO popup: ${url}`)
+      nextPopupIsOAuth = true
+      return { action: "allow" }
+    }
+
     // For real URLs, navigate in the same BrowserView
-    browserView?.webContents.loadURL(url)
+    if (isBrowserViewAlive()) {
+      browserView!.webContents.loadURL(url)
+    }
     return { action: "deny" }
   })
 
   // Capture child windows (popups) and redirect their navigation to main BrowserView
   browserView.webContents.on("did-create-window", (childWindow) => {
+    // OAuth/SSO popups must complete their flow uninterrupted — the opener
+    // page needs the popup alive to receive the auth callback.
+    if (nextPopupIsOAuth) {
+      nextPopupIsOAuth = false
+      logger.info("OAuth popup opened, letting it complete without interception")
+
+      // Block the popup from navigating the main BrowserView via
+      // window.opener.location. Some ATS providers (e.g. eightfold.ai)
+      // redirect the opener during OAuth, which navigates the application
+      // page away and leaves the user on a broken callback page.
+      //
+      // Scope: only block cross-origin navigations (the OAuth redirect chain
+      // goes to different domains like LinkedIn/Google), while allowing
+      // same-origin navigations the application page itself may trigger.
+      //
+      // Note: will-navigate fires for renderer-initiated navigations only
+      // (JS, links, form submits). Our own loadURL() calls from the main
+      // process do NOT trigger will-navigate, so IPC handlers are unaffected.
+      const preAuthOrigin = isBrowserViewAlive()
+        ? new URL(browserView!.webContents.getURL()).origin
+        : null
+      const blockOpenerRedirect = (event: Electron.Event, url: string) => {
+        try {
+          const navOrigin = new URL(url).origin
+          if (preAuthOrigin && navOrigin === preAuthOrigin) {
+            return // Allow same-origin navigations
+          }
+        } catch { /* malformed URL — block it */ }
+        logger.info(`[OAuth] Blocking cross-origin opener navigation during active popup: ${url}`)
+        event.preventDefault()
+      }
+      if (isBrowserViewAlive()) {
+        browserView!.webContents.on("will-navigate", blockOpenerRedirect)
+      }
+
+      // Log popup navigations for debugging
+      childWindow.webContents.on("did-navigate", (_event: Electron.Event, url: string) => {
+        logger.info(`[OAuth popup] Navigated to: ${url}`)
+      })
+
+      const cleanupOAuth = () => {
+        if (isBrowserViewAlive()) {
+          browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
+        }
+      }
+
+      // Still set a generous cleanup timeout in case the popup gets stuck
+      const oauthTimeout = setTimeout(() => {
+        if (!childWindow.isDestroyed()) {
+          logger.info("Closing stale OAuth popup after timeout")
+          childWindow.close()
+        }
+        cleanupOAuth()
+      }, OAUTH_POPUP_TIMEOUT_MS)
+
+      childWindow.on("closed", () => {
+        clearTimeout(oauthTimeout)
+        cleanupOAuth()
+        logger.info("[OAuth] Popup closed, opener navigation unblocked")
+      })
+      return
+    }
+
     logger.info(`Child window created, setting up redirect capture`)
 
     // Track timeout for cleanup
@@ -402,7 +513,9 @@ async function createWindow(): Promise<void> {
     const handleNavigation = (_event: Electron.Event, url: string) => {
       if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
         logger.info(`Capturing child window navigation: ${url}`)
-        browserView?.webContents.loadURL(url)
+        if (isBrowserViewAlive()) {
+          browserView!.webContents.loadURL(url)
+        }
         childWindow.close()
       }
     }
@@ -514,7 +627,7 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
 // Navigate to URL
 ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string; aborted?: boolean }> => {
   try {
-    if (!browserView) {
+    if (!isBrowserViewAlive()) {
       return { success: false, message: "Browser not initialized. Please restart the application." }
     }
     // Basic URL validation
@@ -523,7 +636,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
     } catch {
       return { success: false, message: "Invalid URL format" }
     }
-    await browserView.webContents.loadURL(url)
+    await browserView!.webContents.loadURL(url)
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -552,27 +665,27 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 
 // Get current URL
 ipcMain.handle("get-url", async (): Promise<string> => {
-  if (!browserView) return ""
-  return browserView.webContents.getURL()
+  if (!isBrowserViewAlive()) return ""
+  return browserView!.webContents.getURL()
 })
 
 // Get navigation state (URL + back availability)
 ipcMain.handle("get-navigation-state", async (): Promise<{ url: string; canGoBack: boolean }> => {
-  if (!browserView) return { url: "", canGoBack: false }
+  if (!isBrowserViewAlive()) return { url: "", canGoBack: false }
   return {
-    url: browserView.webContents.getURL(),
-    canGoBack: browserView.webContents.canGoBack(),
+    url: browserView!.webContents.getURL(),
+    canGoBack: browserView!.webContents.canGoBack(),
   }
 })
 
 // Navigate back if possible
 ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boolean; message?: string }> => {
-  if (!browserView) {
+  if (!isBrowserViewAlive()) {
     return { success: false, canGoBack: false, message: "Browser not initialized" }
   }
-  if (browserView.webContents.canGoBack()) {
-    await browserView.webContents.goBack()
-    return { success: true, canGoBack: browserView.webContents.canGoBack() }
+  if (browserView!.webContents.canGoBack()) {
+    await browserView!.webContents.goBack()
+    return { success: true, canGoBack: browserView!.webContents.canGoBack() }
   }
   return { success: false, canGoBack: false, message: "No page to go back to" }
 })
@@ -879,11 +992,11 @@ ipcMain.handle(
     let resolvedPath: string | null = null
 
     try {
-      if (!browserView) throw new Error("BrowserView not initialized")
+      if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
       // Find file input selector based on document type
       const targetType = options?.type || "resume"
-      const fileInputSelector = await browserView.webContents.executeJavaScript(
+      const fileInputSelector = await browserView!.webContents.executeJavaScript(
         buildFileInputDetectionScript(targetType)
       )
 
@@ -903,7 +1016,7 @@ ipcMain.handle(
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
-      await setFileInputFiles(browserView.webContents, fileInputSelector, [resolvedPath])
+      await setFileInputFiles(browserView!.webContents, fileInputSelector, [resolvedPath])
 
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
       return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
@@ -924,10 +1037,10 @@ ipcMain.handle(
   "submit-job",
   async (_event: IpcMainInvokeEvent, _provider: CliProvider): Promise<{ success: boolean; message: string }> => {
     try {
-      if (!browserView) throw new Error("BrowserView not initialized")
+      if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
       // 1. Get current URL
-      const url = browserView.webContents.getURL()
+      const url = browserView!.webContents.getURL()
       if (!url || url === "about:blank") {
         return { success: false, message: "No page loaded - navigate to a job listing first" }
       }
@@ -935,7 +1048,7 @@ ipcMain.handle(
       logger.info(`Extracting job details from: ${url}`)
 
       // 2. Extract page content (text only, limited to 10k chars)
-      const pageContent: string = await browserView.webContents.executeJavaScript(`
+      const pageContent: string = await browserView!.webContents.executeJavaScript(`
         document.body.innerText.slice(0, 10000)
       `)
 
@@ -1231,6 +1344,33 @@ ipcMain.handle(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error("Submit review error:", message)
+      return { success: false, message }
+    }
+  }
+)
+
+// Reject document review with feedback (AI retry)
+ipcMain.handle(
+  "reject-document-review",
+  async (
+    _event: IpcMainInvokeEvent,
+    options: {
+      requestId: string
+      documentType: "resume" | "coverLetter"
+      feedback: string
+    }
+  ): Promise<{ success: boolean; data?: { content: ResumeContent | CoverLetterContent }; message?: string }> => {
+    try {
+      logger.info(`Rejecting document review for ${options.documentType} with feedback`)
+      const result = await rejectDocumentReview(
+        options.requestId,
+        options.documentType,
+        options.feedback
+      )
+      return { success: true, data: result }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error("Reject review error:", message)
       return { success: false, message }
     }
   }
