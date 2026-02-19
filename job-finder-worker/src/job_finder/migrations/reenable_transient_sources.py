@@ -55,66 +55,71 @@ def run_migration(db_path: str, dry_run: bool = False) -> None:
     logger.info(f"Dry run: {dry_run}")
     logger.info(f"Sources to process: {len(SOURCES_TO_REENABLE)}")
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-    reenabled = 0
-    skipped = 0
+        reenabled = 0
+        skipped = 0
 
-    for source_id, expected_name in SOURCES_TO_REENABLE.items():
-        cursor.execute(
-            "SELECT id, name, status, config_json FROM job_sources WHERE id = ?",
-            (source_id,),
-        )
-        row = cursor.fetchone()
-
-        if not row:
-            logger.warning(f"  NOT FOUND: {source_id} ({expected_name})")
-            skipped += 1
-            continue
-
-        name = row["name"]
-        status = row["status"]
-
-        if status != "disabled":
-            logger.info(f"  SKIP (status={status}): {name}")
-            skipped += 1
-            continue
-
-        # Parse config and clear disable-related fields
-        try:
-            config = json.loads(row["config_json"]) if row["config_json"] else {}
-        except json.JSONDecodeError:
-            logger.warning(f"  SKIP (bad JSON): {name}")
-            skipped += 1
-            continue
-
-        removed = []
-        for key in ("disabled_notes", "disabled_tags", "consecutive_failures"):
-            if key in config:
-                removed.append(f"{key}={config.pop(key)}")
-
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        logger.info(f"  RE-ENABLE: {name} (cleared: {', '.join(removed) if removed else 'none'})")
-
-        if not dry_run:
+        for source_id, expected_name in SOURCES_TO_REENABLE.items():
             cursor.execute(
-                """
-                UPDATE job_sources
-                SET status = 'active', config_json = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (json.dumps(config), now, source_id),
+                "SELECT id, name, status, config_json FROM job_sources WHERE id = ?",
+                (source_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                logger.warning(f"  NOT FOUND: {source_id} ({expected_name})")
+                skipped += 1
+                continue
+
+            name = row["name"]
+            status = row["status"]
+
+            if status != "disabled":
+                logger.info(f"  SKIP (status={status}): {name}")
+                skipped += 1
+                continue
+
+            # Parse config and clear disable-related fields
+            try:
+                config = json.loads(row["config_json"]) if row["config_json"] else {}
+            except json.JSONDecodeError:
+                logger.warning(f"  SKIP (bad JSON): {name}")
+                skipped += 1
+                continue
+
+            removed = []
+            for key in ("disabled_notes", "disabled_tags", "consecutive_failures"):
+                if key in config:
+                    removed.append(f"{key}={config.pop(key)}")
+
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            logger.info(
+                f"  RE-ENABLE: {name} (cleared: {', '.join(removed) if removed else 'none'})"
             )
 
-        reenabled += 1
+            if not dry_run:
+                cursor.execute(
+                    """
+                    UPDATE job_sources
+                    SET status = 'active', config_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(config), now, source_id),
+                )
 
-    if not dry_run:
-        conn.commit()
+            reenabled += 1
 
-    conn.close()
+        if not dry_run:
+            conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
     logger.info("")
     logger.info("=" * 50)
