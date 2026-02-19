@@ -24,7 +24,6 @@ from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.scrape_runner import ScrapeRunner
 
-
 # ── Test 1: Partial render returns HTML on selector timeout ──
 
 
