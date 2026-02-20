@@ -109,6 +109,43 @@ class PreFilter:
         re.IGNORECASE,
     )
 
+    # Maps common country representations → canonical two-letter code
+    _COUNTRY_ALIASES: dict[str, str] = {
+        "us": "us", "usa": "us", "united states": "us",
+        "united states of america": "us", "u.s.": "us", "u.s.a.": "us",
+        "ca": "ca", "canada": "ca",
+        "uk": "uk", "united kingdom": "uk", "gb": "uk", "great britain": "uk", "england": "uk",
+        "de": "de", "germany": "de",
+        "fr": "fr", "france": "fr",
+        "nl": "nl", "netherlands": "nl",
+        "ie": "ie", "ireland": "ie",
+        "au": "au", "australia": "au",
+        "in": "in", "india": "in",
+        "il": "il", "israel": "il",
+        "sg": "sg", "singapore": "sg",
+        "jp": "jp", "japan": "jp",
+        "br": "br", "brazil": "br",
+        "se": "se", "sweden": "se",
+        "es": "es", "spain": "es",
+        "pl": "pl", "poland": "pl",
+        "ch": "ch", "switzerland": "ch",
+        "mx": "mx", "mexico": "mx",
+        "ro": "ro", "romania": "ro",
+        "kr": "kr", "south korea": "kr",
+        "pt": "pt", "portugal": "pt",
+        "it": "it", "italy": "it",
+        "at": "at", "austria": "at",
+        "nz": "nz", "new zealand": "nz",
+        "dk": "dk", "denmark": "dk",
+        "fi": "fi", "finland": "fi",
+        "no": "no", "norway": "no",
+        "be": "be", "belgium": "be",
+        "cz": "cz", "czech republic": "cz", "czechia": "cz",
+        "ar": "ar", "argentina": "ar",
+        "co": "co", "colombia": "co",
+        "cl": "cl", "chile": "cl",
+    }
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize the pre-filter.
@@ -195,6 +232,12 @@ class PreFilter:
         salary_config = config.get("salary", {})
         self.min_salary = salary_config.get("minimum")
 
+        # Country config
+        country_config = config.get("country", {})
+        self.allowed_countries = [
+            c.lower().strip() for c in country_config.get("allowedCountries", []) if c
+        ]
+
         logger.debug(
             f"PreFilter initialized: "
             f"title={len(self.required_keywords)}req/{len(self.excluded_keywords)}excl, "
@@ -235,6 +278,22 @@ class PreFilter:
                 )
         else:
             checks_skipped.append("title")
+
+        # 1.5 Country check
+        if self.allowed_countries:
+            country_code = self._extract_country(job_data)
+            if country_code:
+                checks_performed.append("country")
+                result = self._check_country(country_code)
+                if not result.passed:
+                    return PreFilterResult(
+                        passed=False,
+                        reason=result.reason,
+                        checks_performed=checks_performed,
+                        checks_skipped=checks_skipped,
+                    )
+            else:
+                checks_skipped.append("country")
 
         # 2. Freshness check (if posted_date or first_published available and parseable)
         # Use first_published if available (true publication date), fall back to posted_date
@@ -390,6 +449,65 @@ class PreFilter:
                     reason=f"Title missing required keywords",
                 )
 
+        return PreFilterResult(passed=True)
+
+    def _extract_country(self, job_data: Dict[str, Any]) -> Optional[str]:
+        """Extract canonical two-letter country code from job data.
+
+        Priority:
+        1. Structured ``country`` field (most reliable — Greenhouse, Lever, Ashby APIs)
+        2. Last comma-separated segment of ``location`` string ("London, UK" → "uk")
+
+        Returns None if no country can be determined (job passes).
+        """
+
+        # 1. Structured country field
+        country_raw = job_data.get("country")
+        if isinstance(country_raw, str) and country_raw.strip():
+            code = self._COUNTRY_ALIASES.get(country_raw.strip().lower())
+            if code:
+                return code
+
+        # 2. Last segment of location string ("London, UK" → "UK")
+        location = job_data.get("location")
+        if isinstance(location, str) and location.strip():
+            # Try last comma-separated segment
+            parts = [p.strip() for p in location.split(",")]
+            if len(parts) >= 2:
+                candidate = parts[-1].lower()
+                code = self._COUNTRY_ALIASES.get(candidate)
+                if code:
+                    return code
+
+            # Try the whole location string for composite remote locations
+            # ("Remote, Poland" → "poland")
+            for pattern in self._REMOTE_LOCATION_PATTERNS:
+                match = pattern.match(location.strip())
+                if match:
+                    extracted = match.group(1).strip().lower()
+                    code = self._COUNTRY_ALIASES.get(extracted)
+                    if code:
+                        return code
+
+        return None
+
+    def _check_country(self, country_code: str) -> PreFilterResult:
+        """Check if country code is in allowed list.
+
+        Args:
+            country_code: Canonical two-letter country code from ``_extract_country``.
+        """
+        if country_code not in self.allowed_countries:
+            # Reverse-lookup a readable name for the rejection reason
+            readable = country_code.upper()
+            for alias, code in self._COUNTRY_ALIASES.items():
+                if code == country_code and len(alias) > 2:
+                    readable = alias.title()
+                    break
+            return PreFilterResult(
+                passed=False,
+                reason=f"Non-US location: {readable}",
+            )
         return PreFilterResult(passed=True)
 
     def _check_freshness(self, posted_date: Any) -> tuple[PreFilterResult, bool]:
