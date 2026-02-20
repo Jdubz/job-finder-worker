@@ -143,6 +143,11 @@ class PreFilter:
         "ar": "Argentina",
         "co": "Colombia",
         "cl": "Chile",
+        "do": "Dominican Republic",
+        "pe": "Peru",
+        "pa": "Panama",
+        "uy": "Uruguay",
+        "cr": "Costa Rica",
     }
 
     # Maps common country representations → canonical two-letter code
@@ -220,7 +225,127 @@ class PreFilter:
         "colombia": "co",
         "cl": "cl",
         "chile": "cl",
+        "do": "do",
+        "dominican republic": "do",
+        "pe": "pe",
+        "peru": "pe",
+        "pa": "pa",
+        "panama": "pa",
+        "uy": "uy",
+        "uruguay": "uy",
+        "cr": "cr",
+        "costa rica": "cr",
     }
+
+    # Maps well-known non-US cities to their country code.
+    # Only includes unambiguous cities that commonly appear in job listings
+    # from LATAM staffing companies (Truelogic, BairesDev, etc.).
+    _CITY_COUNTRY_MAP: dict[str, str] = {
+        "bogota": "co",
+        "bogotá": "co",
+        "medellin": "co",
+        "medellín": "co",
+        "mexico city": "mx",
+        "ciudad de mexico": "mx",
+        "ciudad de méxico": "mx",
+        "guadalajara": "mx",
+        "monterrey": "mx",
+        "santo domingo": "do",
+        "buenos aires": "ar",
+        "são paulo": "br",
+        "sao paulo": "br",
+        "rio de janeiro": "br",
+        "santiago": "cl",
+        "lima": "pe",
+        "panama city": "pa",
+        "montevideo": "uy",
+        "san jose": "cr",
+        "san josé": "cr",
+        "toronto": "ca",
+        "vancouver": "ca",
+        "montreal": "ca",
+        "montréal": "ca",
+        "london": "gb",
+        "berlin": "de",
+        "munich": "de",
+        "münchen": "de",
+        "paris": "fr",
+        "amsterdam": "nl",
+        "dublin": "ie",
+        "sydney": "au",
+        "melbourne": "au",
+        "bangalore": "in",
+        "bengaluru": "in",
+        "hyderabad": "in",
+        "mumbai": "in",
+        "tel aviv": "il",
+        "tokyo": "jp",
+        "singapore": "sg",
+        "warsaw": "pl",
+        "krakow": "pl",
+        "kraków": "pl",
+        "lisbon": "pt",
+        "barcelona": "es",
+        "madrid": "es",
+    }
+
+    # US state abbreviations — used to disambiguate "City, CA" (California)
+    # from "City, CA" (Canada) in comma-separated location strings.
+    _US_STATE_CODES = frozenset(
+        {
+            "al",
+            "ak",
+            "az",
+            "ar",
+            "ca",
+            "co",
+            "ct",
+            "de",
+            "fl",
+            "ga",
+            "hi",
+            "id",
+            "il",
+            "in",
+            "ia",
+            "ks",
+            "ky",
+            "la",
+            "me",
+            "md",
+            "ma",
+            "mi",
+            "mn",
+            "ms",
+            "mo",
+            "mt",
+            "ne",
+            "nv",
+            "nh",
+            "nj",
+            "nm",
+            "ny",
+            "nc",
+            "nd",
+            "oh",
+            "ok",
+            "or",
+            "pa",
+            "ri",
+            "sc",
+            "sd",
+            "tn",
+            "tx",
+            "ut",
+            "vt",
+            "va",
+            "wa",
+            "wv",
+            "wi",
+            "wy",
+            "dc",
+        }
+    )
 
     def __init__(self, config: Dict[str, Any]):
         """
@@ -544,6 +669,9 @@ class PreFilter:
         Priority:
         1. Structured ``country`` field (most reliable — Greenhouse, Lever, Ashby APIs)
         2. Last comma-separated segment of ``location`` string ("London, UK" → "uk")
+        3. Remote location patterns ("Germany (remote)" → "de", "Remote Canada" → "ca")
+        4. Full location string as country name ("Germany" → "de")
+        5. City → country lookup ("Bogota" → "co", "Mexico City" → "mx")
 
         Returns None if no country can be determined (job passes).
         """
@@ -555,19 +683,25 @@ class PreFilter:
             if code:
                 return code
 
-        # 2. Last segment of location string ("London, UK" → "UK")
+        # 2-5. Location string strategies
         location = job_data.get("location")
         if isinstance(location, str) and location.strip():
-            # Try last comma-separated segment
+            loc_lower = location.strip().lower()
+
+            # 2. Last comma-separated segment ("London, UK" → "UK")
             parts = [p.strip() for p in location.split(",")]
             if len(parts) >= 2:
                 candidate = parts[-1].lower()
-                code = self._COUNTRY_ALIASES.get(candidate)
-                if code:
-                    return code
+                if candidate:
+                    # "City, CA" is ambiguous — CA=California or CA=Canada.
+                    # If the last segment is a 2-letter US state code, assume US.
+                    if len(candidate) == 2 and candidate in self._US_STATE_CODES:
+                        return "us"
+                    code = self._COUNTRY_ALIASES.get(candidate)
+                    if code:
+                        return code
 
-            # Try the whole location string for composite remote locations
-            # ("Remote, Poland" → "poland")
+            # 3. Remote location patterns ("Germany (remote)", "Remote Canada", etc.)
             for pattern in self._REMOTE_LOCATION_PATTERNS:
                 match = pattern.match(location.strip())
                 if match:
@@ -575,6 +709,16 @@ class PreFilter:
                     code = self._COUNTRY_ALIASES.get(extracted)
                     if code:
                         return code
+
+            # 4. Full location string as country name ("Germany" → "de")
+            code = self._COUNTRY_ALIASES.get(loc_lower)
+            if code:
+                return code
+
+            # 5. City → country lookup ("Bogota" → "co", "Mexico City" → "mx")
+            code = self._CITY_COUNTRY_MAP.get(loc_lower)
+            if code:
+                return code
 
         return None
 
@@ -794,6 +938,9 @@ class PreFilter:
         re.compile(r"^(.+?)\s*[-,]\s*remote$", re.IGNORECASE),  # "Poland, Remote" or "US - Remote"
         re.compile(r"^(.+?)\s+remote$", re.IGNORECASE),  # "US Remote" or "Poland Remote"
         re.compile(r"^remote\s+(.+)$", re.IGNORECASE),  # "Remote US" or "Remote Poland"
+        re.compile(
+            r"^(.+?)\s*\(remote\)$", re.IGNORECASE
+        ),  # "Germany (remote)" or "Canada (Remote)"
     ]
 
     # Words that are NOT locations but commonly appear before/after "remote"

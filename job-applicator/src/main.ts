@@ -178,7 +178,7 @@ async function downloadDocument(documentUrl: string): Promise<string> {
 const TOOLBAR_HEIGHT = 60
 const SIDEBAR_WIDTH = 300
 const CUSTOM_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 const TOOL_SERVER_HEALTH_TIMEOUT_MS = 3000
 
@@ -626,41 +626,62 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
 
 // Navigate to URL
 ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Promise<{ success: boolean; message?: string; aborted?: boolean }> => {
-  try {
-    if (!isBrowserViewAlive()) {
-      return { success: false, message: "Browser not initialized. Please restart the application." }
-    }
-    // Basic URL validation
-    try {
-      new URL(url)
-    } catch {
-      return { success: false, message: "Invalid URL format" }
-    }
-    await browserView!.webContents.loadURL(url)
-    return { success: true }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    logger.error("Navigation failed:", { url, error: message })
-    // Map common errors to user-friendly messages
-    if (message.includes("ERR_NAME_NOT_RESOLVED")) {
-      return { success: false, message: "Could not find the website. Check the URL or your internet connection." }
-    }
-    if (message.includes("ERR_CONNECTION_REFUSED")) {
-      return { success: false, message: "Connection refused. The website may be down." }
-    }
-    if (message.includes("ERR_INTERNET_DISCONNECTED") || message.includes("ERR_NETWORK_CHANGED")) {
-      return { success: false, message: "No internet connection. Please check your network." }
-    }
-    if (message.includes("ERR_CERT")) {
-      return { success: false, message: "SSL certificate error. The website may not be secure." }
-    }
-    if (message.includes("ERR_ABORTED")) {
-      // Navigation was aborted (e.g., user navigated again quickly, or page redirected)
-      // This is often not a real error, so we return success but indicate it was aborted
-      return { success: true, aborted: true }
-    }
-    return { success: false, message: `Navigation failed: ${message}` }
+  if (!isBrowserViewAlive()) {
+    return { success: false, message: "Browser not initialized. Please restart the application." }
   }
+  // Basic URL validation
+  try {
+    new URL(url)
+  } catch {
+    return { success: false, message: "Invalid URL format" }
+  }
+
+  // Retry once on ERR_FAILED — Cloudflare challenges and transient network errors
+  // often resolve on the second attempt after the challenge cookie is set.
+  const MAX_RETRIES = 1
+  let lastError: string | undefined
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        logger.info(`Retrying navigation (attempt ${attempt + 1}): ${url}`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      await browserView!.webContents.loadURL(url)
+      return { success: true }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      // Only retry on ERR_FAILED (generic network-level block, e.g. Cloudflare)
+      if (!lastError.includes("ERR_FAILED") || attempt >= MAX_RETRIES) {
+        break
+      }
+      logger.warn(`Navigation ERR_FAILED, will retry: ${url}`)
+    }
+  }
+
+  const message = lastError ?? "Unknown error"
+  logger.error("Navigation failed:", { url, error: message })
+  // Map common errors to user-friendly messages
+  if (message.includes("ERR_NAME_NOT_RESOLVED")) {
+    return { success: false, message: "Could not find the website. Check the URL or your internet connection." }
+  }
+  if (message.includes("ERR_CONNECTION_REFUSED")) {
+    return { success: false, message: "Connection refused. The website may be down." }
+  }
+  if (message.includes("ERR_INTERNET_DISCONNECTED") || message.includes("ERR_NETWORK_CHANGED")) {
+    return { success: false, message: "No internet connection. Please check your network." }
+  }
+  if (message.includes("ERR_CERT")) {
+    return { success: false, message: "SSL certificate error. The website may not be secure." }
+  }
+  if (message.includes("ERR_ABORTED")) {
+    // Navigation was aborted (e.g., user navigated again quickly, or page redirected)
+    // This is often not a real error, so we return success but indicate it was aborted
+    return { success: true, aborted: true }
+  }
+  if (message.includes("ERR_FAILED")) {
+    return { success: false, message: "Page blocked the request. The site may use bot protection — try opening it in your regular browser." }
+  }
+  return { success: false, message: `Navigation failed: ${message}` }
 })
 
 // Get current URL
