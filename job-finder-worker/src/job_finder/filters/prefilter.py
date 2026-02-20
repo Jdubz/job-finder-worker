@@ -109,6 +109,42 @@ class PreFilter:
         re.IGNORECASE,
     )
 
+    # Readable display names for canonical country codes (O(1) lookup)
+    _CANONICAL_COUNTRY_NAMES: dict[str, str] = {
+        "us": "United States",
+        "ca": "Canada",
+        "gb": "United Kingdom",
+        "de": "Germany",
+        "fr": "France",
+        "nl": "Netherlands",
+        "ie": "Ireland",
+        "au": "Australia",
+        "in": "India",
+        "il": "Israel",
+        "sg": "Singapore",
+        "jp": "Japan",
+        "br": "Brazil",
+        "se": "Sweden",
+        "es": "Spain",
+        "pl": "Poland",
+        "ch": "Switzerland",
+        "mx": "Mexico",
+        "ro": "Romania",
+        "kr": "South Korea",
+        "pt": "Portugal",
+        "it": "Italy",
+        "at": "Austria",
+        "nz": "New Zealand",
+        "dk": "Denmark",
+        "fi": "Finland",
+        "no": "Norway",
+        "be": "Belgium",
+        "cz": "Czech Republic",
+        "ar": "Argentina",
+        "co": "Colombia",
+        "cl": "Chile",
+    }
+
     # Maps common country representations → canonical two-letter code
     _COUNTRY_ALIASES: dict[str, str] = {
         "us": "us",
@@ -119,11 +155,12 @@ class PreFilter:
         "u.s.a.": "us",
         "ca": "ca",
         "canada": "ca",
-        "uk": "uk",
-        "united kingdom": "uk",
-        "gb": "uk",
-        "great britain": "uk",
-        "england": "uk",
+        "uk": "gb",
+        "united kingdom": "gb",
+        "gb": "gb",
+        "great britain": "gb",
+        # England is part of the UK; we normalize to the broader GB bucket
+        "england": "gb",
         "de": "de",
         "germany": "de",
         "fr": "fr",
@@ -273,9 +310,19 @@ class PreFilter:
 
         # Country config
         country_config = config.get("country", {})
-        self.allowed_countries = [
-            c.lower().strip() for c in country_config.get("allowedCountries", []) if c
-        ]
+        raw_allowed = country_config.get("allowedCountries", [])
+        self.allowed_countries = []
+        unrecognized = []
+        for c in raw_allowed:
+            if not c:
+                continue
+            normalized = c.lower().strip()
+            if normalized in self._COUNTRY_ALIASES:
+                self.allowed_countries.append(self._COUNTRY_ALIASES[normalized])
+            else:
+                unrecognized.append(c)
+        if unrecognized:
+            logger.warning("Unrecognized country codes in allowedCountries: %s", unrecognized)
 
         logger.debug(
             f"PreFilter initialized: "
@@ -285,7 +332,8 @@ class PreFilter:
             f"relocate={self.will_relocate}, userLocation={self.user_location}, "
             f"remoteKeywords={self.remote_keywords}, treatUnknownAsOnsite={self.treat_unknown_as_onsite}, "
             f"emp=FT{self.allow_full_time}/PT{self.allow_part_time}/C{self.allow_contract}, "
-            f"minSalary={self.min_salary}"
+            f"minSalary={self.min_salary}, "
+            f"allowedCountries={self.allowed_countries}"
         )
 
     def filter(self, job_data: Dict[str, Any], is_remote_source: bool = False) -> PreFilterResult:
@@ -537,15 +585,10 @@ class PreFilter:
             country_code: Canonical two-letter country code from ``_extract_country``.
         """
         if country_code not in self.allowed_countries:
-            # Reverse-lookup a readable name for the rejection reason
-            readable = country_code.upper()
-            for alias, code in self._COUNTRY_ALIASES.items():
-                if code == country_code and len(alias) > 2:
-                    readable = alias.title()
-                    break
+            readable = self._CANONICAL_COUNTRY_NAMES.get(country_code, country_code.upper())
             return PreFilterResult(
                 passed=False,
-                reason=f"Non-US location: {readable}",
+                reason=f"Location not in allowed countries: {readable}",
             )
         return PreFilterResult(passed=True)
 
