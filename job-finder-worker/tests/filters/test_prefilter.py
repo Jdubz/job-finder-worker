@@ -1206,3 +1206,149 @@ class TestPreFilterBypass:
         # Bypass is handled at the scraper intake level
         result = pf.filter(job_data)
         assert result.passed is False
+
+
+class TestPreFilterCountryCheck:
+    """Tests for country-based filtering."""
+
+    @pytest.fixture
+    def config_us_only(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "country": {"allowedCountries": ["us"]},
+        }
+
+    @pytest.fixture
+    def config_no_country(self):
+        """Config without country section — country check disabled."""
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+        }
+
+    def test_rejects_non_us_country_field(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "country": "Germany"})
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
+        assert "country" in result.checks_performed
+
+    def test_passes_us_country_field(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "country": "United States"})
+        assert result.passed is True
+        assert "country" in result.checks_performed
+
+    def test_passes_us_variants(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        for variant in ["US", "USA", "United States", "United States of America", "u.s.", "u.s.a."]:
+            result = pf.filter({"title": "Engineer", "country": variant})
+            assert result.passed is True, f"Expected pass for country='{variant}'"
+
+    def test_passes_missing_country(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer"})
+        assert result.passed is True
+        assert "country" in result.checks_skipped
+
+    def test_rejects_non_us_location_string(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "London, UK"})
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
+
+    def test_passes_us_location_string(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Portland, US"})
+        assert result.passed is True
+        assert "country" in result.checks_performed
+
+    def test_passes_when_disabled(self, config_no_country):
+        pf = PreFilter(config_no_country)
+        result = pf.filter({"title": "Engineer", "country": "Germany"})
+        assert result.passed is True
+        assert "country" not in result.checks_performed
+        assert "country" not in result.checks_skipped
+
+    def test_rejects_remote_non_us(self, config_us_only):
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Remote, Poland"})
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
+
+    def test_passes_unrecognized_country_field(self, config_us_only):
+        """Explicit but unrecognized country value should not cause rejection."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "country": "UnknownCountryName"})
+        assert result.passed is True
+        assert "country" in result.checks_skipped
+
+    def test_single_segment_location_no_country(self, config_us_only):
+        """Single-segment location like 'Germany' (no comma) should not extract country."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Germany"})
+        # No comma-separated segment and no remote pattern match → no country extracted
+        assert result.passed is True
+        assert "country" in result.checks_skipped
+
+    def test_trailing_comma_location(self, config_us_only):
+        """Location with trailing comma like 'Portland,' should not extract country."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Portland,"})
+        # Last segment after comma is empty → no country extracted
+        assert result.passed is True
+        assert "country" in result.checks_skipped
+
+    def test_multiple_allowed_countries(self):
+        """Filter should accept jobs from any of the allowed countries."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+            "country": {"allowedCountries": ["us", "ca", "gb"]},
+        }
+        pf = PreFilter(config)
+
+        # US should pass
+        result = pf.filter({"title": "Engineer", "country": "United States"})
+        assert result.passed is True
+
+        # Canada should pass
+        result = pf.filter({"title": "Engineer", "country": "Canada"})
+        assert result.passed is True
+
+        # UK should pass
+        result = pf.filter({"title": "Engineer", "country": "United Kingdom"})
+        assert result.passed is True
+
+        # Germany should be rejected
+        result = pf.filter({"title": "Engineer", "country": "Germany"})
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
