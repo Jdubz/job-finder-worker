@@ -240,6 +240,9 @@ class PreFilter:
     # Maps well-known non-US cities to their country code.
     # Only includes unambiguous cities that commonly appear in job listings
     # from LATAM staffing companies (Truelogic, BairesDev, etc.).
+    # NOTE: Some names (London, Paris, Dublin, Melbourne) have small US
+    # namesakes; we accept the tradeoff since job listings for those US
+    # towns almost always include a state qualifier ("London, KY").
     _CITY_COUNTRY_MAP: dict[str, str] = {
         "bogota": "co",
         "bogotá": "co",
@@ -706,6 +709,10 @@ class PreFilter:
                 match = pattern.match(location.strip())
                 if match:
                     extracted = match.group(1).strip().lower()
+                    # Skip ambiguous 2-letter codes ("CO (remote)" could be
+                    # Colorado or Colombia). Same logic as step 4.
+                    if len(extracted) == 2 and extracted in self._US_STATE_CODES:
+                        continue
                     code = self._COUNTRY_ALIASES.get(extracted)
                     if code:
                         return code

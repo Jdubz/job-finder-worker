@@ -1340,6 +1340,21 @@ class TestPreFilterCountryCheck:
             assert result.passed is True, f"Expected pass for ambiguous '{loc}'"
             assert "country" in result.checks_skipped
 
+    def test_state_code_remote_pattern_is_ambiguous(self, config_us_only):
+        """'CO (remote)' is ambiguous (Colorado vs Colombia) and should pass."""
+        pf = PreFilter(config_us_only)
+        for loc in ["CO (remote)", "CA (Remote)", "IN (remote)"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is True, f"Expected pass for ambiguous '{loc}'"
+            assert "country" in result.checks_skipped
+
+    def test_santiago_with_country_qualifier(self, config_us_only):
+        """'Santiago, Dominican Republic' should reject via last-segment country lookup."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Santiago, Dominican Republic"})
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
+
     def test_trailing_comma_location(self, config_us_only):
         """Location with trailing comma like 'Portland,' should not extract country."""
         pf = PreFilter(config_us_only)
