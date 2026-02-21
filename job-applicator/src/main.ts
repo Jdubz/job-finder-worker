@@ -638,6 +638,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 
   // Retry once on ERR_FAILED — Cloudflare challenges and transient network errors
   // often resolve on the second attempt after the challenge cookie is set.
+  // MAX_RETRIES = 1 means 2 total attempts (initial + 1 retry).
   const MAX_RETRIES = 1
   let lastError: string | undefined
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
