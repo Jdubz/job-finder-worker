@@ -1332,6 +1332,14 @@ class TestPreFilterCountryCheck:
             code = pf._extract_country({"location": loc})
             assert code == "us", f"Expected 'us' for '{loc}', got '{code}'"
 
+    def test_bare_state_abbreviation_is_ambiguous(self, config_us_only):
+        """Bare 2-letter state codes like 'CA' or 'AR' are ambiguous and should pass."""
+        pf = PreFilter(config_us_only)
+        for loc in ["CA", "AR", "CO", "DE", "IN", "PA"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is True, f"Expected pass for ambiguous '{loc}'"
+            assert "country" in result.checks_skipped
+
     def test_trailing_comma_location(self, config_us_only):
         """Location with trailing comma like 'Portland,' should not extract country."""
         pf = PreFilter(config_us_only)

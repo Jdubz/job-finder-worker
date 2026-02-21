@@ -255,12 +255,12 @@ class PreFilter:
         "são paulo": "br",
         "sao paulo": "br",
         "rio de janeiro": "br",
-        "santiago": "cl",
+        "santiago": "cl",  # NOTE: also a city in DR/Spain, but Chile is the common match
         "lima": "pe",
         "panama city": "pa",
         "montevideo": "uy",
-        "san jose": "cr",
-        "san josé": "cr",
+        # NOTE: "san jose" omitted — San Jose, CA is a major US tech hub.
+        # Costa Rica's capital rarely appears without "Costa Rica" qualifier.
         "toronto": "ca",
         "vancouver": "ca",
         "montreal": "ca",
@@ -711,6 +711,10 @@ class PreFilter:
                         return code
 
             # 4. Full location string as country name ("Germany" → "de")
+            # Skip ambiguous 2-letter codes that overlap with US state abbreviations
+            # (e.g., "AR" could be Arkansas or Argentina). Let these pass as unknown.
+            if len(loc_lower) == 2 and loc_lower in self._US_STATE_CODES:
+                return None
             code = self._COUNTRY_ALIASES.get(loc_lower)
             if code:
                 return code

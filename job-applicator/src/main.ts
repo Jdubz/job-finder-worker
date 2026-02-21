@@ -644,7 +644,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) {
-        logger.info(`Retrying navigation (attempt ${attempt + 1}): ${url}`)
+        logger.info(`Retrying navigation (retry ${attempt} of ${MAX_RETRIES}): ${url}`)
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
       await browserView!.webContents.loadURL(url)
