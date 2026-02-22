@@ -1302,13 +1302,58 @@ class TestPreFilterCountryCheck:
         assert result.passed is True
         assert "country" in result.checks_skipped
 
-    def test_single_segment_location_no_country(self, config_us_only):
-        """Single-segment location like 'Germany' (no comma) should not extract country."""
+    def test_rejects_single_segment_country_name(self, config_us_only):
+        """Single-segment location that is a country name should be rejected."""
         pf = PreFilter(config_us_only)
         result = pf.filter({"title": "Engineer", "location": "Germany"})
-        # No comma-separated segment and no remote pattern match → no country extracted
-        assert result.passed is True
-        assert "country" in result.checks_skipped
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
+
+    def test_rejects_city_name_via_city_map(self, config_us_only):
+        """Well-known non-US cities should be rejected via city→country lookup."""
+        pf = PreFilter(config_us_only)
+        for city in ["Bogota", "Mexico City", "Santo Domingo", "Buenos Aires", "Toronto"]:
+            result = pf.filter({"title": "Engineer", "location": city})
+            assert result.passed is False, f"Expected rejection for city='{city}'"
+            assert "Location not in allowed countries" in result.reason
+
+    def test_rejects_country_remote_parens(self, config_us_only):
+        """'Country (remote)' format should be rejected for non-US countries."""
+        pf = PreFilter(config_us_only)
+        for loc in ["Germany (remote)", "Canada (remote)", "Argentina (Remote)"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is False, f"Expected rejection for location='{loc}'"
+            assert "Location not in allowed countries" in result.reason
+
+    def test_passes_us_state_not_confused_with_country(self, config_us_only):
+        """'City, CA' should be treated as California, not Canada."""
+        pf = PreFilter(config_us_only)
+        for loc in ["San Francisco, CA", "Denver, CO", "Portland, OR"]:
+            code = pf._extract_country({"location": loc})
+            assert code == "us", f"Expected 'us' for '{loc}', got '{code}'"
+
+    def test_bare_state_abbreviation_is_ambiguous(self, config_us_only):
+        """Bare 2-letter state codes like 'CA' or 'AR' are ambiguous and should pass."""
+        pf = PreFilter(config_us_only)
+        for loc in ["CA", "AR", "CO", "DE", "IN", "PA"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is True, f"Expected pass for ambiguous '{loc}'"
+            assert "country" in result.checks_skipped
+
+    def test_state_code_remote_pattern_is_ambiguous(self, config_us_only):
+        """'CO (remote)' is ambiguous (Colorado vs Colombia) and should pass."""
+        pf = PreFilter(config_us_only)
+        for loc in ["CO (remote)", "CA (Remote)", "IN (remote)"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is True, f"Expected pass for ambiguous '{loc}'"
+            assert "country" in result.checks_skipped
+
+    def test_santiago_with_country_qualifier(self, config_us_only):
+        """'Santiago, Dominican Republic' should reject via last-segment country lookup."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Santiago, Dominican Republic"})
+        assert result.passed is False
+        assert "Location not in allowed countries" in result.reason
 
     def test_trailing_comma_location(self, config_us_only):
         """Location with trailing comma like 'Portland,' should not extract country."""
