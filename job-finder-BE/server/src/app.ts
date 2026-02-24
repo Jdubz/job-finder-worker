@@ -17,7 +17,7 @@ import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './m
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
-import { publicReadAuthenticatedWrite, queuePublicJobSubmit } from './middleware/optional-auth'
+import { publicReadAuthenticatedWrite, queuePublicJobSubmit, generatorSelectivePublicRead } from './middleware/optional-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { buildMaintenanceRouter } from './modules/maintenance'
 import { ApiErrorCode } from '@shared/types'
@@ -93,7 +93,7 @@ export function buildApp() {
   // Artifacts route is public - URLs are unique/semi-secret paths for direct download
   app.use('/api/generator/artifacts', buildGeneratorArtifactsRouter())
 
-  app.use('/api/generator', publicReadAuthenticatedWrite, generatorPipeline)
+  app.use('/api/generator', generatorSelectivePublicRead, generatorPipeline)
 
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))

@@ -33,6 +33,23 @@ export function publicReadAuthenticatedWrite(req: Request, res: Response, next: 
 }
 
 /**
+ * Middleware for generator routes that only allows public GET on safe sub-paths
+ * (e.g. `/job-matches/:id/documents`), while requiring auth for sensitive endpoints
+ * like `/requests` (which lists PII-containing generation history).
+ *
+ * `req.path` is relative to the mount point (`/api/generator`).
+ */
+export function generatorSelectivePublicRead(req: Request, res: Response, next: NextFunction) {
+  // Only GET requests on the /job-matches/:id/documents path are public
+  if (req.method === "GET" && /^\/job-matches\/[^/]+\/documents\/?$/.test(req.path)) {
+    return next()
+  }
+
+  // Everything else (including GET /requests, GET /requests/:id/draft) requires auth
+  return verifyFirebaseAuth(req, res, next)
+}
+
+/**
  * Middleware for queue routes that allows unauthenticated POST /jobs (public job submission)
  * but requires Firebase auth for all other queue routes.
  *

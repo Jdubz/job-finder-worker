@@ -863,6 +863,62 @@ export class GeneratorWorkflowService {
     return parsed
   }
 
+  /**
+   * Attempt an LLM-powered resume adjustment (refit or expand).
+   * Returns the adjusted content if valid and fitting; otherwise returns the original.
+   */
+  private async tryAdjustResume(
+    mode: 'refit' | 'expand',
+    current: ResumeContent,
+    prompt: string,
+    contentItems: ContentItem[],
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload
+  ): Promise<ResumeContent> {
+    try {
+      const result = await this.agentManager.execute('document', prompt)
+      const validation = validateResumeContent(result.output, this.log)
+      if (!validation.success) {
+        this.log.warn(
+          { errors: validation.errors, recoveryActions: validation.recoveryActions },
+          `LLM ${mode} validation failed — keeping original content`
+        )
+        return current
+      }
+
+      let adjusted = validation.data as ResumeContent
+      adjusted = this.groundResumeContent(adjusted, contentItems, personalInfo, payload)
+      const fitCheck = estimateContentFit(adjusted)
+
+      if (mode === 'refit') {
+        if (fitCheck.fits) {
+          this.log.info('LLM refit resolved overflow successfully')
+        } else {
+          this.log.warn(
+            { overflow: fitCheck.overflow, mainLines: fitCheck.mainColumnLines },
+            'LLM refit still overflows — returning refit result (closer to fitting)'
+          )
+        }
+        return adjusted
+      }
+
+      // expand: only use if it still fits
+      if (fitCheck.fits) {
+        this.log.info(
+          { mainLines: fitCheck.mainColumnLines, spareLines: Math.abs(fitCheck.overflow) },
+          'LLM expansion filled page successfully'
+        )
+        return adjusted
+      }
+
+      this.log.warn('LLM expansion overflowed — keeping original content')
+      return current
+    } catch (err) {
+      this.log.warn({ err }, `LLM ${mode} call failed — keeping original content`)
+      return current
+    }
+  }
+
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
@@ -908,44 +964,8 @@ export class GeneratorWorkflowService {
           { overflow: fitCheck.overflow, mainLines: fitCheck.mainColumnLines, suggestions: fitCheck.suggestions },
           'Resume content exceeds single-page estimate, requesting LLM refit'
         )
-
-        try {
-          const contentBudget = getContentBudget()
-          const refitPrompt = buildRefitPrompt(parsed, fitCheck, contentBudget, payload, jobMatch)
-          const refitResult = await this.agentManager.execute('document', refitPrompt)
-
-          this.log.info(
-            { outputPreview: refitResult.output.slice(0, 400) },
-            'AI refit raw output preview'
-          )
-
-          const refitValidation = validateResumeContent(refitResult.output, this.log)
-          if (refitValidation.success) {
-            let refitParsed = refitValidation.data as ResumeContent
-            refitParsed = this.groundResumeContent(refitParsed, contentItems, personalInfo, payload)
-
-            const refitFitCheck = estimateContentFit(refitParsed)
-            if (refitFitCheck.fits) {
-              this.log.info('LLM refit resolved overflow successfully')
-            } else {
-              this.log.warn(
-                { overflow: refitFitCheck.overflow, mainLines: refitFitCheck.mainColumnLines },
-                'LLM refit still overflows — returning refit result (closer to fitting)'
-              )
-            }
-            parsed = refitParsed
-          } else {
-            this.log.warn(
-              { errors: refitValidation.errors, recoveryActions: refitValidation.recoveryActions },
-              'LLM refit validation failed — keeping original content'
-            )
-          }
-        } catch (refitError) {
-          this.log.warn(
-            { err: refitError },
-            'LLM refit call failed — keeping original content'
-          )
-        }
+        const refitPrompt = buildRefitPrompt(parsed, fitCheck, getContentBudget(), payload, jobMatch)
+        parsed = await this.tryAdjustResume('refit', parsed, refitPrompt, contentItems, personalInfo, payload)
       }
 
       // Underflow check — if 5+ lines of spare room, expand to fill the page
@@ -955,30 +975,8 @@ export class GeneratorWorkflowService {
           { spareLines: Math.abs(expandFitCheck.overflow), mainLines: expandFitCheck.mainColumnLines },
           'Resume has significant spare room, requesting LLM expansion'
         )
-        try {
-          const contentBudget = getContentBudget()
-          const expandPrompt = buildExpandPrompt(
-            parsed, expandFitCheck, contentBudget, payload, jobMatch, contentItems
-          )
-          const expandResult = await this.agentManager.execute('document', expandPrompt)
-          const expandValidation = validateResumeContent(expandResult.output, this.log)
-          if (expandValidation.success) {
-            let expandParsed = expandValidation.data as ResumeContent
-            expandParsed = this.groundResumeContent(expandParsed, contentItems, personalInfo, payload)
-            const expandFit = estimateContentFit(expandParsed)
-            if (expandFit.fits) {
-              this.log.info(
-                { mainLines: expandFit.mainColumnLines, spareLines: Math.abs(expandFit.overflow) },
-                'LLM expansion filled page successfully'
-              )
-              parsed = expandParsed
-            } else {
-              this.log.warn('LLM expansion overflowed — keeping original content')
-            }
-          }
-        } catch (expandError) {
-          this.log.warn({ err: expandError }, 'LLM expand call failed — keeping original content')
-        }
+        const expandPrompt = buildExpandPrompt(parsed, expandFitCheck, getContentBudget(), payload, jobMatch, contentItems)
+        parsed = await this.tryAdjustResume('expand', parsed, expandPrompt, contentItems, personalInfo, payload)
       }
 
       return parsed

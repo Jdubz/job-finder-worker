@@ -278,8 +278,14 @@ export function DocumentBuilderPage() {
       setAddJobError("Please enter a job URL")
       return
     }
+
+    let urlToSubmit = trimmedUrl
+    if (!/^https?:\/\//i.test(urlToSubmit)) {
+      urlToSubmit = `https://${urlToSubmit}`
+    }
+
     try {
-      new URL(trimmedUrl)
+      new URL(urlToSubmit)
     } catch {
       setAddJobError("Please enter a valid URL")
       return
@@ -288,7 +294,7 @@ export function DocumentBuilderPage() {
     setAddJobSubmitting(true)
     setAddJobError(null)
     try {
-      await queueClient.submitJob({ url: trimmedUrl, bypassFilter: true, source: "user_submission" })
+      await queueClient.submitJob({ url: urlToSubmit, bypassFilter: true, source: "user_submission" })
       setAddJobDialogOpen(false)
       setAddJobUrl("")
       setAddJobSuccess(true)
