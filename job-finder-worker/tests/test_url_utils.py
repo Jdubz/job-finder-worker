@@ -134,10 +134,16 @@ class TestNormalizeJobUrl:
         assert normalize_job_url(url1) == normalize_job_url(url2)
 
     def test_normalize_workday_url(self):
-        """Test normalization of Workday job URLs."""
+        """Test normalization of Workday job URLs (trailing slash only)."""
         url1 = "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123/"
         url2 = "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
         assert normalize_job_url(url1) == normalize_job_url(url2)
+
+    def test_normalize_workday_preserves_path_case(self):
+        """Workday board names are case-sensitive; path case must be preserved."""
+        url = "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
+        normalized = normalize_job_url(url)
+        assert "/en-US/Careers/job/Software-Engineer_123" in normalized
 
     def test_normalize_with_ref_param(self):
         """Test removal of ref tracking parameter."""
@@ -156,7 +162,7 @@ class TestNormalizeJobUrl:
 
 
 class TestPathCaseLowering:
-    """Test that URL path is lowercased for ATS dedup."""
+    """Test that URL path is lowercased for known case-insensitive ATS platforms."""
 
     def test_ashby_path_case_convergence(self):
         """Jerry.ai vs jerry.ai in Ashby URL paths should converge."""
@@ -170,15 +176,27 @@ class TestPathCaseLowering:
         url2 = "https://boards.greenhouse.io/companyname/jobs/12345"
         assert normalize_url(url1) == normalize_url(url2)
 
-    def test_mixed_case_path_segments(self):
-        """Path with mixed case should be lowered."""
-        url = "https://example.com/Jobs/Senior-Engineer_123"
+    def test_lever_path_case(self):
+        """Lever path case differences should converge."""
+        url1 = "https://jobs.lever.co/CompanyName/abc-123"
+        url2 = "https://jobs.lever.co/companyname/abc-123"
+        assert normalize_url(url1) == normalize_url(url2)
+
+    def test_workday_preserves_path_case(self):
+        """Workday board names are case-sensitive; /Ext vs /ext are distinct."""
+        url1 = "https://company.wd5.myworkdayjobs.com/Ext"
+        url2 = "https://company.wd5.myworkdayjobs.com/ext"
+        assert normalize_url(url1) != normalize_url(url2)
+
+    def test_unknown_domain_preserves_path_case(self):
+        """Unknown domains should preserve path case."""
+        url = "https://careers.example.com/Jobs/Senior-Engineer_123"
         normalized = normalize_url(url)
-        assert "/jobs/senior-engineer_123" in normalized
+        assert "/Jobs/Senior-Engineer_123" in normalized
 
     def test_preserves_query_param_values(self):
         """Query parameter values should NOT be lowercased."""
-        url = "https://example.com/jobs?token=AbCdEf"
+        url = "https://boards.greenhouse.io/acme/jobs?token=AbCdEf"
         normalized = normalize_url(url)
         assert "AbCdEf" in normalized
 

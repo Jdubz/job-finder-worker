@@ -57,7 +57,7 @@ def _parse_timestamp(row: dict) -> float:
     """Parse created_at into a timestamp for tiebreaking."""
     try:
         return datetime.fromisoformat(row["created_at"]).timestamp()
-    except Exception:
+    except (ValueError, TypeError):
         return 0
 
 
@@ -71,6 +71,9 @@ def _renormalize_urls(conn: sqlite3.Connection, dry_run: bool) -> int:
     # Parse timestamps for tiebreaking
     for listing in listings:
         listing["_created_ts"] = _parse_timestamp(listing)
+
+    # Build lookup for dry-run logging
+    listings_by_id = {listing["id"]: listing for listing in listings}
 
     # Group by new normalized URL
     groups: dict[str, list[dict]] = defaultdict(list)
@@ -102,7 +105,7 @@ def _renormalize_urls(conn: sqlite3.Connection, dry_run: bool) -> int:
 
     if dry_run:
         for lid in to_delete[:10]:
-            match = next(row for row in listings if row["id"] == lid)
+            match = listings_by_id[lid]
             logger.info("  Would delete: %s — %s", match["title"], match["url"])
         if len(to_delete) > 10:
             logger.info("  ... and %d more", len(to_delete) - 10)

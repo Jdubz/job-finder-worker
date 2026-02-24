@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from typing import Optional
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,21 @@ def get_root_domain(host: str) -> str:
     if len(parts) >= 2:
         return ".".join(parts[-2:])
     return host
+
+
+# ATS domains whose URL paths are verified case-insensitive.
+# Workday is intentionally excluded — board names are case-sensitive.
+_CASE_INSENSITIVE_PATH_HOSTS = (
+    "ashbyhq.com",
+    "greenhouse.io",
+    "lever.co",
+    "workable.com",
+)
+
+
+def _host_has_case_insensitive_paths(netloc: str) -> bool:
+    """Check if a host belongs to an ATS with case-insensitive URL paths."""
+    return any(netloc.endswith(h) for h in _CASE_INSENSITIVE_PATH_HOSTS)
 
 
 def normalize_url(url: str) -> str:
@@ -73,13 +89,17 @@ def normalize_url(url: str) -> str:
         # Parse URL components
         parsed = urlparse(url)
 
-        # Normalize scheme, netloc (domain), and path to lowercase.
-        # Path lowercasing is safe because all supported ATS platforms
-        # (Ashby, Greenhouse, Lever, Workday) use case-insensitive paths.
-        # This prevents duplicates like Jerry.ai vs jerry.ai in Ashby URLs.
+        # Normalize scheme and netloc (domain) to lowercase
         scheme = parsed.scheme.lower()
         netloc = parsed.netloc.lower()
-        path = parsed.path.lower()
+
+        # Lowercase paths for ATS platforms verified to be case-insensitive.
+        # Workday board names are case-sensitive (e.g. /Ext vs /ext are
+        # distinct boards), so Workday paths are preserved as-is.
+        if _host_has_case_insensitive_paths(netloc):
+            path = parsed.path.lower()
+        else:
+            path = parsed.path
 
         # Remove trailing slash from path unless it's the root
         if path != "/" and path.endswith("/"):
@@ -194,7 +214,7 @@ def normalize_job_url(url: str) -> str:
         >>> normalize_job_url(
         ...     "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123/"
         ... )
-        "https://example.myworkdayjobs.com/en-us/careers/job/software-engineer_123"
+        "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
     """
     return normalize_url(url)
 
@@ -229,7 +249,7 @@ def compute_content_fingerprint(title: str, company: str, description: str) -> s
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def derive_apply_url(listing_url: str) -> str | None:
+def derive_apply_url(listing_url: str) -> Optional[str]:
     """Derive the direct application URL from a job listing URL.
 
     For known ATS platforms, constructs the apply URL from the listing URL.
