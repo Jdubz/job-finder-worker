@@ -73,10 +73,13 @@ def normalize_url(url: str) -> str:
         # Parse URL components
         parsed = urlparse(url)
 
-        # Normalize scheme and netloc (domain) to lowercase
+        # Normalize scheme, netloc (domain), and path to lowercase.
+        # Path lowercasing is safe because all supported ATS platforms
+        # (Ashby, Greenhouse, Lever, Workday) use case-insensitive paths.
+        # This prevents duplicates like Jerry.ai vs jerry.ai in Ashby URLs.
         scheme = parsed.scheme.lower()
         netloc = parsed.netloc.lower()
-        path = parsed.path
+        path = parsed.path.lower()
 
         # Remove trailing slash from path unless it's the root
         if path != "/" and path.endswith("/"):
@@ -191,6 +194,80 @@ def normalize_job_url(url: str) -> str:
         >>> normalize_job_url(
         ...     "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123/"
         ... )
-        "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
+        "https://example.myworkdayjobs.com/en-us/careers/job/software-engineer_123"
     """
     return normalize_url(url)
+
+
+def compute_content_fingerprint(title: str, company: str, description: str) -> str:
+    """Compute a content-based fingerprint for semantic duplicate detection.
+
+    Two listings with the same fingerprint but different URLs are duplicates
+    (multi-location postings, re-scraped with rotated ATS IDs, etc.).
+
+    The fingerprint is based on:
+    - Normalized title (lowered, punctuation collapsed)
+    - Normalized company name (domain/legal suffixes stripped)
+    - First 500 chars of description (stable portion; location-specific
+      boilerplate tends to appear at the end)
+
+    Args:
+        title: Job title.
+        company: Company name.
+        description: Job description text.
+
+    Returns:
+        SHA256 hex digest.
+    """
+    from job_finder.utils.company_name_utils import normalize_company_name, normalize_title
+
+    norm_title = normalize_title(title)
+    norm_company = normalize_company_name(company)
+    desc_prefix = (description[:500].lower().strip()) if description else ""
+
+    content = f"{norm_title}|{norm_company}|{desc_prefix}"
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def derive_apply_url(listing_url: str) -> str | None:
+    """Derive the direct application URL from a job listing URL.
+
+    For known ATS platforms, constructs the apply URL from the listing URL.
+    Returns ``None`` if the platform is unknown (caller should fall back to
+    the listing URL).
+
+    Examples:
+        >>> derive_apply_url("https://boards.greenhouse.io/acme/jobs/123")
+        'https://boards.greenhouse.io/acme/jobs/123#app'
+        >>> derive_apply_url("https://jobs.lever.co/acme/abc-123")
+        'https://jobs.lever.co/acme/abc-123/apply'
+    """
+    if not listing_url:
+        return None
+
+    parsed = urlparse(listing_url)
+    host = (parsed.hostname or "").lower()
+
+    # Greenhouse: append #app fragment to reach the application form
+    if "greenhouse.io" in host:
+        return f"{listing_url}#app"
+
+    # Lever: append /apply path suffix
+    if "lever.co" in host:
+        clean = listing_url.rstrip("/")
+        if not clean.endswith("/apply"):
+            return f"{clean}/apply"
+        return listing_url
+
+    # Ashby: the job URL IS the application page (embedded form)
+    if "ashbyhq.com" in host:
+        return listing_url
+
+    # Workable: append /apply path suffix
+    if "workable.com" in host:
+        clean = listing_url.rstrip("/")
+        if not clean.endswith("/apply"):
+            return f"{clean}/apply"
+        return listing_url
+
+    return None

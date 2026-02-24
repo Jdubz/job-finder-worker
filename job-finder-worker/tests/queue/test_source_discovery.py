@@ -209,6 +209,7 @@ def mock_dependencies() -> Dict[str, Any]:
 
     job_listing_storage = MagicMock()
     job_listing_storage.listing_exists.return_value = False
+    job_listing_storage.fingerprint_exists.return_value = False
 
     companies_manager = MagicMock()
     sources_manager = MagicMock()

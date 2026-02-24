@@ -1,6 +1,8 @@
 """Tests for URL normalization utility."""
 
 from job_finder.utils.url_utils import (
+    compute_content_fingerprint,
+    derive_apply_url,
     normalize_url,
     normalize_job_url,
     get_url_hash,
@@ -151,3 +153,121 @@ class TestNormalizeJobUrl:
         assert "location=remote" in normalized
         # Should be sorted alphabetically
         assert normalized.index("category") < normalized.index("location")
+
+
+class TestPathCaseLowering:
+    """Test that URL path is lowercased for ATS dedup."""
+
+    def test_ashby_path_case_convergence(self):
+        """Jerry.ai vs jerry.ai in Ashby URL paths should converge."""
+        url1 = "https://jobs.ashbyhq.com/Jerry.ai/abc-123"
+        url2 = "https://jobs.ashbyhq.com/jerry.ai/abc-123"
+        assert normalize_url(url1) == normalize_url(url2)
+
+    def test_greenhouse_path_case(self):
+        """Greenhouse path case differences should converge."""
+        url1 = "https://boards.greenhouse.io/CompanyName/jobs/12345"
+        url2 = "https://boards.greenhouse.io/companyname/jobs/12345"
+        assert normalize_url(url1) == normalize_url(url2)
+
+    def test_mixed_case_path_segments(self):
+        """Path with mixed case should be lowered."""
+        url = "https://example.com/Jobs/Senior-Engineer_123"
+        normalized = normalize_url(url)
+        assert "/jobs/senior-engineer_123" in normalized
+
+    def test_preserves_query_param_values(self):
+        """Query parameter values should NOT be lowercased."""
+        url = "https://example.com/jobs?token=AbCdEf"
+        normalized = normalize_url(url)
+        assert "AbCdEf" in normalized
+
+
+class TestContentFingerprint:
+    """Test content-based fingerprinting for semantic dedup."""
+
+    def test_same_content_same_fingerprint(self):
+        """Identical content should produce the same fingerprint."""
+        fp1 = compute_content_fingerprint("Software Engineer", "Acme", "Build things")
+        fp2 = compute_content_fingerprint("Software Engineer", "Acme", "Build things")
+        assert fp1 == fp2
+
+    def test_different_title_different_fingerprint(self):
+        """Different titles should produce different fingerprints."""
+        fp1 = compute_content_fingerprint("Software Engineer", "Acme", "Build things")
+        fp2 = compute_content_fingerprint("Product Manager", "Acme", "Build things")
+        assert fp1 != fp2
+
+    def test_title_punctuation_convergence(self):
+        """'Full-Stack' and 'Full Stack' should produce the same fingerprint."""
+        fp1 = compute_content_fingerprint("Senior Software Engineer (Full-Stack)", "Jerry", "desc")
+        fp2 = compute_content_fingerprint("Senior Software Engineer (Full Stack)", "Jerry", "desc")
+        assert fp1 == fp2
+
+    def test_company_domain_suffix_convergence(self):
+        """'Jerry.ai' and 'Jerry' should produce the same fingerprint."""
+        fp1 = compute_content_fingerprint("Software Engineer", "Jerry.ai", "desc")
+        fp2 = compute_content_fingerprint("Software Engineer", "Jerry", "desc")
+        assert fp1 == fp2
+
+    def test_company_case_convergence(self):
+        """Company name case should not matter."""
+        fp1 = compute_content_fingerprint("SWE", "CLOUDFLARE", "desc")
+        fp2 = compute_content_fingerprint("SWE", "cloudflare", "desc")
+        assert fp1 == fp2
+
+    def test_description_prefix_used(self):
+        """Only the first 500 chars of description should matter."""
+        shared_prefix = "A" * 500
+        fp1 = compute_content_fingerprint("SWE", "Co", shared_prefix + " Portland, OR")
+        fp2 = compute_content_fingerprint("SWE", "Co", shared_prefix + " San Francisco, CA")
+        assert fp1 == fp2
+
+    def test_different_description_prefix(self):
+        """Completely different descriptions should differ."""
+        fp1 = compute_content_fingerprint("SWE", "Co", "We build widgets")
+        fp2 = compute_content_fingerprint("SWE", "Co", "We sell insurance")
+        assert fp1 != fp2
+
+    def test_fingerprint_is_hex_sha256(self):
+        """Fingerprint should be a 64-char hex string (SHA256)."""
+        fp = compute_content_fingerprint("SWE", "Co", "desc")
+        assert len(fp) == 64
+        assert all(c in "0123456789abcdef" for c in fp)
+
+
+class TestDeriveApplyUrl:
+    """Test apply URL derivation for known ATS platforms."""
+
+    def test_greenhouse_apply_url(self):
+        """Greenhouse should append #app."""
+        url = "https://boards.greenhouse.io/acme/jobs/12345"
+        assert derive_apply_url(url) == "https://boards.greenhouse.io/acme/jobs/12345#app"
+
+    def test_lever_apply_url(self):
+        """Lever should append /apply."""
+        url = "https://jobs.lever.co/acme/abc-123-def"
+        assert derive_apply_url(url) == "https://jobs.lever.co/acme/abc-123-def/apply"
+
+    def test_lever_already_has_apply(self):
+        """Lever URL already ending in /apply should not double-append."""
+        url = "https://jobs.lever.co/acme/abc-123-def/apply"
+        assert derive_apply_url(url) == url
+
+    def test_ashby_returns_same_url(self):
+        """Ashby URLs are already the apply page."""
+        url = "https://jobs.ashbyhq.com/acme/abc-123"
+        assert derive_apply_url(url) == url
+
+    def test_workable_apply_url(self):
+        """Workable should append /apply."""
+        url = "https://apply.workable.com/acme/j/ABC123"
+        assert derive_apply_url(url) == "https://apply.workable.com/acme/j/ABC123/apply"
+
+    def test_unknown_platform_returns_none(self):
+        """Unknown platforms should return None."""
+        assert derive_apply_url("https://careers.example.com/jobs/123") is None
+
+    def test_empty_url_returns_none(self):
+        """Empty URL should return None."""
+        assert derive_apply_url("") is None

@@ -29,7 +29,7 @@ from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
 from job_finder.utils.company_name_utils import clean_company_name
-from job_finder.utils.url_utils import normalize_url
+from job_finder.utils.url_utils import compute_content_fingerprint, derive_apply_url, normalize_url
 
 logger = logging.getLogger(__name__)
 
@@ -141,12 +141,14 @@ class ScraperIntake:
         company_id: Optional[str],
         filter_result: Optional[Dict[str, Any]] = None,
         status: str = "pending",
+        content_fingerprint: Optional[str] = None,
     ) -> Optional[str]:
         """Store job in job_listings table. Returns listing_id or None."""
         if not self.job_listing_storage:
             return None
 
         try:
+            apply_url = derive_apply_url(normalized_url)
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),
@@ -159,6 +161,8 @@ class ScraperIntake:
                 posted_date=job.get("posted_date"),
                 status=status,
                 filter_result=filter_result,
+                content_fingerprint=content_fingerprint,
+                apply_url=apply_url,
             )
             if created:
                 logger.debug("Created job listing %s for %s", listing_id, normalized_url)
@@ -313,6 +317,21 @@ class ScraperIntake:
                     )
                     continue
 
+                # Content-based dedup: catch multi-location and re-scrape duplicates
+                # that have genuinely different URLs but identical content.
+                fingerprint = compute_content_fingerprint(title, company_name, description)
+                if self.job_listing_storage and self.job_listing_storage.fingerprint_exists(
+                    fingerprint
+                ):
+                    skipped_count += 1
+                    logger.debug(
+                        "Content duplicate detected (fingerprint match): %s — %s at %s",
+                        canonical_url,
+                        title,
+                        company_name,
+                    )
+                    continue
+
                 # Pre-filter job by title before adding to queue
                 if self.title_filter:
                     filter_result = self.title_filter.filter(title)
@@ -349,6 +368,7 @@ class ScraperIntake:
                     source_id=source_id,
                     company_id=company_id,
                     status="pending",
+                    content_fingerprint=fingerprint,
                 )
                 if not listing_id:
                     skipped_count += 1

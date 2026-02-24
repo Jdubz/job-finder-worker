@@ -48,6 +48,8 @@ class JobListingStorage:
         status: str = "pending",
         filter_result: Optional[Dict[str, Any]] = None,
         listing_id: Optional[str] = None,
+        content_fingerprint: Optional[str] = None,
+        apply_url: Optional[str] = None,
     ) -> str:
         """
         Create a new job listing record.
@@ -76,8 +78,9 @@ class JobListingStorage:
                     INSERT INTO job_listings (
                         id, url, source_id, company_id, title, company_name,
                         location, salary_range, description, posted_date,
-                        status, filter_result, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        status, filter_result, content_fingerprint, apply_url,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         listing_id,
@@ -92,6 +95,8 @@ class JobListingStorage:
                         posted_date,
                         status,
                         _serialize_json(filter_result),
+                        content_fingerprint,
+                        apply_url,
                         now,
                         now,
                     ),
@@ -123,6 +128,8 @@ class JobListingStorage:
         posted_date: Optional[str] = None,
         status: str = "pending",
         filter_result: Optional[Dict[str, Any]] = None,
+        content_fingerprint: Optional[str] = None,
+        apply_url: Optional[str] = None,
     ) -> tuple[str, bool]:
         """
         Get existing listing by URL or create a new one.
@@ -155,6 +162,8 @@ class JobListingStorage:
             posted_date=posted_date,
             status=status,
             filter_result=filter_result,
+            content_fingerprint=content_fingerprint,
+            apply_url=apply_url,
         )
         return listing_id, True
 
@@ -202,6 +211,22 @@ class JobListingStorage:
                     "SELECT 1 FROM job_listings WHERE url = ? LIMIT 1",
                     (normalized,),
                 ).fetchone()
+            return row is not None
+
+    def fingerprint_exists(self, fingerprint: str) -> bool:
+        """Return True if a content fingerprint already exists in active listings.
+
+        Used to detect semantic duplicates (same title + company + description
+        prefix) that have different URLs (multi-location postings, re-scrape
+        drift, etc.).
+        """
+        if not fingerprint:
+            return False
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM job_listings WHERE content_fingerprint = ? LIMIT 1",
+                (fingerprint,),
+            ).fetchone()
             return row is not None
 
     def batch_check_exists(self, urls: List[str]) -> Dict[str, bool]:
