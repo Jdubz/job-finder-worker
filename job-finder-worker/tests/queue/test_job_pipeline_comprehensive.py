@@ -275,6 +275,11 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 technologies=["python"],
             )
 
+        def extract_with_repair(
+            self, title, description, location=None, posted_date=None, **kwargs
+        ):
+            return self.extract(title, description, location, posted_date, **kwargs)
+
     processor.job_processor.extractor = MockExtractor()  # type: ignore[assignment]
     # Mock scoring engine to always pass
     from job_finder.scoring.engine import ScoreBreakdown

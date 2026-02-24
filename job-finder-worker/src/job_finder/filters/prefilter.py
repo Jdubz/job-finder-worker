@@ -361,11 +361,29 @@ class PreFilter:
 
         # Title config
         title_config = config.get("title", {})
-        self.required_keywords = [
-            k.lower().strip() for k in title_config.get("requiredKeywords", []) if k
-        ]
+        required_raw = [k.lower().strip() for k in title_config.get("requiredKeywords", []) if k]
         self.excluded_keywords = [
             k.lower().strip() for k in title_config.get("excludedKeywords", []) if k
+        ]
+
+        # Expand synonyms into the required list
+        synonyms = title_config.get("synonyms", {})
+        for canonical, aliases in synonyms.items():
+            canonical_lower = canonical.lower().strip()
+            if canonical_lower in required_raw:
+                for alias in aliases:
+                    alias_lower = alias.lower().strip()
+                    if alias_lower and alias_lower not in required_raw:
+                        required_raw.append(alias_lower)
+
+        self.required_keywords = required_raw
+
+        # Compile word-boundary regex patterns for each keyword
+        self._required_patterns: list[re.Pattern] = [
+            re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE) for kw in self.required_keywords
+        ]
+        self._excluded_patterns: list[re.Pattern] = [
+            re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE) for kw in self.excluded_keywords
         ]
 
         # Freshness config
@@ -644,20 +662,20 @@ class PreFilter:
         )
 
     def _check_title(self, title: str) -> PreFilterResult:
-        """Check title against required and excluded keywords."""
+        """Check title against required and excluded keywords using word boundary regex."""
         title_lower = title.lower()
 
-        # Check excluded keywords first (fast reject)
-        for keyword in self.excluded_keywords:
-            if keyword in title_lower:
+        # Check excluded keywords first (fast reject) using word boundary regex
+        for keyword, pattern in zip(self.excluded_keywords, self._excluded_patterns):
+            if pattern.search(title_lower):
                 return PreFilterResult(
                     passed=False,
                     reason=f"Title contains excluded keyword: '{keyword}'",
                 )
 
-        # Check required keywords (must have at least one)
+        # Check required keywords (must have at least one) using word boundary regex
         if self.required_keywords:
-            has_required = any(kw in title_lower for kw in self.required_keywords)
+            has_required = any(p.search(title_lower) for p in self._required_patterns)
             if not has_required:
                 return PreFilterResult(
                     passed=False,

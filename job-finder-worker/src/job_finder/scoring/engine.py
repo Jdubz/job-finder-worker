@@ -584,7 +584,14 @@ class ScoringEngine:
 
         Remote jobs apply timezone penalties but skip city/relocation logic since
         the user doesn't need to be physically present. All scores from config.
+
+        Truly timezone-flexible remote jobs (async-first, work-from-anywhere)
+        are exempt from timezone penalties.
         """
+        # Timezone-flexible remote jobs get no penalty
+        if extraction.timezone_flexible:
+            return {"points": 0, "adjustments": []}
+
         job_tz = extraction.timezone
         user_tz = self.location_config["userTimezone"]
         max_diff = self.location_config["maxTimezoneDiffHours"]

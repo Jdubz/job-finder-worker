@@ -165,6 +165,32 @@ class JobProcessor(BaseProcessor):
             prefilter=self.prefilter,
         )
 
+    def _reconcile_configs(self, prefilter: dict, match_policy: dict) -> dict:
+        """Patch prefilter values from match-policy for overlapping fields.
+
+        match-policy is the single source of truth for salary, freshness,
+        and work-arrangement booleans. Prefilter-only fields (title keywords,
+        synonyms, country, employmentType, etc.) remain independent.
+        """
+        # Salary floor
+        mp_salary_min = match_policy.get("salary", {}).get("minimum")
+        if mp_salary_min is not None:
+            prefilter.setdefault("salary", {})["minimum"] = mp_salary_min
+
+        # Freshness: prefilter maxAgeDays = match-policy veryStaleDays (the hard cutoff)
+        mp_very_stale = match_policy.get("freshness", {}).get("veryStaleDays")
+        if mp_very_stale is not None:
+            prefilter.setdefault("freshness", {})["maxAgeDays"] = mp_very_stale
+
+        # Work arrangement booleans
+        mp_location = match_policy.get("location", {})
+        wa = prefilter.get("workArrangement", {})
+        for key in ("allowRemote", "allowHybrid", "allowOnsite"):
+            if key in mp_location:
+                wa[key] = mp_location[key]
+
+        return prefilter
+
     def _refresh_runtime_config(self) -> None:
         """Reload config-driven components so the next item uses fresh settings."""
         prefilter_policy = self.config_loader.get_prefilter_policy()
@@ -172,6 +198,9 @@ class JobProcessor(BaseProcessor):
             prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
         )
         match_policy = self.config_loader.get_match_policy()
+
+        # Reconcile overlapping fields: match-policy is source of truth
+        prefilter_policy = self._reconcile_configs(prefilter_policy, match_policy)
 
         # Rebuild title filter with latest config
         self.title_filter = TitleFilter(title_filter_config)
@@ -866,7 +895,7 @@ class JobProcessor(BaseProcessor):
         salary_range = job_data.get("salary") or job_data.get("salary_range")
         url = job_data.get("url", "")
 
-        extraction = self.extractor.extract(
+        extraction = self.extractor.extract_with_repair(
             title,
             description,
             location,
@@ -884,7 +913,8 @@ class JobProcessor(BaseProcessor):
 
         logger.info(
             f"Extraction complete: seniority={extraction.seniority}, "
-            f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"
+            f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}, "
+            f"confidence={extraction.confidence:.2f}"
         )
         return extraction
 
