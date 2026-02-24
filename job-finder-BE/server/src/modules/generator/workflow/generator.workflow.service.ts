@@ -19,7 +19,7 @@ import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
-import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildResumeRetryPrompt } from './prompts'
+import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
 import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
@@ -863,6 +863,62 @@ export class GeneratorWorkflowService {
     return parsed
   }
 
+  /**
+   * Attempt an LLM-powered resume adjustment (refit or expand).
+   * Returns the adjusted content if valid and fitting; otherwise returns the original.
+   */
+  private async tryAdjustResume(
+    mode: 'refit' | 'expand',
+    current: ResumeContent,
+    prompt: string,
+    contentItems: ContentItem[],
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload
+  ): Promise<ResumeContent> {
+    try {
+      const result = await this.agentManager.execute('document', prompt)
+      const validation = validateResumeContent(result.output, this.log)
+      if (!validation.success) {
+        this.log.warn(
+          { errors: validation.errors, recoveryActions: validation.recoveryActions },
+          `LLM ${mode} validation failed — keeping original content`
+        )
+        return current
+      }
+
+      let adjusted = validation.data as ResumeContent
+      adjusted = this.groundResumeContent(adjusted, contentItems, personalInfo, payload)
+      const fitCheck = estimateContentFit(adjusted)
+
+      if (mode === 'refit') {
+        if (fitCheck.fits) {
+          this.log.info('LLM refit resolved overflow successfully')
+        } else {
+          this.log.warn(
+            { overflow: fitCheck.overflow, mainLines: fitCheck.mainColumnLines },
+            'LLM refit still overflows — returning refit result (closer to fitting)'
+          )
+        }
+        return adjusted
+      }
+
+      // expand: only use if it still fits
+      if (fitCheck.fits) {
+        this.log.info(
+          { mainLines: fitCheck.mainColumnLines, spareLines: Math.abs(fitCheck.overflow) },
+          'LLM expansion filled page successfully'
+        )
+        return adjusted
+      }
+
+      this.log.warn('LLM expansion overflowed — keeping original content')
+      return current
+    } catch (err) {
+      this.log.warn({ err }, `LLM ${mode} call failed — keeping original content`)
+      return current
+    }
+  }
+
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
     // Fetch content items from the database
     const contentItems = this.contentItemRepo.list()
@@ -908,44 +964,19 @@ export class GeneratorWorkflowService {
           { overflow: fitCheck.overflow, mainLines: fitCheck.mainColumnLines, suggestions: fitCheck.suggestions },
           'Resume content exceeds single-page estimate, requesting LLM refit'
         )
+        const refitPrompt = buildRefitPrompt(parsed, fitCheck, getContentBudget(), payload, jobMatch)
+        parsed = await this.tryAdjustResume('refit', parsed, refitPrompt, contentItems, personalInfo, payload)
+      }
 
-        try {
-          const contentBudget = getContentBudget()
-          const refitPrompt = buildRefitPrompt(parsed, fitCheck, contentBudget, payload, jobMatch)
-          const refitResult = await this.agentManager.execute('document', refitPrompt)
-
-          this.log.info(
-            { outputPreview: refitResult.output.slice(0, 400) },
-            'AI refit raw output preview'
-          )
-
-          const refitValidation = validateResumeContent(refitResult.output, this.log)
-          if (refitValidation.success) {
-            let refitParsed = refitValidation.data as ResumeContent
-            refitParsed = this.groundResumeContent(refitParsed, contentItems, personalInfo, payload)
-
-            const refitFitCheck = estimateContentFit(refitParsed)
-            if (refitFitCheck.fits) {
-              this.log.info('LLM refit resolved overflow successfully')
-            } else {
-              this.log.warn(
-                { overflow: refitFitCheck.overflow, mainLines: refitFitCheck.mainColumnLines },
-                'LLM refit still overflows — returning refit result (closer to fitting)'
-              )
-            }
-            parsed = refitParsed
-          } else {
-            this.log.warn(
-              { errors: refitValidation.errors, recoveryActions: refitValidation.recoveryActions },
-              'LLM refit validation failed — keeping original content'
-            )
-          }
-        } catch (refitError) {
-          this.log.warn(
-            { err: refitError },
-            'LLM refit call failed — keeping original content'
-          )
-        }
+      // Underflow check — if 5+ lines of spare room, expand to fill the page
+      const expandFitCheck = estimateContentFit(parsed)
+      if (expandFitCheck.overflow < -5) {
+        this.log.info(
+          { spareLines: Math.abs(expandFitCheck.overflow), mainLines: expandFitCheck.mainColumnLines },
+          'Resume has significant spare room, requesting LLM expansion'
+        )
+        const expandPrompt = buildExpandPrompt(parsed, expandFitCheck, getContentBudget(), payload, jobMatch, contentItems)
+        parsed = await this.tryAdjustResume('expand', parsed, expandPrompt, contentItems, personalInfo, payload)
       }
 
       return parsed

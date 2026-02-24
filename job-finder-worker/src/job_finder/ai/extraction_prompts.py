@@ -9,6 +9,8 @@ def build_extraction_prompt(
     description: str,
     location: Optional[str] = None,
     posted_date: Optional[str] = None,
+    salary_range: Optional[str] = None,
+    url: Optional[str] = None,
 ) -> str:
     """
     Build prompt for extracting structured data from a job posting.
@@ -20,6 +22,8 @@ def build_extraction_prompt(
         description: Job description text
         location: Optional location string from job posting
         posted_date: Optional posted date string
+        salary_range: Optional pre-extracted salary range from ATS API
+        url: Optional job listing URL (may contain metadata like employmentType)
 
     Returns:
         Formatted prompt string for AI extraction
@@ -28,10 +32,23 @@ def build_extraction_prompt(
     posted_section = f"\nPosted: {posted_date}" if posted_date else ""
     today_str = date.today().isoformat()
 
+    # Build structured data section from pre-extracted ATS data
+    structured_lines = []
+    if salary_range:
+        structured_lines.append(f"Salary Range: {salary_range}")
+    if url:
+        structured_lines.append(f"URL: {url}")
+    structured_section = ""
+    if structured_lines:
+        structured_section = (
+            "\n\nPre-extracted structured data (from ATS API — authoritative):\n"
+            + "\n".join(structured_lines)
+        )
+
     return f"""Extract structured information from this job posting. Return ONLY a valid JSON object.
 
 Today's date: {today_str}
-Job Title: {title}{location_section}{posted_section}
+Job Title: {title}{location_section}{posted_section}{structured_section}
 
 Job Description:
 {description[:4000]}
@@ -66,17 +83,21 @@ Rules:
    - "lead", "principal", "architect", "distinguished", "V", "5+" -> "lead" or "principal"
    - If unclear, use "unknown"
 
-2. Detect work arrangement from description keywords:
+2. Detect work arrangement from description keywords and location field:
+   - If the location field explicitly contains "Remote" (e.g. "Remote - US", "US Remote", "Remote"), classify as "remote" regardless of office mentions in the description.
    - "fully remote", "100% remote", "work from anywhere" -> "remote"
    - "hybrid", "flexible", "2-3 days in office" -> "hybrid"
    - "on-site", "in-office", "must be local" -> "onsite"
    - If ambiguous, use "unknown"
 
 3. Parse salary as annual USD amounts (convert hourly/monthly if needed):
+   - If a salary range is provided in the structured data section above, parse it into salaryMin/salaryMax. This data comes from the ATS API and is authoritative.
+     - "USD 165000-220000" -> salaryMin: 165000, salaryMax: 220000
+     - "$150,000 - $170,000" -> salaryMin: 150000, salaryMax: 170000
    - "$150,000 - $200,000" -> salaryMin: 150000, salaryMax: 200000
    - "$75/hour" -> convert to annual (~156000)
    - If range not specified, set both to the same value
-   - If no salary info, use null for both
+   - If no salary info anywhere, use null for both
 
 4. Extract technologies/skills mentioned:
    - Include programming languages, frameworks, tools, platforms
@@ -116,16 +137,29 @@ Rules:
 
 8. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
 
+9. Infer employment type (use the isContract field AND consider the overall posting):
+   - URL params like "employmentType=FullTime" or structured data indicating full-time -> isContract: false
+   - Benefits mentions (401k, PTO, health insurance, dental, equity) strongly signal full-time employment
+   - "contract", "temporary", "freelance", "hourly", "C2C", "W2 contract" -> isContract: true
+   - If no clear signal, default isContract to false
+
 Return ONLY the JSON object, no explanation or markdown."""
 
 
-def build_simple_extraction_prompt(title: str, description: str) -> str:
+def build_simple_extraction_prompt(
+    title: str,
+    description: str,
+    salary_range: Optional[str] = None,
+    url: Optional[str] = None,
+) -> str:
     """
     Build a simpler extraction prompt for faster/cheaper models.
 
     Args:
         title: Job title
         description: Job description (will be truncated)
+        salary_range: Optional pre-extracted salary range from ATS API
+        url: Optional job listing URL (may contain metadata like employmentType)
 
     Returns:
         Shorter prompt for quick extraction
@@ -134,10 +168,21 @@ def build_simple_extraction_prompt(title: str, description: str) -> str:
     desc_truncated = description[:2000] if len(description) > 2000 else description
     today_str = date.today().isoformat()
 
+    structured_section = ""
+    structured_lines = []
+    if salary_range:
+        structured_lines.append(f"Salary: {salary_range}")
+    if url:
+        structured_lines.append(f"URL: {url}")
+    if structured_lines:
+        structured_section = "\nStructured data (authoritative): " + " | ".join(structured_lines)
+
     return f"""Extract from this job posting. Today is {today_str}. Return JSON only.
 
-Title: {title}
+Title: {title}{structured_section}
 Description: {desc_truncated}
+
+If salary is in structured data above, parse into salaryMin/salaryMax. If location contains "Remote", set workArrangement to "remote".
 
 Return:
 {{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","devops","ml-ai","data","security","consulting","clearance-required"]}}"""

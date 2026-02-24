@@ -10,7 +10,7 @@ import type { ResumeContent } from '@shared/types'
  * Letter page: 11in height - 1.0in total margins (0.5in × 2) = 10.0in usable
  * Main column at 10px font with 1.45 line-height ≈ 66 lines raw,
  * minus padding (20px top + 20px bottom ≈ 3 lines) = ~63 lines.
- * Use 55 as conservative max to account for section gaps, footer, etc.
+ * Use 60 as max to allow ~3 lines for section spacing drift and footer overlay.
  *
  * Margin value (0.5in) must stay in sync with:
  *   - DEFAULT_MARGIN in html-pdf.service.ts
@@ -68,9 +68,9 @@ const LAYOUT = {
   EDUCATION_ENTRY_LINES: 2.5, // Degree + school + date
   SIDEBAR_SECTION_SPACING: 2, // Space between sidebar sections
 
-  // Page limits (conservative — accounts for 0.5in margins, padding, footer)
-  MAIN_COLUMN_MAX_LINES: 55,
-  SIDEBAR_MAX_LINES: 55,
+  // Page limits (~3 lines margin for section spacing drift and footer overlay)
+  MAIN_COLUMN_MAX_LINES: 60,
+  SIDEBAR_MAX_LINES: 60,
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
@@ -198,7 +198,7 @@ export function getContentBudget(): {
 } {
   return {
     maxExperiences: 4,
-    maxBulletsPerExperience: 5, // AI should use more bullets when fewer experiences
+    maxBulletsPerExperience: 6, // AI should use more bullets when fewer experiences
     maxSummaryWords: 50,
     maxSkillCategories: 5, // 4-6 range, balanced with sidebar
     maxProjects: 2,
@@ -287,7 +287,7 @@ export function getBalancedContentGuidance(experienceCount: number = 4): string 
   const recommendedSkillCats = getRecommendedSkillCategories(experienceCount, 3)
 
   return `COLUMN BALANCE GUIDANCE:
-- Include up to ${experienceCount} experience entries. Use more bullets per entry (4-5) when you have fewer entries to fill the page.
+- Include ${experienceCount} experience entries (use all available if you have ${experienceCount} or fewer). Aim for 4-5 bullets per entry to fill the page; use up to 6 when fewer entries are available.
 - Use ${recommendedSkillCats} skill categories with 3-5 items each
 - Include 2-3 education entries
 - Only include projects if they fill genuine skill gaps not covered by work experience. Prefer an empty projects section over irrelevant projects.

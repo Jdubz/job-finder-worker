@@ -59,8 +59,9 @@ describe("HowItWorksPage", () => {
   it("renders CTA section with links", () => {
     renderPage()
     expect(screen.getByText("Want to see a sample packet?")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /View Matches/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Build a Packet/i })).toBeInTheDocument()
+    const accessLink = screen.getByRole("link", { name: /Request Access/i })
+    expect(accessLink).toHaveAttribute("href", expect.stringContaining("mailto:job-finder@joshwentworth.com"))
   })
 
   it("has correct href for Document Builder link", () => {

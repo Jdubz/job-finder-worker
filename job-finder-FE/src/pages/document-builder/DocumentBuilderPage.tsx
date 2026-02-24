@@ -2,6 +2,8 @@ import { useState, useEffect } from "react"
 import { useLocation } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { jobMatchesClient } from "@/api/job-matches-client"
+import { queueClient } from "@/api/queue-client"
+import { AddJobDialog } from "@/pages/job-listings/components/AddJobDialog"
 import { logger } from "@/services/logging/FrontendLogger"
 import {
   generatorClient,
@@ -28,7 +30,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Sparkles, Download, Check, ChevronsUpDown } from "lucide-react"
+import { Loader2, Sparkles, Download, Check, ChevronsUpDown, Plus } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Command,
@@ -174,6 +176,13 @@ export function DocumentBuilderPage() {
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [authModalOpen, setAuthModalOpen] = useState(false)
 
+  // Add-job dialog state
+  const [addJobDialogOpen, setAddJobDialogOpen] = useState(false)
+  const [addJobUrl, setAddJobUrl] = useState("")
+  const [addJobSubmitting, setAddJobSubmitting] = useState(false)
+  const [addJobError, setAddJobError] = useState<string | null>(null)
+  const [addJobSuccess, setAddJobSuccess] = useState(false)
+
   // Multi-step generation state
   const [generationSteps, setGenerationSteps] = useState<GenerationStep[]>([])
   const [_generationRequestId, setGenerationRequestId] = useState<string | null>(null)
@@ -188,8 +197,6 @@ export function DocumentBuilderPage() {
 
   // Load job matches
   useEffect(() => {
-    if (!user) return
-
     const loadMatches = async () => {
       try {
         setLoadingMatches(true)
@@ -209,7 +216,7 @@ export function DocumentBuilderPage() {
     }
 
     loadMatches()
-  }, [user])
+  }, [])
 
   // Pre-fill form if job match is passed via navigation state
   useEffect(() => {
@@ -262,6 +269,48 @@ export function DocumentBuilderPage() {
           : message
     toast.error({ title: displayMessage })
     setAlert({ type: "error", message: displayMessage })
+  }
+
+  const handleAddJobSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmedUrl = addJobUrl.trim()
+    if (!trimmedUrl) {
+      setAddJobError("Please enter a job URL")
+      return
+    }
+
+    let urlToSubmit = trimmedUrl
+    if (!/^https?:\/\//i.test(urlToSubmit)) {
+      urlToSubmit = `https://${urlToSubmit}`
+    }
+
+    try {
+      new URL(urlToSubmit)
+    } catch {
+      setAddJobError("Please enter a valid URL")
+      return
+    }
+
+    setAddJobSubmitting(true)
+    setAddJobError(null)
+    try {
+      await queueClient.submitJob({ url: urlToSubmit, bypassFilter: true, source: "user_submission" })
+      setAddJobDialogOpen(false)
+      setAddJobUrl("")
+      setAddJobSuccess(true)
+    } catch (error) {
+      setAddJobError(error instanceof Error ? error.message : "Failed to submit job")
+    } finally {
+      setAddJobSubmitting(false)
+    }
+  }
+
+  const handleAddJobDialogOpenChange = (open: boolean) => {
+    setAddJobDialogOpen(open)
+    if (!open) {
+      setAddJobUrl("")
+      setAddJobError(null)
+    }
   }
 
   const handleGenerate = async () => {
@@ -622,7 +671,24 @@ export function DocumentBuilderPage() {
 
             {/* Job Selection */}
             <div className="space-y-2">
-              <Label>Select Job Match (Optional)</Label>
+              <div className="flex items-center justify-between">
+                <Label>Select Job Match (Optional)</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddJobDialogOpen(true)}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add New Job Listing
+                </Button>
+              </div>
+              {addJobSuccess && (
+                <Alert>
+                  <AlertDescription>
+                    Your job listing is being processed and will appear in matches within 5–10 minutes.
+                  </AlertDescription>
+                </Alert>
+              )}
               <Popover open={jobMatchPopoverOpen} onOpenChange={setJobMatchPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -874,6 +940,15 @@ export function DocumentBuilderPage() {
       )}
 
       <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
+      <AddJobDialog
+        open={addJobDialogOpen}
+        onOpenChange={handleAddJobDialogOpenChange}
+        formState={{ jobUrl: addJobUrl }}
+        isSubmitting={addJobSubmitting}
+        submitError={addJobError}
+        onFieldChange={(_field, value) => setAddJobUrl(value)}
+        onSubmit={handleAddJobSubmit}
+      />
     </div>
   )
 }
