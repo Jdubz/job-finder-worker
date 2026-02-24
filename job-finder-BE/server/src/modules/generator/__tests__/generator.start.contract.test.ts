@@ -53,4 +53,21 @@ describe('generator start contract', () => {
     }
     expect(parsed.success).toBe(true)
   })
+
+  it('accepts null for optional job fields (DB rows with NULL columns)', async () => {
+    const res = await request(app).post('/generator/start').send({
+      generateType: 'resume',
+      job: {
+        role: 'Engineer',
+        company: 'Null Fields Co',
+        location: null,
+        companyWebsite: null,
+        jobDescriptionUrl: null,
+        jobDescriptionText: null,
+      },
+      jobMatchId: null,
+      date: null,
+    })
+    expect(res.status).toBe(200)
+  })
 })

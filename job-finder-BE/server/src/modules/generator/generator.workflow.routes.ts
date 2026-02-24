@@ -17,19 +17,20 @@ const generatorRequestSchema = z.object({
   job: z.object({
     role: z.string().min(1),
     company: z.string().min(1),
-    companyWebsite: z.string().url().optional(),
-    jobDescriptionUrl: z.string().url().optional(),
-    jobDescriptionText: z.string().optional(),
-    location: z.string().optional()
+    companyWebsite: z.string().url().nullish().transform(v => v ?? undefined),
+    jobDescriptionUrl: z.string().url().nullish().transform(v => v ?? undefined),
+    jobDescriptionText: z.string().nullish().transform(v => v ?? undefined),
+    location: z.string().nullish().transform(v => v ?? undefined)
   }),
   preferences: z
     .object({
       style: z.enum(['modern', 'traditional', 'technical', 'executive']).optional(),
       emphasize: z.array(z.string()).optional()
     })
-    .optional(),
-  date: z.string().optional(),
-  jobMatchId: z.string().optional()
+    .nullish()
+    .transform(v => v ?? undefined),
+  date: z.string().nullish().transform(v => v ?? undefined),
+  jobMatchId: z.string().nullish().transform(v => v ?? undefined)
 })
 
 // Singleton service instance so generation uses shared dependencies
