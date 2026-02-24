@@ -268,7 +268,7 @@ def test_job_pipeline_full_path(tmp_path: Path):
     from job_finder.ai.extraction import JobExtractionResult
 
     class MockExtractor:
-        def extract(self, title, description, location=None, posted_date=None):
+        def extract(self, title, description, location=None, posted_date=None, **kwargs):
             return JobExtractionResult(
                 seniority="senior",
                 work_arrangement="remote",

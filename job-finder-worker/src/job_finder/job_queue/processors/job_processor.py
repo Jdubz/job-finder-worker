@@ -22,6 +22,7 @@ Job Listings Integration:
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, List
@@ -61,6 +62,36 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of times a job can wait for company data before proceeding anyway
 MAX_COMPANY_WAIT_RETRIES = 3
+
+# Regex for parsing salary strings like "USD 165000-220000", "$150,000 - $170,000"
+_SALARY_PATTERN = re.compile(
+    r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)"
+)
+
+
+def _parse_salary_range(salary_str: str) -> Optional[tuple[int, int]]:
+    """Parse a salary range string into (min, max) integers.
+
+    Handles formats like:
+      - "USD 165000-220000"
+      - "$150,000 - $170,000"
+      - "150000-200000"
+
+    Returns None if parsing fails.
+    """
+    # Strip currency prefix (e.g. "USD ", "CAD ")
+    cleaned = re.sub(r"^[A-Z]{3}\s*", "", salary_str.strip())
+    match = _SALARY_PATTERN.search(cleaned)
+    if not match:
+        return None
+    try:
+        low = int(float(match.group(1).replace(",", "")))
+        high = int(float(match.group(2).replace(",", "")))
+        if low > 0 and high > 0:
+            return (min(low, high), max(low, high))
+    except (ValueError, OverflowError):
+        pass
+    return None
 
 
 @dataclass
@@ -834,8 +865,21 @@ class JobProcessor(BaseProcessor):
         description = job_data.get("description", "")
         location = job_data.get("location", "")
         posted_date = job_data.get("posted_date")
+        salary_range = job_data.get("salary") or job_data.get("salary_range")
+        url = job_data.get("url", "")
 
-        extraction = self.extractor.extract(title, description, location, posted_date)
+        extraction = self.extractor.extract(
+            title, description, location, posted_date,
+            salary_range=salary_range, url=url,
+        )
+
+        # Overlay pre-extracted structured data the AI may have missed
+        if salary_range and extraction.salary_min is None:
+            parsed = _parse_salary_range(salary_range)
+            if parsed:
+                extraction.salary_min = parsed[0]
+                extraction.salary_max = parsed[1]
+
         logger.info(
             f"Extraction complete: seniority={extraction.seniority}, "
             f"arrangement={extraction.work_arrangement}, techs={len(extraction.technologies)}"

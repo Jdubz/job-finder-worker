@@ -246,6 +246,8 @@ class JobExtractor:
         description: str,
         location: Optional[str] = None,
         posted_date: Optional[str] = None,
+        salary_range: Optional[str] = None,
+        url: Optional[str] = None,
     ) -> JobExtractionResult:
         """
         Extract structured data from a job posting.
@@ -255,6 +257,8 @@ class JobExtractor:
             description: Full job description
             location: Optional location string from posting
             posted_date: Optional posted date string from posting
+            salary_range: Optional pre-extracted salary range from ATS API
+            url: Optional job listing URL (may contain metadata)
 
         Returns:
             JobExtractionResult with extracted data
@@ -262,7 +266,10 @@ class JobExtractor:
         if not description or not title:
             raise ExtractionError("Empty title or description provided for extraction")
 
-        prompt = build_extraction_prompt(title, description, location, posted_date)
+        prompt = build_extraction_prompt(
+            title, description, location, posted_date,
+            salary_range=salary_range, url=url,
+        )
         result = self.agent_manager.execute(
             task_type="extraction",
             prompt=prompt,
