@@ -64,9 +64,7 @@ logger = logging.getLogger(__name__)
 MAX_COMPANY_WAIT_RETRIES = 3
 
 # Regex for parsing salary strings like "USD 165000-220000", "$150,000 - $170,000"
-_SALARY_PATTERN = re.compile(
-    r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)"
-)
+_SALARY_PATTERN = re.compile(r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)")
 
 
 def _parse_salary_range(salary_str: str) -> Optional[tuple[int, int]]:
@@ -869,8 +867,12 @@ class JobProcessor(BaseProcessor):
         url = job_data.get("url", "")
 
         extraction = self.extractor.extract(
-            title, description, location, posted_date,
-            salary_range=salary_range, url=url,
+            title,
+            description,
+            location,
+            posted_date,
+            salary_range=salary_range,
+            url=url,
         )
 
         # Overlay pre-extracted structured data the AI may have missed

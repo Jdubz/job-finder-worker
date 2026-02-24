@@ -267,8 +267,12 @@ class JobExtractor:
             raise ExtractionError("Empty title or description provided for extraction")
 
         prompt = build_extraction_prompt(
-            title, description, location, posted_date,
-            salary_range=salary_range, url=url,
+            title,
+            description,
+            location,
+            posted_date,
+            salary_range=salary_range,
+            url=url,
         )
         result = self.agent_manager.execute(
             task_type="extraction",
