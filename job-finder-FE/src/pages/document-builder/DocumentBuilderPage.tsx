@@ -188,8 +188,6 @@ export function DocumentBuilderPage() {
 
   // Load job matches
   useEffect(() => {
-    if (!user) return
-
     const loadMatches = async () => {
       try {
         setLoadingMatches(true)
@@ -209,7 +207,7 @@ export function DocumentBuilderPage() {
     }
 
     loadMatches()
-  }, [user])
+  }, [])
 
   // Pre-fill form if job match is passed via navigation state
   useEffect(() => {

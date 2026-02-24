@@ -17,3 +17,17 @@ export function publicReadPrivateWrite(req: Request, res: Response, next: NextFu
     return requireRole("admin")(req, res, next)
   })
 }
+
+/**
+ * Middleware that allows public GET requests but requires any authenticated user for mutations.
+ * Unlike `publicReadPrivateWrite`, this does NOT require an admin role — any Google account suffices.
+ */
+export function publicReadAuthenticatedWrite(req: Request, res: Response, next: NextFunction) {
+  // Allow public GET requests
+  if (req.method === "GET") {
+    return next()
+  }
+
+  // All other methods require authentication (any role)
+  return verifyFirebaseAuth(req, res, next)
+}

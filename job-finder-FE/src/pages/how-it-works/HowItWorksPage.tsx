@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ROUTES } from "@/types/routes"
-import { Briefcase, Sparkles, FileText, Target, CheckCircle2, ArrowRight, Shield } from "lucide-react"
+import { Briefcase, Sparkles, FileText, Target, CheckCircle2, ArrowRight, Shield, Mail } from "lucide-react"
 
 export function HowItWorksPage() {
   return (
@@ -227,21 +227,23 @@ export function HowItWorksPage() {
       <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-lg p-8 text-center space-y-3">
         <h2 className="text-2xl font-bold">Want to see a sample packet?</h2>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Open the Matches page, pick a role, and generate the resume and cover letter we’d send for that specific job.
+          Try the Document Builder to generate a tailored resume and cover letter. For full access to matches
+          and analytics, reach out to request an account.
         </p>
         <div className="flex gap-3 justify-center pt-2">
           <a
-            href={ROUTES.JOB_APPLICATIONS}
+            href={ROUTES.DOCUMENT_BUILDER}
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
           >
-            View Matches
+            Build a Packet
             <ArrowRight className="h-4 w-4" />
           </a>
           <a
-            href={ROUTES.DOCUMENT_BUILDER}
+            href="mailto:job-finder@joshwentworth.com?subject=Job%20Finder%20Access%20Request"
             className="inline-flex items-center gap-2 px-6 py-3 border border-input rounded-lg font-medium hover:bg-accent transition-colors"
           >
-            Build a Packet
+            <Mail className="h-4 w-4" />
+            Request Access
           </a>
         </div>
       </div>

@@ -17,6 +17,7 @@ import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './m
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
+import { publicReadAuthenticatedWrite } from './middleware/optional-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { buildMaintenanceRouter } from './modules/maintenance'
 import { ApiErrorCode } from '@shared/types'
@@ -92,7 +93,7 @@ export function buildApp() {
   // Artifacts route is public - URLs are unique/semi-secret paths for direct download
   app.use('/api/generator/artifacts', buildGeneratorArtifactsRouter())
 
-  app.use('/api/generator', verifyFirebaseAuth, generatorPipeline)
+  app.use('/api/generator', publicReadAuthenticatedWrite, generatorPipeline)
 
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))
@@ -122,11 +123,13 @@ export function buildApp() {
   // Chat widget - public endpoint for visitor interactions
   app.use('/api/chat', buildChatWidgetRouter())
 
+  // Job matches - public GET, authenticated mutations
+  app.use('/api/job-matches', publicReadAuthenticatedWrite, buildJobMatchRouter())
+
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
   app.use('/api/applicator', buildApplicatorRouter())
   app.use('/api/queue', buildJobQueueRouter())
-  app.use('/api/job-matches', buildJobMatchRouter())
   app.use('/api/job-listings', buildJobListingRouter())
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())
