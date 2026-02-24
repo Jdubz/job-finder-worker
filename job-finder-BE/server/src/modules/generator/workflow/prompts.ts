@@ -547,8 +547,8 @@ FIRST ATTEMPT (the resume content that overflowed):
 ${JSON.stringify(firstAttempt, null, 2)}
 
 OVERFLOW DIAGNOSIS:
-- Main column lines: ${fitEstimate.mainColumnLines} (max: 55)
-- Sidebar lines: ${fitEstimate.sidebarLines} (max: 55)
+- Main column lines: ${fitEstimate.mainColumnLines} (max: 60)
+- Sidebar lines: ${fitEstimate.sidebarLines} (max: 60)
 - Overflow: ${fitEstimate.overflow} lines over limit
 - Suggestions: ${fitEstimate.suggestions.length ? fitEstimate.suggestions.join('; ') : 'none'}
 
@@ -580,6 +580,118 @@ OUTPUT FORMAT (STRICT):
 - Use the exact same JSON structure as the first attempt.
 
 Return the trimmed resume as a JSON object with this exact structure:
+{
+  "personalInfo": { "title": "Job Title matching target role" },
+  "professionalSummary": "2-3 sentence summary",
+  "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
+  "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
+  "skills": [
+    { "category": "CategoryName", "items": ["Skill1", "Skill2", "Skill3"] }
+  ],
+  "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
+}`
+}
+
+export function buildExpandPrompt(
+  currentResume: ResumeContent,
+  fitEstimate: FitEstimate,
+  contentBudget: ReturnType<typeof getContentBudget>,
+  payload: GenerateDocumentPayload,
+  jobMatch: JobMatchWithListing | null,
+  contentItems: ContentItem[]
+): string {
+  const resumeIntakeData = jobMatch?.resumeIntakeData
+  const content = extractFormattedContent(contentItems)
+
+  // Build PromptVariables for the data block
+  const variables: PromptVariables = {
+    candidateName: payload.job.role, // used as context, not critical
+    jobTitle: payload.job.role,
+    companyName: payload.job.company,
+    jobDescription: payload.job.jobDescriptionText || 'No job description provided',
+    jobDescriptionUrl: payload.job.jobDescriptionUrl,
+    companyWebsite: payload.job.companyWebsite,
+    jobLocation: payload.job.location || jobMatch?.listing?.location || undefined,
+    candidateLocation: '',
+    userExperience: content.workFormatted || 'No experience data available',
+    userSkills: content.skillsFromCategories || content.allSkills || 'No skills data available',
+    additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
+    companyInfo: jobMatch?.company?.about || '',
+    matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
+    keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
+    atsKeywords: resumeIntakeData?.atsKeywords?.join(', ') || ''
+  }
+
+  const dataBlock = buildDataBlock(variables, content, 'INPUT DATA (authoritative — expand using ONLY this material):')
+
+  // Job context
+  const jobContext = [
+    `Role: ${payload.job.role}`,
+    `Company: ${payload.job.company}`,
+    payload.job.location ? `Location: ${payload.job.location}` : null,
+    payload.job.jobDescriptionText
+      ? `Job Description:\n${payload.job.jobDescriptionText}`
+      : null
+  ].filter(Boolean).join('\n')
+
+  // Match context
+  let matchContext = ''
+  if (jobMatch) {
+    const parts: string[] = []
+    if (jobMatch.matchedSkills?.length) {
+      parts.push(`Matched skills: ${jobMatch.matchedSkills.join(', ')}`)
+    }
+    if (jobMatch.keyStrengths?.length) {
+      parts.push(`Key strengths: ${jobMatch.keyStrengths.join(', ')}`)
+    }
+    if (resumeIntakeData?.atsKeywords?.length) {
+      parts.push(`ATS keywords: ${resumeIntakeData.atsKeywords.join(', ')}`)
+    }
+    if (parts.length) {
+      matchContext = `\n${parts.join('\n')}\n`
+    }
+  }
+
+  const spareLines = Math.abs(fitEstimate.overflow)
+
+  return `You are a resume EXPANDER. The current resume has spare room — fill it with relevant content.
+
+CURRENT RESUME (has spare room):
+${JSON.stringify(currentResume, null, 2)}
+
+PAGE CAPACITY:
+- Main column lines: ${fitEstimate.mainColumnLines} (max: 60)
+- Spare room: ${spareLines} lines available to fill
+- Sidebar lines: ${fitEstimate.sidebarLines} (max: 60)
+
+CONTENT BUDGET (do NOT exceed):
+- Max experience entries: ${contentBudget.maxExperiences}
+- Max bullets per experience: ${contentBudget.maxBulletsPerExperience}
+- Max summary words: ${contentBudget.maxSummaryWords}
+- Max skill categories: ${contentBudget.maxSkillCategories}
+- Max projects: ${contentBudget.maxProjects}
+- Max bullets per project: ${contentBudget.maxBulletsPerProject}
+
+JOB CONTEXT:
+${jobContext}
+${matchContext}
+${dataBlock}
+
+EXPANSION INSTRUCTIONS (priority order):
+1. Add more bullets to existing experience entries — draw from INPUT DATA highlights that were omitted. Add deeper detail, more impact metrics, and quantified outcomes. This is the highest priority.
+2. If the INPUT DATA contains a work experience entry not already in the resume, add it as a new entry (respecting the max experience budget).
+3. Lengthen existing bullets with more specifics — metrics, technologies used, business outcomes.
+4. Do NOT invent new facts, achievements, companies, or technologies. Only use content from the INPUT DATA above.
+5. Prioritize expansions that are relevant to the target role: matched skills > key strengths > ATS keywords > general experience.
+6. Keep all existing content intact — you are ADDING, not rewriting.
+7. Keep all factual data (dates, company names, role titles) exactly as-is.
+
+OUTPUT FORMAT (STRICT):
+- Respond with the JSON object ONLY — no prose, no markdown, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- Use the exact same JSON structure as the current resume.
+
+Return the expanded resume as a JSON object with this exact structure:
 {
   "personalInfo": { "title": "Job Title matching target role" },
   "professionalSummary": "2-3 sentence summary",

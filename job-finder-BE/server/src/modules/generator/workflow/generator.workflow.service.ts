@@ -19,7 +19,7 @@ import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
-import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildResumeRetryPrompt } from './prompts'
+import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt } from './prompts'
 import { AgentManager } from '../ai/agent-manager'
 import { ConfigRepository } from '../../config/config.repository'
 import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
@@ -945,6 +945,39 @@ export class GeneratorWorkflowService {
             { err: refitError },
             'LLM refit call failed — keeping original content'
           )
+        }
+      }
+
+      // Underflow check — if 5+ lines of spare room, expand to fill the page
+      const expandFitCheck = estimateContentFit(parsed)
+      if (expandFitCheck.overflow < -5) {
+        this.log.info(
+          { spareLines: Math.abs(expandFitCheck.overflow), mainLines: expandFitCheck.mainColumnLines },
+          'Resume has significant spare room, requesting LLM expansion'
+        )
+        try {
+          const contentBudget = getContentBudget()
+          const expandPrompt = buildExpandPrompt(
+            parsed, expandFitCheck, contentBudget, payload, jobMatch, contentItems
+          )
+          const expandResult = await this.agentManager.execute('document', expandPrompt)
+          const expandValidation = validateResumeContent(expandResult.output, this.log)
+          if (expandValidation.success) {
+            let expandParsed = expandValidation.data as ResumeContent
+            expandParsed = this.groundResumeContent(expandParsed, contentItems, personalInfo, payload)
+            const expandFit = estimateContentFit(expandParsed)
+            if (expandFit.fits) {
+              this.log.info(
+                { mainLines: expandFit.mainColumnLines, spareLines: Math.abs(expandFit.overflow) },
+                'LLM expansion filled page successfully'
+              )
+              parsed = expandParsed
+            } else {
+              this.log.warn('LLM expansion overflowed — keeping original content')
+            }
+          }
+        } catch (expandError) {
+          this.log.warn({ err: expandError }, 'LLM expand call failed — keeping original content')
         }
       }
 

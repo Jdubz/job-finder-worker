@@ -76,13 +76,20 @@ describe('estimateContentFit', () => {
     expect(result.suggestions.length).toBeGreaterThan(0)
     expect(result.suggestions.some((s) => s.includes('experience'))).toBe(true)
   })
+
+  it('detects underflow with a minimal resume (negative overflow = spare room)', () => {
+    const result = estimateContentFit(makeResume())
+    // A minimal resume (1 experience, 2 bullets) should have lots of spare room
+    expect(result.overflow).toBeLessThan(-5)
+    expect(result.fits).toBe(true)
+  })
 })
 
 describe('getContentBudget', () => {
   it('returns sensible budget constraints', () => {
     const budget = getContentBudget()
     expect(budget.maxExperiences).toBeGreaterThanOrEqual(3)
-    expect(budget.maxBulletsPerExperience).toBeGreaterThanOrEqual(3)
+    expect(budget.maxBulletsPerExperience).toBe(6)
     expect(budget.maxSummaryWords).toBeGreaterThan(20)
     expect(budget.maxSkillCategories).toBeGreaterThanOrEqual(4)
   })
