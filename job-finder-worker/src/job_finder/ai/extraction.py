@@ -75,7 +75,7 @@ class JobExtractionResult:
     timezone_flexible: bool = False
 
     # Key fields used for confidence scoring
-    _CONFIDENCE_FIELDS = (
+    CONFIDENCE_FIELDS = (
         "seniority",
         "work_arrangement",
         "timezone",
@@ -87,8 +87,8 @@ class JobExtractionResult:
     def compute_confidence(self) -> float:
         """Compute confidence as fraction of key fields that are non-null/non-unknown."""
         filled = 0
-        total = len(self._CONFIDENCE_FIELDS)
-        for field_name in self._CONFIDENCE_FIELDS:
+        total = len(self.CONFIDENCE_FIELDS)
+        for field_name in self.CONFIDENCE_FIELDS:
             value = getattr(self, field_name)
             if field_name in ("seniority", "work_arrangement", "employment_type"):
                 if value is not None and value != "unknown":
@@ -104,7 +104,7 @@ class JobExtractionResult:
     def missing_fields(self) -> List[str]:
         """Return list of key field names that are null/unknown."""
         missing = []
-        for field_name in self._CONFIDENCE_FIELDS:
+        for field_name in self.CONFIDENCE_FIELDS:
             value = getattr(self, field_name)
             if field_name in ("seniority", "work_arrangement", "employment_type"):
                 if value is None or value == "unknown":
@@ -119,7 +119,7 @@ class JobExtractionResult:
 
     def merge(self, repair_data: "JobExtractionResult") -> None:
         """Merge non-null/non-unknown values from repair_data into self."""
-        for field_name in self._CONFIDENCE_FIELDS:
+        for field_name in self.CONFIDENCE_FIELDS:
             repair_value = getattr(repair_data, field_name)
             current_value = getattr(self, field_name)
             if field_name in ("seniority", "work_arrangement", "employment_type"):
@@ -476,6 +476,6 @@ class JobExtractor:
                 result.confidence,
             )
         except Exception as e:
-            logger.warning("Extraction repair failed, keeping original: %s", e)
+            logger.warning("Extraction repair failed, keeping original: %s", e, exc_info=True)
 
         return result

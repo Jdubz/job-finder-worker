@@ -78,6 +78,7 @@ export const aiSettingsSchema = z.object({
 const prefilterTitleSchema = z.object({
   requiredKeywords: z.array(z.string()),
   excludedKeywords: z.array(z.string()),
+  synonyms: z.record(z.string(), z.array(z.string())).optional(),
 })
 
 const prefilterFreshnessSchema = z.object({

@@ -126,4 +126,25 @@ describe("isPreFilterPolicy", () => {
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 
+  it("accepts valid synonyms", () => {
+    const ok = {
+      ...valid,
+      title: { ...valid.title, synonyms: { engineer: ["swe", "sde"] } },
+    }
+    expect(isPreFilterPolicy(ok)).toBe(true)
+  })
+
+  it("rejects invalid synonyms (non-object)", () => {
+    const bad = { ...valid, title: { ...valid.title, synonyms: "bad" } } as any
+    expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
+  it("rejects invalid synonyms (non-string-array values)", () => {
+    const bad = {
+      ...valid,
+      title: { ...valid.title, synonyms: { engineer: [123] } },
+    } as any
+    expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
 })

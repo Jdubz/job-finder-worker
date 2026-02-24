@@ -138,9 +138,9 @@ Rules:
 
 8. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
 
-10. timezoneFlexible: Set to true if the role explicitly states no timezone requirements, "work from anywhere", "async-first", or "flexible hours". Otherwise false. This applies to remote roles that don't require overlap with a specific timezone.
+9. timezoneFlexible: Set to true if the role explicitly states no timezone requirements, "work from anywhere", "async-first", or "flexible hours". Otherwise false. This applies to remote roles that don't require overlap with a specific timezone.
 
-9. Infer employment type (use the isContract field AND consider the overall posting):
+10. Infer employment type (use the isContract field AND consider the overall posting):
    - URL params like "employmentType=FullTime" or structured data indicating full-time -> isContract: false
    - Benefits mentions (401k, PTO, health insurance, dental, equity) strongly signal full-time employment
    - "contract", "temporary", "freelance", "hourly", "C2C", "W2 contract" -> isContract: true
