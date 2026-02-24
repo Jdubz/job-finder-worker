@@ -17,7 +17,7 @@ import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './m
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
 import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
-import { publicReadAuthenticatedWrite } from './middleware/optional-auth'
+import { publicReadAuthenticatedWrite, queuePublicJobSubmit } from './middleware/optional-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { buildMaintenanceRouter } from './modules/maintenance'
 import { ApiErrorCode } from '@shared/types'
@@ -126,10 +126,12 @@ export function buildApp() {
   // Job matches - public GET, authenticated mutations
   app.use('/api/job-matches', publicReadAuthenticatedWrite, buildJobMatchRouter())
 
+  // Queue routes - public POST /jobs, auth required for everything else
+  app.use('/api/queue', queuePublicJobSubmit, buildJobQueueRouter())
+
   // All other API routes require authentication
   app.use('/api', verifyFirebaseAuth)
   app.use('/api/applicator', buildApplicatorRouter())
-  app.use('/api/queue', buildJobQueueRouter())
   app.use('/api/job-listings', buildJobListingRouter())
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())

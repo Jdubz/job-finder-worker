@@ -31,3 +31,22 @@ export function publicReadAuthenticatedWrite(req: Request, res: Response, next: 
   // All other methods require authentication (any role)
   return verifyFirebaseAuth(req, res, next)
 }
+
+/**
+ * Middleware for queue routes that allows unauthenticated POST /jobs (public job submission)
+ * but requires Firebase auth for all other queue routes.
+ *
+ * `req.path` is relative to the mount point, so when mounted at `/api/queue`
+ * a request to `/api/queue/jobs` has `req.path === "/jobs"`.
+ *
+ * The POST /jobs handler already sets `submitted_by: null` and never reads `req.user`,
+ * so skipping auth is safe. Route-level guards (e.g. `requireRole('admin')` on `/scrape`)
+ * still apply because `verifyFirebaseAuth` runs for those paths.
+ */
+export function queuePublicJobSubmit(req: Request, res: Response, next: NextFunction) {
+  if (req.method === "POST" && req.path === "/jobs") {
+    return next()
+  }
+
+  return verifyFirebaseAuth(req, res, next)
+}
