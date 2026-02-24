@@ -1,7 +1,7 @@
 """Prompt templates for job data extraction."""
 
 from datetime import date
-from typing import Optional
+from typing import List, Optional
 
 
 def build_extraction_prompt(
@@ -71,7 +71,8 @@ Extract and return this exact JSON structure (use null for unknown values, false
   "isContract": <true if contract/temporary/freelance/hourly position, false otherwise>,
   "isManagement": <true if people management responsibilities, false otherwise>,
   "isLead": <true if technical lead role, false otherwise>,
-  "roleTypes": ["<role-type-1>", "<role-type-2>", ...]
+  "roleTypes": ["<role-type-1>", "<role-type-2>", ...],
+  "timezoneFlexible": <true if no timezone requirement, false otherwise>
 }}
 
 Rules:
@@ -137,7 +138,9 @@ Rules:
 
 8. relocationRequired: ONLY true if explicitly states relocation is required. Generic phrases like "headquartered in SF" are NOT requirements.
 
-9. Infer employment type (use the isContract field AND consider the overall posting):
+9. timezoneFlexible: Set to true if the role explicitly states no timezone requirements, "work from anywhere", "async-first", or "flexible hours". Otherwise false. This applies to remote roles that don't require overlap with a specific timezone.
+
+10. Infer employment type (use the isContract field AND consider the overall posting):
    - URL params like "employmentType=FullTime" or structured data indicating full-time -> isContract: false
    - Benefits mentions (401k, PTO, health insurance, dental, equity) strongly signal full-time employment
    - "contract", "temporary", "freelance", "hourly", "C2C", "W2 contract" -> isContract: true
@@ -185,4 +188,54 @@ Description: {desc_truncated}
 If salary is in structured data above, parse into salaryMin/salaryMax. If location contains "Remote", set workArrangement to "remote".
 
 Return:
-{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","devops","ml-ai","data","security","consulting","clearance-required"]}}"""
+{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","devops","ml-ai","data","security","consulting","clearance-required"],"timezoneFlexible":false}}"""
+
+
+def build_repair_prompt(
+    title: str,
+    description: str,
+    missing_fields: List[str],
+    location: Optional[str] = None,
+    posted_date: Optional[str] = None,
+) -> str:
+    """Build a targeted repair prompt for fields the initial extraction missed.
+
+    Args:
+        title: Job title
+        description: Job description text
+        missing_fields: List of field names that were null/unknown
+        location: Optional location string
+        posted_date: Optional posted date string
+
+    Returns:
+        Formatted prompt for repair extraction
+    """
+    today_str = date.today().isoformat()
+    location_section = f"\nLocation: {location}" if location else ""
+    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
+
+    field_hints = {
+        "seniority": "seniority (junior/mid/senior/staff/lead/principal) — infer from title, years of experience mentioned, or responsibility level",
+        "work_arrangement": 'workArrangement (remote/hybrid/onsite) — look for "remote", "hybrid", "on-site", office mentions, or location field',
+        "timezone": "timezone (UTC offset as float) — infer from city, state, country, or office location mentioned",
+        "salary_min": "salaryMin/salaryMax (annual USD integers) — look for salary ranges, hourly rates (convert to annual), or compensation sections",
+        "employment_type": "employmentType (full-time/part-time/contract) — look for benefits, contract language, or employment type mentions",
+        "technologies": "technologies (array of lowercase strings) — programming languages, frameworks, tools, platforms mentioned in requirements",
+    }
+
+    field_descriptions = "\n".join(f"- {field_hints.get(f, f)}" for f in missing_fields)
+
+    return f"""The initial extraction of this job posting returned null/unknown for several fields. Re-examine the posting and try harder to infer these specific fields.
+
+Today's date: {today_str}
+Job Title: {title}{location_section}{posted_section}
+
+Job Description:
+{description[:4000]}
+
+Missing fields to fill:
+{field_descriptions}
+
+Return ONLY a JSON object with the fields you can now fill. Use the same field names as the original extraction (camelCase). For fields you still cannot determine, use null or "unknown" as appropriate. Do not include fields that were already successfully extracted.
+
+Return ONLY the JSON object, no explanation or markdown."""

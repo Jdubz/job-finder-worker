@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, cast, get_args
 
-from job_finder.ai.extraction_prompts import build_extraction_prompt
+from job_finder.ai.extraction_prompts import build_extraction_prompt, build_repair_prompt
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import ExtractionError
 
@@ -68,6 +68,77 @@ class JobExtractionResult:
     # Dynamic list of role type strings, e.g. ["backend", "ml-ai", "devops"]
     role_types: List[str] = field(default_factory=list)
 
+    # Extraction quality signal
+    confidence: float = 0.0
+
+    # Timezone flexibility for remote jobs
+    timezone_flexible: bool = False
+
+    # Key fields used for confidence scoring
+    CONFIDENCE_FIELDS = (
+        "seniority",
+        "work_arrangement",
+        "timezone",
+        "salary_min",
+        "employment_type",
+        "technologies",
+    )
+
+    def compute_confidence(self) -> float:
+        """Compute confidence as fraction of key fields that are non-null/non-unknown."""
+        filled = 0
+        total = len(self.CONFIDENCE_FIELDS)
+        for field_name in self.CONFIDENCE_FIELDS:
+            value = getattr(self, field_name)
+            if field_name in ("seniority", "work_arrangement", "employment_type"):
+                if value is not None and value != "unknown":
+                    filled += 1
+            elif field_name == "technologies":
+                if value:  # non-empty list
+                    filled += 1
+            else:
+                if value is not None:
+                    filled += 1
+        return filled / total if total > 0 else 0.0
+
+    def missing_fields(self) -> List[str]:
+        """Return list of key field names that are null/unknown."""
+        missing = []
+        for field_name in self.CONFIDENCE_FIELDS:
+            value = getattr(self, field_name)
+            if field_name in ("seniority", "work_arrangement", "employment_type"):
+                if value is None or value == "unknown":
+                    missing.append(field_name)
+            elif field_name == "technologies":
+                if not value:
+                    missing.append(field_name)
+            else:
+                if value is None:
+                    missing.append(field_name)
+        return missing
+
+    def merge(self, repair_data: "JobExtractionResult") -> None:
+        """Merge non-null/non-unknown values from repair_data into self."""
+        for field_name in self.CONFIDENCE_FIELDS:
+            repair_value = getattr(repair_data, field_name)
+            current_value = getattr(self, field_name)
+            if field_name in ("seniority", "work_arrangement", "employment_type"):
+                if (
+                    repair_value is not None
+                    and repair_value != "unknown"
+                    and (current_value is None or current_value == "unknown")
+                ):
+                    setattr(self, field_name, repair_value)
+            elif field_name == "technologies":
+                if repair_value and not current_value:
+                    setattr(self, field_name, repair_value)
+            else:
+                if repair_value is not None and current_value is None:
+                    setattr(self, field_name, repair_value)
+        # Also merge timezone_flexible if repair found it
+        if repair_data.timezone_flexible and not self.timezone_flexible:
+            self.timezone_flexible = True
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -94,12 +165,16 @@ class JobExtractionResult:
             "isLead": self.is_lead,
             # Role types
             "roleTypes": self.role_types,
+            # Extraction quality
+            "confidence": self.confidence,
+            # Timezone flexibility
+            "timezoneFlexible": self.timezone_flexible,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JobExtractionResult":
         """Create from dictionary (supports both snake_case and camelCase)."""
-        return cls(
+        result = cls(
             seniority=_validate_seniority(data.get("seniority") or data.get("seniority_level")),
             work_arrangement=_validate_work_arrangement(
                 data.get("workArrangement") or data.get("work_arrangement")
@@ -129,7 +204,11 @@ class JobExtractionResult:
             is_lead=bool(data.get("isLead") or data.get("is_lead")),
             # Role types
             role_types=_parse_role_types(data),
+            # Timezone flexibility
+            timezone_flexible=bool(data.get("timezoneFlexible") or data.get("timezone_flexible")),
         )
+        result.confidence = result.compute_confidence()
+        return result
 
 
 def _parse_role_types(data: Dict[str, Any]) -> List[str]:
@@ -324,3 +403,79 @@ class JobExtractor:
             ]
 
         return JobExtractionResult.from_dict(data)
+
+    def extract_with_repair(
+        self,
+        title: str,
+        description: str,
+        location: Optional[str] = None,
+        posted_date: Optional[str] = None,
+        salary_range: Optional[str] = None,
+        url: Optional[str] = None,
+        confidence_threshold: float = 0.7,
+    ) -> JobExtractionResult:
+        """Extract with a single repair pass if confidence is below threshold.
+
+        Args:
+            title: Job title
+            description: Full job description
+            location: Optional location string
+            posted_date: Optional posted date string
+            salary_range: Optional pre-extracted salary range
+            url: Optional job listing URL
+            confidence_threshold: Minimum confidence to skip repair (default 0.7)
+
+        Returns:
+            JobExtractionResult, potentially repaired
+        """
+        result = self.extract(
+            title,
+            description,
+            location,
+            posted_date,
+            salary_range=salary_range,
+            url=url,
+        )
+        initial_confidence = result.confidence
+        if result.confidence >= confidence_threshold:
+            logger.debug(
+                "Extraction confidence %.2f >= %.2f, skipping repair",
+                result.confidence,
+                confidence_threshold,
+            )
+            return result
+
+        missing = result.missing_fields()
+        logger.info(
+            "Extraction confidence %.2f < %.2f, attempting repair for: %s",
+            result.confidence,
+            confidence_threshold,
+            missing,
+        )
+
+        try:
+            repair_prompt = build_repair_prompt(
+                title,
+                description,
+                missing,
+                location,
+                posted_date,
+            )
+            repair_response = self.agent_manager.execute(
+                task_type="extraction",
+                prompt=repair_prompt,
+                max_tokens=1024,
+                temperature=0.1,
+            )
+            repair_result = self._parse_response(repair_response.text)
+            result.merge(repair_result)
+            result.confidence = result.compute_confidence()
+            logger.info(
+                "Repair complete: confidence %.2f -> %.2f",
+                initial_confidence,
+                result.confidence,
+            )
+        except Exception as e:
+            logger.warning("Extraction repair failed, keeping original: %s", e, exc_info=True)
+
+        return result

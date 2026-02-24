@@ -147,6 +147,8 @@ export interface PreFilterTitleConfig {
   requiredKeywords: string[]
   /** Keywords that immediately reject a job */
   excludedKeywords: string[]
+  /** Maps a canonical required keyword to alias expansions (e.g. "engineer": ["swe", "sde"]) */
+  synonyms?: Record<string, string[]>
 }
 
 /** Job freshness/age filtering */
@@ -517,6 +519,12 @@ export interface JobExtractionResult {
   // Role types (dynamic list for role fit scoring)
   /** Role types detected for this position (e.g., ["backend", "ml-ai", "devops"]) */
   roleTypes: string[]
+
+  // Extraction quality
+  /** Confidence score (0.0–1.0) — fraction of key fields that are non-null/non-unknown */
+  confidence: number
+  /** Whether the role explicitly has no timezone requirements (async-first, work-from-anywhere) */
+  timezoneFlexible: boolean
 }
 
 // -----------------------------------------------------------

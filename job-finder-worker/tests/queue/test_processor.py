@@ -101,6 +101,11 @@ def processor(mock_managers):
                     technologies=["python"],
                 )
 
+            def extract_with_repair(
+                self, title, description, location=None, posted_date=None, **kwargs
+            ):
+                return self.extract(title, description, location, posted_date, **kwargs)
+
         class MockScoringEngine:
             def score(self, extraction, job_title, job_description, company_data=None):
                 from job_finder.scoring.engine import ScoreAdjustment

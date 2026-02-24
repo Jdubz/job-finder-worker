@@ -427,6 +427,12 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
   if (!isObject(v.title)) return false
   const title = v.title as Record<string, unknown>
   if (!isStringArray(title.requiredKeywords) || !isStringArray(title.excludedKeywords)) return false
+  if (title.synonyms !== undefined) {
+    if (!isObject(title.synonyms)) return false
+    for (const val of Object.values(title.synonyms as Record<string, unknown>)) {
+      if (!isStringArray(val)) return false
+    }
+  }
 
   if (!isObject(v.freshness)) return false
   if (typeof (v.freshness as any).maxAgeDays !== "number") return false
