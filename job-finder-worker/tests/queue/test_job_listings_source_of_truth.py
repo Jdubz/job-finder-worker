@@ -71,6 +71,8 @@ def temp_db():
                     status TEXT NOT NULL DEFAULT 'pending',
                     filter_result TEXT,
                     match_score REAL,
+                    content_fingerprint TEXT,
+                    apply_url TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -391,6 +393,7 @@ class TestScraperIntakeNoDuplication:
 
         mock_job_listing_storage = MagicMock()
         mock_job_listing_storage.listing_exists.return_value = False  # Job doesn't exist yet
+        mock_job_listing_storage.fingerprint_exists.return_value = False  # No content dupe
         mock_job_listing_storage.get_or_create_listing.return_value = ("listing-123", True)
 
         intake = ScraperIntake(
@@ -427,6 +430,7 @@ class TestScraperIntakeNoDuplication:
 
         mock_job_listing_storage = MagicMock()
         mock_job_listing_storage.listing_exists.return_value = False  # Job doesn't exist yet
+        mock_job_listing_storage.fingerprint_exists.return_value = False  # No content dupe
         mock_job_listing_storage.get_or_create_listing.return_value = ("listing-456", True)
 
         intake = ScraperIntake(
@@ -459,6 +463,7 @@ class TestScraperIntakeNoDuplication:
 
         mock_job_listing_storage = MagicMock()
         mock_job_listing_storage.listing_exists.return_value = False  # Job doesn't exist yet
+        mock_job_listing_storage.fingerprint_exists.return_value = False  # No content dupe
         mock_job_listing_storage.get_or_create_listing.return_value = ("listing-789", True)
 
         intake = ScraperIntake(

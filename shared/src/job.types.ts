@@ -216,6 +216,12 @@ export interface JobListingRecord {
   /** AI match score (0-100) for quick filtering */
   matchScore?: number | null
 
+  /** Direct application form URL (e.g., Greenhouse #app, Lever /apply) */
+  applyUrl?: string | null
+
+  /** Content fingerprint for semantic dedup (SHA256 of title+company+description prefix) */
+  contentFingerprint?: string | null
+
   /** When record was created */
   createdAt: TimestampLike
 

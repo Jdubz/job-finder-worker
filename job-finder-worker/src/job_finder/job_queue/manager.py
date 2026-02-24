@@ -7,7 +7,6 @@ import json
 import logging
 import re
 import sqlite3
-from urllib.parse import urlparse, urlunparse
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -23,6 +22,7 @@ from job_finder.exceptions import (
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueStatus
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.job_queue.notifier import QueueEventNotifier
+from job_finder.utils.url_utils import normalize_url as _canonical_normalize_url
 
 logger = logging.getLogger(__name__)
 
@@ -142,23 +142,15 @@ class QueueManager:
 
     @staticmethod
     def _normalize_url(url: Optional[str]) -> str:
+        """Normalize URL using the canonical normalizer from url_utils.
+
+        This delegates to url_utils.normalize_url() so that the queue
+        manager and job_listing_storage use identical normalization
+        (tracking-param stripping, query sorting, path lowercasing).
+        """
         if not url:
             return ""
-        try:
-            parsed = urlparse(url.strip())
-            # Drop fragments, normalize scheme/host, keep path/query
-            cleaned = parsed._replace(
-                fragment="", scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower()
-            )
-            # Remove trailing slash unless root
-            path = cleaned.path or "/"
-            if path != "/" and path.endswith("/"):
-                path = path.rstrip("/")
-            cleaned = cleaned._replace(path=path)
-            return urlunparse(cleaned)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to normalize URL %r: %s", url, exc)
-            return url.strip()
+        return _canonical_normalize_url(url.strip()) or url.strip()
 
     @staticmethod
     def _slugify(value: Optional[str]) -> str:

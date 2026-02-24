@@ -29,6 +29,7 @@ def mock_job_listing_storage():
     storage = MagicMock()
     storage.get_or_create_listing.return_value = ("listing-id", True)
     storage.listing_exists.return_value = False
+    storage.fingerprint_exists.return_value = False
     return storage
 
 

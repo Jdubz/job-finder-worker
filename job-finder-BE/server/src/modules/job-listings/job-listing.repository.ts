@@ -17,6 +17,8 @@ type JobListingRow = {
   status: string
   filter_result: string | null
   match_score: number | null
+  apply_url: string | null
+  content_fingerprint: string | null
   created_at: string
   updated_at: string
 }
@@ -49,6 +51,8 @@ const buildJobListing = (row: JobListingRow): JobListingRecord => ({
   status: row.status as JobListingStatus,
   filterResult: parseJson(row.filter_result),
   matchScore: row.match_score,
+  applyUrl: row.apply_url,
+  contentFingerprint: row.content_fingerprint,
   createdAt: parseTimestamp(row.created_at),
   updatedAt: parseTimestamp(row.updated_at)
 })

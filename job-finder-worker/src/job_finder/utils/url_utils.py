@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from typing import Optional
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,21 @@ def get_root_domain(host: str) -> str:
     if len(parts) >= 2:
         return ".".join(parts[-2:])
     return host
+
+
+# ATS domains whose URL paths are verified case-insensitive.
+# Workday is intentionally excluded — board names are case-sensitive.
+_CASE_INSENSITIVE_PATH_HOSTS = (
+    "ashbyhq.com",
+    "greenhouse.io",
+    "lever.co",
+    "workable.com",
+)
+
+
+def _host_has_case_insensitive_paths(netloc: str) -> bool:
+    """Check if a host belongs to an ATS with case-insensitive URL paths."""
+    return any(netloc.endswith(h) for h in _CASE_INSENSITIVE_PATH_HOSTS)
 
 
 def normalize_url(url: str) -> str:
@@ -76,7 +92,14 @@ def normalize_url(url: str) -> str:
         # Normalize scheme and netloc (domain) to lowercase
         scheme = parsed.scheme.lower()
         netloc = parsed.netloc.lower()
-        path = parsed.path
+
+        # Lowercase paths for ATS platforms verified to be case-insensitive.
+        # Workday board names are case-sensitive (e.g. /Ext vs /ext are
+        # distinct boards), so Workday paths are preserved as-is.
+        if _host_has_case_insensitive_paths(netloc):
+            path = parsed.path.lower()
+        else:
+            path = parsed.path
 
         # Remove trailing slash from path unless it's the root
         if path != "/" and path.endswith("/"):
@@ -194,3 +217,77 @@ def normalize_job_url(url: str) -> str:
         "https://example.myworkdayjobs.com/en-US/Careers/job/Software-Engineer_123"
     """
     return normalize_url(url)
+
+
+def compute_content_fingerprint(title: str, company: str, description: str) -> str:
+    """Compute a content-based fingerprint for semantic duplicate detection.
+
+    Two listings with the same fingerprint but different URLs are duplicates
+    (multi-location postings, re-scraped with rotated ATS IDs, etc.).
+
+    The fingerprint is based on:
+    - Normalized title (lowered, punctuation collapsed)
+    - Normalized company name (domain/legal suffixes stripped)
+    - First 500 chars of description (stable portion; location-specific
+      boilerplate tends to appear at the end)
+
+    Args:
+        title: Job title.
+        company: Company name.
+        description: Job description text.
+
+    Returns:
+        SHA256 hex digest.
+    """
+    from job_finder.utils.company_name_utils import normalize_company_name, normalize_title
+
+    norm_title = normalize_title(title)
+    norm_company = normalize_company_name(company)
+    desc_prefix = (description[:500].lower().strip()) if description else ""
+
+    content = f"{norm_title}|{norm_company}|{desc_prefix}"
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def derive_apply_url(listing_url: str) -> Optional[str]:
+    """Derive the direct application URL from a job listing URL.
+
+    For known ATS platforms, constructs the apply URL from the listing URL.
+    Returns ``None`` if the platform is unknown (caller should fall back to
+    the listing URL).
+
+    Examples:
+        >>> derive_apply_url("https://boards.greenhouse.io/acme/jobs/123")
+        'https://boards.greenhouse.io/acme/jobs/123#app'
+        >>> derive_apply_url("https://jobs.lever.co/acme/abc-123")
+        'https://jobs.lever.co/acme/abc-123/apply'
+    """
+    if not listing_url:
+        return None
+
+    parsed = urlparse(listing_url)
+    host = (parsed.hostname or "").lower()
+
+    # Greenhouse: append #app fragment to reach the application form
+    if "greenhouse.io" in host:
+        return f"{listing_url}#app"
+
+    # Lever: append /apply path suffix
+    if "lever.co" in host:
+        clean = listing_url.rstrip("/")
+        if not clean.endswith("/apply"):
+            return f"{clean}/apply"
+        return listing_url
+
+    # Ashby: the job URL IS the application page (embedded form)
+    if "ashbyhq.com" in host:
+        return listing_url
+
+    # Workable: append /apply path suffix
+    if "workable.com" in host:
+        clean = listing_url.rstrip("/")
+        if not clean.endswith("/apply"):
+            return f"{clean}/apply"
+        return listing_url
+
+    return None

@@ -3,6 +3,7 @@
 from job_finder.utils.company_name_utils import (
     clean_company_name,
     normalize_company_name,
+    normalize_title,
 )
 
 
@@ -96,3 +97,71 @@ class TestCleanCompanyName:
     def test_empty_input(self):
         assert clean_company_name("") == ""
         assert clean_company_name("   ") == ""
+
+    def test_preserves_domain_suffixes(self):
+        """clean_company_name should NOT strip .ai, .io, etc. — that's only for normalization."""
+        assert clean_company_name("Jerry.ai") == "Jerry.ai"
+        assert clean_company_name("Linear.app") == "Linear.app"
+
+
+class TestDomainSuffixStripping:
+    """Test that normalize_company_name strips domain-like suffixes."""
+
+    def test_strips_ai_suffix(self):
+        assert normalize_company_name("Jerry.ai") == "jerry"
+        assert normalize_company_name("Jerry") == "jerry"
+
+    def test_strips_io_suffix(self):
+        assert normalize_company_name("Hasura.io") == "hasura"
+        assert normalize_company_name("Hasura") == "hasura"
+
+    def test_strips_com_suffix(self):
+        assert normalize_company_name("Booking.com") == "booking"
+
+    def test_strips_dev_suffix(self):
+        assert normalize_company_name("Glitch.dev") == "glitch"
+
+    def test_strips_app_suffix(self):
+        assert normalize_company_name("Linear.app") == "linear"
+
+    def test_strips_tech_suffix(self):
+        assert normalize_company_name("Acme.tech") == "acme"
+
+    def test_real_world_dedup_pairs(self):
+        """Known duplicate pairs from production should converge."""
+        assert normalize_company_name("Jerry") == normalize_company_name("Jerry.ai")
+
+    def test_combined_with_legal_suffix(self):
+        """Domain + legal suffix stripping should work together."""
+        assert normalize_company_name("Jerry.ai Inc.") == "jerry"
+
+    def test_combined_with_job_board_suffix(self):
+        """Domain + job board suffix stripping should work together."""
+        assert normalize_company_name("Jerry.ai Careers") == "jerry"
+
+
+class TestNormalizeTitle:
+    """Test job title normalization for fingerprinting."""
+
+    def test_full_stack_hyphen_convergence(self):
+        """'Full-Stack' and 'Full Stack' should converge."""
+        assert normalize_title("Full-Stack Engineer") == normalize_title("Full Stack Engineer")
+
+    def test_lowercases(self):
+        assert normalize_title("Senior Software Engineer") == "senior software engineer"
+
+    def test_collapses_whitespace(self):
+        assert normalize_title("  ML / AI   Engineer  ") == "ml / ai engineer"
+
+    def test_replaces_underscores(self):
+        assert normalize_title("software_engineer") == "software engineer"
+
+    def test_empty_input(self):
+        assert normalize_title("") == ""
+        assert normalize_title(None) == ""
+
+    def test_real_world_title_variants(self):
+        """Known title variants from production should converge."""
+        v1 = normalize_title("Software Engineer II (Full Stack, Backend-leaning)")
+        v2 = normalize_title("Software Engineer II (Full-Stack, Backend-leaning)")
+        assert v1 == v2

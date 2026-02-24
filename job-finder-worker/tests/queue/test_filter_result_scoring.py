@@ -74,6 +74,8 @@ def temp_db():
                     status TEXT NOT NULL DEFAULT 'pending',
                     filter_result TEXT,
                     match_score REAL,
+                    content_fingerprint TEXT,
+                    apply_url TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )

@@ -29,6 +29,21 @@ _LEGAL_SUFFIX_PATTERN_STRINGS: List[str] = [
     r",?\s+llc\.?$",
 ]
 
+# Domain-like suffixes stripped during normalization (dedup only, not display).
+# "Jerry.ai" → "jerry" so it matches "Jerry" → "jerry".
+_DOMAIN_SUFFIX_PATTERN_STRINGS: List[str] = [
+    r"\.ai$",
+    r"\.io$",
+    r"\.com$",
+    r"\.co$",
+    r"\.dev$",
+    r"\.app$",
+    r"\.tech$",
+    r"\.xyz$",
+    r"\.org$",
+    r"\.net$",
+]
+
 # Pre-compile regex patterns for performance
 JOB_BOARD_SUFFIX_PATTERNS: List[Pattern] = [
     re.compile(pattern, re.IGNORECASE) for pattern in _JOB_BOARD_SUFFIX_PATTERN_STRINGS
@@ -36,6 +51,10 @@ JOB_BOARD_SUFFIX_PATTERNS: List[Pattern] = [
 
 LEGAL_SUFFIX_PATTERNS: List[Pattern] = [
     re.compile(pattern, re.IGNORECASE) for pattern in _LEGAL_SUFFIX_PATTERN_STRINGS
+]
+
+DOMAIN_SUFFIX_PATTERNS: List[Pattern] = [
+    re.compile(pattern, re.IGNORECASE) for pattern in _DOMAIN_SUFFIX_PATTERN_STRINGS
 ]
 
 # Source name detection patterns (pre-compiled for performance)
@@ -152,12 +171,41 @@ def normalize_company_name(name: str) -> str:
     # Lowercase first for stable comparisons
     normalized = name.lower().strip()
 
-    # Remove job board and legal suffixes
+    # Remove job board, legal, and domain suffixes
     normalized = _remove_suffix_patterns(normalized, JOB_BOARD_SUFFIX_PATTERNS)
     normalized = _remove_suffix_patterns(normalized, LEGAL_SUFFIX_PATTERNS)
+    normalized = _remove_suffix_patterns(normalized, DOMAIN_SUFFIX_PATTERNS)
 
     # Normalize whitespace and trailing punctuation
     normalized = re.sub(r"\s+", " ", normalized).strip()
     normalized = normalized.rstrip(".,;:")
 
     return normalized
+
+
+def normalize_title(title: str) -> str:
+    """Normalize a job title for deduplication and fingerprinting.
+
+    Lowercases, replaces hyphens/underscores with spaces, and collapses
+    whitespace so that "Full-Stack" and "Full Stack" converge.
+
+    Args:
+        title: Job title string.
+
+    Returns:
+        Normalized title.
+
+    Examples:
+        >>> normalize_title("Senior Software Engineer (Full-Stack)")
+        'senior software engineer (full stack)'
+        >>> normalize_title("  ML / AI  Engineer ")
+        'ml / ai engineer'
+    """
+    if not title:
+        return ""
+    t = title.lower().strip()
+    # Replace hyphens and underscores with spaces
+    t = re.sub(r"[-_]", " ", t)
+    # Collapse multiple spaces
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
