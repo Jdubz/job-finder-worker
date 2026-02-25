@@ -1121,7 +1121,7 @@ ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message
 async function findFileInputAcrossFrames(
   webContents: WebContents,
   script: string
-): Promise<{ result: any; frameUrl?: string } | null> {
+): Promise<{ result: unknown; frameUrl?: string } | null> {
   type FrameLike = { executeJavaScript?: (code: string) => Promise<unknown>; frames?: FrameLike[]; url?: string }
   const wc = webContents as unknown as { mainFrame?: FrameLike }
   const root = wc.mainFrame
