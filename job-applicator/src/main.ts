@@ -1021,7 +1021,7 @@ ipcMain.handle(
 
       // Find file input selector based on document type (search iframes too)
       const targetType = options?.type || "resume"
-      const found = await findFileInputAcrossFrames(
+      const found = await findFileInputAcrossFrames<string>(
         browserView!.webContents,
         buildFileInputDetectionScript(targetType)
       )
@@ -1030,9 +1030,9 @@ ipcMain.handle(
         return { success: false, message: "No file input found on page" }
       }
 
-      const fileInputSelector = found.result as string
+      const fileInputSelector = found.result
       const frameUrl = found.frameUrl
-      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${frameUrl || "top"})`)
+      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
 
       // Download document from API
       if (!options?.documentUrl) {
@@ -1116,12 +1116,23 @@ ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message
   return { connected: true }
 })
 
+// Strip query string and hash from a URL to avoid logging sensitive parameters.
+function sanitizeFrameUrl(url: string | undefined): string {
+  if (!url) return "top"
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return url.split(/[?#]/)[0]
+  }
+}
+
 // Walk all frames (top-level + iframes) and execute a detection script in each,
 // returning the first truthy result along with the frame URL it was found in.
-async function findFileInputAcrossFrames(
+async function findFileInputAcrossFrames<T>(
   webContents: WebContents,
   script: string
-): Promise<{ result: unknown; frameUrl?: string } | null> {
+): Promise<{ result: T; frameUrl?: string } | null> {
   type FrameLike = { executeJavaScript?: (code: string) => Promise<unknown>; frames?: FrameLike[]; url?: string }
   const wc = webContents as unknown as { mainFrame?: FrameLike }
   const root = wc.mainFrame
@@ -1130,9 +1141,10 @@ async function findFileInputAcrossFrames(
     // Fallback: top-level only (mainFrame API unavailable)
     try {
       const result = await webContents.executeJavaScript(script)
-      if (result) return { result }
-    } catch {
-      // Execution failed
+      if (result) return { result: result as T }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.warn(`[findFileInput] Top-level script execution failed: ${message}`)
     }
     return null
   }
@@ -1150,7 +1162,7 @@ async function findFileInputAcrossFrames(
     try {
       const result = await frame.executeJavaScript(script)
       if (result) {
-        return { result, frameUrl: frame.url || undefined }
+        return { result: result as T, frameUrl: frame.url || undefined }
       }
     } catch {
       // Frame may have been navigated away or cross-origin without access
@@ -1180,11 +1192,11 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
     })()
   `
 
-  const found = await findFileInputAcrossFrames(browserView.webContents, script)
+  type CheckResult = { hasFileInput: boolean; selector?: string }
+  const found = await findFileInputAcrossFrames<CheckResult>(browserView.webContents, script)
   if (found) {
-    const { result } = found
-    logger.info(`[check-file-input] Found file input in frame: ${found.frameUrl || "top"}`)
-    return result as { hasFileInput: boolean; selector?: string }
+    logger.info(`[check-file-input] Found file input in frame: ${sanitizeFrameUrl(found.frameUrl)}`)
+    return found.result
   }
 
   logger.info("[check-file-input] No file inputs found")
