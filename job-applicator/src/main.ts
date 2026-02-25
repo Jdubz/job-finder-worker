@@ -1019,17 +1019,20 @@ ipcMain.handle(
     try {
       if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
-      // Find file input selector based on document type
+      // Find file input selector based on document type (search iframes too)
       const targetType = options?.type || "resume"
-      const fileInputSelector = await browserView!.webContents.executeJavaScript(
+      const found = await findFileInputAcrossFrames<string>(
+        browserView!.webContents,
         buildFileInputDetectionScript(targetType)
       )
 
-      if (!fileInputSelector) {
+      if (!found?.result) {
         return { success: false, message: "No file input found on page" }
       }
 
-      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector}`)
+      const fileInputSelector = found.result
+      const frameUrl = found.frameUrl
+      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
 
       // Download document from API
       if (!options?.documentUrl) {
@@ -1041,7 +1044,7 @@ ipcMain.handle(
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
-      await setFileInputFiles(browserView!.webContents, fileInputSelector, [resolvedPath])
+      await setFileInputFiles(browserView!.webContents, fileInputSelector, [resolvedPath], frameUrl)
 
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
       return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
@@ -1113,6 +1116,62 @@ ipcMain.handle("get-cdp-status", async (): Promise<{ connected: boolean; message
   return { connected: true }
 })
 
+// Strip query string and hash from a URL to avoid logging sensitive parameters.
+function sanitizeFrameUrl(url: string | undefined): string {
+  if (!url) return "top"
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return url.split(/[?#]/)[0]
+  }
+}
+
+// Walk all frames (top-level + iframes) and execute a detection script in each,
+// returning the first truthy result along with the frame URL it was found in.
+async function findFileInputAcrossFrames<T>(
+  webContents: WebContents,
+  script: string
+): Promise<{ result: T; frameUrl?: string } | null> {
+  type FrameLike = { executeJavaScript?: (code: string) => Promise<unknown>; frames?: FrameLike[]; url?: string }
+  const wc = webContents as unknown as { mainFrame?: FrameLike }
+  const root = wc.mainFrame
+
+  if (!root || typeof root.executeJavaScript !== "function") {
+    // Fallback: top-level only (mainFrame API unavailable)
+    try {
+      const result = await webContents.executeJavaScript(script)
+      if (result) return { result: result as T }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.warn(`[findFileInput] Top-level script execution failed: ${message}`)
+    }
+    return null
+  }
+
+  // Collect all frames recursively
+  const allFrames: FrameLike[] = []
+  const visit = (frame: FrameLike) => {
+    allFrames.push(frame)
+    for (const child of (frame.frames || []) as FrameLike[]) visit(child)
+  }
+  visit(root)
+
+  for (const frame of allFrames) {
+    if (typeof frame.executeJavaScript !== "function") continue
+    try {
+      const result = await frame.executeJavaScript(script)
+      if (result) {
+        return { result: result as T, frameUrl: frame.url || undefined }
+      }
+    } catch {
+      // Frame may have been navigated away or cross-origin without access
+    }
+  }
+
+  return null
+}
+
 // Check if a file input exists on the current page (including iframes)
 ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; selector?: string }> => {
   if (!browserView) {
@@ -1123,7 +1182,7 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   const script = `
     (() => {
       const fileInput = document.querySelector('input[type="file"]');
-      if (!fileInput) return { hasFileInput: false };
+      if (!fileInput) return null;
       let selector = 'input[type="file"]';
       const id = fileInput.getAttribute('id');
       const name = fileInput.getAttribute('name');
@@ -1133,44 +1192,14 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
     })()
   `
 
-  // Search the top frame first, then walk child frames (e.g. Greenhouse iframes)
-  const webContents = browserView.webContents as unknown as { mainFrame?: { executeJavaScript?: (code: string) => Promise<unknown>; frames?: unknown[]; url?: string } }
-  const root = webContents.mainFrame
-  if (!root || typeof root.executeJavaScript !== "function") {
-    // Fallback: top-level only
-    try {
-      const result = await browserView.webContents.executeJavaScript(script) as { hasFileInput: boolean; selector?: string }
-      logger.info(`[check-file-input] top-level only: hasFileInput=${result.hasFileInput}`)
-      return result
-    } catch {
-      logger.warn("[check-file-input] top-level execution failed")
-      return { hasFileInput: false }
-    }
+  type CheckResult = { hasFileInput: boolean; selector?: string }
+  const found = await findFileInputAcrossFrames<CheckResult>(browserView.webContents, script)
+  if (found) {
+    logger.info(`[check-file-input] Found file input in frame: ${sanitizeFrameUrl(found.frameUrl)}`)
+    return found.result
   }
 
-  // Walk all frames (root + iframes)
-  type FrameLike = { executeJavaScript?: (code: string) => Promise<unknown>; frames?: FrameLike[]; url?: string }
-  const allFrames: FrameLike[] = []
-  const visit = (frame: FrameLike) => {
-    allFrames.push(frame)
-    for (const child of (frame.frames || []) as FrameLike[]) visit(child)
-  }
-  visit(root as FrameLike)
-
-  for (const frame of allFrames) {
-    if (typeof frame.executeJavaScript !== "function") continue
-    try {
-      const result = await frame.executeJavaScript(script) as { hasFileInput: boolean; selector?: string }
-      if (result?.hasFileInput) {
-        logger.info(`[check-file-input] Found file input in frame: ${frame.url || "top"}`)
-        return result
-      }
-    } catch {
-      // Frame may have been navigated away or cross-origin without access
-    }
-  }
-
-  logger.info(`[check-file-input] No file inputs found across ${allFrames.length} frame(s)`)
+  logger.info("[check-file-input] No file inputs found")
   return { hasFileInput: false }
 })
 
