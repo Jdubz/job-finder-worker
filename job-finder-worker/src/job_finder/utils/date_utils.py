@@ -9,6 +9,11 @@ import dateutil.parser
 
 logger = logging.getLogger(__name__)
 
+# Earliest plausible job posting date (2000-01-01 UTC).
+# Online job boards didn't meaningfully exist before this.
+# Dates before this threshold are treated as missing/invalid.
+_MIN_VALID_DATE = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
 
 def parse_job_date(date_string: Optional[str]) -> Optional[datetime]:
     """
@@ -19,6 +24,8 @@ def parse_job_date(date_string: Optional[str]) -> Optional[datetime]:
     - RFC 2822 dates (e.g., "Mon, 15 Jan 2024 10:30:00 GMT")
     - Relative dates (e.g., "2 days ago")
     - Human-readable dates (e.g., "January 15, 2024")
+
+    Rejects dates before 2000-01-01 as invalid (epoch-zero placeholders, etc.).
 
     Args:
         date_string: Date string in various formats
@@ -69,6 +76,13 @@ def parse_job_date(date_string: Optional[str]) -> Optional[datetime]:
         # Make timezone-aware if needed (assume UTC)
         if parsed_date.tzinfo is None:
             parsed_date = parsed_date.replace(tzinfo=timezone.utc)
+
+        # Reject dates before 2000-01-01 — these are epoch-zero placeholders
+        # or other invalid values (e.g. "1970-01-01T00:00:00" from APIs that
+        # return 0 for missing dates).
+        if parsed_date < _MIN_VALID_DATE:
+            logger.debug("Rejecting pre-2000 date as invalid: '%s' -> %s", date_string, parsed_date)
+            return None
 
         return parsed_date
 

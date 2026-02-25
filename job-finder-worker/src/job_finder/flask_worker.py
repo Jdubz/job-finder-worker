@@ -44,6 +44,7 @@ from job_finder.storage import JobStorage, JobListingStorage
 from job_finder.storage.sqlite_client import sqlite_connection
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
+from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 from job_finder.exceptions import InitializationError, NoAgentsAvailableError
 
 # Load environment variables
@@ -299,6 +300,7 @@ queue_manager: Optional[QueueManager] = None
 processor: Optional[QueueItemProcessor] = None
 config_loader: Optional[ConfigLoader] = None
 ai_matcher: Optional[AIJobMatcher] = None
+scrape_report_storage: Optional[ScrapeReportStorage] = None
 worker_thread: Optional[threading.Thread] = None
 
 # Flask app
@@ -360,6 +362,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     job_listing_storage = JobListingStorage(db_path)
     job_sources_manager = JobSourcesManager(db_path)
     companies_manager = CompaniesManager(db_path, sources_manager=job_sources_manager)
+    report_storage = ScrapeReportStorage(db_path)
 
     # Initialize other components
     profile_loader = SQLiteProfileLoader(db_path)
@@ -421,7 +424,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
 
     apply_db_settings(config_loader, ai_matcher)
 
-    return queue_manager, processor, config_loader, ai_matcher, config
+    return queue_manager, processor, config_loader, ai_matcher, config, report_storage
 
 
 # ============================================================
@@ -749,7 +752,7 @@ def status():
 @app.route("/start", methods=["POST"])
 def start_worker():
     """Start the worker."""
-    global worker_thread, queue_manager, processor, config_loader, ai_matcher
+    global worker_thread, queue_manager, processor, config_loader, ai_matcher, scrape_report_storage
 
     if _get_state("running"):
         slogger.worker_status("start_request_ignored", {"reason": "already_running"})
@@ -757,7 +760,9 @@ def start_worker():
 
     if queue_manager is None or processor is None or config_loader is None or ai_matcher is None:
         config = load_config()
-        queue_manager, processor, config_loader, ai_matcher, _ = initialize_components(config)
+        queue_manager, processor, config_loader, ai_matcher, _, scrape_report_storage = (
+            initialize_components(config)
+        )
 
     # Startup recovery: return stuck processing items to pending
     processing_timeout = get_processing_timeout(config_loader)
@@ -833,6 +838,29 @@ def config_endpoint():
     return jsonify({"message": "Configuration updated"})
 
 
+@app.route("/scrape/reports")
+def scrape_reports_list():
+    """List recent scrape reports."""
+    if not scrape_report_storage:
+        return jsonify({"error": "Scrape report storage not initialized"}), 503
+
+    limit = request.args.get("limit", 20, type=int)
+    reports = scrape_report_storage.get_recent_reports(limit=min(limit, 100))
+    return jsonify({"reports": reports})
+
+
+@app.route("/scrape/reports/<report_id>")
+def scrape_report_detail(report_id):
+    """Get a single scrape report by ID."""
+    if not scrape_report_storage:
+        return jsonify({"error": "Scrape report storage not initialized"}), 503
+
+    report = scrape_report_storage.get_report(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+    return jsonify(report)
+
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully.
 
@@ -858,8 +886,10 @@ def main():
     try:
         # Load config and initialize components
         config = load_config()
-        global queue_manager, processor, config_loader, ai_matcher
-        queue_manager, processor, config_loader, ai_matcher, config = initialize_components(config)
+        global queue_manager, processor, config_loader, ai_matcher, scrape_report_storage
+        queue_manager, processor, config_loader, ai_matcher, config, scrape_report_storage = (
+            initialize_components(config)
+        )
 
         # Set poll interval from DB-backed worker runtime settings if available
         if config_loader:

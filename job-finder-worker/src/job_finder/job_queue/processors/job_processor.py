@@ -52,6 +52,7 @@ from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.scoring.taxonomy import SkillTaxonomyRepository
 from job_finder.profile.reducer import load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
+from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
 from job_finder.utils.url_utils import normalize_url
@@ -65,6 +66,25 @@ MAX_COMPANY_WAIT_RETRIES = 3
 
 # Regex for parsing salary strings like "USD 165000-220000", "$150,000 - $170,000"
 _SALARY_PATTERN = re.compile(r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)")
+
+
+def _location_indicates_remote(location: str) -> bool:
+    """Deterministic check: does the location field clearly indicate remote work?
+
+    Catches patterns the AI consistently misclassifies as hybrid/onsite:
+      - "United States - Remote", "Remote - USA", "Remote (USA)"
+      - "Distributed", "Distributed; Hybrid"
+      - "San Francisco, CA, New York, NY, United States (or Remote in the United States)"
+      - Country-only locations like "United States" (no city = remote-eligible)
+    """
+    lowered = location.lower().strip()
+    # Explicit "remote" anywhere in the location field
+    if "remote" in lowered:
+        return True
+    # "Distributed" is used by companies like Cloudflare to mean remote
+    if "distributed" in lowered:
+        return True
+    return False
 
 
 def _parse_salary_range(salary_str: str) -> Optional[tuple[int, int]]:
@@ -154,6 +174,7 @@ class JobProcessor(BaseProcessor):
             companies_manager=ctx.companies_manager,
             sources_manager=ctx.sources_manager,
             config_loader=ctx.config_loader,
+            scrape_report_storage=ScrapeReportStorage(ctx.job_listing_storage.db_path),
         )
 
         # Initialize scraper intake with filters for deduplication
@@ -910,6 +931,19 @@ class JobProcessor(BaseProcessor):
             if parsed:
                 extraction.salary_min = parsed[0]
                 extraction.salary_max = parsed[1]
+
+        # Deterministic work arrangement override: if the location field clearly
+        # indicates remote, trust the structured data over the AI's classification.
+        # The AI consistently misclassifies remote-eligible jobs as "hybrid" when
+        # office locations are also mentioned (e.g. "SF, NY, United States").
+        if location and extraction.work_arrangement != "remote":
+            if _location_indicates_remote(location):
+                logger.info(
+                    "Overriding work_arrangement %s -> remote (location: %s)",
+                    extraction.work_arrangement,
+                    location,
+                )
+                extraction.work_arrangement = "remote"
 
         logger.info(
             f"Extraction complete: seniority={extraction.seniority}, "

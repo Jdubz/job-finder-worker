@@ -84,12 +84,14 @@ Rules:
    - "lead", "principal", "architect", "distinguished", "V", "5+" -> "lead" or "principal"
    - If unclear, use "unknown"
 
-2. Detect work arrangement from description keywords and location field:
-   - If the location field explicitly contains "Remote" (e.g. "Remote - US", "US Remote", "Remote"), classify as "remote" regardless of office mentions in the description.
-   - "fully remote", "100% remote", "work from anywhere" -> "remote"
-   - "hybrid", "flexible", "2-3 days in office" -> "hybrid"
-   - "on-site", "in-office", "must be local" -> "onsite"
-   - If ambiguous, use "unknown"
+2. Detect work arrangement — IMPORTANT: check in this exact priority order:
+   a) If the Location field contains "Remote" anywhere (e.g. "Remote - US", "US Remote", "United States - Remote", "Remote (USA)", "or Remote in the United States"), classify as "remote". This overrides ALL other signals.
+   b) If the Location field says "Distributed" or contains only a country name without a city (e.g. "United States"), classify as "remote".
+   c) If the description says "remotely in the United States", "remote-eligible", "can be held remotely", "work from anywhere", "fully remote", or "100% remote", classify as "remote" even if office locations are also listed.
+   d) "hybrid", "2-3 days in office", "in-office with flexibility" -> "hybrid"
+   e) "on-site", "in-office required", "must be local", "must relocate" -> "onsite"
+   f) If ambiguous, use "unknown"
+   NOTE: Many companies list office locations alongside remote eligibility. A job listing offices does NOT mean it is hybrid — look for explicit remote language in the location field or description first.
 
 3. Parse salary as annual USD amounts (convert hourly/monthly if needed):
    - If a salary range is provided in the structured data section above, parse it into salaryMin/salaryMax. This data comes from the ATS API and is authoritative.

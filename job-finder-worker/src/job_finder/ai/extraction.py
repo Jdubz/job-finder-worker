@@ -189,8 +189,8 @@ class JobExtractionResult:
             employment_type=_validate_employment_type(
                 data.get("employmentType") or data.get("employment_type")
             ),
-            # Freshness
-            days_old=_safe_int(data.get("daysOld") or data.get("days_old")),
+            # Freshness — clamp absurd values to None (epoch-zero, bad AI math, etc.)
+            days_old=_safe_days_old(data.get("daysOld") or data.get("days_old")),
             is_repost=bool(data.get("isRepost") or data.get("is_repost")),
             # Location
             relocation_required=bool(
@@ -294,6 +294,22 @@ def _safe_float(value: Any) -> Optional[float]:
         return float(value)
     except (ValueError, TypeError):
         return None
+
+
+# Maximum plausible job age in days (~1 year).  Anything beyond this is
+# almost certainly a date-parsing artefact (epoch-zero, bad AI math, etc.)
+# and should be treated as "unknown" rather than incurring a stale penalty.
+_MAX_PLAUSIBLE_DAYS_OLD = 365
+
+
+def _safe_days_old(value: Any) -> Optional[int]:
+    """Safely convert daysOld, rejecting negative or implausibly large values."""
+    n = _safe_int(value)
+    if n is None:
+        return None
+    if n < 0 or n > _MAX_PLAUSIBLE_DAYS_OLD:
+        return None
+    return n
 
 
 class JobExtractor:
