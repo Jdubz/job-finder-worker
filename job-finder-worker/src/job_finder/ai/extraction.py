@@ -305,11 +305,9 @@ _MAX_PLAUSIBLE_DAYS_OLD = 365
 def _safe_days_old(value: Any) -> Optional[int]:
     """Safely convert daysOld, rejecting negative or implausibly large values."""
     n = _safe_int(value)
-    if n is None:
-        return None
-    if n < 0 or n > _MAX_PLAUSIBLE_DAYS_OLD:
-        return None
-    return n
+    if n is not None and 0 <= n <= _MAX_PLAUSIBLE_DAYS_OLD:
+        return n
+    return None
 
 
 class JobExtractor:

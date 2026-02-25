@@ -65,6 +65,17 @@ class TestParseJobDate:
         result = parse_job_date("not a valid date")
         assert result is None
 
+    def test_parse_pre_2000_date_returns_none(self):
+        """Test that epoch-zero and pre-2000 dates are rejected as invalid."""
+        assert parse_job_date("1970-01-01T00:00:00Z") is None
+        assert parse_job_date("1999-12-31T23:59:59Z") is None
+
+    def test_parse_year_2000_date_accepted(self):
+        """Test that dates from 2000 onward are accepted."""
+        result = parse_job_date("2000-01-01T00:00:00Z")
+        assert result is not None
+        assert result.year == 2000
+
 
 class TestFormatJobAge:
     """Test human-readable job age formatting."""

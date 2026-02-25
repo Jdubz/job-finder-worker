@@ -419,6 +419,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         company_info_fetcher=company_info_fetcher,
         ai_matcher=ai_matcher,
         notifier=notifier,
+        scrape_report_storage=report_storage,
     )
     processor = QueueItemProcessor(ctx)
 
@@ -845,7 +846,8 @@ def scrape_reports_list():
         return jsonify({"error": "Scrape report storage not initialized"}), 503
 
     limit = request.args.get("limit", 20, type=int)
-    reports = scrape_report_storage.get_recent_reports(limit=min(limit, 100))
+    safe_limit = max(1, min(limit, 100))
+    reports = scrape_report_storage.get_recent_reports(limit=safe_limit)
     return jsonify({"reports": reports})
 
 
@@ -858,7 +860,7 @@ def scrape_report_detail(report_id):
     report = scrape_report_storage.get_report(report_id)
     if not report:
         return jsonify({"error": "Report not found"}), 404
-    return jsonify(report)
+    return jsonify({"report": report})
 
 
 def signal_handler(signum, frame):

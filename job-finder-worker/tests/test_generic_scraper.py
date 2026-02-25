@@ -1620,6 +1620,16 @@ class TestNormalizeDateTimestamps:
         result = scraper._normalize_date("January 15, 2025")
         assert "2025-01-15" in result
 
+    def test_normalize_date_unparseable_string_returns_empty(self, scraper):
+        """Test that an unparseable date string returns empty string, not the raw value."""
+        result = scraper._normalize_date("not-a-date")
+        assert result == ""
+
+    def test_normalize_date_zero_timestamp_returns_empty(self, scraper):
+        """Test that epoch-zero timestamp is rejected."""
+        result = scraper._normalize_date(0)
+        assert result == ""
+
 
 class TestRssFieldNormalization:
     """Tests for _rss_access RSS field name normalization."""
