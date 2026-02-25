@@ -81,6 +81,9 @@ class ScraperIntake:
         self.title_filter = title_filter
         self.prefilter = prefilter
 
+        # Stats from the last submit_jobs call (for scrape report aggregation)
+        self.last_submit_stats: Optional[Dict[str, Any]] = None
+
         # LinkedIn control tags (e.g., #LI-DNI / #LI-DNP) appear inside descriptions
         # for wrapped jobs; use them to avoid ingesting posts that should be skipped.
         self._li_suppression_pattern = re.compile(r"#\s*li[-_ ]?(dni|dnp)\b", re.IGNORECASE)
@@ -447,6 +450,14 @@ class ScraperIntake:
         if prefilter_reasons:
             reasons_str = ", ".join(f"{k}: {v}" for k, v in sorted(prefilter_reasons.items()))
             logger.info(f"  Pre-filter breakdown: {reasons_str}")
+
+        # Store detailed stats for scrape report aggregation
+        self.last_submit_stats = {
+            "added": added_count,
+            "duplicates": skipped_count,
+            "prefiltered": prefiltered_count,
+            "filter_reasons": dict(prefilter_reasons),
+        }
 
         return added_count
 

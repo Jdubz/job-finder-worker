@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from job_finder.storage import JobStorage, JobListingStorage
     from job_finder.storage.companies_manager import CompaniesManager
     from job_finder.storage.job_sources_manager import JobSourcesManager
+    from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 
 
 @dataclass
@@ -56,6 +57,7 @@ class ProcessorContext:
     company_info_fetcher: "CompanyInfoFetcher"
     ai_matcher: "AIJobMatcher"
     notifier: Optional["QueueEventNotifier"] = None
+    scrape_report_storage: Optional["ScrapeReportStorage"] = None
 
 
 class QueueItemType(str, Enum):

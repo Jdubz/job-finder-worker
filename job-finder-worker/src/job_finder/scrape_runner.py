@@ -45,6 +45,7 @@ from job_finder.scrapers.source_config import SourceConfig
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_listing_storage import JobListingStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
+from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 
 logger = logging.getLogger(__name__)
 SOURCE_SCRAPE_TIMEOUT_SEC = 90  # watchdog per source to avoid hangs (JS render, huge APIs)
@@ -70,11 +71,13 @@ class ScrapeRunner:
         sources_manager: JobSourcesManager,
         title_filter: Optional[TitleFilter] = None,
         config_loader: Optional[ConfigLoader] = None,
+        scrape_report_storage: Optional[ScrapeReportStorage] = None,
     ):
         self.queue_manager = queue_manager
         self.job_listing_storage = job_listing_storage
         self.companies_manager = companies_manager
         self.sources_manager = sources_manager
+        self.scrape_report_storage = scrape_report_storage
 
         # Use provided title filter or create filters from prefilter-policy
         self.title_filter: Optional[TitleFilter] = None
@@ -121,6 +124,7 @@ class ScrapeRunner:
         target_matches: Optional[int] = None,
         max_sources: Optional[int] = None,
         source_ids: Optional[List[str]] = None,
+        trigger: str = "scheduled",
     ) -> Dict[str, Any]:
         """
         Select sources and enqueue scraped jobs. Stats reflect enqueue counts,
@@ -148,138 +152,211 @@ class ScrapeRunner:
         sources = self._get_sources(max_sources, source_ids)
         logger.info(f"Found {len(sources)} sources to scrape")
 
+        # Create persistent scrape report
+        report_id = None
+        if self.scrape_report_storage:
+            try:
+                report_id = self.scrape_report_storage.create_report(trigger=trigger)
+            except Exception as e:
+                logger.warning("Failed to create scrape report: %s", e)
+
         stats = {
             "sources_scraped": 0,
             "total_jobs_found": 0,
             "jobs_submitted": 0,
+            "total_duplicates": 0,
+            "total_prefiltered": 0,
             "errors": [],
         }
+        source_details: List[Dict[str, Any]] = []
+        aggregate_filter_reasons: Dict[str, int] = {}
+        scrape_failed = False
 
         potential_matches = 0
 
-        for source in sources:
-            if target_matches is not None and potential_matches >= target_matches:
-                logger.info(f"\nReached target: {potential_matches} enqueued jobs, stopping")
-                break
-
-            try:
-                remaining_needed = (
-                    None if target_matches is None else max(target_matches - potential_matches, 0)
-                )
-                if remaining_needed == 0:
-                    logger.info("Reached target before scraping next source; stopping early")
+        try:
+            for source in sources:
+                if target_matches is not None and potential_matches >= target_matches:
+                    logger.info(f"\nReached target: {potential_matches} enqueued jobs, stopping")
                     break
 
-                source_stats = self._scrape_source(source, remaining_needed)
+                source_detail: Dict[str, Any] = {
+                    "source_id": source.get("id"),
+                    "source_name": source.get("name"),
+                    "source_type": source.get("sourceType", "api"),
+                    "jobs_found": 0,
+                    "jobs_submitted": 0,
+                    "duplicates": 0,
+                    "prefiltered": 0,
+                    "filter_reasons": {},
+                    "error": None,
+                }
 
-                # Update source bookkeeping
-                self.sources_manager.update_scrape_status(
-                    source["id"],
-                    status="success",
-                )
-                self._reset_consecutive_failures(source["id"])
+                try:
+                    # Reset per-call stats so a zero-job source doesn't inherit
+                    # the previous source's filter breakdown.
+                    self.scraper_intake.last_submit_stats = None
 
-                stats["sources_scraped"] += 1
-                stats["total_jobs_found"] += source_stats["jobs_found"]
-                stats["jobs_submitted"] += source_stats["jobs_submitted"]
-                potential_matches += source_stats["jobs_submitted"]
-
-            except (ScrapeBotProtectionError, ScrapeAuthError, ScrapeProtectedApiError) as e:
-                # Permanent errors — disable immediately with tag
-                if isinstance(e, ScrapeBotProtectionError):
-                    error_type_str = "Bot protection"
-                    disable_reason_prefix = "Bot protection detected"
-                    disable_tag = "anti_bot"
-                elif isinstance(e, ScrapeAuthError):
-                    error_type_str = "Auth required"
-                    disable_reason_prefix = "Authentication required"
-                    disable_tag = "auth_required"
-                else:  # ScrapeProtectedApiError
-                    error_type_str = "Protected API"
-                    disable_reason_prefix = "Protected API"
-                    disable_tag = "protected_api"
-
-                error_msg = f"{error_type_str}: {source.get('name')} - {e.reason}"
-                logger.warning(error_msg)
-                stats["errors"].append(error_msg)
-                self.sources_manager.disable_source_with_tags(
-                    source["id"],
-                    f"{disable_reason_prefix}: {e.reason}",
-                    tags=[disable_tag],
-                )
-
-            except (ScrapeConfigError, ScrapeNotFoundError, ScrapeTransientError) as e:
-                # 429 with Retry-After: source is healthy, just rate-limited — skip strike
-                if (
-                    isinstance(e, ScrapeTransientError)
-                    and e.retry_after is not None
-                    and e.status_code == 429
-                ):
-                    logger.warning(
-                        "rate_limited: source=%s retry_after=%ss, skipping strike",
-                        source.get("name"),
-                        e.retry_after,
+                    remaining_needed = (
+                        None
+                        if target_matches is None
+                        else max(target_matches - potential_matches, 0)
                     )
-                    stats["errors"].append(str(e))
-                    continue
+                    if remaining_needed == 0:
+                        logger.info("Reached target before scraping next source; stopping early")
+                        break
 
-                # Recoverable errors — strike system, disable after threshold
-                count = self._increment_consecutive_failures(source["id"])
+                    source_stats = self._scrape_source(source, remaining_needed)
 
-                if isinstance(e, ScrapeConfigError):
-                    error_type_str = "Config error"
-                    disable_reason_prefix = f"Config error ({count} consecutive)"
-                elif isinstance(e, ScrapeNotFoundError):
-                    error_type_str = "Not found"
-                    disable_reason_prefix = f"Endpoint not found ({count} consecutive)"
-                else:  # ScrapeTransientError
-                    error_type_str = "Transient error"
-                    disable_reason_prefix = f"Disabled after {count} transient errors"
-
-                error_msg = f"{error_type_str}: {source.get('name')} - {e.reason} (strike {count}/{TRANSIENT_FAILURE_THRESHOLD})"
-                logger.warning(error_msg)
-                stats["errors"].append(error_msg)
-
-                if count >= TRANSIENT_FAILURE_THRESHOLD:
-                    self.sources_manager.disable_source_with_note(
+                    # Update source bookkeeping
+                    self.sources_manager.update_scrape_status(
                         source["id"],
-                        f"{disable_reason_prefix}: {e.reason}",
+                        status="success",
                     )
+                    self._reset_consecutive_failures(source["id"])
 
-            except ScrapeBlockedError as e:
-                # Base fallback for any other ScrapeBlockedError subclass
-                error_msg = f"Source blocked: {source.get('name')} - {e.reason}"
-                logger.warning(error_msg)
-                stats["errors"].append(error_msg)
-                if e.disable_tag:
+                    # Capture per-source stats from intake
+                    submit_stats = self.scraper_intake.last_submit_stats or {}
+                    source_detail["jobs_found"] = source_stats["jobs_found"]
+                    source_detail["jobs_submitted"] = source_stats["jobs_submitted"]
+                    source_detail["duplicates"] = submit_stats.get("duplicates", 0)
+                    source_detail["prefiltered"] = submit_stats.get("prefiltered", 0)
+                    source_detail["filter_reasons"] = submit_stats.get("filter_reasons", {})
+
+                    stats["sources_scraped"] += 1
+                    stats["total_jobs_found"] += source_stats["jobs_found"]
+                    stats["jobs_submitted"] += source_stats["jobs_submitted"]
+                    stats["total_duplicates"] += source_detail["duplicates"]
+                    stats["total_prefiltered"] += source_detail["prefiltered"]
+                    potential_matches += source_stats["jobs_submitted"]
+
+                    # Aggregate filter reasons
+                    for reason, count in source_detail["filter_reasons"].items():
+                        aggregate_filter_reasons[reason] = (
+                            aggregate_filter_reasons.get(reason, 0) + count
+                        )
+
+                except (
+                    ScrapeBotProtectionError,
+                    ScrapeAuthError,
+                    ScrapeProtectedApiError,
+                ) as e:
+                    # Permanent errors — disable immediately with tag
+                    if isinstance(e, ScrapeBotProtectionError):
+                        error_type_str = "Bot protection"
+                        disable_reason_prefix = "Bot protection detected"
+                        disable_tag = "anti_bot"
+                    elif isinstance(e, ScrapeAuthError):
+                        error_type_str = "Auth required"
+                        disable_reason_prefix = "Authentication required"
+                        disable_tag = "auth_required"
+                    else:  # ScrapeProtectedApiError
+                        error_type_str = "Protected API"
+                        disable_reason_prefix = "Protected API"
+                        disable_tag = "protected_api"
+
+                    error_msg = f"{error_type_str}: {source.get('name')} - {e.reason}"
+                    logger.warning(error_msg)
+                    stats["errors"].append(error_msg)
+                    source_detail["error"] = error_msg
                     self.sources_manager.disable_source_with_tags(
                         source["id"],
-                        f"Blocked: {e.reason}",
-                        tags=[e.disable_tag],
+                        f"{disable_reason_prefix}: {e.reason}",
+                        tags=[disable_tag],
                     )
-                else:
+
+                except (
+                    ScrapeConfigError,
+                    ScrapeNotFoundError,
+                    ScrapeTransientError,
+                ) as e:
+                    # 429 with Retry-After: source is healthy, just rate-limited
+                    if (
+                        isinstance(e, ScrapeTransientError)
+                        and e.retry_after is not None
+                        and e.status_code == 429
+                    ):
+                        logger.warning(
+                            "rate_limited: source=%s retry_after=%ss, skipping strike",
+                            source.get("name"),
+                            e.retry_after,
+                        )
+                        error_msg = str(e)
+                        stats["errors"].append(error_msg)
+                        source_detail["error"] = error_msg
+                        source_details.append(source_detail)
+                        continue
+
+                    # Recoverable errors — strike system, disable after threshold
+                    count = self._increment_consecutive_failures(source["id"])
+
+                    if isinstance(e, ScrapeConfigError):
+                        error_type_str = "Config error"
+                        disable_reason_prefix = f"Config error ({count} consecutive)"
+                    elif isinstance(e, ScrapeNotFoundError):
+                        error_type_str = "Not found"
+                        disable_reason_prefix = f"Endpoint not found ({count} consecutive)"
+                    else:  # ScrapeTransientError
+                        error_type_str = "Transient error"
+                        disable_reason_prefix = f"Disabled after {count} transient errors"
+
+                    error_msg = f"{error_type_str}: {source.get('name')} - {e.reason} (strike {count}/{TRANSIENT_FAILURE_THRESHOLD})"
+                    logger.warning(error_msg)
+                    stats["errors"].append(error_msg)
+                    source_detail["error"] = error_msg
+
+                    if count >= TRANSIENT_FAILURE_THRESHOLD:
+                        self.sources_manager.disable_source_with_note(
+                            source["id"],
+                            f"{disable_reason_prefix}: {e.reason}",
+                        )
+
+                except ScrapeBlockedError as e:
+                    # Base fallback for any other ScrapeBlockedError subclass
+                    error_msg = f"Source blocked: {source.get('name')} - {e.reason}"
+                    logger.warning(error_msg)
+                    stats["errors"].append(error_msg)
+                    source_detail["error"] = error_msg
+                    if e.disable_tag:
+                        self.sources_manager.disable_source_with_tags(
+                            source["id"],
+                            f"Blocked: {e.reason}",
+                            tags=[e.disable_tag],
+                        )
+                    else:
+                        self.sources_manager.disable_source_with_note(
+                            source["id"],
+                            f"Blocked: {e.reason}",
+                        )
+
+                except ConfigurationError as e:
+                    # Invalid config - auto-disable to prevent repeated failures
+                    error_msg = f"Config error for {source.get('name')}: {str(e)}"
+                    logger.warning(error_msg)
+                    stats["errors"].append(error_msg)
+                    source_detail["error"] = error_msg
                     self.sources_manager.disable_source_with_note(
                         source["id"],
-                        f"Blocked: {e.reason}",
+                        f"Invalid configuration: {str(e)}. Source needs manual review.",
                     )
 
-            except ConfigurationError as e:
-                # Invalid config - auto-disable to prevent repeated failures
-                error_msg = f"Config error for {source.get('name')}: {str(e)}"
-                logger.warning(error_msg)
-                stats["errors"].append(error_msg)
-                self.sources_manager.disable_source_with_note(
-                    source["id"],
-                    f"Invalid configuration: {str(e)}. Source needs manual review.",
-                )
+                except Exception as e:
+                    error_msg = f"Error processing {source.get('name')}: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+                    stats["errors"].append(error_msg)
+                    source_detail["error"] = error_msg
+                    self.sources_manager.update_scrape_status(
+                        source["id"], status="error", error=str(e)
+                    )
 
-            except Exception as e:
-                error_msg = f"Error processing {source.get('name')}: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                stats["errors"].append(error_msg)
-                self.sources_manager.update_scrape_status(
-                    source["id"], status="error", error=str(e)
-                )
+                source_details.append(source_detail)
+
+        except Exception as e:
+            # Unexpected error outside per-source handling — mark report as failed
+            scrape_failed = True
+            error_msg = f"Scrape run failed: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            stats["errors"].append(error_msg)
 
         logger.info("\n" + "=" * 70)
         logger.info("SCRAPE COMPLETE")
@@ -287,12 +364,44 @@ class ScrapeRunner:
         logger.info(f"  Sources scraped: {stats['sources_scraped']}")
         logger.info(f"  Total jobs found: {stats['total_jobs_found']}")
         logger.info(f"  Jobs submitted to queue: {stats['jobs_submitted']}")
+        logger.info(f"  Duplicates skipped: {stats['total_duplicates']}")
+        logger.info(f"  Pre-filtered: {stats['total_prefiltered']}")
+
+        if aggregate_filter_reasons:
+            reasons_str = ", ".join(
+                f"{k}: {v}" for k, v in sorted(aggregate_filter_reasons.items())
+            )
+            logger.info(f"  Filter breakdown: {reasons_str}")
 
         if stats["errors"]:
             logger.warning(f"\n  Errors: {len(stats['errors'])}")
             for error in stats["errors"]:
                 logger.warning(f"  - {error}")
 
+        # Persist scrape report
+        if self.scrape_report_storage and report_id:
+            try:
+                if scrape_failed:
+                    self.scrape_report_storage.fail_report(report_id, stats["errors"])
+                else:
+                    self.scrape_report_storage.complete_report(
+                        report_id=report_id,
+                        sources_scraped=stats["sources_scraped"],
+                        total_jobs_found=stats["total_jobs_found"],
+                        total_jobs_submitted=stats["jobs_submitted"],
+                        total_duplicates=stats["total_duplicates"],
+                        total_prefiltered=stats["total_prefiltered"],
+                        source_details=source_details,
+                        filter_breakdown=aggregate_filter_reasons,
+                        errors=stats["errors"],
+                    )
+                logger.info(f"  Scrape report saved: {report_id}")
+            except Exception as e:
+                logger.warning("Failed to save scrape report: %s", e)
+
+        stats["report_id"] = report_id
+        stats["source_details"] = source_details
+        stats["filter_breakdown"] = aggregate_filter_reasons
         return stats
 
     def _increment_consecutive_failures(self, source_id: str) -> int:

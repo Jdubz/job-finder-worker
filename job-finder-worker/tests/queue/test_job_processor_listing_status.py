@@ -41,6 +41,7 @@ def _build_processor(job_listing_storage):
 def test_update_listing_status_calls_storage_with_expected_signature():
     storage = create_autospec(JobListingStorage)
     storage.update_status.return_value = True
+    storage.db_path = ":memory:"
 
     processor = _build_processor(storage)
 
@@ -51,6 +52,7 @@ def test_update_listing_status_calls_storage_with_expected_signature():
 
 def test_update_listing_status_noop_when_missing_listing_id():
     storage = create_autospec(JobListingStorage)
+    storage.db_path = ":memory:"
 
     processor = _build_processor(storage)
 

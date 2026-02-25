@@ -1975,7 +1975,9 @@ class GenericScraper:
             parsed = parse_job_date(value)
             if parsed:
                 return parsed.isoformat()
-            return value  # Return as-is if parsing fails
+            # Return empty string if parsing fails — returning the raw string
+            # risks downstream code treating an unparseable value as a date.
+            return ""
 
         return ""
 
