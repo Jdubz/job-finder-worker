@@ -13,7 +13,7 @@ fi
 # LiteLLM connectivity check
 echo "=== LiteLLM Proxy ==="
 LITELLM_URL="${LITELLM_BASE_URL:-http://litellm:4000}"
-LITELLM_HEALTH="${LITELLM_URL}/health"
+LITELLM_HEALTH="${LITELLM_URL}/health/readiness"
 echo "Endpoint: $LITELLM_URL"
 if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
     echo "✓ LiteLLM proxy is reachable"

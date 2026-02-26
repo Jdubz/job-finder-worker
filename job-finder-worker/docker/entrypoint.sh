@@ -24,7 +24,7 @@ chown -R node:node /app/logs 2>/dev/null || true
 # LiteLLM connectivity check
 echo "=== LiteLLM Proxy ==="
 LITELLM_URL="${LITELLM_BASE_URL:-http://litellm:4000/v1}"
-LITELLM_HEALTH="${LITELLM_URL%/v1}/health"
+LITELLM_HEALTH="${LITELLM_URL%/v1}/health/readiness"
 echo "Endpoint: $LITELLM_URL"
 if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
     echo "✓ LiteLLM proxy is reachable"

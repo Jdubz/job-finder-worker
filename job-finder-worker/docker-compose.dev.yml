@@ -15,7 +15,7 @@
 # AI INFERENCE:
 #   All AI calls route through LiteLLM proxy (started automatically).
 #   LiteLLM config: ../infra/litellm-config.yaml
-#   Ollama must be running on the host with 'llama3.1:8b' pulled.
+#   Ollama runs as a Docker service; model is pulled on first start.
 #
 # DIRECTORY STRUCTURE (all gitignored):
 #   .dev/
@@ -26,25 +26,41 @@
 #   └── worker-data/       # Temp worker data
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: job-finder-ollama-dev
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - jobfinder-dev
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: job-finder-litellm-dev
     restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
     ports:
       - "4000:4000"
     volumes:
       - type: bind
-        source: ../infra/litellm-config.yaml
+        source: ../infra/litellm-config.dev.yaml
         target: /app/config.yaml
         read_only: true
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     command: ["--config", "/app/config.yaml", "--port", "4000"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/readiness')"]
       interval: 10s
       timeout: 5s
       start_period: 15s
@@ -78,8 +94,6 @@ services:
       LITELLM_BASE_URL: http://litellm:4000/v1
       # Optional: set to lower thresholds for testing
       # MIN_MATCH_SCORE: "50"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "5555:5555"
     volumes:
@@ -127,6 +141,9 @@ services:
       retries: 3
     networks:
       - jobfinder-dev
+
+volumes:
+  ollama-models:
 
 networks:
   jobfinder-dev:
