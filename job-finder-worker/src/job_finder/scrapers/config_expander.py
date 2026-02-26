@@ -19,9 +19,12 @@ For API sources, the vendor is auto-detected from config contents:
 - {"url": "...", "fields": {...}} → Full config (preferred)
 """
 
+import logging
 from typing import Any, Dict, Optional, Tuple
 
 from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS, match_platform
+
+_logger = logging.getLogger(__name__)
 
 # Build field mappings from platform_patterns (single source of truth)
 _GREENHOUSE_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api")
@@ -112,7 +115,9 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     # prober or AI agent always get the full field set from platform_patterns.
     if "url" in config and "fields" in config:
         expanded = {**config}
-        expanded["type"] = normalize_source_type(expanded.get("type", source_type))
+        # Always use the (possibly auto-corrected) source_type so that URL-based
+        # type detection actually overrides a stale config.type value.
+        expanded["type"] = normalize_source_type(source_type)
         # Use match_platform() as single source of truth for field enrichment
         platform_result = match_platform(expanded.get("url", ""))
         if platform_result:
@@ -162,8 +167,6 @@ _SOURCE_TYPE_MAP: Dict[str, str] = {
 }
 
 _VALID_SOURCE_TYPES = frozenset(("api", "rss", "html"))
-
-_logger = __import__("logging").getLogger(__name__)
 
 
 def normalize_source_type(source_type: str) -> str:

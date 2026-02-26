@@ -403,7 +403,8 @@ class ScrapeRunner:
                 logger.warning("Failed to save scrape report: %s", e)
 
         # Periodically re-test disabled sources for recovery
-        if trigger == "scheduled":
+        # Only on full scheduled runs (no explicit source_ids)
+        if trigger == "scheduled" and not source_ids:
             self._retry_disabled_sources()
 
         stats["report_id"] = report_id

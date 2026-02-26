@@ -235,13 +235,23 @@ class JobSourcesManager:
             List of source dicts, oldest-disabled first.
         """
         with sqlite_connection(self.db_path) as conn:
+            # Use disabled_at from config JSON (set when source is disabled).
+            # Fall back to updated_at for sources disabled before disabled_at was added.
             rows = conn.execute(
                 """
                 SELECT *
                 FROM job_sources
                 WHERE status = ?
-                  AND updated_at <= datetime('now', ?)
-                ORDER BY updated_at ASC
+                  AND datetime(
+                    COALESCE(
+                      json_extract(config_json, '$.disabled_at'),
+                      updated_at
+                    )
+                  ) <= datetime('now', ?)
+                ORDER BY COALESCE(
+                  json_extract(config_json, '$.disabled_at'),
+                  updated_at
+                ) ASC
                 LIMIT ?
                 """,
                 (
@@ -527,9 +537,10 @@ class JobSourcesManager:
             current_status = SourceStatus(row["status"])
             self._validate_transition(current_status, SourceStatus.DISABLED)
 
-            # Update config with disabled_notes
+            # Update config with disabled_notes and disabled_at
             config = json.loads(row["config_json"]) if row["config_json"] else {}
             config["disabled_notes"] = note
+            config["disabled_at"] = now
 
             conn.execute(
                 """
@@ -582,6 +593,7 @@ class JobSourcesManager:
                 config["disabled_notes"] = f"{existing_notes}\n{note}"
             else:
                 config["disabled_notes"] = note
+            config["disabled_at"] = now
 
             # Merge tags (additive, no duplicates)
             if tags:
