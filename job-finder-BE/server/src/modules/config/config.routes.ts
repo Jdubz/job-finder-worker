@@ -41,45 +41,31 @@ type KnownPayload =
   | Record<string, unknown>
 
 /**
- * Check provider availability based on API keys and CLI auth status.
- * Takes the configured options from DB and adds availability info.
+ * Check provider availability via LiteLLM proxy health.
  *
- * Supported providers:
- * - claude.cli: Uses CLAUDE_CODE_OAUTH_TOKEN
- * - gemini.api: Uses GEMINI_API_KEY or GOOGLE_API_KEY (API key auth only)
+ * All AI calls route through LiteLLM — provider credentials live in the
+ * litellm container, not the API container. We check proxy reachability
+ * and mark all configured providers as available if LiteLLM is healthy.
  */
-function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
+async function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
   if (!configuredOptions) return []
-  const availability: Record<string, { enabled: boolean; reason?: string }> = {}
 
-  // Claude CLI - check CLAUDE_CODE_OAUTH_TOKEN
-  const claudeCliEnabled = !!process.env.CLAUDE_CODE_OAUTH_TOKEN
-  availability['claude/cli'] = {
-    enabled: claudeCliEnabled,
-    reason: claudeCliEnabled ? undefined : 'CLAUDE_CODE_OAUTH_TOKEN not set'
-  }
-
-  // Gemini API - check GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_CLOUD_PROJECT (Vertex AI)
-  const geminiApiEnabled = !!(
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GOOGLE_CLOUD_PROJECT
-  )
-  availability['gemini/api'] = {
-    enabled: geminiApiEnabled,
-    reason: geminiApiEnabled ? undefined : 'GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_CLOUD_PROJECT not set'
+  const baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
+  let litellmHealthy = false
+  try {
+    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) })
+    litellmHealthy = res.ok
+  } catch {
+    // proxy unreachable
   }
 
   return configuredOptions.map((provider) => ({
     ...provider,
-    interfaces: provider.interfaces.map((iface) => {
-      const status = availability[`${provider.value}/${iface.value}`]
-      return {
-        ...iface,
-        enabled: status?.enabled ?? false,
-        reason: status?.reason,
-      }
-    }),
+    interfaces: provider.interfaces.map((iface) => ({
+      ...iface,
+      enabled: litellmHealthy,
+      reason: litellmHealthy ? undefined : 'LiteLLM proxy unreachable',
+    })),
   }))
 }
 
@@ -165,7 +151,7 @@ export function buildConfigRouter() {
 
   router.get(
     '/:id',
-    asyncHandler((req, res) => {
+    asyncHandler(async (req, res) => {
       const id = req.params.id as JobFinderConfigId
       const entry = repo.get(id)
 
@@ -182,7 +168,7 @@ export function buildConfigRouter() {
             ...entry,
             payload: {
               ...aiPayload,
-              options: buildProviderOptionsWithAvailability(aiPayload.options),
+              options: await buildProviderOptionsWithAvailability(aiPayload.options),
             },
           },
         }

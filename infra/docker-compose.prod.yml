@@ -146,8 +146,8 @@ services:
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     networks:
       - jobfinder
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    # No watchtower label — LiteLLM updates should be deliberate, not automatic.
+    # To update: docker compose pull litellm && docker compose up -d litellm
 
   cloudflared:
     image: cloudflare/cloudflared:2024.10.0

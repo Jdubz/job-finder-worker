@@ -9,18 +9,7 @@ describe('cli-health.service', () => {
     vi.resetModules()
     vi.clearAllMocks()
 
-    // Reset environment
     process.env = { ...originalEnv }
-    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
-    delete process.env.ANTHROPIC_API_KEY
-
-    vi.doMock('../logger', () => ({
-      logger: {
-        warn: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn()
-      }
-    }))
 
     const module = await import('./cli-health.service')
     getLocalCliHealth = module.getLocalCliHealth
@@ -29,57 +18,56 @@ describe('cli-health.service', () => {
   afterEach(() => {
     process.env = originalEnv
     vi.resetModules()
+    vi.restoreAllMocks()
   })
 
-  describe('claude (env-based)', () => {
-    it('should return healthy when CLAUDE_CODE_OAUTH_TOKEN is set', async () => {
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = 'test-oauth-token'
+  it('should return healthy when LiteLLM proxy is reachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
-      const result = await getLocalCliHealth()
+    const result = await getLocalCliHealth()
 
-      expect(result.claude.healthy).toBe(true)
-      expect(result.claude.message).toBe('OAuth token configured')
-    })
+    expect(result.claude.healthy).toBe(true)
+    expect(result.claude.message).toBe('LiteLLM proxy healthy')
+  })
 
-    it('should return healthy when ANTHROPIC_API_KEY is set as fallback indicator', async () => {
-      process.env.ANTHROPIC_API_KEY = 'sk-test-api-key'
+  it('should return unhealthy when LiteLLM proxy returns non-200', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }))
 
-      const result = await getLocalCliHealth()
+    const result = await getLocalCliHealth()
 
-      expect(result.claude.healthy).toBe(true)
-      expect(result.claude.message).toContain('API key configured')
-    })
+    expect(result.claude.healthy).toBe(false)
+    expect(result.claude.message).toContain('503')
+  })
 
-    it('should prefer CLAUDE_CODE_OAUTH_TOKEN over ANTHROPIC_API_KEY', async () => {
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = 'test-oauth-token'
-      process.env.ANTHROPIC_API_KEY = 'sk-test-api-key'
+  it('should return unhealthy when LiteLLM proxy is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')))
 
-      const result = await getLocalCliHealth()
+    const result = await getLocalCliHealth()
 
-      expect(result.claude.healthy).toBe(true)
-      expect(result.claude.message).toBe('OAuth token configured')
-    })
+    expect(result.claude.healthy).toBe(false)
+    expect(result.claude.message).toBe('LiteLLM proxy unreachable')
+  })
 
-    it('should return unhealthy when no credentials are set', async () => {
-      delete process.env.CLAUDE_CODE_OAUTH_TOKEN
-      delete process.env.ANTHROPIC_API_KEY
+  it('should only return claude provider key', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
-      const result = await getLocalCliHealth()
+    const result = await getLocalCliHealth()
 
-      expect(result.claude.healthy).toBe(false)
-      expect(result.claude.message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
-    })
+    expect(Object.keys(result)).toEqual(['claude'])
+  })
 
-    it('should only return claude provider (no codex, gemini)', async () => {
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = 'test-oauth-token'
+  it('should use LITELLM_BASE_URL from env', async () => {
+    process.env.LITELLM_BASE_URL = 'http://custom-proxy:9000'
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
 
-      const result = await getLocalCliHealth()
+    // Re-import to pick up new env
+    const module = await import('./cli-health.service')
+    await module.getLocalCliHealth()
 
-      // Should only have claude key
-      expect(Object.keys(result)).toEqual(['claude'])
-      // Should NOT have legacy providers
-      expect('codex' in result).toBe(false)
-      expect('gemini' in result).toBe(false)
-    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://custom-proxy:9000/health',
+      expect.any(Object)
+    )
   })
 })
