@@ -61,8 +61,7 @@ The `infra/` directory contains **templates and development configurations** for
 
    **Worker environment** (`/srv/job-finder/secrets/worker.env`):
    ```bash
-   # AI provider API keys
-   OPENAI_API_KEY="sk-..."
+   # AI provider API keys (used by LiteLLM proxy)
    ANTHROPIC_API_KEY="sk-ant-..."
    GEMINI_API_KEY="..."
 

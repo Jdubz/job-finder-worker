@@ -23,7 +23,7 @@
 # is configured in infra/litellm-config.yaml.
 #
 # Set LITELLM_MASTER_KEY in the host environment or secrets/*.env.
-# Provider API keys (GEMINI_API_KEY, etc.) go in secrets/worker.env.
+# Provider API keys (ANTHROPIC_API_KEY, GEMINI_API_KEY) go in secrets/worker.env.
 #
 # PRODUCTION PATHS:
 # -----------------
@@ -137,7 +137,7 @@ services:
       start_period: 15s
       retries: 3
     env_file:
-      - /srv/job-finder/secrets/worker.env  # GEMINI_API_KEY and other provider keys
+      - /srv/job-finder/secrets/worker.env  # ANTHROPIC_API_KEY, GEMINI_API_KEY
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       TZ: America/Los_Angeles

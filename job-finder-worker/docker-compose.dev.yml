@@ -57,6 +57,7 @@ services:
         read_only: true
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     healthcheck:
