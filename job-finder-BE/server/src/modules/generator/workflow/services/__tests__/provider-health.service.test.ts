@@ -9,17 +9,25 @@ afterAll(() => {
   vi.resetModules()
 })
 
-describe('ensureCliProviderHealthy', () => {
-  it('throws for claude when env var missing', async () => {
-    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
-    const { ensureCliProviderHealthy } = await importWithMocks()
-    await expect(ensureCliProviderHealthy('claude')).rejects.toThrow(/CLAUDE_CODE_OAUTH_TOKEN/)
+describe('ensureLitellmHealthy', () => {
+  it('throws when LiteLLM proxy is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')))
+    const { ensureLitellmHealthy } = await importWithMocks()
+    await expect(ensureLitellmHealthy()).rejects.toThrow(/not reachable/)
+    vi.unstubAllGlobals()
   })
 
-  it('passes for claude when env var set', async () => {
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'token'
-    const { ensureCliProviderHealthy } = await importWithMocks()
-    await expect(ensureCliProviderHealthy('claude')).resolves.toBeUndefined()
-    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+  it('throws when LiteLLM returns non-200', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }))
+    const { ensureLitellmHealthy } = await importWithMocks()
+    await expect(ensureLitellmHealthy()).rejects.toThrow(/HTTP 503/)
+    vi.unstubAllGlobals()
+  })
+
+  it('passes when LiteLLM returns 200', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+    const { ensureLitellmHealthy } = await importWithMocks()
+    await expect(ensureLitellmHealthy()).resolves.toBeUndefined()
+    vi.unstubAllGlobals()
   })
 })

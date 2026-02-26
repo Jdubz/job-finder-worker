@@ -1,17 +1,18 @@
-import type { CliProvider } from './cli-runner'
 import { UserFacingError } from '../generator.workflow.service'
 
 /**
- * Ensure the CLI provider is healthy and ready for use.
- * Only Claude CLI is supported for backend generator tasks.
+ * Ensure AI inference is available by checking LiteLLM proxy health.
  */
-export async function ensureCliProviderHealthy(provider: CliProvider): Promise<void> {
-  // Only Claude CLI is supported
-  if (provider !== 'claude') {
-    throw new UserFacingError(`Unsupported CLI provider: ${provider}. Only 'claude' is supported.`)
-  }
+export async function ensureLitellmHealthy(): Promise<void> {
+  const baseUrl = process.env.LITELLM_BASE_URL || 'http://litellm:4000'
 
-  if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    throw new UserFacingError('Claude CLI not authenticated. Set CLAUDE_CODE_OAUTH_TOKEN for this service scope.')
+  try {
+    const response = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) })
+    if (!response.ok) {
+      throw new UserFacingError(`LiteLLM proxy returned HTTP ${response.status}. AI generation is temporarily unavailable.`)
+    }
+  } catch (err) {
+    if (err instanceof UserFacingError) throw err
+    throw new UserFacingError('AI inference proxy is not reachable. Please try again shortly.')
   }
 }

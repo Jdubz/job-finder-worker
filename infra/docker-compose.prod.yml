@@ -114,6 +114,27 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: job-finder-litellm
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - /srv/job-finder/secrets/worker.env  # GEMINI_API_KEY, CLAUDE_CODE_OAUTH_TOKEN
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      TZ: America/Los_Angeles
+    volumes:
+      - ./infra/litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    networks:
+      - jobfinder
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
   cloudflared:
     image: cloudflare/cloudflared:2024.10.0
     container_name: job-finder-cloudflared

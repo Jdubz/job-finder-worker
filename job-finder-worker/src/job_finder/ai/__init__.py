@@ -1,13 +1,9 @@
 """AI-powered job matching and analysis."""
 
-from job_finder.ai.agent_manager import AgentManager, AgentResult
+from job_finder.ai.inference_client import InferenceClient, AgentResult
+from job_finder.ai.task_router import get_model_for_task
 from job_finder.ai.extraction import JobExtractionResult, JobExtractor
 from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
-from job_finder.ai.providers import (
-    AIProvider,
-    ClaudeCLIProvider,
-    GeminiProvider,
-)
 from job_finder.ai.search_client import (
     BraveSearchClient,
     SearchClient,
@@ -27,15 +23,13 @@ from job_finder.ai.source_analysis_agent import (
 )
 
 __all__ = [
-    "AgentManager",
+    "InferenceClient",
     "AgentResult",
+    "get_model_for_task",
     "AIJobMatcher",
     "JobMatchResult",
     "JobExtractor",
     "JobExtractionResult",
-    "AIProvider",
-    "ClaudeCLIProvider",
-    "GeminiProvider",
     "SourceAnalysisAgent",
     "SourceAnalysisResult",
     "SourceClassification",

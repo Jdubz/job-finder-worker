@@ -205,7 +205,7 @@ def mock_config_loader():
 @pytest.fixture
 def job_processor(queue_manager, mock_config_loader, job_listing_storage):
     """Create job processor with real job_listing_storage."""
-    with patch("job_finder.job_queue.processors.job_processor.AgentManager"):
+    with patch("job_finder.job_queue.processors.job_processor.InferenceClient"):
         with patch("job_finder.job_queue.processors.job_processor.JobExtractor"):
             with patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"):
                 ctx = ProcessorContext(

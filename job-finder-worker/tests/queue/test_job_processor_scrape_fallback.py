@@ -39,7 +39,7 @@ def _make_job_processor():
     ai_matcher = MagicMock()
 
     with patch(
-        "job_finder.job_queue.processors.job_processor.AgentManager",
+        "job_finder.job_queue.processors.job_processor.InferenceClient",
         return_value=MagicMock(),
     ):
         ctx = ProcessorContext(

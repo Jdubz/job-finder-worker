@@ -10,8 +10,8 @@ from job_finder.exceptions import NoAgentsAvailableError
 
 
 def _make_extractor():
-    agent_manager = MagicMock()
-    return PageDataExtractor(agent_manager), agent_manager
+    inference_client = MagicMock()
+    return PageDataExtractor(inference_client), inference_client
 
 
 # ── SSRF URL validation ───────────────────────────────────────────

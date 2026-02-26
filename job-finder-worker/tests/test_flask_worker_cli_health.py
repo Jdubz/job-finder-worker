@@ -1,6 +1,7 @@
-"""Tests for CLI health check functionality in flask_worker.
+"""Tests for LiteLLM health check functionality in flask_worker.
 
-Supported agents: claude.cli, gemini.api
+The worker checks the LiteLLM proxy's /health endpoint to verify
+AI inference is available.
 """
 
 from unittest.mock import MagicMock, patch
@@ -8,172 +9,50 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-class TestCheckCliHealth:
-    """Tests for the check_cli_health function."""
+class TestCheckLitellmHealth:
+    """Tests for the check_litellm_health function."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
         """Import the function fresh for each test."""
-        # Import here to avoid module-level import issues with mocking
         try:
-            from job_finder.flask_worker import check_cli_health
+            from job_finder.flask_worker import check_litellm_health
         except ModuleNotFoundError as exc:  # flask not installed in lightweight envs
             pytest.skip(f"flask not available: {exc}")
 
-        self.check_cli_health = check_cli_health
+        self.check_litellm_health = check_litellm_health
 
-    def test_both_agents_checked(self, tmp_path):
-        """Test that both claude and gemini agents are checked."""
-        # Create a mock service account file for Vertex AI
-        creds_file = tmp_path / "creds.json"
-        creds_file.write_text("{}")
+    @patch("requests.get")
+    def test_healthy_when_proxy_returns_200(self, mock_get):
+        """Test returns healthy when LiteLLM proxy responds with 200."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"status": "healthy"}
+        mock_get.return_value = mock_resp
 
-        with patch.dict(
-            "os.environ",
-            {
-                "CLAUDE_CODE_OAUTH_TOKEN": "test-token-thats-long-enough-to-pass",
-                "GOOGLE_CLOUD_PROJECT": "test-project",
-                "GOOGLE_APPLICATION_CREDENTIALS": str(creds_file),
-            },
-        ):
-            result = self.check_cli_health()
+        result = self.check_litellm_health()
 
-            assert "claude" in result
-            assert "gemini" in result
-            assert "healthy" in result["claude"]
-            assert "message" in result["claude"]
-            assert "healthy" in result["gemini"]
-            assert "message" in result["gemini"]
+        assert result["healthy"] is True
+        assert "healthy" in result["message"].lower()
 
+    @patch("requests.get")
+    def test_unhealthy_when_proxy_returns_error(self, mock_get):
+        """Test returns unhealthy when LiteLLM proxy returns non-200."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 503
+        mock_get.return_value = mock_resp
 
-class TestClaudeCLIConfigCheck:
-    """Tests for Claude CLI config-based health check."""
+        result = self.check_litellm_health()
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Import the function fresh for each test."""
-        try:
-            from job_finder.flask_worker import _check_claude_cli_config
-        except ModuleNotFoundError as exc:
-            pytest.skip(f"flask not available: {exc}")
+        assert result["healthy"] is False
+        assert "503" in result["message"]
 
-        self._check_claude_cli_config = _check_claude_cli_config
+    @patch("requests.get")
+    def test_unhealthy_when_proxy_unreachable(self, mock_get):
+        """Test returns unhealthy when LiteLLM proxy is unreachable."""
+        mock_get.side_effect = ConnectionError("Connection refused")
 
-    def test_healthy_with_oauth_token(self):
-        """Test Claude returns healthy when OAuth token is configured."""
-        with patch.dict(
-            "os.environ", {"CLAUDE_CODE_OAUTH_TOKEN": "a-valid-oauth-token-thats-long-enough"}
-        ):
-            result = self._check_claude_cli_config()
+        result = self.check_litellm_health()
 
-            assert result["healthy"] is True
-            assert "OAuth token configured" in result["message"]
-
-    def test_unhealthy_token_too_short(self):
-        """Test Claude returns unhealthy when token is too short."""
-        with patch.dict("os.environ", {"CLAUDE_CODE_OAUTH_TOKEN": "short"}):
-            result = self._check_claude_cli_config()
-
-            assert result["healthy"] is False
-            assert "invalid" in result["message"].lower()
-
-    def test_unhealthy_no_token(self):
-        """Test Claude returns unhealthy when no token is set."""
-        with patch.dict("os.environ", {}, clear=True):
-            result = self._check_claude_cli_config()
-
-            assert result["healthy"] is False
-            assert "CLAUDE_CODE_OAUTH_TOKEN" in result["message"]
-
-
-class TestGeminiAPIConfigCheck:
-    """Tests for Gemini API (Vertex AI) config-based health check.
-
-    The worker uses Vertex AI for Gemini API access, which requires
-    GOOGLE_CLOUD_PROJECT and Application Default Credentials (ADC).
-    """
-
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Import the function fresh for each test."""
-        try:
-            from job_finder.flask_worker import _check_gemini_api_config
-        except ModuleNotFoundError as exc:
-            pytest.skip(f"flask not available: {exc}")
-
-        self._check_gemini_api_config = _check_gemini_api_config
-
-    def test_unhealthy_without_project(self):
-        """Test Gemini returns unhealthy when GOOGLE_CLOUD_PROJECT is not set."""
-        with patch.dict("os.environ", {}, clear=True):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is False
-            assert "GOOGLE_CLOUD_PROJECT" in result["message"]
-
-    def test_healthy_with_vertex_ai_service_account(self, tmp_path):
-        """Test Gemini returns healthy with Vertex AI and service account file."""
-        creds_file = tmp_path / "creds.json"
-        creds_file.write_text("{}")
-
-        with patch.dict(
-            "os.environ",
-            {
-                "GOOGLE_CLOUD_PROJECT": "test-project",
-                "GOOGLE_APPLICATION_CREDENTIALS": str(creds_file),
-            },
-            clear=True,
-        ):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is True
-            assert "Vertex AI" in result["message"]
-            assert "test-project" in result["message"]
-
-    def test_unhealthy_vertex_ai_missing_creds_file(self):
-        """Test Gemini returns unhealthy when service account file doesn't exist."""
-        with patch.dict(
-            "os.environ",
-            {
-                "GOOGLE_CLOUD_PROJECT": "test-project",
-                "GOOGLE_APPLICATION_CREDENTIALS": "/nonexistent/creds.json",
-            },
-            clear=True,
-        ):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is False
-            assert "not found" in result["message"]
-
-    def test_healthy_with_vertex_ai_adc(self):
-        """Test Gemini returns healthy with Vertex AI ADC."""
-        with (
-            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
-            patch("google.auth.default", return_value=(MagicMock(), "test-project")),
-        ):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is True
-            assert "ADC" in result["message"]
-
-    def test_unhealthy_vertex_ai_no_adc(self):
-        """Test Gemini returns unhealthy when ADC fails."""
-        with (
-            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
-            patch("google.auth.default", side_effect=Exception("No credentials")),
-        ):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is False
-            assert "ADC not configured" in result["message"]
-
-    def test_unhealthy_project_but_no_adc(self):
-        """Test Gemini returns unhealthy when project is set but ADC is missing."""
-        with (
-            patch.dict("os.environ", {"GOOGLE_CLOUD_PROJECT": "test-project"}, clear=False),
-            patch("google.auth.default", side_effect=Exception("No credentials")),
-        ):
-            result = self._check_gemini_api_config()
-
-            assert result["healthy"] is False
-            assert "ADC not configured" in result["message"]
+        assert result["healthy"] is False
+        assert "Cannot reach" in result["message"]

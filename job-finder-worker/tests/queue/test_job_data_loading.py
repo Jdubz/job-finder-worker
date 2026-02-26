@@ -160,7 +160,7 @@ def job_processor(mock_dependencies):
     """Create a JobProcessor with mocked dependencies."""
     with (
         patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"),
-        patch("job_finder.job_queue.processors.job_processor.AgentManager"),
+        patch("job_finder.job_queue.processors.job_processor.InferenceClient"),
     ):
         ctx = ProcessorContext(
             queue_manager=mock_dependencies["queue_manager"],

@@ -1,40 +1,35 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient, type DeepgramClient } from '@deepgram/sdk'
 import { Readable } from 'node:stream'
 import { logger } from '../../logger'
 import { getChatContext, buildSystemPrompt } from './chat.prompts'
+import { InferenceClient } from '../generator/ai/inference-client'
 import type { ChatMessage } from '@shared/types'
 
 export type { ChatMessage }
 
 // Model configuration constants
-const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
 const DEEPGRAM_STT_MODEL = 'nova-2'
 const DEEPGRAM_TTS_MODEL = 'aura-asteria-en'
 
 export class ChatService {
-  private anthropic: Anthropic
+  private inferenceClient: InferenceClient
   private deepgram: DeepgramClient
   private log = logger.child({ module: 'ChatService' })
 
   constructor() {
-    const anthropicKey = process.env.ANTHROPIC_API_KEY
     const deepgramKey = process.env.DEEPGRAM_API_KEY
 
-    if (!anthropicKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is required')
-    }
     if (!deepgramKey) {
       throw new Error('DEEPGRAM_API_KEY environment variable is required')
     }
 
-    this.anthropic = new Anthropic({ apiKey: anthropicKey })
+    this.inferenceClient = new InferenceClient(this.log)
     this.deepgram = createClient(deepgramKey)
   }
 
   /**
-   * Stream a chat response from Claude
-   * Yields text chunks as they arrive
+   * Stream a chat response via LiteLLM proxy.
+   * Yields text chunks as they arrive.
    */
   async *streamChat(messages: ChatMessage[]): AsyncGenerator<string> {
     try {
@@ -42,28 +37,12 @@ export class ChatService {
       const context = await getChatContext()
       const systemPrompt = buildSystemPrompt(context)
 
-      // Create streaming request
-      const stream = this.anthropic.messages.stream({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      })
-
-      // Yield text chunks
-      for await (const event of stream) {
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
-          yield event.delta.text
-        }
-      }
+      yield* this.inferenceClient.streamChat(
+        messages.map((m) => ({ role: m.role, content: m.content })),
+        systemPrompt
+      )
     } catch (error) {
-      this.log.error({ err: error }, 'Claude API error')
+      this.log.error({ err: error }, 'LiteLLM chat stream error')
       throw new Error('Chat service temporarily unavailable')
     }
   }

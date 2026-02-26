@@ -20,8 +20,7 @@ import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt } from './prompts'
-import { AgentManager } from '../ai/agent-manager'
-import { ConfigRepository } from '../../config/config.repository'
+import { InferenceClient, InferenceError } from '../ai/inference-client'
 import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
 import { estimateContentFit, getContentBudget } from './services/content-fit.service'
 
@@ -62,7 +61,7 @@ export interface GenerateDocumentPayload {
 export class GeneratorWorkflowService {
   private readonly userFriendlyError =
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
-  private readonly agentManager: AgentManager
+  private readonly agentManager: InferenceClient
 
   constructor(
     private readonly htmlPdf = new HtmlPdfService(),
@@ -70,10 +69,9 @@ export class GeneratorWorkflowService {
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
-    private readonly configRepo = new ConfigRepository(),
     private readonly log: Logger = logger
   ) {
-    this.agentManager = new AgentManager(this.configRepo, this.log)
+    this.agentManager = new InferenceClient(this.log)
   }
 
   /**
@@ -421,6 +419,7 @@ export class GeneratorWorkflowService {
 
   private buildUserMessage(error: unknown, fallback: string): string {
     if (error instanceof UserFacingError) return error.message
+    if (error instanceof InferenceError) return error.message
     return fallback
   }
 

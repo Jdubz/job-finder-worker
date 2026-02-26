@@ -8,20 +8,20 @@ from job_finder.ai.matcher import AIJobMatcher, JobMatchResult
 
 
 @pytest.fixture
-def mock_agent_manager():
-    """Create a mock AgentManager."""
-    manager = Mock()
-    manager.execute.return_value = Mock(
+def mock_inference_client():
+    """Create a mock InferenceClient."""
+    client = Mock()
+    client.execute.return_value = Mock(
         text='{"matched_skills": ["Python"], "missing_skills": ["Go"]}'
     )
-    manager.generate = manager.execute  # alias for legacy tests
-    return manager
+    client.generate = client.execute  # alias for legacy tests
+    return client
 
 
 @pytest.fixture
-def mock_provider(mock_agent_manager):
-    """Backward-compatible alias for agent manager-based provider."""
-    return mock_agent_manager
+def mock_provider(mock_inference_client):
+    """Backward-compatible alias for inference client-based provider."""
+    return mock_inference_client
 
 
 # mock_profile and sample_job fixtures now provided by tests/conftest.py
@@ -30,21 +30,21 @@ def mock_provider(mock_agent_manager):
 class TestAIJobMatcherInit:
     """Test AI matcher initialization."""
 
-    def test_init_stores_config(self, mock_agent_manager, mock_profile):
+    def test_init_stores_config(self, mock_inference_client, mock_profile):
         """Test matcher stores configuration."""
         matcher = AIJobMatcher(
-            agent_manager=mock_agent_manager,
+            agent_manager=mock_inference_client,
             profile=mock_profile,
             min_match_score=80,
         )
 
-        assert matcher.agent_manager == mock_agent_manager
+        assert matcher.agent_manager == mock_inference_client
         assert matcher.profile == mock_profile
         assert matcher.min_match_score == 80
 
-    def test_init_with_defaults(self, mock_agent_manager, mock_profile):
+    def test_init_with_defaults(self, mock_inference_client, mock_profile):
         """Test matcher initialization with default values."""
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
 
         assert matcher.min_match_score == 50
 
@@ -57,7 +57,7 @@ class TestAIJobMatcherInit:
 class TestBuildMatchResult:
     """Test building match results."""
 
-    def test_build_match_result(self, mock_agent_manager, mock_profile, sample_job):
+    def test_build_match_result(self, mock_inference_client, mock_profile, sample_job):
         """Test building match result from analysis."""
         match_analysis = {
             "matched_skills": ["Python", "AWS"],
@@ -69,7 +69,7 @@ class TestBuildMatchResult:
         }
         intake_data = {"job_id": "123", "target_summary": "Test summary"}
 
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
         result = matcher._build_match_result(sample_job, match_analysis, 90, intake_data)
 
         assert isinstance(result, JobMatchResult)
@@ -85,24 +85,24 @@ class TestBuildMatchResult:
 class TestAnalyzeMatch:
     """Test AI match analysis."""
 
-    def test_analyze_match_success(self, mock_agent_manager, mock_profile, sample_job):
+    def test_analyze_match_success(self, mock_inference_client, mock_profile, sample_job):
         """Test successful match analysis."""
-        mock_agent_manager.execute.return_value = Mock(text="""
+        mock_inference_client.execute.return_value = Mock(text="""
             {
                 "matched_skills": ["Python", "AWS"],
                 "missing_skills": ["Go"]
             }
             """)
 
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
 
         assert analysis is not None
         assert "Python" in analysis["matched_skills"]
-        mock_agent_manager.execute.assert_called_once()
+        mock_inference_client.execute.assert_called_once()
 
     def test_analyze_match_propagates_ai_provider_error(
-        self, mock_agent_manager, mock_profile, sample_job
+        self, mock_inference_client, mock_profile, sample_job
     ):
         """Test that AIProviderError is re-raised instead of being caught.
 
@@ -111,19 +111,19 @@ class TestAnalyzeMatch:
         """
         from job_finder.exceptions import AIProviderError
 
-        mock_agent_manager.execute.side_effect = AIProviderError("Claude CLI failed")
+        mock_inference_client.execute.side_effect = AIProviderError("Claude CLI failed")
 
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
 
         # Should raise AIProviderError, not return None
         with pytest.raises(AIProviderError, match="Claude CLI failed"):
             matcher._analyze_match(sample_job)
 
     def test_analyze_match_extracts_from_markdown(
-        self, mock_agent_manager, mock_profile, sample_job
+        self, mock_inference_client, mock_profile, sample_job
     ):
         """Test JSON extraction from markdown code blocks."""
-        mock_agent_manager.execute.return_value = Mock(text="""
+        mock_inference_client.execute.return_value = Mock(text="""
             Here's the analysis:
             ```json
             {
@@ -133,33 +133,33 @@ class TestAnalyzeMatch:
             ```
             """)
 
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
 
         assert analysis is not None
         assert "Python" in analysis["matched_skills"]
 
-    def test_analyze_match_handles_invalid_json(self, mock_agent_manager, mock_profile, sample_job):
+    def test_analyze_match_handles_invalid_json(self, mock_inference_client, mock_profile, sample_job):
         """Test handling of invalid JSON response."""
-        mock_agent_manager.execute.return_value = Mock(text="This is not valid JSON")
+        mock_inference_client.execute.return_value = Mock(text="This is not valid JSON")
 
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
 
         assert analysis is None
 
     def test_analyze_match_validates_required_fields(
-        self, mock_agent_manager, mock_profile, sample_job
+        self, mock_inference_client, mock_profile, sample_job
     ):
         """Test validation of required fields in response."""
-        mock_agent_manager.execute.return_value = Mock(text="""
+        mock_inference_client.execute.return_value = Mock(text="""
             {
                 "match_score": 85,
                 "matched_skills": ["Python"]
             }
             """)
 
-        matcher = AIJobMatcher(agent_manager=mock_agent_manager, profile=mock_profile)
+        matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
 
         # Missing required field (missing_skills)

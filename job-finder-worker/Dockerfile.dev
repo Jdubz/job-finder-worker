@@ -5,12 +5,8 @@
 # - Full Python dependencies including test/dev tools
 # - Volume mounts override code for live editing
 # - Debug-friendly environment variables
+# - AI inference routes through LiteLLM proxy
 #
-# Stage 1: build Claude CLI without leaving npm in final image
-FROM node:20-slim AS cli-builder
-RUN npm install -g @anthropic-ai/claude-code@2.0.52
-
-# Stage 2: runtime image
 FROM python:3.12-slim
 
 # Set working directory
@@ -48,11 +44,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user matching API container (node user, uid 1000)
 RUN groupadd --gid 1000 node \
     && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
-
-# Copy Claude CLI + node runtime from builder (no npm in final image)
-COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
-RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories with proper ownership
 RUN mkdir -p /home/node/.cache /data/sqlite \

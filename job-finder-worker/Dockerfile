@@ -1,9 +1,5 @@
 # Multi-stage build for Job Finder (production)
-
-# Stage 0: build Claude CLI without leaving npm in final image
-# Note: Only claude.cli is supported for CLI interface. gemini.api uses the Google Generative AI SDK.
-FROM node:20-slim AS cli-builder
-RUN npm install -g @anthropic-ai/claude-code@2.0.52
+# AI inference routes through LiteLLM proxy — no direct provider SDKs or CLIs needed
 
 # Stage 1: build Python deps and install Playwright browsers
 FROM python:3.12-slim as builder
@@ -63,12 +59,6 @@ COPY --from=builder /root/.local /home/node/.local
 
 # Copy Playwright browser cache from builder (Chromium installed via 'playwright install chromium')
 COPY --from=builder /root/.cache/ms-playwright /home/node/.cache/ms-playwright
-
-# Copy Claude CLI + minimal node runtime (no npm in final image)
-# Note: Only claude.cli is supported for CLI interface. gemini.api uses Vertex AI SDK.
-COPY --from=cli-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=cli-builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
-RUN printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js "$@"\n' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
 
 # Create directories for data with proper ownership
 RUN mkdir -p /home/node/.cache /data/sqlite \

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from job_finder.ai.agent_manager import AgentManager
+    from job_finder.ai.inference_client import InferenceClient
 
 # Type aliases matching TypeScript definitions
 SeniorityLevel = Literal["junior", "mid", "senior", "staff", "lead", "principal", "unknown"]
@@ -324,7 +324,7 @@ class JobExtractor:
     - Employment type
     """
 
-    def __init__(self, agent_manager: "AgentManager"):
+    def __init__(self, agent_manager: "InferenceClient"):
         """
         Initialize the extractor.
 

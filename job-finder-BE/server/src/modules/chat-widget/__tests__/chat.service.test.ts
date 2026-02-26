@@ -5,13 +5,11 @@ import type { ChatMessage } from '@shared/types'
 // Mock environment variables before importing the service
 const originalEnv = process.env
 
-// Mock Anthropic SDK
-const mockAnthropicStream = vi.fn()
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: {
-      stream: mockAnthropicStream,
-    },
+// Mock InferenceClient (replaces Anthropic SDK)
+const mockStreamChat = vi.fn()
+vi.mock('../../generator/ai/inference-client', () => ({
+  InferenceClient: vi.fn().mockImplementation(() => ({
+    streamChat: mockStreamChat,
   })),
 }))
 
@@ -43,10 +41,9 @@ vi.mock('../chat.prompts', () => ({
 describe('ChatService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Set required environment variables
+    // Set required environment variables (only DEEPGRAM_API_KEY is required now)
     process.env = {
       ...originalEnv,
-      ANTHROPIC_API_KEY: 'test-anthropic-key',
       DEEPGRAM_API_KEY: 'test-deepgram-key',
     }
     // Reset module cache to allow fresh imports
@@ -58,16 +55,6 @@ describe('ChatService', () => {
   })
 
   describe('constructor', () => {
-    it('throws error when ANTHROPIC_API_KEY is missing', async () => {
-      delete process.env.ANTHROPIC_API_KEY
-      vi.resetModules()
-
-      await expect(async () => {
-        const { ChatService } = await import('../chat.service')
-        new ChatService()
-      }).rejects.toThrow('ANTHROPIC_API_KEY environment variable is required')
-    })
-
     it('throws error when DEEPGRAM_API_KEY is missing', async () => {
       delete process.env.DEEPGRAM_API_KEY
       vi.resetModules()
@@ -86,19 +73,10 @@ describe('ChatService', () => {
   })
 
   describe('streamChat', () => {
-    it('yields text chunks from Claude stream', async () => {
-      const mockEvents = [
-        { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello' } },
-        { type: 'content_block_delta', delta: { type: 'text_delta', text: ' world' } },
-        { type: 'message_stop' },
-      ]
-
-      mockAnthropicStream.mockReturnValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const event of mockEvents) {
-            yield event
-          }
-        },
+    it('yields text chunks from LiteLLM stream', async () => {
+      mockStreamChat.mockImplementation(async function* () {
+        yield 'Hello'
+        yield ' world'
       })
 
       const { ChatService } = await import('../chat.service')
@@ -113,11 +91,9 @@ describe('ChatService', () => {
       expect(chunks).toEqual(['Hello', ' world'])
     })
 
-    it('calls Anthropic with correct parameters', async () => {
-      mockAnthropicStream.mockReturnValue({
-        [Symbol.asyncIterator]: async function* () {
-          yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hi' } }
-        },
+    it('delegates to InferenceClient.streamChat with correct parameters', async () => {
+      mockStreamChat.mockImplementation(async function* () {
+        yield 'Hi'
       })
 
       const { ChatService } = await import('../chat.service')
@@ -133,20 +109,18 @@ describe('ChatService', () => {
         // consume chunks
       }
 
-      expect(mockAnthropicStream).toHaveBeenCalledWith({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: 'Test system prompt',
-        messages: [
+      expect(mockStreamChat).toHaveBeenCalledWith(
+        [
           { role: 'user', content: 'Hello' },
           { role: 'assistant', content: 'Hi there!' },
           { role: 'user', content: 'How are you?' },
         ],
-      })
+        'Test system prompt'
+      )
     })
 
     it('throws user-friendly error on API failure', async () => {
-      mockAnthropicStream.mockImplementation(() => {
+      mockStreamChat.mockImplementation(async function* () {
         throw new Error('API rate limit exceeded')
       })
 
@@ -159,36 +133,6 @@ describe('ChatService', () => {
           // consume chunks
         }
       }).rejects.toThrow('Chat service temporarily unavailable')
-    })
-
-    it('filters non-text-delta events', async () => {
-      const mockEvents = [
-        { type: 'message_start' },
-        { type: 'content_block_start' },
-        { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Only this' } },
-        { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{}' } },
-        { type: 'content_block_stop' },
-        { type: 'message_stop' },
-      ]
-
-      mockAnthropicStream.mockReturnValue({
-        [Symbol.asyncIterator]: async function* () {
-          for (const event of mockEvents) {
-            yield event
-          }
-        },
-      })
-
-      const { ChatService } = await import('../chat.service')
-      const service = new ChatService()
-      const messages: ChatMessage[] = [{ role: 'user', content: 'Hi' }]
-
-      const chunks: string[] = []
-      for await (const chunk of service.streamChat(messages)) {
-        chunks.push(chunk)
-      }
-
-      expect(chunks).toEqual(['Only this'])
     })
   })
 

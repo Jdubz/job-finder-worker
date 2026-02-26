@@ -20,7 +20,7 @@ from job_finder.logging_config import format_company_name
 from job_finder.settings import get_text_limits
 
 if TYPE_CHECKING:
-    from job_finder.ai.agent_manager import AgentManager
+    from job_finder.ai.inference_client import InferenceClient
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class CompanyInfoFetcher:
 
     def __init__(
         self,
-        agent_manager: Optional["AgentManager"] = None,
+        agent_manager: Optional["InferenceClient"] = None,
         db_path: Optional[str] = None,
         sources_manager=None,
     ):

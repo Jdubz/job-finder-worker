@@ -532,15 +532,15 @@ class TestExtractWithRepair:
     """extract_with_repair() does a repair pass when confidence is low."""
 
     def _make_extractor(self, initial_result, repair_result=None):
-        """Create extractor with mocked agent_manager."""
-        agent_manager = MagicMock()
-        extractor = JobExtractor(agent_manager)
+        """Create extractor with mocked inference_client."""
+        inference_client = MagicMock()
+        extractor = JobExtractor(inference_client)
 
         # First call returns initial, second call returns repair
         responses = [MagicMock(text="{}")]
         if repair_result:
             responses.append(MagicMock(text="{}"))
-        agent_manager.execute.side_effect = responses
+        inference_client.execute.side_effect = responses
 
         # Patch _parse_response to return our predetermined results
         results = [initial_result]
@@ -591,7 +591,7 @@ class TestExtractWithRepair:
         extractor = self._make_extractor(initial, repair)
         result = extractor.extract_with_repair("Title", "Description")
 
-        # Should have called agent_manager twice
+        # Should have called inference_client twice
         assert extractor.agent_manager.execute.call_count == 2
         # Merged values should be present
         assert result.seniority == "senior"
@@ -605,8 +605,8 @@ class TestExtractWithRepair:
         )
         initial.confidence = initial.compute_confidence()
 
-        agent_manager = MagicMock()
-        extractor = JobExtractor(agent_manager)
+        inference_client = MagicMock()
+        extractor = JobExtractor(inference_client)
 
         # First call succeeds, second raises
         call_count = [0]
@@ -617,7 +617,7 @@ class TestExtractWithRepair:
                 return MagicMock(text="{}")
             raise Exception("API error")
 
-        agent_manager.execute.side_effect = mock_execute
+        inference_client.execute.side_effect = mock_execute
         parse_results = [initial]
         extractor._parse_response = MagicMock(side_effect=parse_results)
 
