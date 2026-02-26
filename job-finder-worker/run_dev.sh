@@ -23,7 +23,7 @@ export FLASK_ENV=development
 export WORKER_PORT=${WORKER_PORT:-5555}
 export WORKER_HOST=${WORKER_HOST:-127.0.0.1}
 export QUEUE_WORKER_LOG_FILE=${QUEUE_WORKER_LOG_FILE:-logs/worker.log}
-export LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://localhost:4000/v1}
+export LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://localhost:4000}
 export PYTHONPATH="${PWD}/src:${PYTHONPATH}"
 
 # Create logs directory

@@ -66,7 +66,7 @@ describe('cli-health.service', () => {
     await module.getLocalCliHealth()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://custom-proxy:9000/health',
+      'http://custom-proxy:9000/health/readiness',
       expect.any(Object)
     )
   })

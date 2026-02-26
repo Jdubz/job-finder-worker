@@ -54,7 +54,7 @@ export class InferenceClient {
   private readonly timeoutMs: number
 
   constructor(private readonly log: Logger = logger) {
-    this.baseUrl = process.env.LITELLM_BASE_URL || 'http://litellm:4000'
+    this.baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
     this.apiKey = process.env.LITELLM_MASTER_KEY || ''
     // LITELLM_TIMEOUT is in seconds (matching Python client); convert to ms
     this.timeoutMs = Number(process.env.LITELLM_TIMEOUT || '120') * 1000

@@ -53,7 +53,7 @@ async function buildProviderOptionsWithAvailability(configuredOptions?: AISettin
   const baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
   let litellmHealthy = false
   try {
-    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) })
+    const res = await fetch(`${baseUrl}/health/readiness`, { signal: AbortSignal.timeout(5000) })
     litellmHealthy = res.ok
   } catch {
     // proxy unreachable

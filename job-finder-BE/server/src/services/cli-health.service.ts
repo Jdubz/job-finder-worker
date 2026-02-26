@@ -13,7 +13,7 @@ export async function getLocalCliHealth(): Promise<CliHealthMap> {
   const baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
 
   try {
-    const response = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) })
+    const response = await fetch(`${baseUrl}/health/readiness`, { signal: AbortSignal.timeout(5000) })
     if (response.ok) {
       return {
         claude: { healthy: true, message: 'LiteLLM proxy healthy' },

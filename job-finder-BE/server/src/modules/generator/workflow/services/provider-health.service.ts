@@ -7,7 +7,7 @@ export async function ensureLitellmHealthy(): Promise<void> {
   const baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
 
   try {
-    const response = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) })
+    const response = await fetch(`${baseUrl}/health/readiness`, { signal: AbortSignal.timeout(5000) })
     if (!response.ok) {
       throw new UserFacingError(`LiteLLM proxy returned HTTP ${response.status}. AI generation is temporarily unavailable.`)
     }

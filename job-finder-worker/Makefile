@@ -136,7 +136,7 @@ shell: ## Start Python shell with app context
 check-env: ## Check environment variables
 	@echo "$(CYAN)Checking environment...$(RESET)"
 	@echo "SQLITE_DB_PATH: $$SQLITE_DB_PATH"
-	@echo "LITELLM_BASE_URL: $${LITELLM_BASE_URL:-not set (default: http://localhost:4000/v1)}"
+	@echo "LITELLM_BASE_URL: $${LITELLM_BASE_URL:-not set (default: http://localhost:4000)}"
 	@echo "LITELLM_MASTER_KEY: $$([ -n "$$LITELLM_MASTER_KEY" ] && echo 'Set' || echo 'Not set')"
 
 # Documentation
