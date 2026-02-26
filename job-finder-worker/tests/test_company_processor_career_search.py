@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from job_finder.ai.search_client import SearchResult
-from job_finder.ai.agent_manager import NoAgentsAvailableError
+from job_finder.exceptions import NoAgentsAvailableError
 from job_finder.job_queue.models import ProcessorContext
 from job_finder.job_queue.processors.company_processor import CompanyProcessor
 
@@ -188,8 +188,8 @@ class TestAgentSelectCareerUrl:
 
     def test_agent_overrides_heuristic(self, company_processor):
         """Agent result replaces heuristic choice."""
-        company_processor.agent_manager = Mock()
-        company_processor.agent_manager.execute.return_value = Mock(
+        company_processor.inference_client = Mock()
+        company_processor.inference_client.execute.return_value = Mock(
             text='{"best_url":"https://boards.greenhouse.io/acme"}'
         )
         results = [
@@ -202,12 +202,12 @@ class TestAgentSelectCareerUrl:
         )
 
         assert url == "https://boards.greenhouse.io/acme"
-        company_processor.agent_manager.execute.assert_called_once()
+        company_processor.inference_client.execute.assert_called_once()
 
     def test_agent_unavailable_returns_none(self, company_processor):
         """NoAgentsAvailableError is handled gracefully."""
-        company_processor.agent_manager = Mock()
-        company_processor.agent_manager.execute.side_effect = NoAgentsAvailableError(
+        company_processor.inference_client = Mock()
+        company_processor.inference_client.execute.side_effect = NoAgentsAvailableError(
             "unavailable", task_type="extraction", tried_agents=[]
         )
         results = [SearchResult(url="https://example.com/jobs", title="Jobs", snippet="")]
@@ -221,8 +221,8 @@ class TestAgentSelectCareerUrl:
     def test_json_decode_error_warns_and_returns_none(self, company_processor, caplog):
         """Malformed agent response is warned and returns None."""
         caplog.set_level("WARNING")
-        company_processor.agent_manager = Mock()
-        company_processor.agent_manager.execute.return_value = Mock(text="not json")
+        company_processor.inference_client = Mock()
+        company_processor.inference_client.execute.return_value = Mock(text="not json")
         results = [SearchResult(url="https://example.com/jobs", title="Jobs", snippet="")]
 
         url = company_processor._agent_select_career_url(
@@ -233,8 +233,8 @@ class TestAgentSelectCareerUrl:
         assert any("Failed to decode agent JSON response" in rec.message for rec in caplog.records)
 
     def test_returns_none_when_no_agent(self, company_processor):
-        """If agent manager missing, returns None."""
-        company_processor.agent_manager = None
+        """If inference client missing, returns None."""
+        company_processor.inference_client = None
         results = [SearchResult(url="https://example.com/jobs", title="Jobs", snippet="")]
 
         url = company_processor._agent_select_career_url("Acme", results, heuristic_choice=None)

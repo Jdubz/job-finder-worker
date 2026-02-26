@@ -17,13 +17,10 @@ pyyaml>=6.0.0
 # Database (optional)
 sqlalchemy>=2.0.0
 
-# AI Integration
-anthropic>=0.40.0
+# AI Integration (via LiteLLM proxy — OpenAI SDK is the client)
 openai>=1.54.0
 pydantic>=2.10.0
 tiktoken>=0.8.0
-google-genai>=1.0.0  # Gemini API (use GEMINI_API_KEY for simple auth)
-google-auth>=2.0.0   # Required dependency; only used when Vertex AI auth mode is configured
 
 # Timezone/Geolocation
 geopy>=2.4.0

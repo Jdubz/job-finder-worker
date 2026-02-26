@@ -21,7 +21,7 @@ from job_finder.exceptions import AIProviderError
 from job_finder.profile.schema import Profile
 
 if TYPE_CHECKING:
-    from job_finder.ai.agent_manager import AgentManager
+    from job_finder.ai.inference_client import InferenceClient
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class AIJobMatcher:
 
     def __init__(
         self,
-        agent_manager: "AgentManager",
+        agent_manager: "InferenceClient",
         profile: Profile,
         min_match_score: int = 50,
         company_weights: Optional[Dict[str, Any]] = None,

@@ -31,7 +31,7 @@ export interface PromptConfig {
 // -----------------------------------------------------------
 
 /** Supported AI providers */
-export type AIProviderType = "claude" | "gemini"
+export type AIProviderType = "claude" | "gemini" | "local"
 
 /** Interface types for connecting to providers */
 export type AIInterfaceType = "cli" | "api"
@@ -92,13 +92,19 @@ export interface AgentConfig {
   dailyUsage: number
   /** Scope-specific runtime state (auth/health per service) */
   runtimeState: Record<AgentScope, AgentRuntimeState>
-  /** Auth requirements checked on AgentManager initialization */
+  /** Auth requirements for health checks */
   authRequirements: AgentAuthRequirements
 }
 
-/** AI Settings with agent manager configuration */
+/**
+ * AI Settings configuration.
+ *
+ * Provider routing, fallbacks, retries, and budget tracking are now handled
+ * by the LiteLLM proxy. This config is kept for backward compatibility,
+ * frontend display, and cron-based agent reset.
+ */
 export interface AISettings {
-  /** Configured agents keyed by agent ID (e.g., "claude.cli", "gemini.api") */
+  /** Configured agents keyed by agent ID (e.g., "claude.cli", "gemini.api", "local.api") */
   agents: Partial<Record<AgentId, AgentConfig>>
 
   /** Fallback chains per task type - ordered list of agent IDs to try */
@@ -108,9 +114,8 @@ export interface AISettings {
   modelRates: Record<string, number>
 
   /**
-   * @deprecated Backend uses AgentManager with taskFallbacks['document'] for provider selection.
+   * @deprecated Provider selection is now handled by LiteLLM proxy.
    * This field is kept for backwards compatibility and frontend display only.
-   * Do NOT use this for provider selection in backend code.
    */
   documentGenerator?: {
     selected?: {

@@ -1,0 +1,47 @@
+# =============================================================================
+# LiteLLM Proxy Configuration — Job Finder (Development)
+# =============================================================================
+#
+# Dev-specific config: Ollama is a Docker service on the same network.
+# Cloud providers (Claude, Gemini) are available as fallbacks if API keys are set.
+#
+# MODEL ROUTING:
+# ──────────────
+#   local-extract    → Ollama Llama 3.1 8B (Docker service, no cost)
+#   claude-document  → Claude Sonnet (via API key)
+#   gemini-general   → Gemini 2.5 Flash (via API key)
+#
+# =============================================================================
+
+model_list:
+  # ── Local extraction/analysis (primary for dev) ───────────────────────────
+  # Ollama Llama 3.1 8B — zero cost, runs in Docker
+  - model_name: local-extract
+    litellm_params:
+      model: openai/llama3.1:8b
+      api_base: http://ollama:11434/v1
+      api_key: none
+
+  # ── Document generation ─────────────────────────────────────────────────────
+  # Claude via standard API key
+  - model_name: claude-document
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ── General-purpose fallback ────────────────────────────────────────────────
+  # Gemini Flash — fast, cheap, good for extraction and analysis
+  - model_name: gemini-general
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+litellm_settings:
+  num_retries: 2
+  request_timeout: 120
+  fallbacks:
+    - {"claude-document": ["gemini-general", "local-extract"]}
+    - {"local-extract": ["gemini-general", "claude-document"]}
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from job_finder.ai import AIJobMatcher
-from job_finder.ai.agent_manager import AgentManager
+from job_finder.ai.inference_client import InferenceClient
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
 from job_finder.profile import SQLiteProfileLoader
@@ -155,100 +155,22 @@ def _extract_email_from_jwt(id_token: str) -> Optional[str]:
         return None
 
 
-def _check_claude_cli_config() -> Dict[str, Any]:
-    """Check Claude CLI auth by inspecting environment variables.
+def check_litellm_health() -> Dict[str, Any]:
+    """Check LiteLLM proxy health.
 
-    Claude CLI uses CLAUDE_CODE_OAUTH_TOKEN for authentication.
-    This is a lightweight check that doesn't run any CLI commands.
+    Makes a lightweight GET to the proxy's /health endpoint.
+    Does not consume any AI provider quota.
     """
-    oauth_token = os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
+    import requests as _requests
 
-    if oauth_token:
-        # Token exists - check if it looks valid (has content)
-        if len(oauth_token.strip()) > 20:
-            return {
-                "healthy": True,
-                "message": "OAuth token configured",
-            }
-        return {
-            "healthy": False,
-            "message": "Claude CLI OAuth token appears invalid (too short)",
-        }
-
-    return {
-        "healthy": False,
-        "message": "Claude CLI not configured: CLAUDE_CODE_OAUTH_TOKEN not set",
-    }
-
-
-def _check_gemini_api_config() -> Dict[str, Any]:
-    """Check Gemini API auth by inspecting environment variables.
-
-    The worker uses Vertex AI for Gemini API access, which requires:
-    - GOOGLE_CLOUD_PROJECT: GCP project ID
-    - Application Default Credentials (ADC) via one of:
-      - GOOGLE_APPLICATION_CREDENTIALS pointing to service account JSON
-      - gcloud auth application-default login
-      - GCE/Cloud Run metadata server (when running on GCP)
-
-    This is a lightweight check that doesn't make API calls.
-    """
-    project = os.getenv("GOOGLE_CLOUD_PROJECT")
-    if not project:
-        return {
-            "healthy": False,
-            "message": "Gemini API (Vertex AI) not configured: GOOGLE_CLOUD_PROJECT not set",
-        }
-
-    # Vertex AI requires ADC - try to detect if credentials are available
-    creds_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if creds_file:
-        if Path(creds_file).exists():
-            return {
-                "healthy": True,
-                "message": f"Vertex AI configured (service account: {project})",
-            }
-        return {
-            "healthy": False,
-            "message": f"Vertex AI service account file not found: {creds_file}",
-        }
-
-    # ADC might still work via gcloud or metadata server
-    # Check if google-auth can find default credentials
+    base = os.getenv("LITELLM_BASE_URL", "http://litellm:4000").rstrip("/")
     try:
-        import google.auth
-
-        google.auth.default()
-        return {
-            "healthy": True,
-            "message": f"Vertex AI configured (ADC: {project})",
-        }
-    except ImportError:
-        return {
-            "healthy": False,
-            "message": "Vertex AI requires google-auth package",
-        }
-    except Exception:
-        return {
-            "healthy": False,
-            "message": "Vertex AI ADC not configured (run 'gcloud auth application-default login')",
-        }
-
-
-def check_cli_health() -> Dict[str, Dict[str, Any]]:
-    """Run lightweight auth/availability checks for supported agents.
-
-    Supported agents: claude.cli, gemini.api
-
-    Claude CLI uses environment-based checks (CLAUDE_CODE_OAUTH_TOKEN).
-    Gemini API (via Vertex AI) checks for GOOGLE_CLOUD_PROJECT and ADC credentials.
-
-    Both checks avoid running commands or consuming API quota.
-    """
-    return {
-        "claude": _check_claude_cli_config(),
-        "gemini": _check_gemini_api_config(),
-    }
+        resp = _requests.get(f"{base}/health/readiness", timeout=5)
+        if resp.status_code == 200:
+            return {"healthy": True, "message": "LiteLLM proxy healthy", "details": resp.json()}
+        return {"healthy": False, "message": f"LiteLLM returned HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"healthy": False, "message": f"Cannot reach LiteLLM proxy: {e}"}
 
 
 def reset_stuck_processing_items(
@@ -332,8 +254,8 @@ def load_config() -> Dict[str, Any]:
 def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
     """Reload dynamic settings from the database into in-memory components.
 
-    Note: AgentManager reads fresh config on each call, so AI provider settings
-    don't need explicit reloading here.
+    Note: InferenceClient is stateless (routes through LiteLLM), so AI provider
+    settings don't need explicit reloading here.
     """
     # Load match policy (min_match_score comes from deterministic scoring)
     try:
@@ -385,22 +307,22 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
             preferences=None,
         )
 
-    # Initialize config loader and agent manager
+    # Initialize config loader and inference client (LiteLLM proxy)
     config_loader = ConfigLoader(db_path)
-    agent_manager = AgentManager(config_loader)
+    inference_client = InferenceClient()
 
     # Get match policy (deterministic scoring settings) - required, fail loud
     match_policy = config_loader.get_match_policy()
 
     ai_matcher = AIJobMatcher(
-        agent_manager=agent_manager,
+        agent_manager=inference_client,
         profile=profile,
         min_match_score=match_policy["minScore"],
     )
 
-    # Company info fetcher uses AgentManager for AI calls
+    # Company info fetcher uses InferenceClient for AI calls
     company_info_fetcher = CompanyInfoFetcher(
-        agent_manager=agent_manager,
+        agent_manager=inference_client,
         db_path=db_path,
         sources_manager=job_sources_manager,
     )
@@ -725,9 +647,8 @@ def health():
 
 @app.route("/cli/health")
 def cli_health():
-    """Return health for supported agents (claude.cli, gemini.api)."""
-
-    return jsonify({"providers": check_cli_health()})
+    """Return LiteLLM proxy health status."""
+    return jsonify({"litellm": check_litellm_health()})
 
 
 @app.route("/status")

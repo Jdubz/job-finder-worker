@@ -5,7 +5,7 @@ from job_finder.company_info_fetcher import CompanyInfoFetcher
 
 @pytest.fixture
 def fetcher():
-    # No agent/search clients needed for these helper methods
+    # No AI client/search clients needed for these helper methods
     return CompanyInfoFetcher(agent_manager=None)
 
 

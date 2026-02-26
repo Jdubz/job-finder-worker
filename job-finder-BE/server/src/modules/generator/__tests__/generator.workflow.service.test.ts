@@ -4,39 +4,8 @@ import type { GeneratorWorkflowRepository, GeneratorRequestRecord, GeneratorArti
 import type { PersonalInfoStore } from '../personal-info.store'
 import type { ContentItemRepository } from '../../content-items/content-item.repository'
 import { storageService } from '../workflow/services/storage.service'
-import type { PersonalInfo, ContentItem, AISettings } from '@shared/types'
-import type { ConfigRepository } from '../../config/config.repository'
-import * as AgentManagerModule from '../ai/agent-manager'
-
-// Test fixture for AISettings (no defaults - explicit test data)
-const TEST_AI_SETTINGS: AISettings = {
-  agents: {
-    'gemini.api': {
-      provider: 'gemini',
-      interface: 'api',
-      defaultModel: 'gemini-2.0-flash',
-      dailyBudget: 100,
-      dailyUsage: 0,
-      runtimeState: {
-        worker: { enabled: true, reason: null },
-        backend: { enabled: true, reason: null }
-      },
-      authRequirements: {
-        type: 'api',
-        requiredEnv: ['PATH']
-      }
-    },
-  },
-  taskFallbacks: {
-    extraction: ['gemini.api'],
-    analysis: ['gemini.api'],
-    document: ['gemini.api'],
-  },
-  modelRates: {
-    'gemini-2.0-flash': 0.5,
-  },
-  options: []
-}
+import type { PersonalInfo, ContentItem } from '@shared/types'
+import * as InferenceClientModule from '../ai/inference-client'
 
 function makeAgentManager() {
   return {
@@ -84,20 +53,21 @@ function makeAgentManager() {
   }
 }
 
-vi.mock('../ai/agent-manager', () => {
+vi.mock('../ai/inference-client', () => {
   const instances: any[] = []
   let lastManager: any = null
-  const AgentManager = vi.fn(() => {
+  const InferenceClient = vi.fn(() => {
     const manager = makeAgentManager()
     instances.push(manager)
     lastManager = manager
     return manager
   })
+  const InferenceError = class extends Error {}
   const reset = () => {
     instances.length = 0
     lastManager = null
   }
-  return { AgentManager, __agentManagers: instances, __getLastManager: () => lastManager, __resetAgentMock: reset }
+  return { InferenceClient, InferenceError, __agentManagers: instances, __getLastManager: () => lastManager, __resetAgentMock: reset }
 })
 
 vi.mock('../../prompts/prompts.repository', () => {
@@ -214,13 +184,6 @@ class FakeContentItemRepository {
   }
 }
 
-class FakeConfigRepository {
-  aiSettings: AISettings = TEST_AI_SETTINGS
-  get() {
-    return { id: 'ai-settings', payload: this.aiSettings, updatedAt: new Date().toISOString() }
-  }
-}
-
 const payload: GenerateDocumentPayload = {
   generateType: 'resume',
   job: {
@@ -260,7 +223,6 @@ const htmlPdfService = {
   renderResume: vi.fn().mockResolvedValue(Buffer.from('resume')),
   renderCoverLetter: vi.fn().mockResolvedValue(Buffer.from('cover'))
 }
-const configRepo = new FakeConfigRepository() as unknown as ConfigRepository
 const mockLog = {
   info: vi.fn(),
   warn: vi.fn(),
@@ -301,7 +263,7 @@ const mockCoverLetterContent = {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    const reset = (AgentManagerModule as any).__resetAgentMock
+    const reset = (InferenceClientModule as any).__resetAgentMock
     reset?.()
     vi.spyOn(storageService, 'saveArtifactWithMetadata').mockResolvedValue({
       storagePath: '2024-01-15/run-abc123/test-user_engineer_resume.pdf',
@@ -322,7 +284,6 @@ const mockCoverLetterContent = {
       personalInfoStore as unknown as PersonalInfoStore,
       contentItemRepo as unknown as ContentItemRepository,
       fakeJobMatchRepo,
-      configRepo,
       mockLog as unknown as any
     )
 
@@ -377,7 +338,7 @@ const mockCoverLetterContent = {
     expect(request?.coverLetterUrl).toBeNull()
   })
 
-  it('invokes AgentManager for resume generation with document task type', async () => {
+  it('invokes InferenceClient for resume generation with document task type', async () => {
     const service = createService()
     const { requestId } = await service.createRequest(payload)
     await service.runNextStep(requestId) // collect-data
@@ -387,7 +348,7 @@ const mockCoverLetterContent = {
     expect(typeof agentInstance?.execute).toBe('function')
   })
 
-  it('invokes AgentManager for cover letter generation with document task type', async () => {
+  it('invokes InferenceClient for cover letter generation with document task type', async () => {
     const service = createService()
     const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
     await service.runNextStep(requestId) // collect-data

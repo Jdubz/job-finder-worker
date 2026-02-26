@@ -123,7 +123,9 @@ function startBackend(port) {
       NODE_ENV: 'development',
       DATABASE_PATH: TEMP_DB_PATH,
       JF_SQLITE_MIGRATIONS_DIR: MIGRATIONS_DIR,
-      PORT: String(port)
+      PORT: String(port),
+      LITELLM_BASE_URL: process.env.LITELLM_BASE_URL || 'http://localhost:4000',
+      LITELLM_MASTER_KEY: process.env.LITELLM_MASTER_KEY || 'sk-dev-master-key'
     }
   })
 
@@ -239,6 +241,7 @@ async function main() {
   log(`  Backend (network):  ${apiBaseUrl}`)
   log('')
   log(`  VITE_API_BASE_URL=${apiBaseUrl}`)
+  log(`  LiteLLM proxy:      ${process.env.LITELLM_BASE_URL || 'http://localhost:4000'}`)
   log(`  Using temp DB: ${TEMP_DB_PATH}`)
   log('='.repeat(50))
   console.log('')

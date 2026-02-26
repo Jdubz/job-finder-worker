@@ -25,7 +25,7 @@ from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.scrapers.config_expander import normalize_source_type
 
 if TYPE_CHECKING:
-    from job_finder.ai.agent_manager import AgentManager
+    from job_finder.ai.inference_client import InferenceClient
 
 logger = logging.getLogger(__name__)
 
@@ -525,7 +525,7 @@ class SourceAnalysisAgent:
     about what a source is, whether it can be scraped, and why.
     """
 
-    def __init__(self, agent_manager: "AgentManager"):
+    def __init__(self, agent_manager: "InferenceClient"):
         """Initialize the source analysis agent.
 
         Args:
@@ -641,7 +641,7 @@ class SourceAnalysisAgent:
 
 def analyze_source(
     url: str,
-    agent_manager: "AgentManager",
+    agent_manager: "InferenceClient",
     company_name: Optional[str] = None,
     company_id: Optional[str] = None,
     fetch_result: Optional[Dict[str, Any]] = None,

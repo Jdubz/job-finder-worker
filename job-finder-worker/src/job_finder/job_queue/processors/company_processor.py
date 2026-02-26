@@ -13,7 +13,8 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-from job_finder.ai.agent_manager import AgentManager, NoAgentsAvailableError
+from job_finder.ai.inference_client import InferenceClient
+from job_finder.exceptions import NoAgentsAvailableError
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import InitializationError
 
@@ -53,15 +54,15 @@ class CompanyProcessor(BaseProcessor):
         self.companies_manager = ctx.companies_manager
         self.sources_manager = ctx.sources_manager
         self.company_info_fetcher = ctx.company_info_fetcher
-        # AgentManager is used for intelligent source discovery (career page selection).
-        self.agent_manager = AgentManager(ctx.config_loader)
+        # InferenceClient for intelligent source discovery (career page selection).
+        self.inference_client = InferenceClient()
 
     def _refresh_runtime_config(self) -> None:
         """
         Reload config-driven components so each item uses fresh settings.
 
         CompanyProcessor doesn't have filters or scoring engines to rebuild.
-        AgentManager reads config fresh on each call, so no explicit refresh needed.
+        InferenceClient is stateless, so no explicit refresh needed.
         This method validates config is available and logs for consistency with other processors.
         """
         try:
@@ -485,7 +486,7 @@ class CompanyProcessor(BaseProcessor):
                 f"Search results: {json.dumps(trimmed)}\n"
             )
 
-            agent_result = self.agent_manager.execute(
+            agent_result = self.inference_client.execute(
                 task_type="extraction",
                 prompt=prompt,
                 max_tokens=400,
@@ -653,7 +654,7 @@ class CompanyProcessor(BaseProcessor):
                 f"Search results: {json.dumps(trimmed)}\n"
             )
 
-            agent_result = self.agent_manager.execute(
+            agent_result = self.inference_client.execute(
                 task_type="extraction",
                 prompt=prompt,
                 max_tokens=400,

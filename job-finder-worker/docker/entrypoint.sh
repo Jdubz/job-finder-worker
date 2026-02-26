@@ -21,28 +21,17 @@ chown -R node:node /data 2>/dev/null || true
 chown -R node:node /app/data 2>/dev/null || true
 chown -R node:node /app/logs 2>/dev/null || true
 
-# Claude CLI auth check (uses CLAUDE_CODE_OAUTH_TOKEN env var)
-# Note: Only claude.cli is supported for CLI interface. gemini.api uses Vertex AI SDK.
-echo "=== Claude CLI Setup ==="
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
-    echo "✓ CLAUDE_CODE_OAUTH_TOKEN is set"
+# LiteLLM connectivity check
+echo "=== LiteLLM Proxy ==="
+LITELLM_URL="${LITELLM_BASE_URL:-http://litellm:4000}"
+LITELLM_HEALTH="${LITELLM_URL%/v1}/health/readiness"
+echo "Endpoint: $LITELLM_URL"
+if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
+    echo "✓ LiteLLM proxy is reachable"
 else
-    echo "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set"
-    echo "  Claude CLI will not be available"
+    echo "WARNING: LiteLLM proxy not reachable at $LITELLM_HEALTH (may still be starting)"
 fi
-echo "=== End Claude Setup ==="
-
-# Gemini API auth check (uses GEMINI_API_KEY, GOOGLE_API_KEY, or Vertex AI ADC)
-echo "=== Gemini API Setup ==="
-if [ -n "${GEMINI_API_KEY}" ] || [ -n "${GOOGLE_API_KEY}" ]; then
-    echo "✓ Gemini API key is set"
-elif [ -n "${GOOGLE_CLOUD_PROJECT}" ]; then
-    echo "✓ GOOGLE_CLOUD_PROJECT is set (using Vertex AI)"
-else
-    echo "WARNING: No Gemini API credentials found"
-    echo "  Set GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_CLOUD_PROJECT"
-fi
-echo "=== End Gemini Setup ==="
+echo "=== End LiteLLM Proxy ==="
 
 # Start Flask worker if enabled (default mode)
 if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then

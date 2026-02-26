@@ -58,18 +58,18 @@ def mock_managers():
 @pytest.fixture
 def processor(mock_managers):
     """Create processor with mocked dependencies."""
-    # Patch ScrapeRunner and AgentManager to avoid creating real instances
+    # Patch ScrapeRunner and InferenceClient to avoid creating real instances
     with (
         patch(
             "job_finder.job_queue.processors.job_processor.ScrapeRunner"
         ) as mock_scrape_runner_class,
         patch(
-            "job_finder.job_queue.processors.job_processor.AgentManager"
-        ) as mock_agent_manager_class,
+            "job_finder.job_queue.processors.job_processor.InferenceClient"
+        ) as mock_inference_client_class,
     ):
         mock_scrape_runner_instance = MagicMock()
         mock_scrape_runner_class.return_value = mock_scrape_runner_instance
-        mock_agent_manager_class.return_value = MagicMock()  # Mock AgentManager
+        mock_inference_client_class.return_value = MagicMock()  # Mock InferenceClient
 
         # Create ProcessorContext from mock_managers
         ctx = ProcessorContext(

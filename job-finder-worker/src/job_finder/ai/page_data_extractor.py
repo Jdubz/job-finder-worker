@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from job_finder.ai.agent_manager import AgentManager
+from job_finder.ai.inference_client import InferenceClient
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import NoAgentsAvailableError
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
@@ -75,7 +75,7 @@ Page content:
 class PageDataExtractor:
     """Extracts job data from a URL by rendering with Playwright and parsing with AI."""
 
-    def __init__(self, agent_manager: AgentManager):
+    def __init__(self, agent_manager: InferenceClient):
         self.agent_manager = agent_manager
 
     @staticmethod

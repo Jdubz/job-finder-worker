@@ -198,8 +198,8 @@ def mock_dependencies() -> Dict[str, Any]:
 def processor(mock_dependencies: Dict[str, Any]) -> QueueItemProcessor:
     """Instantiate a QueueItemProcessor with mocked dependencies."""
     with (
-        patch("job_finder.job_queue.processors.source_processor.AgentManager"),
-        patch("job_finder.job_queue.processors.job_processor.AgentManager"),
+        patch("job_finder.job_queue.processors.source_processor.InferenceClient"),
+        patch("job_finder.job_queue.processors.job_processor.InferenceClient"),
         patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"),
     ):
         ctx = ProcessorContext(
@@ -383,9 +383,9 @@ class TestFetchContentSample:
 class TestAgentRecoverSource:
     """Test the _agent_recover_source method."""
 
-    def test_returns_recovery_result_without_agent_manager(self, source_processor):
-        """Test that method returns RecoveryResult with can_recover=False when agent_manager is not available."""
-        source_processor.agent_manager = None
+    def test_returns_recovery_result_without_inference_client(self, source_processor):
+        """Test that method returns RecoveryResult with can_recover=False when inference_client is not available."""
+        source_processor.inference_client = None
 
         result = source_processor._agent_recover_source(
             source_name="Test",
@@ -402,8 +402,8 @@ class TestAgentRecoverSource:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_returns_valid_html_config(self, mock_extract_json, source_processor):
         """Test that valid HTML config from agent is returned."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"job_selector": ".new-selector", "fields": {"title": ".title"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"job_selector": ".new-selector", "fields": {"title": ".title"}}}'
@@ -426,8 +426,8 @@ class TestAgentRecoverSource:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_returns_valid_api_config(self, mock_extract_json, source_processor):
         """Test that valid API config from agent is returned."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"response_path": "jobs", "fields": {"title": "title"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"response_path": "jobs", "fields": {"title": "title"}}}'
@@ -452,8 +452,8 @@ class TestAgentRecoverSource:
         self, mock_extract_json, source_processor
     ):
         """Test that invalid HTML config (missing job_selector) returns non-recoverable result."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"fields": {"title": ".title"}}}'
         )
         mock_extract_json.return_value = (
@@ -637,8 +637,8 @@ class TestAgentTypeChange:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_allows_html_to_api_type_change(self, mock_extract_json, source_processor):
         """Test that agent can propose API config for source currently typed as HTML."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
@@ -659,8 +659,8 @@ class TestAgentTypeChange:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_allows_api_to_html_type_change(self, mock_extract_json, source_processor):
         """Test that agent can propose HTML config for source currently typed as API."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "html", "job_selector": ".job", "fields": {"title": ".title", "url": "a@href"}}}'
@@ -735,8 +735,8 @@ class TestTypeJsonNormalization:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_normalizes_type_json_to_api(self, mock_extract_json, source_processor):
         """Test that agent proposing type=json is normalized to type=api."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "json", "response_path": "content", "fields": {"title": "name", "url": "applyUrl"}}}'
@@ -761,9 +761,9 @@ class TestAgentURLChange:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_uses_agent_url_for_html_type(self, mock_extract_json, source_processor):
         """Test that agent's proposed URL is used for HTML sources (e.g., URL redirects)."""
-        source_processor.agent_manager = Mock()
+        source_processor.inference_client = Mock()
         new_url = "https://example.com/careers/all-jobs"
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client.execute.return_value = Mock(
             text=f'{{"can_recover": true, "config": {{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}}}'
         )
         mock_extract_json.return_value = f'{{"can_recover": true, "config": {{"type": "html", "url": "{new_url}", "job_selector": ".job", "fields": {{"title": ".title", "url": "a@href"}}}}}}'
@@ -784,9 +784,9 @@ class TestAgentURLChange:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_uses_agent_url_for_api_type(self, mock_extract_json, source_processor):
         """Test that agent's proposed URL is used for API type changes."""
-        source_processor.agent_manager = Mock()
+        source_processor.inference_client = Mock()
         new_api_url = "https://api.example.com/v1/jobs"
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client.execute.return_value = Mock(
             text=f'{{"can_recover": true, "config": {{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}}}'
         )
         mock_extract_json.return_value = f'{{"can_recover": true, "config": {{"type": "api", "url": "{new_api_url}", "response_path": "jobs", "fields": {{"title": "title", "url": "url"}}}}}}'
@@ -809,8 +809,8 @@ class TestAgentURLChange:
         self, mock_extract_json, source_processor
     ):
         """Test that original URL is used when agent doesn't provide one."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "api", "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
@@ -835,8 +835,8 @@ class TestBodyNormalization:
     @patch("job_finder.job_queue.processors.source_processor.extract_json_from_response")
     def test_normalizes_body_to_post_body(self, mock_extract_json, source_processor):
         """Test that agent using 'body' key gets normalized to 'post_body'."""
-        source_processor.agent_manager = Mock()
-        source_processor.agent_manager.execute.return_value = Mock(
+        source_processor.inference_client = Mock()
+        source_processor.inference_client.execute.return_value = Mock(
             text='{"can_recover": true, "config": {"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'
         )
         mock_extract_json.return_value = '{"can_recover": true, "config": {"type": "api", "url": "https://api.example.com/jobs", "method": "POST", "body": {"limit": 20}, "response_path": "jobs", "fields": {"title": "title", "url": "url"}}}'

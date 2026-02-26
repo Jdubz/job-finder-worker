@@ -237,8 +237,8 @@ def mock_dependencies() -> Dict[str, Any]:
 def processor(mock_dependencies: Dict[str, Any]) -> QueueItemProcessor:
     """Instantiate a QueueItemProcessor wired with mocked dependencies."""
     with (
-        patch("job_finder.job_queue.processors.source_processor.AgentManager"),
-        patch("job_finder.job_queue.processors.job_processor.AgentManager"),
+        patch("job_finder.job_queue.processors.source_processor.InferenceClient"),
+        patch("job_finder.job_queue.processors.job_processor.InferenceClient"),
         patch("job_finder.job_queue.processors.job_processor.ScrapeRunner"),
     ):
         ctx = ProcessorContext(
@@ -318,12 +318,12 @@ class TestSourceDiscoverySuccess:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_discovers_api_source(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -373,12 +373,12 @@ class TestSourceDiscoverySuccess:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_discovers_rss_source(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -416,12 +416,12 @@ class TestSourceDiscoverySuccess:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_discovers_html_source(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -460,12 +460,12 @@ class TestSourceDiscoverySuccess:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_creates_disabled_when_api_key_needed(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -511,12 +511,12 @@ class TestSourceDiscoveryFailure:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_handles_discovery_failure(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -553,12 +553,12 @@ class TestSourceDiscoveryFailure:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_disables_on_bot_protection(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -594,12 +594,12 @@ class TestSourceDiscoveryFailure:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_disables_on_dns_error(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -631,12 +631,12 @@ class TestSourceDiscoveryFailure:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_handles_discovery_exception(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -672,12 +672,12 @@ class TestPlaceholderNaming:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_uses_company_name_without_aggregator(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -719,12 +719,12 @@ class TestPlaceholderNaming:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_uses_company_and_aggregator_when_both_present(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -768,12 +768,12 @@ class TestPlaceholderNaming:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_falls_back_to_url_when_no_company_name(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,
@@ -821,12 +821,12 @@ class TestPlaceholderNaming:
 
     @patch("job_finder.job_queue.processors.source_processor.get_search_client")
     @patch("job_finder.job_queue.processors.source_processor.requests.get")
-    @patch("job_finder.job_queue.processors.source_processor.AgentManager")
+    @patch("job_finder.job_queue.processors.source_processor.InferenceClient")
     @patch("job_finder.job_queue.processors.source_processor.SourceAnalysisAgent")
     def test_placeholder_naming_regression_sticker_mule(
         self,
         mock_agent_class,
-        _mock_agent_manager,
+        _mock_inference_client,
         mock_requests_get,
         mock_search_client,
         source_processor,

@@ -18,7 +18,7 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
-from job_finder.ai.agent_manager import AgentManager
+from job_finder.ai.inference_client import InferenceClient
 from job_finder.ai.search_client import get_search_client
 from job_finder.ai.source_analysis_agent import (
     DisableReason,
@@ -166,7 +166,7 @@ class SourceProcessor(BaseProcessor):
 
         self.sources_manager = ctx.sources_manager
         self.companies_manager = ctx.companies_manager
-        self.agent_manager = AgentManager(ctx.config_loader)
+        self.inference_client = InferenceClient()
 
         # Create filters from prefilter-policy for early rejection
         prefilter_policy = ctx.config_loader.get_prefilter_policy()
@@ -186,7 +186,7 @@ class SourceProcessor(BaseProcessor):
         Reload config-driven components so each item uses fresh settings.
 
         Rebuilds title_filter, prefilter, and scraper_intake from latest config.
-        AgentManager reads config fresh on each call, so no explicit refresh needed.
+        InferenceClient is stateless, so no explicit refresh needed.
         """
         prefilter_policy = self.config_loader.get_prefilter_policy()
         title_cfg = prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
@@ -365,7 +365,7 @@ class SourceProcessor(BaseProcessor):
 
             # Step 2: Agent proposal (URL + config + classification)
             # Pass ATS probe results so agent can verify company identity
-            analysis_agent = SourceAnalysisAgent(self.agent_manager)
+            analysis_agent = SourceAnalysisAgent(self.inference_client)
             analysis = analysis_agent.analyze(
                 url=url,
                 company_name=config.company_name,
@@ -1162,7 +1162,7 @@ class SourceProcessor(BaseProcessor):
         probe: ProbeResult,
     ) -> Dict[str, Any]:
         """Ask agent what to do when probe returns zero jobs or field extraction fails."""
-        if not self.agent_manager:
+        if not self.inference_client:
             return {"decision": "valid_empty"}
 
         sample = (probe.sample or "")[:2000]
@@ -1191,7 +1191,7 @@ class SourceProcessor(BaseProcessor):
         )
 
         try:
-            agent_result = self.agent_manager.execute(
+            agent_result = self.inference_client.execute(
                 task_type="analysis",
                 prompt=prompt,
                 max_tokens=500,
@@ -1209,7 +1209,7 @@ class SourceProcessor(BaseProcessor):
         probe: ProbeResult,
     ) -> Optional[Dict[str, Any]]:
         """Ask agent for a single-shot repair when probe errors (404/403/wrong endpoint)."""
-        if not self.agent_manager:
+        if not self.inference_client:
             return None
 
         sample = (probe.sample or "")[:1200]
@@ -1227,7 +1227,7 @@ class SourceProcessor(BaseProcessor):
         )
 
         try:
-            agent_result = self.agent_manager.execute(
+            agent_result = self.inference_client.execute(
                 task_type="analysis",
                 prompt=prompt,
                 max_tokens=400,
@@ -1604,7 +1604,7 @@ class SourceProcessor(BaseProcessor):
             fetch_result = self._attempt_fetch(url)
 
             # Run analysis
-            analysis_agent = SourceAnalysisAgent(self.agent_manager)
+            analysis_agent = SourceAnalysisAgent(self.inference_client)
             analysis = analysis_agent.analyze(
                 url=url,
                 company_name=company_name,
@@ -2168,7 +2168,7 @@ class SourceProcessor(BaseProcessor):
         - disable_reason: The reason if non-recoverable (bot_protection, auth_required, etc.)
         - diagnosis: Human-readable explanation
         """
-        if not self.agent_manager:
+        if not self.inference_client:
             return RecoveryResult(can_recover=False, diagnosis="No agent available")
 
         source_type = current_config.get("type", "html")
@@ -2312,7 +2312,7 @@ Return ONLY valid JSON (no markdown, no explanation outside the JSON).
 """
 
         try:
-            result = self.agent_manager.execute(
+            result = self.inference_client.execute(
                 task_type="analysis",
                 prompt=prompt,
                 max_tokens=1200,

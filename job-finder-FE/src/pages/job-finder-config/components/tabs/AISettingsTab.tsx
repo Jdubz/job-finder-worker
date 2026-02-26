@@ -79,6 +79,7 @@ type AISettingsTabProps = {
 const PROVIDER_LABELS: Record<AIProviderType, string> = {
   claude: "Claude CLI",
   gemini: "Google Gemini",
+  local: "Local (Ollama)",
 }
 
 const INTERFACE_LABELS: Record<AIInterfaceType, string> = {

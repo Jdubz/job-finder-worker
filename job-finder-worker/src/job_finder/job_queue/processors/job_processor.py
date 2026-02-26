@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, List
 from urllib.parse import urlparse, quote_plus
 
-from job_finder.ai.agent_manager import AgentManager
+from job_finder.ai.inference_client import InferenceClient
 from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.ai.extraction import JobExtractor, JobExtractionResult
 from job_finder.ai.page_data_extractor import PageDataExtractor
@@ -160,10 +160,10 @@ class JobProcessor(BaseProcessor):
 
         self.scoring_engine = self._build_scoring_engine(match_policy)
 
-        # Initialize AgentManager for AI operations
-        self.agent_manager = AgentManager(ctx.config_loader)
-        self.extractor = JobExtractor(self.agent_manager)
-        self.page_data_extractor = PageDataExtractor(self.agent_manager)
+        # Initialize InferenceClient for AI operations (LiteLLM proxy)
+        self.inference_client = InferenceClient()
+        self.extractor = JobExtractor(self.inference_client)
+        self.page_data_extractor = PageDataExtractor(self.inference_client)
 
         # Initialize scrape runner with config_loader so it creates both title_filter and prefilter
         self.scrape_runner = ScrapeRunner(
@@ -237,9 +237,8 @@ class JobProcessor(BaseProcessor):
         if hasattr(self.scraper_intake, "title_filter"):
             self.scraper_intake.title_filter = self.title_filter
 
-        # AgentManager reads config fresh on each call, so extractor is always current
-        # Just recreate the extractor with the same agent_manager
-        self.extractor = JobExtractor(self.agent_manager)
+        # Recreate the extractor with the inference client
+        self.extractor = JobExtractor(self.inference_client)
 
         # Update AI matcher min score from match policy (required, no default)
         self.ai_matcher.min_match_score = match_policy["minScore"]
@@ -982,7 +981,7 @@ class JobProcessor(BaseProcessor):
 
         if taxonomy_repo and unknown_terms:
             try:
-                result = self.agent_manager.execute(
+                result = self.inference_client.execute(
                     task_type="analysis",
                     prompt=json.dumps(
                         {
