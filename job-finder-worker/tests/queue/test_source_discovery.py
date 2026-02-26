@@ -860,3 +860,72 @@ class TestPlaceholderNaming:
         create_kwargs = mock_dependencies["sources_manager"].create_from_discovery.call_args.kwargs
         # Should be "Sticker Mule Jobs", NOT "www.stickermule.com Jobs"
         assert create_kwargs["name"] == "Sticker Mule Jobs"
+
+
+class TestFieldExtractionValidation:
+    """Tests for _validate_field_extraction in probe path.
+
+    When items exist but field selectors/paths extract nothing, the probe should
+    return status="empty" with a field_extraction_failure hint, feeding into
+    the _agent_validate_empty flow for AI-assisted repair.
+    """
+
+    def test_validate_extraction_succeeds_with_valid_fields(self, source_processor):
+        """_validate_field_extraction returns True when title+url are extractable."""
+        from job_finder.scrapers.generic_scraper import GenericScraper
+        from job_finder.scrapers.source_config import SourceConfig
+
+        config = SourceConfig.from_dict(
+            {
+                "type": "api",
+                "url": "https://example.com/api",
+                "fields": {"title": "name", "url": "link"},
+            }
+        )
+        scraper = GenericScraper(config)
+
+        items = [
+            {"name": "Software Engineer", "link": "https://example.com/job/1"},
+            {"name": "Product Manager", "link": "https://example.com/job/2"},
+        ]
+        assert source_processor._validate_field_extraction(scraper, items) is True
+
+    def test_validate_extraction_fails_with_wrong_fields(self, source_processor):
+        """_validate_field_extraction returns False when fields don't match item keys."""
+        from job_finder.scrapers.generic_scraper import GenericScraper
+        from job_finder.scrapers.source_config import SourceConfig
+
+        config = SourceConfig.from_dict(
+            {
+                "type": "api",
+                "url": "https://example.com/api",
+                "fields": {"title": "wrong_field", "url": "also_wrong"},
+            }
+        )
+        scraper = GenericScraper(config)
+
+        items = [
+            {"name": "Software Engineer", "link": "https://example.com/job/1"},
+            {"name": "Product Manager", "link": "https://example.com/job/2"},
+        ]
+        assert source_processor._validate_field_extraction(scraper, items) is False
+
+    def test_validate_extraction_partial_match_still_passes(self, source_processor):
+        """If at least one item has both title+url, validation passes."""
+        from job_finder.scrapers.generic_scraper import GenericScraper
+        from job_finder.scrapers.source_config import SourceConfig
+
+        config = SourceConfig.from_dict(
+            {
+                "type": "api",
+                "url": "https://example.com/api",
+                "fields": {"title": "name", "url": "link"},
+            }
+        )
+        scraper = GenericScraper(config)
+
+        items = [
+            {"name": "", "link": ""},  # empty values
+            {"name": "Software Engineer", "link": "https://example.com/job/1"},  # valid
+        ]
+        assert source_processor._validate_field_extraction(scraper, items) is True

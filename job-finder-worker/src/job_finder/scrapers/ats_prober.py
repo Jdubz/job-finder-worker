@@ -670,7 +670,7 @@ def probe_workday(
             try:
                 response = session.post(
                     api_url,
-                    json={"limit": 50, "offset": 0},
+                    json={"limit": 20, "offset": 0},
                     headers={
                         "Accept": "application/json",
                         "Content-Type": "application/json",
@@ -699,7 +699,7 @@ def probe_workday(
                     "type": "api",
                     "url": api_url,
                     "method": "POST",
-                    "post_body": {"limit": 50, "offset": 0},
+                    "post_body": {"limit": 20, "offset": 0},
                     "response_path": "jobPostings",
                     "base_url": base_url,
                     "headers": {"Content-Type": "application/json"},

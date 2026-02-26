@@ -3,9 +3,13 @@
 import pytest
 
 from job_finder.scrapers.config_expander import (
+    ASHBY_FIELDS,
     GREENHOUSE_FIELDS,
+    LEVER_FIELDS,
+    WORKDAY_FIELDS,
     expand_config,
     normalize_source_type,
+    parse_workday_url,
 )
 
 
@@ -336,3 +340,190 @@ class TestNormalizationInExpandConfig:
         }
         result = expand_config("company_page", config)
         assert result["type"] == "html"
+
+
+class TestPlatformFieldEnrichment:
+    """Tests for automatic field enrichment when url+fields configs match known platforms.
+
+    The expand_config early-return path enriches configs with standard platform
+    fields when the URL matches a known ATS (Greenhouse, Ashby, Workday, Lever).
+    """
+
+    def test_greenhouse_url_enriched_with_standard_fields(self):
+        """Full config with Greenhouse URL gets missing standard fields added."""
+        config = {
+            "url": "https://boards-api.greenhouse.io/v1/boards/test/jobs",
+            "fields": {"title": "custom_title", "url": "custom_url"},
+        }
+        result = expand_config("api", config)
+
+        # Custom fields preserved
+        assert result["fields"]["title"] == "custom_title"
+        assert result["fields"]["url"] == "custom_url"
+        # Standard Greenhouse fields added for missing keys
+        for key, value in GREENHOUSE_FIELDS.items():
+            assert key in result["fields"]
+
+    def test_greenhouse_enrichment_does_not_overwrite_custom_fields(self):
+        """Enrichment does not overwrite fields that already exist."""
+        config = {
+            "url": "https://boards-api.greenhouse.io/v1/boards/test/jobs",
+            "fields": {"title": "my_title", "url": "my_url", "location": "my_loc"},
+        }
+        result = expand_config("api", config)
+
+        assert result["fields"]["title"] == "my_title"
+        assert result["fields"]["location"] == "my_loc"
+
+    def test_ashby_url_enriched_with_standard_fields(self):
+        """Full config with Ashby URL gets standard Ashby fields."""
+        config = {
+            "url": "https://api.ashbyhq.com/posting-api/job-board/test",
+            "fields": {"title": "name"},
+        }
+        result = expand_config("api", config)
+
+        for key in ASHBY_FIELDS:
+            assert key in result["fields"]
+
+    def test_workday_url_enriched_with_standard_fields_and_follow_detail(self):
+        """Full config with Workday URL gets standard fields + follow_detail=True."""
+        config = {
+            "url": "https://company.wd5.myworkdayjobs.com/wday/cxs/company/board/jobs",
+            "fields": {"title": "title"},
+        }
+        result = expand_config("api", config)
+
+        for key in WORKDAY_FIELDS:
+            assert key in result["fields"]
+        assert result["follow_detail"] is True
+
+    def test_lever_url_enriched_with_standard_fields(self):
+        """Full config with Lever URL gets standard Lever fields."""
+        config = {
+            "url": "https://jobs.lever.co/test",
+            "fields": {"title": "text"},
+        }
+        result = expand_config("api", config)
+
+        for key in LEVER_FIELDS:
+            assert key in result["fields"]
+
+    def test_non_platform_url_not_enriched(self):
+        """Config with unknown URL does not get platform fields added."""
+        config = {
+            "url": "https://example.com/api/jobs",
+            "fields": {"title": "name", "url": "link"},
+        }
+        result = expand_config("api", config)
+
+        # Only original fields, no enrichment
+        assert result["fields"] == config["fields"]
+
+    def test_workday_legacy_careers_url_expansion(self):
+        """Legacy Workday config with careers_url expands to full API config."""
+        config = {
+            "careers_url": "https://company.wd5.myworkdayjobs.com/en-US/external",
+        }
+        result = expand_config("api", config)
+
+        assert result["type"] == "api"
+        assert result["method"] == "POST"
+        assert "wday/cxs" in result["url"]
+        assert result["follow_detail"] is True
+        assert result["fields"] == WORKDAY_FIELDS
+
+
+class TestParseWorkdayUrl:
+    """Tests for parse_workday_url utility."""
+
+    def test_standard_workday_url(self):
+        """Standard Workday URL parses correctly."""
+        result = parse_workday_url("https://company.wd5.myworkdayjobs.com/en-US/external")
+        assert result is not None
+        tenant, wd_instance, site_id = result
+        assert tenant == "company"
+        assert wd_instance == "wd5"
+
+    def test_non_workday_url_returns_none(self):
+        """Non-Workday URL returns None."""
+        assert parse_workday_url("https://example.com/careers") is None
+
+    def test_greenhouse_url_returns_none(self):
+        """Greenhouse URL returns None (not Workday)."""
+        assert parse_workday_url("https://boards-api.greenhouse.io/v1/boards/x/jobs") is None
+
+
+class TestUrlTypeConsistency:
+    """Tests for URL/source_type mismatch auto-correction.
+
+    When a URL matches a known platform whose config_type differs from the
+    passed source_type, expand_config() should auto-correct to the platform's
+    config_type. This prevents API URLs stored as html from silently returning
+    0 jobs forever.
+    """
+
+    def test_greenhouse_api_url_corrected_from_html(self):
+        """Greenhouse API URL stored as html should be auto-corrected to api."""
+        config = {
+            "url": "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+            "fields": {"title": "title", "url": "absolute_url"},
+            "response_path": "jobs",
+        }
+        result = expand_config("html", config)
+        assert result["type"] == "api"
+
+    def test_ashby_api_url_corrected_from_html(self):
+        """Ashby API URL stored as html should be auto-corrected to api."""
+        config = {
+            "url": "https://api.ashbyhq.com/posting-api/job-board/testco",
+            "fields": {"title": "title", "url": "jobUrl"},
+            "response_path": "jobs",
+        }
+        result = expand_config("html", config)
+        assert result["type"] == "api"
+
+    def test_lever_html_url_corrected_from_html_to_api(self):
+        """Lever HTML URL stored as html should be auto-corrected to api (lever pattern -> api)."""
+        config = {
+            "url": "https://jobs.lever.co/testcompany",
+            "fields": {"title": "text", "url": "hostedUrl"},
+        }
+        result = expand_config("html", config)
+        assert result["type"] == "api"
+
+    def test_rss_url_corrected_from_api(self):
+        """Avature RSS URL stored as api should be auto-corrected to rss."""
+        config = {
+            "url": "https://company.avature.net/en_US/careers/SearchJobs/feed/?jobRecordsPerPage=200",
+            "fields": {"title": "title", "url": "link"},
+        }
+        result = expand_config("api", config)
+        assert result["type"] == "rss"
+
+    def test_unknown_url_left_unchanged(self):
+        """URL that doesn't match any platform should keep the original source_type."""
+        config = {
+            "url": "https://example.com/custom-api/jobs",
+            "fields": {"title": "name", "url": "link"},
+        }
+        result = expand_config("html", config)
+        assert result["type"] == "html"
+
+    def test_matching_type_not_changed(self):
+        """URL matching a platform with the SAME config_type should not log a warning."""
+        config = {
+            "url": "https://boards-api.greenhouse.io/v1/boards/test/jobs",
+            "fields": {"title": "title", "url": "absolute_url"},
+        }
+        result = expand_config("api", config)
+        assert result["type"] == "api"
+
+    def test_greenhouse_html_url_corrected_to_api(self):
+        """Greenhouse HTML board URL (jobs.greenhouse.io) stored as html -> api."""
+        config = {
+            "url": "https://jobs.greenhouse.io/stripe",
+            "fields": {"title": "title"},
+        }
+        result = expand_config("html", config)
+        assert result["type"] == "api"

@@ -63,6 +63,11 @@ class PlatformPattern:
     # Query parameter name for server-side company filtering (e.g., "company_name" for Remotive)
     # When set, the scraper will append ?{param}={company} to the URL
     company_filter_param: str = ""
+    # Whether this platform hosts jobs from MANY companies in a single feed.
+    # True for aggregators like Remotive, RemoteOK, WeWorkRemotely, BuiltIn.
+    # False (default) for single-company platforms like Greenhouse, Lever, Ashby.
+    # Used by scrape_runner to decide whether company_filter should be applied.
+    is_multi_company: bool = False
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -208,6 +213,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         validation_key="jobs",
         is_remote_source=True,
         company_filter_param="company_name",  # Remotive supports ?company_name= for server-side filtering
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="remoteok_api",
@@ -228,6 +234,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         validation_key="",  # validate list
         headers={"Accept": "application/json"},
         is_remote_source=True,
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="jobicy_api",
@@ -249,6 +256,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         salary_max_field="salaryMax",
         validation_key="jobs",
         is_remote_source=True,
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="smartrecruiters_api",
@@ -284,6 +292,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         validation_key="items",
         config_type="rss",
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="monster_rss",
@@ -298,6 +307,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         validation_key="items",
         config_type="rss",
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="weworkremotely_rss",
@@ -320,6 +330,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         is_remote_source=True,
         company_extraction="from_title",
         follow_detail=True,
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="indeed_partner_api",
@@ -338,6 +349,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         headers={"Content-Type": "application/json"},
         validation_key="data",
         auth_required=True,
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="indeed_rss",
@@ -352,6 +364,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         validation_key="items",
         config_type="rss",
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="linkedin_stub",
@@ -383,6 +396,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         base_url_template="https://builtin.com",
         validation_key="",
         follow_detail=True,
+        is_multi_company=True,
     ),
     PlatformPattern(
         name="breezy_api",
@@ -447,6 +461,39 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         validation_key="",
         auth_required=True,  # JazzHR API requires authentication
     ),
+    PlatformPattern(
+        name="teamtailor_html",
+        # Match {company}.teamtailor.com or {company}.{region}.teamtailor.com
+        url_pattern=r"https?://(?P<company>[^.]+)(?:\.[a-z]{2,4})?\.teamtailor\.com",
+        api_url_template="https://{company}.teamtailor.com/jobs",
+        response_path="",
+        fields={
+            "title": "a[href*='/jobs/']",
+            "url": "a[href*='/jobs/']@href",
+            "location": ".mt-1.text-md span:nth-child(3)",
+            "department": ".mt-1.text-md span:first-child",
+        },
+        job_selector="li.w-full:has(a[href*='/jobs/'])",
+        config_type="html",
+        validation_key="",
+    ),
+    PlatformPattern(
+        name="personio_xml",
+        # Match {company}.jobs.personio.{tld} (both .com and .de)
+        url_pattern=r"https?://(?P<company>[^.]+)\.jobs\.personio\.(?P<tld>com|de)",
+        api_url_template="https://{company}.jobs.personio.{tld}/xml",
+        response_path="",
+        fields={
+            "title": "name",
+            "location": "office",
+            "department": "department",
+            "url": "id",  # Will need URL construction in post-processing
+        },
+        job_selector="position",
+        config_type="html",  # Parsed as HTML (BS4 handles XML too)
+        base_url_template="https://{company}.jobs.personio.{tld}/job/",
+        validation_key="",
+    ),
 ]
 
 
@@ -465,6 +512,31 @@ def match_platform(url: str) -> Optional[Tuple[PlatformPattern, Dict[str, str]]]
         if match:
             return pattern, match.groupdict()
     return None
+
+
+def is_single_company_platform(url: str) -> bool:
+    """
+    Check if a URL belongs to a single-company platform.
+
+    Single-company platforms (Lever, Ashby, Greenhouse, Breezy, etc.) host
+    one company's jobs per board/URL.  Multi-company aggregators (Remotive,
+    WeWorkRemotely, BuiltIn, etc.) host jobs from many companies in one feed.
+
+    Used by the scrape runner to decide whether company_filter should be
+    applied: single-company platforms don't include a per-job company field,
+    so filtering by company name would incorrectly reject every job.
+
+    Args:
+        url: Source URL to check
+
+    Returns:
+        True if the URL belongs to a known single-company platform
+    """
+    result = match_platform(url)
+    if not result:
+        return False
+    pattern, _ = result
+    return not pattern.is_multi_company
 
 
 def build_config_from_pattern(

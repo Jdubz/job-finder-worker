@@ -1042,6 +1042,11 @@ class SourceProcessor(BaseProcessor):
                 scraper = GenericScraper(SourceConfig.from_dict(expanded))
                 items = scraper._navigate_path(data, sc.response_path)  # type: ignore[attr-defined]
                 job_count = len(items or [])
+                failure = self._check_field_extraction(
+                    scraper, items, job_count, status_code, text_sample
+                )
+                if failure:
+                    return failure
                 return ProbeResult(
                     status="success" if job_count > 0 else "empty",
                     job_count=job_count,
@@ -1089,6 +1094,12 @@ class SourceProcessor(BaseProcessor):
                 soup = BeautifulSoup(html, "html.parser")
                 items = soup.select(getattr(sc, "job_selector", ""))
                 job_count = len(items)
+                scraper = GenericScraper(SourceConfig.from_dict(expanded))
+                failure = self._check_field_extraction(
+                    scraper, items, job_count, status_code, html[:4000]
+                )
+                if failure:
+                    return failure
                 return ProbeResult(
                     status="success" if job_count > 0 else "empty",
                     job_count=job_count,
@@ -1105,24 +1116,75 @@ class SourceProcessor(BaseProcessor):
                 status="error", status_code=status_code, hint=str(exc), sample=text_sample or ""
             )
 
+    def _check_field_extraction(
+        self,
+        scraper: GenericScraper,
+        items: list,
+        job_count: int,
+        status_code: Optional[int],
+        sample: str,
+    ) -> Optional[ProbeResult]:
+        """Return a field_extraction_failure ProbeResult if items exist but fields extract nothing."""
+        if job_count > 0 and not self._validate_field_extraction(scraper, items[:3]):
+            return ProbeResult(
+                status="empty",
+                job_count=job_count,
+                status_code=status_code,
+                hint=f"field_extraction_failure: {job_count} items matched but title/url fields extracted nothing",
+                sample=sample,
+            )
+        return None
+
+    @staticmethod
+    def _validate_field_extraction(scraper: GenericScraper, items: list) -> bool:
+        """Check whether title and url fields extract non-empty values from sample items.
+
+        Returns True if at least one item yields a non-empty title AND url.
+        Handles non-string extracted values (e.g. int IDs) by coercing to str.
+        """
+        for item in items:
+            try:
+                extracted = scraper._extract_fields(item)  # type: ignore[attr-defined]
+                raw_title = extracted.get("title")
+                raw_url = extracted.get("url")
+                title = str(raw_title).strip() if raw_title is not None else ""
+                url = str(raw_url).strip() if raw_url is not None else ""
+                if title and url:
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
     def _agent_validate_empty(
         self,
         company_name: Optional[str],
         config: Dict[str, Any],
         probe: ProbeResult,
     ) -> Dict[str, Any]:
-        """Ask agent what to do when probe returns zero jobs."""
+        """Ask agent what to do when probe returns zero jobs or field extraction fails."""
         if not self.agent_manager:
             return {"decision": "valid_empty"}
 
         sample = (probe.sample or "")[:2000]
+        # Build context-aware description of the problem
+        if probe.hint and "field_extraction_failure" in probe.hint:
+            problem = (
+                f"The probe found {probe.job_count} items but the configured field "
+                f"selectors extracted no title/url values.\nHint: {probe.hint}"
+            )
+        else:
+            problem = "The probe returned 0 jobs."
         prompt = (
-            "You proposed a job board config but the probe returned 0 jobs.\n"
+            f"You proposed a job board config but: {problem}\n"
             f"Company: {company_name or 'Unknown'}\n"
             f"URL: {config.get('url', '')}\n"
             f"Type: {config.get('type', '')}\n"
             f"Status: {probe.status_code or 'n/a'}\n"
-            "Sample (truncated):\n" + sample + "\n"
+            f"Job count: {probe.job_count}\n"
+            + (f"Hint: {probe.hint}\n" if probe.hint else "")
+            + "Sample (truncated):\n"
+            + sample
+            + "\n"
             "Decide: valid_empty (board is legit but empty) | update_config (return fixed config) | invalid.\n"
             'Respond JSON: {"decision": "valid_empty|update_config|invalid", '
             '"reason": "short", "config": {..optional..}}.'

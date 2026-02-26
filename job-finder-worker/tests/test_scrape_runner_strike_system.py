@@ -405,7 +405,8 @@ def test_zero_jobs_js_spawns_recovery_at_threshold(mock_scraper_cls, scrape_runn
     item_type = queued_item.type
     assert (item_type.value if hasattr(item_type, "value") else item_type) == "source_recover"
     assert queued_item.source_id == "js-source-1"
-    assert queued_item.input["error_reason"] == "zero_jobs_js_source"
+    assert queued_item.input["error_reason"] == "zero_jobs"
+    assert queued_item.input["source_type"] == "html"
 
 
 @patch("job_finder.scrape_runner.GenericScraper")
@@ -427,3 +428,120 @@ def test_zero_jobs_js_does_not_re_spawn_above_threshold(mock_scraper_cls, scrape
 
     # But no recovery task should be spawned
     scrape_runner.queue_manager.add_item.assert_not_called()
+
+
+# ── Universal zero-job tracking (all source types) ──
+
+
+def make_api_source(source_id="api-source-1", name="Company API", consecutive_zero_jobs=0):
+    """Create a minimal API source dict for testing."""
+    config = {
+        "type": "api",
+        "url": "https://boards-api.greenhouse.io/v1/boards/test/jobs",
+        "fields": {"title": "title", "url": "absolute_url"},
+        "response_path": "jobs",
+    }
+    if consecutive_zero_jobs > 0:
+        config["consecutive_zero_jobs"] = consecutive_zero_jobs
+    return {
+        "id": source_id,
+        "name": name,
+        "sourceType": "api",
+        "config": config,
+    }
+
+
+def make_rss_source(source_id="rss-source-1", name="Company RSS", consecutive_zero_jobs=0):
+    """Create a minimal RSS source dict for testing."""
+    config = {
+        "type": "rss",
+        "url": "https://example.com/jobs.rss",
+        "fields": {"title": "title", "url": "link"},
+    }
+    if consecutive_zero_jobs > 0:
+        config["consecutive_zero_jobs"] = consecutive_zero_jobs
+    return {
+        "id": source_id,
+        "name": name,
+        "sourceType": "rss",
+        "config": config,
+    }
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_zero_jobs_api_source_tracks_and_spawns_recovery(mock_scraper_cls, scrape_runner):
+    """API source returning 0 jobs should track consecutive zero-job count and spawn recovery."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = []
+    mock_scraper_cls.return_value = scraper_instance
+
+    source = make_api_source(consecutive_zero_jobs=ZERO_JOBS_RECOVERY_THRESHOLD - 1)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Should have updated config with incremented consecutive_zero_jobs
+    scrape_runner.sources_manager.update_config.assert_called()
+    config_calls = scrape_runner.sources_manager.update_config.call_args_list
+    zero_job_configs = [c[0][1] for c in config_calls if "consecutive_zero_jobs" in c[0][1]]
+    assert len(zero_job_configs) >= 1
+    assert zero_job_configs[0]["consecutive_zero_jobs"] == ZERO_JOBS_RECOVERY_THRESHOLD
+
+    # Should have spawned SOURCE_RECOVER
+    scrape_runner.queue_manager.add_item.assert_called_once()
+    queued_item = scrape_runner.queue_manager.add_item.call_args[0][0]
+    assert queued_item.input["error_reason"] == "zero_jobs"
+    assert queued_item.input["source_type"] == "api"
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_zero_jobs_rss_source_tracks_and_spawns_recovery(mock_scraper_cls, scrape_runner):
+    """RSS source returning 0 jobs should track consecutive zero-job count and spawn recovery."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = []
+    mock_scraper_cls.return_value = scraper_instance
+
+    source = make_rss_source(consecutive_zero_jobs=ZERO_JOBS_RECOVERY_THRESHOLD - 1)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Should have updated config with incremented consecutive_zero_jobs
+    scrape_runner.sources_manager.update_config.assert_called()
+    config_calls = scrape_runner.sources_manager.update_config.call_args_list
+    zero_job_configs = [c[0][1] for c in config_calls if "consecutive_zero_jobs" in c[0][1]]
+    assert len(zero_job_configs) >= 1
+    assert zero_job_configs[0]["consecutive_zero_jobs"] == ZERO_JOBS_RECOVERY_THRESHOLD
+
+    # Should have spawned SOURCE_RECOVER
+    scrape_runner.queue_manager.add_item.assert_called_once()
+    queued_item = scrape_runner.queue_manager.add_item.call_args[0][0]
+    assert queued_item.input["error_reason"] == "zero_jobs"
+    assert queued_item.input["source_type"] == "rss"
+
+
+@patch("job_finder.scrape_runner.GenericScraper")
+def test_zero_jobs_api_source_resets_on_success(mock_scraper_cls, scrape_runner):
+    """API source that finds jobs should reset the zero-job counter."""
+    scraper_instance = Mock()
+    scraper_instance.scrape.return_value = [
+        {"title": "Software Engineer", "url": "https://example.com/job1"}
+    ]
+    mock_scraper_cls.return_value = scraper_instance
+
+    source = make_api_source(consecutive_zero_jobs=1)
+    scrape_runner.sources_manager.get_active_sources.return_value = [source]
+    scrape_runner.sources_manager.get_source_by_id.return_value = source
+
+    scrape_runner.scraper_intake = MagicMock()
+    scrape_runner.scraper_intake.submit_jobs.return_value = 1
+
+    scrape_runner.run_scrape(source_ids=[source["id"]])
+
+    # Should reset consecutive_zero_jobs to 0
+    scrape_runner.sources_manager.update_config.assert_called()
+    call_args = scrape_runner.sources_manager.update_config.call_args
+    updated_config = call_args[0][1]
+    assert updated_config["consecutive_zero_jobs"] == 0

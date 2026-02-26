@@ -249,11 +249,10 @@ def test_scrape_runner_zero_jobs_js_warning(mock_scraper_cls, caplog):
     with caplog.at_level(logging.WARNING, logger="job_finder.scrape_runner"):
         runner.run_scrape(source_ids=[source["id"]])
 
-    assert any("zero_jobs_js_source" in record.message for record in caplog.records)
-    warning_msgs = [r.message for r in caplog.records if "zero_jobs_js_source" in r.message]
+    assert any("zero_jobs:" in record.message for record in caplog.records)
+    warning_msgs = [r.message for r in caplog.records if "zero_jobs:" in r.message]
     assert len(warning_msgs) == 1
     assert "JS Careers Page" in warning_msgs[0]
-    assert ".job-card" in warning_msgs[0]
 
 
 # ── Test 7: Partial render → scraper zero-match diagnostic (end-to-end) ──

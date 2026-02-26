@@ -215,6 +215,67 @@ class JobSourcesManager:
             sources.append(source)
         return sources
 
+    def get_disabled_sources(
+        self,
+        exclude_tags: Optional[List[str]] = None,
+        min_disabled_hours: int = 72,
+        limit: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """Return disabled sources eligible for recovery retry.
+
+        Args:
+            exclude_tags: Disabled tags that mark non-recoverable issues
+                (e.g. anti_bot, auth_required, protected_api).  Sources
+                whose disabled_tags overlap with this list are skipped.
+            min_disabled_hours: Minimum hours a source must have been
+                disabled before it becomes eligible for retry.
+            limit: Maximum number of sources to return.
+
+        Returns:
+            List of source dicts, oldest-disabled first.
+        """
+        with sqlite_connection(self.db_path) as conn:
+            # Use disabled_at from config JSON (set when source is disabled).
+            # Fall back to updated_at for sources disabled before disabled_at was added.
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM job_sources
+                WHERE status = ?
+                  AND datetime(
+                    COALESCE(
+                      json_extract(config_json, '$.disabled_at'),
+                      updated_at
+                    )
+                  ) <= datetime('now', ?)
+                ORDER BY COALESCE(
+                  json_extract(config_json, '$.disabled_at'),
+                  updated_at
+                ) ASC
+                LIMIT ?
+                """,
+                (
+                    SourceStatus.DISABLED.value,
+                    f"-{min_disabled_hours} hours",
+                    limit * 3,  # fetch extra to filter out excluded tags
+                ),
+            ).fetchall()
+
+        exclude = set(exclude_tags or [])
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            if len(results) >= limit:
+                break
+            source = self._row_to_source(dict(row))
+            if not source:
+                continue
+            # Skip sources with non-recoverable tags
+            source_tags = set(source.get("disabledTags") or [])
+            if exclude and source_tags & exclude:
+                continue
+            results.append(source)
+        return results
+
     def get_source_by_id(self, source_id: str) -> Optional[Dict[str, Any]]:
         with sqlite_connection(self.db_path) as conn:
             row = conn.execute("SELECT * FROM job_sources WHERE id = ?", (source_id,)).fetchone()
@@ -476,9 +537,10 @@ class JobSourcesManager:
             current_status = SourceStatus(row["status"])
             self._validate_transition(current_status, SourceStatus.DISABLED)
 
-            # Update config with disabled_notes
+            # Update config with disabled_notes and disabled_at
             config = json.loads(row["config_json"]) if row["config_json"] else {}
             config["disabled_notes"] = note
+            config["disabled_at"] = now
 
             conn.execute(
                 """
@@ -531,6 +593,7 @@ class JobSourcesManager:
                 config["disabled_notes"] = f"{existing_notes}\n{note}"
             else:
                 config["disabled_notes"] = note
+            config["disabled_at"] = now
 
             # Merge tags (additive, no duplicates)
             if tags:
