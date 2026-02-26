@@ -20,19 +20,17 @@ chown -R node:node /data 2>/dev/null || true
 chown -R node:node /app/data 2>/dev/null || true
 chown -R node:node /app/logs 2>/dev/null || true
 
-# AI Provider auth check
-echo "=== AI Provider Setup ==="
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-    echo "✓ Claude CLI: CLAUDE_CODE_OAUTH_TOKEN is set"
+# LiteLLM connectivity check
+echo "=== LiteLLM Proxy ==="
+LITELLM_URL="${LITELLM_BASE_URL:-http://litellm:4000/v1}"
+LITELLM_HEALTH="${LITELLM_URL%/v1}/health"
+echo "Endpoint: $LITELLM_URL"
+if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
+    echo "✓ LiteLLM proxy is reachable"
 else
-    echo "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set - Claude CLI will not work"
+    echo "WARNING: LiteLLM proxy not reachable at $LITELLM_HEALTH (may still be starting)"
 fi
-if [ -n "${GEMINI_API_KEY:-}${GOOGLE_API_KEY:-}${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
-    echo "✓ Gemini API: credentials configured"
-else
-    echo "WARNING: No Gemini API credentials set (GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS)"
-fi
-echo "=== End AI Provider Setup ==="
+echo "=== End LiteLLM Proxy ==="
 echo ""
 
 # Check database exists

@@ -10,26 +10,17 @@ else
   find /data ! -user node -exec chown node:node {} + || true
 fi
 
-# Claude CLI auth check (uses CLAUDE_CODE_OAUTH_TOKEN env var)
-# Note: Only claude.cli is supported for CLI interface. gemini.api uses the Google Generative AI SDK.
-echo "=== Claude CLI Setup ==="
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
-    echo "✓ CLAUDE_CODE_OAUTH_TOKEN is set"
+# LiteLLM connectivity check
+echo "=== LiteLLM Proxy ==="
+LITELLM_URL="${LITELLM_BASE_URL:-http://litellm:4000}"
+LITELLM_HEALTH="${LITELLM_URL}/health"
+echo "Endpoint: $LITELLM_URL"
+if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
+    echo "✓ LiteLLM proxy is reachable"
 else
-    echo "WARNING: CLAUDE_CODE_OAUTH_TOKEN not set"
-    echo "  Claude CLI will not be available for document generation"
+    echo "WARNING: LiteLLM proxy not reachable at $LITELLM_HEALTH (may still be starting)"
 fi
-echo "=== End Claude Setup ==="
-
-# Gemini API auth check (uses GEMINI_API_KEY or GOOGLE_API_KEY)
-echo "=== Gemini API Setup ==="
-if [ -n "${GEMINI_API_KEY}" ] || [ -n "${GOOGLE_API_KEY}" ]; then
-    echo "✓ Gemini API key is set"
-else
-    echo "WARNING: GEMINI_API_KEY/GOOGLE_API_KEY not set"
-    echo "  Gemini API will not be available"
-fi
-echo "=== End Gemini Setup ==="
+echo "=== End LiteLLM Proxy ==="
 
 # Drop privileges and run as node user
 exec gosu node "$@"

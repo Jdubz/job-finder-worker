@@ -11,10 +11,9 @@
 #   - Use PROFILE=hotreload for live source code mounting
 #   - Changes to TypeScript files trigger automatic restart via nodemon
 #
-# AI CREDENTIALS:
-#   Set these in .env.dev:
-#   - CLAUDE_CODE_OAUTH_TOKEN: Claude CLI OAuth token
-#   - GOOGLE_API_KEY or GEMINI_API_KEY: Gemini API key
+# AI INFERENCE:
+#   AI calls route through LiteLLM proxy on the host (started by worker compose).
+#   The BE reaches LiteLLM via host.docker.internal:4000.
 #
 # DIRECTORY STRUCTURE (all gitignored):
 #   .dev/
@@ -35,6 +34,7 @@ x-api-env: &api-env
   GENERATOR_ARTIFACTS_DIR: /data/artifacts
   GENERATOR_ARTIFACTS_PUBLIC_BASE: ${GENERATOR_ARTIFACTS_PUBLIC_BASE:-http://localhost:${API_PORT:-18080}/api/generator/artifacts}
   GENERATOR_ASSETS_DIR: /data/artifacts/assets
+  LITELLM_BASE_URL: http://host.docker.internal:4000
 
 services:
   sqlite-migrator:
@@ -69,6 +69,8 @@ services:
       - .env.dev
     environment:
       <<: *api-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-18080}:8080"
     volumes:
@@ -109,6 +111,8 @@ services:
     environment:
       <<: *api-env
       NODE_ENV: development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-18080}:8080"
     volumes:

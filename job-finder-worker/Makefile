@@ -136,8 +136,8 @@ shell: ## Start Python shell with app context
 check-env: ## Check environment variables
 	@echo "$(CYAN)Checking environment...$(RESET)"
 	@echo "SQLITE_DB_PATH: $$SQLITE_DB_PATH"
-	@echo "ANTHROPIC_API_KEY: $$([ -n "$$ANTHROPIC_API_KEY" ] && echo 'Set' || echo 'Not set')"
-	@echo "OPENAI_API_KEY: $$([ -n "$$OPENAI_API_KEY" ] && echo 'Set' || echo 'Not set')"
+	@echo "LITELLM_BASE_URL: $${LITELLM_BASE_URL:-not set (default: http://localhost:4000/v1)}"
+	@echo "LITELLM_MASTER_KEY: $$([ -n "$$LITELLM_MASTER_KEY" ] && echo 'Set' || echo 'Not set')"
 
 # Documentation
 docs: ## View documentation
@@ -191,7 +191,8 @@ dev-up: ## Start dev containers (detached)
 	@echo "$(CYAN)Starting dev containers...$(RESET)"
 	@docker compose -f docker-compose.dev.yml up -d
 	@echo "$(GREEN)Containers started!$(RESET)"
-	@echo "Worker: http://localhost:5555/health"
+	@echo "Worker:  http://localhost:5555/health"
+	@echo "LiteLLM: http://localhost:4000/health"
 	@echo "Logs: make dev-logs"
 
 dev-up-attached: ## Start dev containers (attached, see logs)
