@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS
+
 logger = logging.getLogger(__name__)
 
 # Timeout for ATS probes (should be fast since these are direct API calls)
@@ -42,43 +44,40 @@ class ATSProbeResult:
     sample_job_domain: Optional[str] = None  # Domain extracted from sample job URL
 
 
-# Common ATS providers and their API patterns
+# Build field mappings from platform_patterns (single source of truth).
+# The prober uses api_url (minimal, fast) for probing, and config_url (full params)
+# for the stored config. Fields always come from platform_patterns.
+_PLATFORM_PATTERNS_BY_NAME = {p.name: p for p in PLATFORM_PATTERNS}
+
+_GH_PATTERN = _PLATFORM_PATTERNS_BY_NAME["greenhouse_api"]
+_ASHBY_PATTERN = _PLATFORM_PATTERNS_BY_NAME["ashby_api"]
+_LEVER_PATTERN = _PLATFORM_PATTERNS_BY_NAME["lever"]
+_WORKABLE_PATTERN = _PLATFORM_PATTERNS_BY_NAME["workable_api"]
+
+# Common ATS providers and their API patterns.
+# Fields are sourced from platform_patterns.py to stay in sync.
 ATS_PROVIDERS = {
     "greenhouse": {
         "api_url": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+        "config_url": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
         "response_path": "jobs",
         "aggregator_domain": "greenhouse.io",
-        "fields": {
-            "title": "title",
-            "url": "absolute_url",
-            "location": "location.name",
-            "description": "content",
-            "posted_date": "updated_at",
-        },
+        "fields": _GH_PATTERN.fields,
     },
     "lever": {
         "api_url": "https://api.lever.co/v0/postings/{slug}?mode=json",
         "response_path": "",  # Root is array
         "aggregator_domain": "lever.co",
-        "fields": {
-            "title": "text",
-            "url": "hostedUrl",
-            "location": "categories.location",
-            "description": "descriptionPlain",
-            "posted_date": "createdAt",
-        },
+        "fields": _LEVER_PATTERN.fields,
     },
     "ashby": {
         "api_url": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
+        "config_url": "https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true",
         "response_path": "jobs",
         "aggregator_domain": "ashbyhq.com",
-        "fields": {
-            "title": "title",
-            "url": "jobUrl",
-            "location": "location",
-            "description": "descriptionHtml",
-            "posted_date": "publishedAt",
-        },
+        "fields": _ASHBY_PATTERN.fields,
+        "salary_min_field": _ASHBY_PATTERN.salary_min_field,
+        "salary_max_field": _ASHBY_PATTERN.salary_max_field,
     },
     "smartrecruiters": {
         "api_url": "https://api.smartrecruiters.com/v1/companies/{slug}/postings",
@@ -120,12 +119,7 @@ ATS_PROVIDERS = {
         "api_url": "https://apply.workable.com/api/v1/widget/accounts/{slug}",
         "response_path": "jobs",
         "aggregator_domain": "workable.com",
-        "fields": {
-            "title": "title",
-            "url": "url",
-            "location": "location.city",
-            "description": "description",
-        },
+        "fields": _WORKABLE_PATTERN.fields,
     },
 }
 
@@ -576,14 +570,20 @@ def probe_ats_provider(
             return ATSProbeResult(found=False)
 
         # Found jobs - build config
+        # Use config_url (with full query params) if available, else api_url
+        stored_url = config.get("config_url", config["api_url"]).format(slug=slug)
         sample_job = jobs[0] if jobs else None
         scraper_config = {
             "type": "api",
-            "url": api_url,
+            "url": stored_url,
             "method": "GET",
             "response_path": config["response_path"],
             "fields": config["fields"].copy(),
         }
+        if config.get("salary_min_field"):
+            scraper_config["salary_min_field"] = config["salary_min_field"]
+        if config.get("salary_max_field"):
+            scraper_config["salary_max_field"] = config["salary_max_field"]
 
         # Extract sample job URL for domain verification
         sample_job_domain = None
@@ -692,6 +692,7 @@ def probe_workday(
                     continue
 
                 # Found jobs - build config
+                _wd_pattern = _PLATFORM_PATTERNS_BY_NAME["workday"]
                 sample_job = job_postings[0] if job_postings else None
                 base_url = f"{base_host}/{board}"
                 scraper_config = {
@@ -702,12 +703,8 @@ def probe_workday(
                     "response_path": "jobPostings",
                     "base_url": base_url,
                     "headers": {"Content-Type": "application/json"},
-                    "fields": {
-                        "title": "title",
-                        "url": "externalPath",
-                        "location": "locationsText",
-                        "posted_date": "postedOn",
-                    },
+                    "fields": _wd_pattern.fields.copy(),
+                    "follow_detail": True,
                 }
 
                 logger.info(

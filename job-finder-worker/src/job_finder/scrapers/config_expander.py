@@ -27,10 +27,12 @@ from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS, match_platf
 _GREENHOUSE_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api")
 _ASHBY_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "ashby_api")
 _WORKDAY_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "workday")
+_LEVER_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "lever")
 
 GREENHOUSE_FIELDS = _GREENHOUSE_PATTERN.fields
 ASHBY_FIELDS = _ASHBY_PATTERN.fields
 WORKDAY_FIELDS = _WORKDAY_PATTERN.fields
+LEVER_FIELDS = _LEVER_PATTERN.fields
 
 # Standard RSS field mappings (not in platform_patterns since RSS is format-based, not platform-based)
 RSS_FIELDS = {
@@ -85,10 +87,30 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Full config ready for GenericScraper with 'type' derived from source_type
     """
-    # If config already has url and fields, it's a full config - just ensure type is set
+    # If config already has url and fields, enrich with standard fields for known
+    # platforms (detected by URL pattern). This ensures sources created by the ATS
+    # prober or AI agent always get the full field set from platform_patterns.
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = normalize_source_type(expanded.get("type", source_type))
+        url = expanded.get("url", "")
+        if "greenhouse.io" in url:
+            for key, value in GREENHOUSE_FIELDS.items():
+                if key not in expanded["fields"]:
+                    expanded["fields"][key] = value
+        elif "ashbyhq.com" in url:
+            for key, value in ASHBY_FIELDS.items():
+                if key not in expanded["fields"]:
+                    expanded["fields"][key] = value
+        elif "myworkdayjobs.com" in url:
+            for key, value in WORKDAY_FIELDS.items():
+                if key not in expanded["fields"]:
+                    expanded["fields"][key] = value
+            expanded["follow_detail"] = True
+        elif "lever.co" in url:
+            for key, value in LEVER_FIELDS.items():
+                if key not in expanded["fields"]:
+                    expanded["fields"][key] = value
         return expanded
 
     # Normalize source_type to scraping method before dispatch
@@ -153,10 +175,14 @@ def normalize_source_type(source_type: str) -> str:
 
 def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand greenhouse config from board_token to full API config."""
-    # If already has full config (type, url, fields), return as-is
+    # If already has full config (type, url, fields), enrich with standard fields
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = "api"
+        # Merge standard Greenhouse fields into existing fields (don't overwrite)
+        for key, value in GREENHOUSE_FIELDS.items():
+            if key not in expanded["fields"]:
+                expanded["fields"][key] = value
         return expanded
 
     # Simple config with just board_token
@@ -174,10 +200,14 @@ def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand ashby config from board_name to full API config."""
-    # If already has full config (type, url, fields), return as-is
+    # If already has full config (type, url, fields), enrich with standard fields
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = "api"
+        # Merge standard Ashby fields into existing fields (don't overwrite)
+        for key, value in ASHBY_FIELDS.items():
+            if key not in expanded["fields"]:
+                expanded["fields"][key] = value
         return expanded
 
     # Simple config with just board_name
@@ -213,10 +243,15 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
     The API returns job listings with relative URLs that need to be combined with
     the base careers URL to form full job URLs.
     """
-    # If already has full config (type, url, fields), return as-is
+    # If already has full config (type, url, fields), enrich with standard fields
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = "api"
+        # Merge standard Workday fields into existing fields (don't overwrite)
+        for key, value in WORKDAY_FIELDS.items():
+            if key not in expanded["fields"]:
+                expanded["fields"][key] = value
+        expanded["follow_detail"] = True
         return expanded
 
     # Extract careers URL
@@ -245,6 +280,7 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
         "response_path": "jobPostings",
         "fields": WORKDAY_FIELDS.copy(),
         "base_url": base_url,
+        "follow_detail": True,
     }
 
 

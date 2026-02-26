@@ -1424,6 +1424,8 @@ class GenericScraper:
             # Post-process based on field type
             if field == "posted_date" and value:
                 value = self._normalize_date(value)
+            elif field == "url" and value is not None:
+                value = str(value)
             elif field == "title" and value:
                 value = sanitize_title(str(value))
             elif field == "company" and value:
@@ -1459,14 +1461,14 @@ class GenericScraper:
 
         # Construct full URL from relative path if base_url is specified
         if self.config.base_url and job.get("url"):
-            url = job["url"]
-            if isinstance(url, str):
-                is_absolute = re.match(r"^https?://", url)
-                if not is_absolute:
-                    # Normalize slashes to avoid double slashes
-                    base = self.config.base_url.rstrip("/")
-                    relative = url.lstrip("/")
-                    job["url"] = f"{base}/{relative}"
+            url = str(job["url"])
+            job["url"] = url
+            is_absolute = re.match(r"^https?://", url)
+            if not is_absolute:
+                # Normalize slashes to avoid double slashes
+                base = self.config.base_url.rstrip("/")
+                relative = url.lstrip("/")
+                job["url"] = f"{base}/{relative}"
 
         # Apply company extraction strategy if company is still empty
         if not job.get("company") and self.config.company_extraction:
