@@ -153,10 +153,14 @@ def normalize_source_type(source_type: str) -> str:
 
 def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand greenhouse config from board_token to full API config."""
-    # If already has full config (type, url, fields), return as-is
+    # If already has full config (type, url, fields), enrich with standard fields
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = "api"
+        # Merge standard Greenhouse fields into existing fields (don't overwrite)
+        for key, value in GREENHOUSE_FIELDS.items():
+            if key not in expanded["fields"]:
+                expanded["fields"][key] = value
         return expanded
 
     # Simple config with just board_token
@@ -174,10 +178,14 @@ def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand ashby config from board_name to full API config."""
-    # If already has full config (type, url, fields), return as-is
+    # If already has full config (type, url, fields), enrich with standard fields
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = "api"
+        # Merge standard Ashby fields into existing fields (don't overwrite)
+        for key, value in ASHBY_FIELDS.items():
+            if key not in expanded["fields"]:
+                expanded["fields"][key] = value
         return expanded
 
     # Simple config with just board_name
@@ -213,10 +221,14 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
     The API returns job listings with relative URLs that need to be combined with
     the base careers URL to form full job URLs.
     """
-    # If already has full config (type, url, fields), return as-is
+    # If already has full config (type, url, fields), enrich with standard fields
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = "api"
+        # Merge standard Workday fields into existing fields (don't overwrite)
+        for key, value in WORKDAY_FIELDS.items():
+            if key not in expanded["fields"]:
+                expanded["fields"][key] = value
         return expanded
 
     # Extract careers URL
