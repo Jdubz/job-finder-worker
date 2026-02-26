@@ -168,11 +168,7 @@ class InferenceClient:
                     tried_agents=[model],
                 ) from e
 
-            raise AIProviderError(
-                f"LiteLLM API error (HTTP {status}): {body}"
-            ) from e
+            raise AIProviderError(f"LiteLLM API error (HTTP {status}): {body}") from e
 
         except Exception as e:
-            raise AIProviderError(
-                f"Unexpected error calling LiteLLM: {e}"
-            ) from e
+            raise AIProviderError(f"Unexpected error calling LiteLLM: {e}") from e

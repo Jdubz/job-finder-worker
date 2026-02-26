@@ -139,7 +139,9 @@ class TestAnalyzeMatch:
         assert analysis is not None
         assert "Python" in analysis["matched_skills"]
 
-    def test_analyze_match_handles_invalid_json(self, mock_inference_client, mock_profile, sample_job):
+    def test_analyze_match_handles_invalid_json(
+        self, mock_inference_client, mock_profile, sample_job
+    ):
         """Test handling of invalid JSON response."""
         mock_inference_client.execute.return_value = Mock(text="This is not valid JSON")
 

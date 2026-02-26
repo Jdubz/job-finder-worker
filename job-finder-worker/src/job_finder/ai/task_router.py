@@ -7,10 +7,10 @@ fallbacks, retries, and budget tracking.
 # Task type → LiteLLM model name
 # LiteLLM config defines what provider each model routes to and its fallback chain.
 TASK_MODEL_MAP = {
-    "extraction": "local-extract",      # Ollama first, LiteLLM handles fallback
-    "analysis":   "local-extract",      # Same — local for classification/scoring
-    "document":   "claude-document",    # Claude for quality generation
-    "chat":       "claude-document",    # Claude for conversational
+    "extraction": "local-extract",  # Ollama first, LiteLLM handles fallback
+    "analysis": "local-extract",  # Same — local for classification/scoring
+    "document": "claude-document",  # Claude for quality generation
+    "chat": "claude-document",  # Claude for conversational
 }
 
 # Default model when task type isn't in the map
