@@ -163,9 +163,11 @@ def check_litellm_health() -> Dict[str, Any]:
     """
     import requests as _requests
 
-    litellm_url = os.getenv("LITELLM_BASE_URL", "http://litellm:4000")
+    litellm_url = os.getenv("LITELLM_BASE_URL", "http://litellm:4000").rstrip("/")
+    # Strip /v1 suffix if present — health endpoint lives at the proxy root
+    base = litellm_url.removesuffix("/v1")
     try:
-        resp = _requests.get(f"{litellm_url}/health", timeout=5)
+        resp = _requests.get(f"{base}/health/readiness", timeout=5)
         if resp.status_code == 200:
             return {"healthy": True, "message": "LiteLLM proxy healthy", "details": resp.json()}
         return {"healthy": False, "message": f"LiteLLM returned HTTP {resp.status_code}"}

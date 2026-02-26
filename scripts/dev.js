@@ -124,7 +124,8 @@ function startBackend(port) {
       DATABASE_PATH: TEMP_DB_PATH,
       JF_SQLITE_MIGRATIONS_DIR: MIGRATIONS_DIR,
       PORT: String(port),
-      LITELLM_BASE_URL: process.env.LITELLM_BASE_URL || 'http://localhost:4000'
+      LITELLM_BASE_URL: process.env.LITELLM_BASE_URL || 'http://localhost:4000',
+      LITELLM_MASTER_KEY: process.env.LITELLM_MASTER_KEY || 'sk-dev-master-key'
     }
   })
 

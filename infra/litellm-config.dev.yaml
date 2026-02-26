@@ -41,7 +41,7 @@ litellm_settings:
   num_retries: 2
   request_timeout: 120
   fallbacks:
-    - {"claude-document": ["gemini-general"]}
+    - {"claude-document": ["gemini-general", "local-extract"]}
     - {"local-extract": ["gemini-general", "claude-document"]}
 
 general_settings:
