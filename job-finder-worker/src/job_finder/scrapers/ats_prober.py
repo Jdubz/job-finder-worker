@@ -704,6 +704,7 @@ def probe_workday(
                     "base_url": base_url,
                     "headers": {"Content-Type": "application/json"},
                     "fields": _wd_pattern.fields.copy(),
+                    "follow_detail": True,
                 }
 
                 logger.info(

@@ -106,6 +106,7 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
             for key, value in WORKDAY_FIELDS.items():
                 if key not in expanded["fields"]:
                     expanded["fields"][key] = value
+            expanded["follow_detail"] = True
         elif "lever.co" in url:
             for key, value in LEVER_FIELDS.items():
                 if key not in expanded["fields"]:
@@ -250,6 +251,7 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
         for key, value in WORKDAY_FIELDS.items():
             if key not in expanded["fields"]:
                 expanded["fields"][key] = value
+        expanded["follow_detail"] = True
         return expanded
 
     # Extract careers URL
@@ -278,6 +280,7 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
         "response_path": "jobPostings",
         "fields": WORKDAY_FIELDS.copy(),
         "base_url": base_url,
+        "follow_detail": True,
     }
 
 
