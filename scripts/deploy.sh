@@ -41,7 +41,7 @@ fi
 if [[ "${1:-}" == "--recreate" ]]; then
   echo "[deploy] Recreating containers with new config..."
   cd "${PROD_DIR}"
-  docker compose up -d --force-recreate api worker
+  docker compose up -d --force-recreate api worker litellm
   echo "[deploy] Containers recreated"
 fi
 

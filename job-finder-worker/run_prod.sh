@@ -32,10 +32,10 @@ if [ ! -f "$SQLITE_DB_PATH" ]; then
   exit 1
 fi
 
-# Require at least one AI provider key in the environment
-if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "❌ Missing AI provider key: set ANTHROPIC_API_KEY or OPENAI_API_KEY (fetch from 1Password)." >&2
-  exit 1
+# LiteLLM proxy configuration (all AI inference routes through LiteLLM)
+export LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://litellm:4000/v1}
+if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+  echo "⚠️  LITELLM_MASTER_KEY is not set — inference calls may fail with 401." >&2
 fi
 
 # Create logs directory
@@ -46,6 +46,7 @@ echo "   Environment: PRODUCTION"
 echo "   Port: $WORKER_PORT"
 echo "   Host: $WORKER_HOST"
 echo "   Log File: $QUEUE_WORKER_LOG_FILE"
+echo "   LiteLLM URL: $LITELLM_BASE_URL"
 echo ""
 
 # Start the Flask worker with production settings

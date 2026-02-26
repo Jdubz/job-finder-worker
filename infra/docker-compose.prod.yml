@@ -16,15 +16,14 @@
 # This copies the file to /srv/job-finder/ and recreates containers.
 # Watchtower only handles IMAGE updates, not compose file changes.
 #
-# AI CREDENTIALS:
-# ----------------
-# Supported agents:
-#   - claude.cli: Uses CLAUDE_CODE_OAUTH_TOKEN env var
-#   - gemini.api: Uses GOOGLE_API_KEY / GEMINI_API_KEY env var,
-#                 or GOOGLE_CLOUD_PROJECT + service account (Vertex AI)
+# AI INFERENCE:
+# -------------
+# All AI calls route through the LiteLLM proxy (litellm:4000).
+# Model routing (claude-document, gemini-general, local-extract)
+# is configured in infra/litellm-config.yaml.
 #
-# Set API keys in the respective secrets/*.env files.
-# UID 1000 on host matches the 'node' user in containers.
+# Set LITELLM_MASTER_KEY in the host environment or secrets/*.env.
+# Provider API keys (GEMINI_API_KEY, etc.) go in secrets/worker.env.
 #
 # PRODUCTION PATHS:
 # -----------------
@@ -58,9 +57,14 @@ services:
       WORKER_URL: http://worker:5555
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://job-finder.joshwentworth.com}
       TZ: America/Los_Angeles
-      # Vertex AI authentication via Firebase service account (same as worker)
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Firebase Admin SDK (auth)
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-admin.json
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
+    depends_on:
+      litellm:
+        condition: service_healthy
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -71,7 +75,7 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /logs
-      # Firebase service account for Vertex AI (Gemini API)
+      # Firebase Admin SDK (auth)
       - type: bind
         source: /srv/job-finder/secrets/firebase-admin.json
         target: /secrets/firebase-admin.json
@@ -95,8 +99,12 @@ services:
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       TZ: America/Los_Angeles
-      # Vertex AI authentication via Firebase service account (optional, use GEMINI_API_KEY instead if not using Vertex AI)
+      LITELLM_BASE_URL: http://litellm:4000/v1
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-admin.json
+    depends_on:
+      litellm:
+        condition: service_healthy
     volumes:
       - type: bind
         source: /srv/job-finder/data
@@ -104,7 +112,7 @@ services:
       - type: bind
         source: /srv/job-finder/logs
         target: /app/logs
-      # Firebase service account for Vertex AI (Gemini API)
+      # Firebase Admin SDK (auth)
       - type: bind
         source: /srv/job-finder/secrets/firebase-admin.json
         target: /secrets/firebase-admin.json
@@ -122,8 +130,14 @@ services:
       - "4000:4000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/readiness')"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     env_file:
-      - /srv/job-finder/secrets/worker.env  # GEMINI_API_KEY, CLAUDE_CODE_OAUTH_TOKEN
+      - /srv/job-finder/secrets/worker.env  # GEMINI_API_KEY and other provider keys
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       TZ: America/Los_Angeles
