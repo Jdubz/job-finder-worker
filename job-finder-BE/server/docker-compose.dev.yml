@@ -35,6 +35,7 @@ x-api-env: &api-env
   GENERATOR_ARTIFACTS_PUBLIC_BASE: ${GENERATOR_ARTIFACTS_PUBLIC_BASE:-http://localhost:${API_PORT:-18080}/api/generator/artifacts}
   GENERATOR_ASSETS_DIR: /data/artifacts/assets
   LITELLM_BASE_URL: http://host.docker.internal:4000
+  LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key}
 
 services:
   sqlite-migrator:

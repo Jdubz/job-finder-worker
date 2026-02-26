@@ -56,7 +56,8 @@ export class InferenceClient {
   constructor(private readonly log: Logger = logger) {
     this.baseUrl = process.env.LITELLM_BASE_URL || 'http://litellm:4000'
     this.apiKey = process.env.LITELLM_MASTER_KEY || ''
-    this.timeoutMs = Number(process.env.LITELLM_TIMEOUT || '120000')
+    // LITELLM_TIMEOUT is in seconds (matching Python client); convert to ms
+    this.timeoutMs = Number(process.env.LITELLM_TIMEOUT || '120') * 1000
   }
 
   /**
@@ -78,7 +79,8 @@ export class InferenceClient {
   async execute(
     taskType: string,
     prompt: string,
-    modelOverride?: string
+    modelOverride?: string,
+    options: { max_tokens?: number; temperature?: number } = {}
   ): Promise<AgentExecutionResult> {
     const model = modelOverride || getModelForTask(taskType)
     const url = `${this.baseUrl}/v1/chat/completions`
@@ -96,8 +98,8 @@ export class InferenceClient {
         body: JSON.stringify({
           model,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 8192,
-          temperature: 0.7,
+          max_tokens: options.max_tokens ?? 8192,
+          temperature: options.temperature ?? 0.7,
         }),
         signal: controller.signal,
       })
@@ -165,7 +167,8 @@ export class InferenceClient {
   async *streamChat(
     messages: Array<{ role: string; content: string }>,
     systemPrompt?: string,
-    model?: string
+    model?: string,
+    options: { max_tokens?: number } = {}
   ): AsyncGenerator<string> {
     const resolvedModel = model || getModelForTask('chat')
     const url = `${this.baseUrl}/v1/chat/completions`
@@ -176,7 +179,7 @@ export class InferenceClient {
         ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
         ...messages,
       ],
-      max_tokens: 1024,
+      max_tokens: options.max_tokens ?? 1024,
       stream: true,
     }
 

@@ -23,11 +23,11 @@ model_list:
       api_key: none
 
   # ── Document generation ─────────────────────────────────────────────────────
-  # Claude via Max subscription (OAuth token forwarded from client headers)
+  # Claude via Max subscription (OAuth token from env)
   - model_name: claude-document
     litellm_params:
       model: anthropic/claude-sonnet-4-20250514
-      # OAuth token forwarded via forward_client_headers_to_llm_api
+      api_key: os.environ/CLAUDE_CODE_OAUTH_TOKEN
 
   # ── General-purpose fallback ────────────────────────────────────────────────
   # Gemini Flash — fast, cheap, good for extraction and analysis
@@ -37,7 +37,6 @@ model_list:
       api_key: os.environ/GEMINI_API_KEY
 
 litellm_settings:
-  forward_client_headers_to_llm_api: true
   num_retries: 2
   request_timeout: 120
   fallbacks:

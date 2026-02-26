@@ -33,7 +33,7 @@ if [ ! -f "$SQLITE_DB_PATH" ]; then
 fi
 
 # LiteLLM proxy configuration (all AI inference routes through LiteLLM)
-export LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://litellm:4000/v1}
+export LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://litellm:4000}
 if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
   echo "⚠️  LITELLM_MASTER_KEY is not set — inference calls may fail with 401." >&2
 fi

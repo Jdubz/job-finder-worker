@@ -27,7 +27,7 @@ from job_finder.exceptions import (
 logger = logging.getLogger(__name__)
 
 # LiteLLM proxy defaults (overridable via env)
-_DEFAULT_BASE_URL = "http://litellm:4000/v1"
+_DEFAULT_BASE_URL = "http://litellm:4000"
 _DEFAULT_TIMEOUT = 120
 
 
@@ -66,7 +66,7 @@ class InferenceClient:
         """Initialize the inference client.
 
         Args:
-            base_url: LiteLLM proxy URL (default: http://litellm:4000/v1)
+            base_url: LiteLLM proxy origin (default: http://litellm:4000)
             api_key: LiteLLM master key (default: from LITELLM_MASTER_KEY env)
             timeout: Request timeout in seconds (default: 120)
         """
@@ -75,7 +75,7 @@ class InferenceClient:
         self._timeout = timeout or int(os.getenv("LITELLM_TIMEOUT", str(_DEFAULT_TIMEOUT)))
 
         self._client = OpenAI(
-            base_url=self._base_url,
+            base_url=f"{self._base_url.rstrip('/')}/v1",
             api_key=self._api_key,
             timeout=self._timeout,
         )

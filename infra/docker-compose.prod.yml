@@ -99,7 +99,7 @@ services:
       JF_NODE_API_BASE: http://api:8080/api
       JF_WORKER_ID: default
       TZ: America/Los_Angeles
-      LITELLM_BASE_URL: http://litellm:4000/v1
+      LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-admin.json
     depends_on:

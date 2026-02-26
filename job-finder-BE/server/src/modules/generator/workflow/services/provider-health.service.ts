@@ -4,7 +4,7 @@ import { UserFacingError } from '../generator.workflow.service'
  * Ensure AI inference is available by checking LiteLLM proxy health.
  */
 export async function ensureLitellmHealthy(): Promise<void> {
-  const baseUrl = process.env.LITELLM_BASE_URL || 'http://litellm:4000'
+  const baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
 
   try {
     const response = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(5000) })
