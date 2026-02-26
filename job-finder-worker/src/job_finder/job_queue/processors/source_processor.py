@@ -1042,6 +1042,17 @@ class SourceProcessor(BaseProcessor):
                 scraper = GenericScraper(SourceConfig.from_dict(expanded))
                 items = scraper._navigate_path(data, sc.response_path)  # type: ignore[attr-defined]
                 job_count = len(items or [])
+                if job_count > 0:
+                    # Validate field extraction on a sample of items
+                    extraction_ok = self._validate_field_extraction(scraper, items[:3])
+                    if not extraction_ok:
+                        return ProbeResult(
+                            status="empty",
+                            job_count=job_count,
+                            status_code=status_code,
+                            hint=f"field_extraction_failure: {job_count} items matched but title/url fields extracted nothing",
+                            sample=text_sample,
+                        )
                 return ProbeResult(
                     status="success" if job_count > 0 else "empty",
                     job_count=job_count,
@@ -1089,6 +1100,18 @@ class SourceProcessor(BaseProcessor):
                 soup = BeautifulSoup(html, "html.parser")
                 items = soup.select(getattr(sc, "job_selector", ""))
                 job_count = len(items)
+                if job_count > 0:
+                    # Validate field extraction on a sample of items
+                    scraper = GenericScraper(SourceConfig.from_dict(expanded))
+                    extraction_ok = self._validate_field_extraction(scraper, items[:3])
+                    if not extraction_ok:
+                        return ProbeResult(
+                            status="empty",
+                            job_count=job_count,
+                            status_code=status_code,
+                            hint=f"field_extraction_failure: {job_count} items matched but title/url fields extracted nothing",
+                            sample=html[:4000],
+                        )
                 return ProbeResult(
                     status="success" if job_count > 0 else "empty",
                     job_count=job_count,
@@ -1104,6 +1127,23 @@ class SourceProcessor(BaseProcessor):
             return ProbeResult(
                 status="error", status_code=status_code, hint=str(exc), sample=text_sample or ""
             )
+
+    @staticmethod
+    def _validate_field_extraction(scraper: GenericScraper, items: list) -> bool:
+        """Check whether title and url fields extract non-empty values from sample items.
+
+        Returns True if at least one item yields a non-empty title AND url.
+        """
+        for item in items:
+            try:
+                extracted = scraper._extract_fields(item)  # type: ignore[attr-defined]
+                title = (extracted.get("title") or "").strip()
+                url = (extracted.get("url") or "").strip()
+                if title and url:
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
 
     def _agent_validate_empty(
         self,

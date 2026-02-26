@@ -41,6 +41,7 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
+from job_finder.scrapers.platform_patterns import is_single_company_platform
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_listing_storage import JobListingStorage
@@ -50,7 +51,9 @@ from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 logger = logging.getLogger(__name__)
 SOURCE_SCRAPE_TIMEOUT_SEC = 90  # watchdog per source to avoid hangs (JS render, huge APIs)
 TRANSIENT_FAILURE_THRESHOLD = 3  # disable source after N consecutive recoverable failures
-ZERO_JOBS_RECOVERY_THRESHOLD = 2  # spawn recovery after N consecutive zero-job runs (JS sources)
+ZERO_JOBS_RECOVERY_THRESHOLD = (
+    2  # spawn recovery after N consecutive zero-job runs (all source types)
+)
 
 
 class ScrapeRunner:
@@ -399,6 +402,10 @@ class ScrapeRunner:
             except Exception as e:
                 logger.warning("Failed to save scrape report: %s", e)
 
+        # Periodically re-test disabled sources for recovery
+        if trigger == "scheduled":
+            self._retry_disabled_sources()
+
         stats["report_id"] = report_id
         stats["source_details"] = source_details
         stats["filter_breakdown"] = aggregate_filter_reasons
@@ -446,7 +453,7 @@ class ScrapeRunner:
             logger.warning("Failed to reset consecutive failures for %s: %s", source_id, e)
 
     def _increment_zero_jobs(self, source: dict) -> None:
-        """Track consecutive zero-job results for JS sources; spawn recovery at threshold."""
+        """Track consecutive zero-job results for all source types; spawn recovery at threshold."""
         try:
             config = dict(source.get("config", {}))
             count = config.get("consecutive_zero_jobs", 0) + 1
@@ -472,14 +479,15 @@ class ScrapeRunner:
             self.sources_manager.update_config(source["id"], config)
 
     def _spawn_zero_jobs_recovery(self, source: dict) -> None:
-        """Spawn SOURCE_RECOVER task for a JS source with persistent zero jobs."""
+        """Spawn SOURCE_RECOVER task for a source with persistent zero jobs."""
         try:
             item = JobQueueItem(
                 type=QueueItemType.SOURCE_RECOVER,
                 url=source.get("config", {}).get("url", ""),
                 source_id=source["id"],
                 input={
-                    "error_reason": "zero_jobs_js_source",
+                    "error_reason": "zero_jobs",
+                    "source_type": source.get("sourceType", "unknown"),
                     "triggered_by": "zero_jobs_threshold",
                 },
             )
@@ -554,15 +562,20 @@ class ScrapeRunner:
         # Get company name ONLY from linked company - never fall back to source name
         company_name = None
         company_filter = None
+        source_url = config.get("url", "")
         if company_id:
             company = self.companies_manager.get_company_by_id(company_id)
             if company:
                 linked_company_name = company.get("name")
-                if is_aggregator:
-                    # For aggregator sources with a company_id, filter jobs by company name
+                if is_aggregator and not is_single_company_platform(source_url):
+                    # For multi-company aggregators (Remotive, WeWorkRemotely, etc.)
+                    # with a company_id, filter jobs by company name
                     company_filter = linked_company_name
                 else:
-                    # For non-aggregator (direct company) sources, override company name
+                    # For non-aggregator sources OR single-company platforms
+                    # (Lever, Ashby, Greenhouse, Breezy, etc.), override company name.
+                    # Single-company platforms don't include a per-job company field,
+                    # so filtering would incorrectly reject every job.
                     company_name = linked_company_name
 
         logger.info(f"\nScraping source: {source_name} (type={source_type})")
@@ -625,27 +638,20 @@ class ScrapeRunner:
         stats["jobs_found"] = len(jobs)
 
         if not jobs:
-            if source_config.requires_js:
-                logger.warning(
-                    "zero_jobs_js_source: source=%s url=%s job_selector=%r "
-                    "render_wait_for=%r elapsed=%ss",
-                    source_name,
-                    source_config.url,
-                    source_config.job_selector,
-                    source_config.render_wait_for,
-                    int(time.monotonic() - start),
-                )
-                # Track consecutive zero-job runs for JS sources
-                self._increment_zero_jobs(source)
-            else:
-                logger.info("  Found 0 jobs (elapsed=%ss)", int(time.monotonic() - start))
+            logger.warning(
+                "zero_jobs: source=%s type=%s url=%s elapsed=%ss",
+                source_name,
+                source_config.type,
+                source_config.url,
+                int(time.monotonic() - start),
+            )
+            self._increment_zero_jobs(source)
             return stats
 
         logger.info("  Found %s jobs (elapsed=%ss)", len(jobs), int(time.monotonic() - start))
 
-        # Reset zero-job counter on success (JS sources only)
-        if source_config.requires_js:
-            self._reset_zero_jobs(source)
+        # Reset zero-job counter on success
+        self._reset_zero_jobs(source)
 
         # Submit jobs to queue - use source_type from database as the authoritative type
         source_label = f"{source_type}:{source_name}"
@@ -702,3 +708,60 @@ class ScrapeRunner:
             url,
             company_name,
         )
+
+    # ------------------------------------------------------------
+    # Disabled-source retry
+    # ------------------------------------------------------------
+
+    NON_RECOVERABLE_TAGS = ("anti_bot", "auth_required", "protected_api")
+
+    def _retry_disabled_sources(self) -> int:
+        """Spawn SOURCE_RECOVER tasks for a small batch of disabled sources.
+
+        Selects up to 3 sources that have been disabled for at least 72 hours
+        and do not carry non-recoverable tags.  This gives sites that
+        previously caused failures a chance to be re-tested after fixes
+        or transient issues resolve.
+
+        Returns:
+            Number of recovery tasks spawned.
+        """
+        try:
+            sources = self.sources_manager.get_disabled_sources(
+                exclude_tags=list(self.NON_RECOVERABLE_TAGS),
+                min_disabled_hours=72,
+                limit=3,
+            )
+        except Exception as e:
+            logger.warning("Failed to fetch disabled sources for retry: %s", e)
+            return 0
+
+        spawned = 0
+        for source in sources:
+            try:
+                item = JobQueueItem(
+                    type=QueueItemType.SOURCE_RECOVER,
+                    url=source.get("config", {}).get("url", ""),
+                    source_id=source["id"],
+                    input={
+                        "error_reason": "periodic_retry",
+                        "source_type": source.get("sourceType", "unknown"),
+                        "triggered_by": "disabled_source_retry",
+                    },
+                )
+                self.queue_manager.add_item(item)
+                spawned += 1
+                logger.info(
+                    "Spawned disabled-source retry for %s (%s)",
+                    source.get("name", source["id"]),
+                    source["id"],
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to spawn retry for disabled source %s: %s",
+                    source["id"],
+                    e,
+                )
+        if spawned:
+            logger.info("Spawned %d disabled-source retry tasks", spawned)
+        return spawned

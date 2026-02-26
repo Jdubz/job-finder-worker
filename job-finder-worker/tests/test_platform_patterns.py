@@ -1,8 +1,11 @@
 """Tests for platform pattern matching and config generation."""
 
+import pytest
+
 from job_finder.scrapers.platform_patterns import (
     PLATFORM_PATTERNS,
     build_config_from_pattern,
+    is_single_company_platform,
     match_platform,
 )
 
@@ -31,11 +34,13 @@ class TestPlatformPatternRegistry:
             "weworkremotely_rss",
             "builtin_html",
             "jobicy_api",
-            # New patterns added
             "breezy_api",
             "workable_api",
             "recruitee_api",
             "jazzhr_stub",
+            # HTML/XML platform patterns
+            "teamtailor_html",
+            "personio_xml",
         }
         assert expected.issubset(pattern_names)
 
@@ -633,3 +638,145 @@ class TestValidationKeys:
         """Test Lever has empty validation key for array response."""
         pattern = next(p for p in PLATFORM_PATTERNS if p.name == "lever")
         assert pattern.validation_key == ""
+
+
+class TestIsSingleCompanyPlatform:
+    """Test the is_single_company_platform helper."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://jobs.lever.co/company",
+            "https://boards-api.greenhouse.io/v1/boards/company/jobs",
+            "https://api.ashbyhq.com/posting-api/job-board/company",
+            "https://company.breezy.hr/json",
+            "https://company.wd5.myworkdayjobs.com/en-US/external",
+        ],
+    )
+    def test_single_company_platforms_return_true(self, url):
+        """Single-company platform URLs are correctly identified."""
+        assert is_single_company_platform(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://remotive.com/api/remote-jobs",
+            "https://remoteok.com/api",
+            "https://weworkremotely.com/categories/remote-programming-jobs.rss",
+            "https://builtin.com/jobs",
+        ],
+    )
+    def test_multi_company_aggregators_return_false(self, url):
+        """Multi-company aggregator URLs are NOT identified as single-company."""
+        assert is_single_company_platform(url) is False
+
+    def test_unknown_url_returns_false(self):
+        """Unknown URLs that don't match any pattern return False."""
+        assert is_single_company_platform("https://example.com/careers") is False
+
+
+class TestIsMultiCompanyField:
+    """Test that is_multi_company is set correctly on platform patterns."""
+
+    def test_aggregators_are_multi_company(self):
+        """Aggregator platforms must have is_multi_company=True."""
+        multi_expected = {
+            "remotive_api",
+            "remoteok_api",
+            "weworkremotely_rss",
+            "builtin_html",
+            "jobicy_api",
+        }
+        for pattern in PLATFORM_PATTERNS:
+            if pattern.name in multi_expected:
+                assert pattern.is_multi_company, f"{pattern.name} should be is_multi_company=True"
+
+    def test_single_company_platforms_not_multi(self):
+        """Single-company platforms must have is_multi_company=False."""
+        single_expected = {
+            "greenhouse_api",
+            "ashby_api",
+            "lever",
+            "workday",
+            "breezy_api",
+            "workable_api",
+            "recruitee_api",
+        }
+        for pattern in PLATFORM_PATTERNS:
+            if pattern.name in single_expected:
+                assert (
+                    not pattern.is_multi_company
+                ), f"{pattern.name} should be is_multi_company=False"
+
+
+class TestTeamtailorPattern:
+    """Test Teamtailor HTML platform pattern matching."""
+
+    def test_matches_standard_teamtailor_url(self):
+        """Standard teamtailor.com URL is matched."""
+        url = "https://gigster.teamtailor.com/jobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "teamtailor_html"
+        assert groups["company"] == "gigster"
+
+    def test_matches_regional_teamtailor_url(self):
+        """Regional teamtailor URL with TLD prefix is matched."""
+        url = "https://zinkworks.ie.teamtailor.com/jobs"
+        result = match_platform(url)
+        assert result is not None
+        pattern, _ = result
+        assert pattern.name == "teamtailor_html"
+
+    def test_teamtailor_has_html_config_type(self):
+        """Teamtailor pattern uses HTML config type."""
+        pattern = next(p for p in PLATFORM_PATTERNS if p.name == "teamtailor_html")
+        assert pattern.config_type == "html"
+        assert pattern.job_selector != ""
+
+    def test_teamtailor_fields_include_title_and_url(self):
+        """Teamtailor pattern has title and url field mappings."""
+        pattern = next(p for p in PLATFORM_PATTERNS if p.name == "teamtailor_html")
+        assert "title" in pattern.fields
+        assert "url" in pattern.fields
+
+
+class TestPersonioPattern:
+    """Test Personio XML platform pattern matching."""
+
+    def test_matches_personio_com_url(self):
+        """Personio .com URL is matched."""
+        url = "https://stark.jobs.personio.com"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "personio_xml"
+        assert groups["company"] == "stark"
+        assert groups["tld"] == "com"
+
+    def test_matches_personio_de_url(self):
+        """Personio .de URL is matched."""
+        url = "https://c4a8.jobs.personio.de"
+        result = match_platform(url)
+        assert result is not None
+        pattern, groups = result
+        assert pattern.name == "personio_xml"
+        assert groups["company"] == "c4a8"
+        assert groups["tld"] == "de"
+
+    def test_personio_has_html_config_type(self):
+        """Personio uses HTML config type (BS4 parses the XML)."""
+        pattern = next(p for p in PLATFORM_PATTERNS if p.name == "personio_xml")
+        assert pattern.config_type == "html"
+
+    def test_personio_job_selector_is_position(self):
+        """Personio XML uses <position> as the job selector."""
+        pattern = next(p for p in PLATFORM_PATTERNS if p.name == "personio_xml")
+        assert pattern.job_selector == "position"
+
+    def test_personio_has_base_url_template(self):
+        """Personio has a base URL template for constructing job URLs."""
+        pattern = next(p for p in PLATFORM_PATTERNS if p.name == "personio_xml")
+        assert "personio" in pattern.base_url_template
+        assert "{company}" in pattern.base_url_template

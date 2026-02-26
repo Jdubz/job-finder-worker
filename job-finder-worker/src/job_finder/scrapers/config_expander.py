@@ -87,30 +87,41 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Full config ready for GenericScraper with 'type' derived from source_type
     """
+    # Auto-correct source_type when URL matches a known platform with a different
+    # config_type.  This catches the #1 root cause of broken sources: API URLs
+    # (e.g. boards-api.greenhouse.io) stored with source_type="html".
+    url = config.get("url", "")
+    if url:
+        platform_result = match_platform(url)
+        if platform_result:
+            pattern, _groups = platform_result
+            detected_type = pattern.config_type
+            normalized_input = normalize_source_type(source_type)
+            if detected_type != normalized_input:
+                _logger.warning(
+                    "Source type mismatch: source_type='%s' but URL matches "
+                    "platform '%s' (config_type='%s'). Auto-correcting.",
+                    source_type,
+                    pattern.name,
+                    detected_type,
+                )
+                source_type = detected_type
+
     # If config already has url and fields, enrich with standard fields for known
     # platforms (detected by URL pattern). This ensures sources created by the ATS
     # prober or AI agent always get the full field set from platform_patterns.
     if "url" in config and "fields" in config:
         expanded = {**config}
         expanded["type"] = normalize_source_type(expanded.get("type", source_type))
-        url = expanded.get("url", "")
-        if "greenhouse.io" in url:
-            for key, value in GREENHOUSE_FIELDS.items():
+        # Use match_platform() as single source of truth for field enrichment
+        platform_result = match_platform(expanded.get("url", ""))
+        if platform_result:
+            pattern, _groups = platform_result
+            for key, value in pattern.fields.items():
                 if key not in expanded["fields"]:
                     expanded["fields"][key] = value
-        elif "ashbyhq.com" in url:
-            for key, value in ASHBY_FIELDS.items():
-                if key not in expanded["fields"]:
-                    expanded["fields"][key] = value
-        elif "myworkdayjobs.com" in url:
-            for key, value in WORKDAY_FIELDS.items():
-                if key not in expanded["fields"]:
-                    expanded["fields"][key] = value
-            expanded["follow_detail"] = True
-        elif "lever.co" in url:
-            for key, value in LEVER_FIELDS.items():
-                if key not in expanded["fields"]:
-                    expanded["fields"][key] = value
+            if pattern.follow_detail:
+                expanded["follow_detail"] = True
         return expanded
 
     # Normalize source_type to scraping method before dispatch
