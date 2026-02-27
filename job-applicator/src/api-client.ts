@@ -417,7 +417,7 @@ export async function submitDocumentReview(
       method: "POST",
       body: JSON.stringify({ documentType, content }),
     }),
-    { maxRetries: 2, timeoutMs: 120000 } // submit-review triggers render-pdf which can take 30s+
+    { maxRetries: 2, timeoutMs: 30000 } // Just saves content — render-pdf is driven by /step
   )
 
   if (!res.ok) {

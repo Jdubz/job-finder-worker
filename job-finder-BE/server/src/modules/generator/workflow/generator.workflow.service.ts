@@ -141,51 +141,31 @@ export class GeneratorWorkflowService {
     content: ResumeContent | CoverLetterContent
   ): Promise<StepExecutionResult | null> {
     const request = this.workflowRepo.getRequest(requestId)
-    if (!request) return null
-
-    // If a previous submit-review call already transitioned the request out of
-    // awaiting_review (e.g. client timed out mid-render-pdf then retried), return
-    // the current state instead of 404 so the client can recover.
-    if (request.status !== 'awaiting_review') {
-      const steps = request.steps ?? createInitialSteps(request.generateType)
-      const reviewStepId = documentType === 'resume' ? 'review-resume' : 'review-cover-letter'
-      const reviewStep = steps.find((s) => s.id === reviewStepId)
-
-      if (reviewStep?.status === 'completed') {
-        return {
-          requestId,
-          status: request.status,
-          steps,
-          nextStep: steps.find((s) => s.status === 'pending')?.id,
-          stepCompleted: reviewStepId,
-          resumeUrl: request.resumeUrl ?? undefined,
-          coverLetterUrl: request.coverLetterUrl ?? undefined
-        }
-      }
+    if (!request || request.status !== 'awaiting_review') {
       return null
     }
 
-    // Update the intermediate results with the edited content
-    if (documentType === 'resume') {
-      this.workflowRepo.updateRequest(requestId, {
-        status: 'processing',
-        intermediateResults: {
-          ...request.intermediateResults,
-          resumeContent: content as ResumeContent
-        }
-      })
-    } else {
-      this.workflowRepo.updateRequest(requestId, {
-        status: 'processing',
-        intermediateResults: {
-          ...request.intermediateResults,
-          coverLetterContent: content as CoverLetterContent
-        }
-      })
-    }
+    // Save the reviewed content and transition to processing.
+    // Does NOT run the next step (render-pdf) — the client drives that via POST /step.
+    // This keeps submit-review fast and prevents state corruption if the client disconnects
+    // mid-render (which would leave status stuck on 'processing' with no way to retry).
+    const intermediateResults = documentType === 'resume'
+      ? { ...request.intermediateResults, resumeContent: content as ResumeContent }
+      : { ...request.intermediateResults, coverLetterContent: content as CoverLetterContent }
 
-    // Continue to the next step
-    return this.runNextStep(requestId)
+    this.workflowRepo.updateRequest(requestId, { status: 'processing', intermediateResults })
+
+    const steps = request.steps ?? createInitialSteps(request.generateType)
+    const reviewStepId = documentType === 'resume' ? 'review-resume' : 'review-cover-letter'
+    return {
+      requestId,
+      status: 'processing',
+      steps,
+      nextStep: steps.find((s) => s.status === 'pending')?.id,
+      stepCompleted: reviewStepId,
+      resumeUrl: request.resumeUrl ?? undefined,
+      coverLetterUrl: request.coverLetterUrl ?? undefined
+    }
   }
 
   /**
