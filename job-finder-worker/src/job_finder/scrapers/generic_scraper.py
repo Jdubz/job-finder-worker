@@ -252,7 +252,7 @@ class GenericScraper:
             request_timeout: Per-request HTTP timeout in seconds
         """
         self.config = config
-        self.request_timeout = request_timeout
+        self.request_timeout = max(request_timeout, 1)
 
     @lru_cache(maxsize=1)
     def _get_effective_url(self) -> str:
