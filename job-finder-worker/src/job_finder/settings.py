@@ -84,3 +84,13 @@ def get_fetch_delay_seconds(db_path: Optional[str] = None) -> float:
     except Exception:
         logger.debug("Using default fetch delay (0s) due to missing settings")
         return 0.0
+
+
+def get_request_timeout(db_path: Optional[str] = None) -> int:
+    """Get per-request HTTP timeout in seconds (default: 30)."""
+    try:
+        scraping = get_scraping_settings(db_path)
+        return int(scraping.get("requestTimeoutSeconds", 30))
+    except Exception:
+        logger.debug("Using default request timeout (30s) due to missing settings")
+        return 30
