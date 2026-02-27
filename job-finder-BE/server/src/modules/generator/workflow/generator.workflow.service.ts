@@ -141,7 +141,27 @@ export class GeneratorWorkflowService {
     content: ResumeContent | CoverLetterContent
   ): Promise<StepExecutionResult | null> {
     const request = this.workflowRepo.getRequest(requestId)
-    if (!request || request.status !== 'awaiting_review') {
+    if (!request) return null
+
+    // If a previous submit-review call already transitioned the request out of
+    // awaiting_review (e.g. client timed out mid-render-pdf then retried), return
+    // the current state instead of 404 so the client can recover.
+    if (request.status !== 'awaiting_review') {
+      const steps = request.steps ?? createInitialSteps(request.generateType)
+      const reviewStepId = documentType === 'resume' ? 'review-resume' : 'review-cover-letter'
+      const reviewStep = steps.find((s) => s.id === reviewStepId)
+
+      if (reviewStep?.status === 'completed') {
+        return {
+          requestId,
+          status: request.status,
+          steps,
+          nextStep: steps.find((s) => s.status === 'pending')?.id,
+          stepCompleted: reviewStepId,
+          resumeUrl: request.resumeUrl ?? undefined,
+          coverLetterUrl: request.coverLetterUrl ?? undefined
+        }
+      }
       return null
     }
 
