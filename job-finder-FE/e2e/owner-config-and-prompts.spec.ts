@@ -43,8 +43,8 @@ test.describe("Owner configuration and prompts", () => {
 
     // LLM Status tab (read-only, conditional rendering — not TabsContent)
     await page.getByRole("tab", { name: "LLM Status" }).click()
-    await expect(page.getByText(/LiteLLM Proxy Health/i)).toBeVisible()
-    await expect(page.getByText(/Model Routing/i)).toBeVisible()
+    await expect(page.getByRole("heading", { name: /LiteLLM Proxy Health/i })).toBeVisible()
+    await expect(page.getByRole("heading", { name: /Model Routing/i })).toBeVisible()
 
     // AI prompts page
     await page.goto("/ai-prompts")
