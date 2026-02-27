@@ -1,0 +1,268 @@
+import { getDb } from '../../db/sqlite'
+import { logger } from '../../logger'
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export type DocumentType = 'resume' | 'cover_letter'
+
+export interface CacheStoreParams {
+  embeddingVector: number[]
+  documentType: DocumentType
+  jobFingerprintHash: string
+  contentItemsHash: string
+  roleNormalized: string
+  techStackJson: string | null
+  documentContentJson: string
+  jobDescriptionText: string | null
+  companyName: string | null
+  modelVersion: string | null
+}
+
+export interface CacheRow {
+  id: number
+  documentContentJson: string
+  roleNormalized: string
+  companyName: string | null
+  hitCount: number
+}
+
+export interface SimilarityResult {
+  id: number
+  documentContentJson: string
+  roleNormalized: string
+  companyName: string | null
+  distance: number
+  similarity: number
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const MAX_CACHE_ENTRIES = 500
+const EVICTION_BATCH_SIZE = 10
+
+// ── Repository ───────────────────────────────────────────────────────────────
+
+export class DocumentCacheRepository {
+  private get db() {
+    return getDb()
+  }
+
+  /**
+   * Tier 1: Exact fingerprint match.
+   * Returns cached document content or null. Updates hit metadata on match.
+   */
+  findExact(
+    fingerprintHash: string,
+    contentItemsHash: string,
+    documentType: DocumentType
+  ): string | null {
+    const row = this.db.prepare(`
+      SELECT id, document_content_json FROM document_cache
+      WHERE job_fingerprint_hash = ?
+        AND content_items_hash = ?
+        AND document_type = ?
+      LIMIT 1
+    `).get(fingerprintHash, contentItemsHash, documentType) as { id: number; document_content_json: string } | undefined
+
+    if (!row) return null
+
+    // Update hit metadata
+    this.db.prepare(`
+      UPDATE document_cache
+      SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(row.id)
+
+    return row.document_content_json
+  }
+
+  /**
+   * Tier 2: KNN semantic similarity search.
+   * Queries vec0 for k*3 nearest neighbors, then filters by content_items_hash
+   * and document_type in application code (vec0 doesn't support post-filtering).
+   * Returns top k results with similarity scores.
+   */
+  findSimilar(
+    embedding: number[],
+    contentItemsHash: string,
+    documentType: DocumentType,
+    k: number = 5
+  ): SimilarityResult[] {
+    const queryBuffer = Buffer.from(new Float32Array(embedding).buffer)
+
+    // Fetch k*3 nearest neighbors from vec0
+    const knnRows = this.db.prepare(`
+      SELECT rowid, distance
+      FROM job_cache_embeddings
+      WHERE embedding MATCH ?
+        AND k = ?
+    `).all(queryBuffer, k * 3) as Array<{ rowid: number; distance: number }>
+
+    if (!knnRows.length) return []
+
+    // Join with document_cache and filter by content_items_hash + document_type
+    const rowids = knnRows.map((r) => r.rowid)
+    const distanceMap = new Map(knnRows.map((r) => [r.rowid, r.distance]))
+
+    const placeholders = rowids.map(() => '?').join(',')
+    const cacheRows = this.db.prepare(`
+      SELECT id, embedding_rowid, document_content_json, role_normalized, company_name
+      FROM document_cache
+      WHERE embedding_rowid IN (${placeholders})
+        AND content_items_hash = ?
+        AND document_type = ?
+    `).all(...rowids, contentItemsHash, documentType) as Array<{
+      id: number
+      embedding_rowid: number
+      document_content_json: string
+      role_normalized: string
+      company_name: string | null
+    }>
+
+    // Combine with distances and sort by similarity descending
+    const results: SimilarityResult[] = cacheRows
+      .map((row) => {
+        const distance = distanceMap.get(row.embedding_rowid) ?? Infinity
+        return {
+          id: row.id,
+          documentContentJson: row.document_content_json,
+          roleNormalized: row.role_normalized,
+          companyName: row.company_name,
+          distance,
+          similarity: 1.0 - distance / 2.0,
+        }
+      })
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, k)
+
+    // Update hit metadata for returned results
+    if (results.length > 0) {
+      const ids = results.map((r) => r.id)
+      const idPlaceholders = ids.map(() => '?').join(',')
+      this.db.prepare(`
+        UPDATE document_cache
+        SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
+        WHERE id IN (${idPlaceholders})
+      `).run(...ids)
+    }
+
+    return results
+  }
+
+  /**
+   * Store a new cache entry. Evicts oldest entries if at capacity.
+   * Runs in a transaction: insert embedding → insert document_cache row.
+   */
+  store(params: CacheStoreParams): void {
+    const embeddingBuffer = Buffer.from(new Float32Array(params.embeddingVector).buffer)
+
+    const insertTransaction = this.db.transaction(() => {
+      this.evictIfNeeded()
+
+      // Insert embedding into vec0
+      const embResult = this.db.prepare(`
+        INSERT INTO job_cache_embeddings (embedding) VALUES (?)
+      `).run(embeddingBuffer)
+
+      const embeddingRowid = embResult.lastInsertRowid
+
+      // Insert document_cache row
+      this.db.prepare(`
+        INSERT INTO document_cache (
+          embedding_rowid, document_type, job_fingerprint_hash, content_items_hash,
+          role_normalized, tech_stack_json, document_content_json,
+          job_description_text, company_name, model_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        embeddingRowid,
+        params.documentType,
+        params.jobFingerprintHash,
+        params.contentItemsHash,
+        params.roleNormalized,
+        params.techStackJson,
+        params.documentContentJson,
+        params.jobDescriptionText,
+        params.companyName,
+        params.modelVersion
+      )
+    })
+
+    insertTransaction()
+  }
+
+  /**
+   * Invalidate cache entries by content items hash and document type.
+   * Used when the user's profile content changes.
+   */
+  invalidateByContentHash(contentItemsHash: string, documentType: DocumentType): void {
+    const rows = this.db.prepare(`
+      SELECT embedding_rowid FROM document_cache
+      WHERE content_items_hash = ? AND document_type = ?
+    `).all(contentItemsHash, documentType) as Array<{ embedding_rowid: number }>
+
+    if (!rows.length) return
+
+    const deleteTransaction = this.db.transaction(() => {
+      // Delete embeddings
+      for (const row of rows) {
+        this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(row.embedding_rowid)
+      }
+
+      // Delete cache entries
+      this.db.prepare(`
+        DELETE FROM document_cache
+        WHERE content_items_hash = ? AND document_type = ?
+      `).run(contentItemsHash, documentType)
+    })
+
+    deleteTransaction()
+  }
+
+  /**
+   * Prune entries older than the specified number of days.
+   */
+  pruneOlderThan(days: number): number {
+    const rows = this.db.prepare(`
+      SELECT embedding_rowid FROM document_cache
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `).all(days) as Array<{ embedding_rowid: number }>
+
+    if (!rows.length) return 0
+
+    const pruneTransaction = this.db.transaction(() => {
+      for (const row of rows) {
+        this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(row.embedding_rowid)
+      }
+
+      this.db.prepare(`
+        DELETE FROM document_cache
+        WHERE created_at < datetime('now', '-' || ? || ' days')
+      `).run(days)
+    })
+
+    pruneTransaction()
+    return rows.length
+  }
+
+  /**
+   * Evict least-recently-used entries if cache is at capacity.
+   */
+  private evictIfNeeded(): void {
+    const countRow = this.db.prepare(`SELECT COUNT(*) as count FROM document_cache`).get() as { count: number }
+
+    if (countRow.count < MAX_CACHE_ENTRIES) return
+
+    const toEvict = this.db.prepare(`
+      SELECT id, embedding_rowid FROM document_cache
+      ORDER BY last_hit_at ASC, hit_count ASC
+      LIMIT ?
+    `).all(EVICTION_BATCH_SIZE) as Array<{ id: number; embedding_rowid: number }>
+
+    for (const row of toEvict) {
+      this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(row.embedding_rowid)
+      this.db.prepare(`DELETE FROM document_cache WHERE id = ?`).run(row.id)
+    }
+
+    logger.info({ evicted: toEvict.length }, 'Document cache LRU eviction')
+  }
+}

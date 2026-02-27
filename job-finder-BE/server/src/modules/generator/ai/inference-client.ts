@@ -80,7 +80,7 @@ export class InferenceClient {
     taskType: string,
     prompt: string,
     modelOverride?: string,
-    options: { max_tokens?: number; temperature?: number } = {}
+    options: { max_tokens?: number; temperature?: number; systemPrompt?: string } = {}
   ): Promise<AgentExecutionResult> {
     const model = modelOverride || getModelForTask(taskType)
     const url = `${this.baseUrl}/v1/chat/completions`
@@ -97,7 +97,10 @@ export class InferenceClient {
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
+            { role: 'user', content: prompt },
+          ],
           max_tokens: options.max_tokens ?? 8192,
           temperature: options.temperature ?? 0.7,
         }),

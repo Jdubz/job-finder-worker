@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import * as sqliteVec from 'sqlite-vec'
 import fs from 'node:fs'
 import path from 'node:path'
 import { env } from '../config/env'
@@ -42,6 +43,14 @@ export function getDb(): Database.Database {
   db.pragma('foreign_keys = ON')
   db.pragma('busy_timeout = 15000')
   db.pragma('synchronous = NORMAL')
+
+  try {
+    sqliteVec.load(db)
+    logger.info('sqlite-vec extension loaded')
+  } catch (err) {
+    logger.error({ err }, 'Failed to load sqlite-vec extension')
+    throw err
+  }
 
   if (!migrationsApplied) {
     try {

@@ -46,7 +46,9 @@ A deterministic hash of normalized role title, sorted tech stack, and content it
 
 ### Tier 2: Semantic Similarity via sqlite-vec
 
-Uses the same pattern proven in `../imagingeer`: `sqlite-vec` virtual tables with 384D embeddings from `all-MiniLM-L6-v2` (sentence-transformers). The job description text is embedded and compared against previously cached generations.
+Uses the same pattern proven in `../imagingeer`: `sqlite-vec` virtual tables with 768D embeddings from `nomic-embed-text` via Ollama. The job description text is embedded and compared against previously cached generations.
+
+`nomic-embed-text` is chosen over `all-MiniLM-L6-v2` (384D, 512-token context) for three reasons: 8192-token context handles full job descriptions without truncation (JDs regularly exceed 512 tokens), higher MTEB retrieval scores (53.0 vs 41.0), and Matryoshka embedding support allows dimensionality reduction to 384D or 256D if storage becomes a concern. It runs on the existing Ollama instance alongside the extraction model at ~0.3 GB VRAM.
 
 - **Full hit (similarity >= 0.88):** Return cached `ResumeContent`/`CoverLetterContent` directly. No AI call needed.
 - **Partial hit (similarity >= 0.75):** Use cached content as a starting point. Run a lightweight "adapt" prompt that only adjusts company-specific details (summary, ATS keywords, bullet emphasis). ~3x cheaper than full generation.
@@ -56,17 +58,19 @@ Thresholds are configurable — see Metrics section for tuning approach.
 
 ### Tier 3: LiteLLM with Prompt Prefix Caching
 
-The current `InferenceClient.execute()` sends the entire prompt as a single `user` message, which defeats Claude's automatic prompt caching. By splitting the prompt into a `system` message (stable prefix) and `user` message (variable job-specific content), Claude will automatically cache the system prompt prefix across calls (for prompts >1024 tokens on supported models).
+The current `InferenceClient.execute()` sends the entire prompt as a single `user` message, which defeats Claude's automatic prompt caching. By splitting the prompt into a `system` message (stable prefix) and `user` message (variable job-specific content), Claude will automatically cache the system prompt prefix across calls (minimum 2048 tokens for Sonnet, 1024 for Haiku). The stable prefix (~4-8K tokens for a full user profile) comfortably exceeds the 2048-token threshold.
 
 This requires two changes:
 
 1. **Prompt restructuring** — Split `buildResumePrompt()` / `buildCoverLetterPrompt()` into stable prefix + variable suffix (see Prompt Restructuring section).
 2. **InferenceClient system message support** — Add a `systemPrompt` parameter to `InferenceClient.execute()` so the stable prefix goes in a `system` message and the variable content goes in the `user` message.
 
-The backend `InferenceClient` already supports system messages in `streamChat()` — `execute()` needs the same treatment. The worker `InferenceClient` needs a similar change for any worker-side generation.
+The current `execute()` signature has no system message support — it hardcodes `[{ role: 'user', content: prompt }]`. The `streamChat()` method already accepts a `systemPrompt` parameter, so `execute()` needs the same treatment. The worker `InferenceClient` needs a similar change for any worker-side generation.
 
 ```typescript
-// Backend InferenceClient — updated execute() signature
+// Backend InferenceClient — PROPOSED change to execute() signature
+// Current: options only has { max_tokens?, temperature? }
+// New: add systemPrompt to options
 async execute(
   taskType: string,
   prompt: string,
@@ -89,34 +93,52 @@ LiteLLM passes system messages through to Claude, which applies automatic prompt
 ```sql
 -- Migration: create semantic document cache tables
 
--- 384D text embeddings (all-MiniLM-L6-v2) via sqlite-vec
+-- 768D text embeddings (nomic-embed-text via Ollama) via sqlite-vec
 CREATE VIRTUAL TABLE job_cache_embeddings USING vec0(
-    embedding FLOAT[384]
+    embedding FLOAT[768]
 );
 
 -- Cached document content with metadata
+-- Each row is one document type (resume OR cover letter) for one job+profile combo.
 CREATE TABLE document_cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     embedding_rowid INTEGER NOT NULL,
+    document_type TEXT NOT NULL CHECK (document_type IN ('resume', 'cover_letter')),
     job_fingerprint_hash TEXT NOT NULL,
+    content_items_hash TEXT NOT NULL,
     role_normalized TEXT NOT NULL,
     tech_stack_json TEXT,
-    resume_content_json TEXT,
-    cover_letter_content_json TEXT,
+    document_content_json TEXT NOT NULL,
     job_description_text TEXT,
     company_name TEXT,
     hit_count INTEGER DEFAULT 0,
+    last_hit_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     model_version TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    content_items_hash TEXT NOT NULL
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_document_cache_fingerprint ON document_cache(job_fingerprint_hash);
+-- Tier 1 exact match: lookup by fingerprint + content hash + document type
+CREATE INDEX idx_document_cache_fingerprint ON document_cache(job_fingerprint_hash, content_items_hash, document_type);
 CREATE INDEX idx_document_cache_embedding ON document_cache(embedding_rowid);
-CREATE INDEX idx_document_cache_content_hash ON document_cache(content_items_hash);
+-- Eviction query: ORDER BY last_hit_at ASC, hit_count ASC LIMIT n
+CREATE INDEX idx_document_cache_eviction ON document_cache(last_hit_at, hit_count);
 ```
 
-Cache is bounded to 500 entries max. Eviction is LRU based on `hit_count` (ascending) then `created_at` (oldest first). Each row is estimated at ~10-50KB (embeddings + serialized document JSON + JD text).
+**Tier 1 lookup query:**
+
+```sql
+SELECT document_content_json FROM document_cache
+WHERE job_fingerprint_hash = ?
+  AND content_items_hash = ?
+  AND document_type = ?
+LIMIT 1;
+```
+
+Both `job_fingerprint_hash` and `content_items_hash` must match — the fingerprint identifies the job, the content hash validates the result is still current for the user's profile.
+
+Resume and cover letter are stored as separate rows (`document_type` discriminator) so each can be cached, invalidated, and hit independently.
+
+Cache is bounded to 500 entries max. Eviction is LRU based on `last_hit_at` (oldest first) then `hit_count` (ascending) as tiebreaker. Using `last_hit_at` instead of `hit_count` alone ensures recently-accessed entries are preserved even if they have fewer total hits. Each row is estimated at ~10-50KB (serialized document JSON + JD text); embeddings are stored separately in the `vec0` virtual table (~3KB per 768D vector).
 
 ## Content Items Hash Specification
 
@@ -125,7 +147,7 @@ The `content_items_hash` is a SHA-256 digest of the normalized content that feed
 **Fields included:**
 - Personal info: `name`, `email`, `location`, `phone`, `website`, `linkedin`, `github`
 - All content items: `id`, `aiContext`, `title`, `role`, `description`, `skills`, `startDate`, `endDate`, `location`, `website`, `parentId`
-- Prompt template versions (from `PromptsRepository`)
+- Prompt template strings for `resumeGeneration` and `coverLetterGeneration` only (from `PromptsRepository` via `ConfigRepository` key `"ai-prompts"`). Do NOT hash the entire prompts config — changes to unrelated templates (e.g., extraction prompts) should not invalidate the document cache.
 
 **Normalization rules:**
 1. Sort content items by `id` (stable ordering)
@@ -180,9 +202,9 @@ The existing `buildResumePrompt()` / `buildCoverLetterPrompt()` are refactored t
 |---------|--------|
 | Content items modified (work, education, projects, skills) | Recompute `content_items_hash`; cache entries with old hash become stale |
 | Personal info modified | Same as above (hash includes personal info) |
-| Prompt templates modified in DB | Invalidate all cache entries (rare event) |
+| `resumeGeneration` or `coverLetterGeneration` prompt templates modified in DB | Invalidate all cache entries for that document type (rare event) |
 | TTL expiry (30 days) | Prune old entries on a schedule |
-| Max entries exceeded (500) | Evict lowest `hit_count`, oldest `created_at` first |
+| Max entries exceeded (500) | Evict by `last_hit_at` ascending (least recently used), then `hit_count` ascending as tiebreaker |
 | Model version change | Entries tagged with `model_version`; old entries deprioritized but not deleted |
 
 ## Dependencies
@@ -193,21 +215,34 @@ The existing `buildResumePrompt()` / `buildCoverLetterPrompt()` are refactored t
 sqlite-vec           # SQLite vector search extension (native addon or WASM)
 ```
 
-Embedding generation uses a lightweight approach — see Options below.
+### Embedding via Ollama (nomic-embed-text)
 
-### Embedding strategy options
+Embeddings are generated by calling `nomic-embed-text` through LiteLLM → Ollama — the same infrastructure used for extraction. Zero new backend dependencies for embedding generation.
 
-| Option | Size | Speed | Notes |
-|--------|------|-------|-------|
-| `onnxruntime` + `all-MiniLM-L6-v2` ONNX | ~80MB | ~50ms/embed | No PyTorch dependency; proven in imagingeer |
-| LiteLLM embedding endpoint | 0 (remote) | ~200ms/embed | Route through existing proxy; no local model |
-| `@xenova/transformers` (WASM) | ~80MB | ~100ms/embed | Pure JS, runs in Node; no native deps |
+| Model | Dims | VRAM | Context | MTEB Retrieval | Notes |
+|-------|------|------|---------|----------------|-------|
+| **nomic-embed-text** (chosen) | 768 | ~0.3 GB | 8192 | 53.0 | Handles full JDs; Matryoshka support; runs on Ollama |
+| all-MiniLM-L6-v2 | 384 | ~0.1 GB | 512 | 41.0 | Too short context for JDs; lower quality |
+| mxbai-embed-large | 1024 | ~0.6 GB | 512 | 64.7 | Better quality but short context |
+| snowflake-arctic-embed-m | 768 | ~0.2 GB | 512 | ~54.0 | Comparable to nomic, shorter context |
 
-Recommendation: Start with LiteLLM embedding endpoint (zero new deps, uses existing infra). If latency matters, migrate to ONNX or WASM later.
+LiteLLM config addition:
+
+```yaml
+- model_name: local-embed
+  litellm_params:
+    model: ollama/nomic-embed-text
+    api_base: http://ollama:11434
+    api_key: none
+```
+
+Backend calls `InferenceClient` or LiteLLM's `/embeddings` endpoint with `model: "local-embed"`. The 768D vector is stored directly in the `vec0` virtual table.
+
+**Future option:** If embedding latency becomes a bottleneck, the backend can load `nomic-embed-text` directly via `@xenova/transformers` (WASM, ~80MB) or `onnxruntime` to skip the network hop to Ollama.
 
 ### sqlite-vec extension loading
 
-Same pattern as imagingeer — load on every SQLite connection. For the TypeScript backend, use the `sqlite-vec` npm package with `better-sqlite3`:
+Same pattern as imagingeer — load on every SQLite connection. For the TypeScript backend, use the `sqlite-vec` npm package with `better-sqlite3` (already a production dependency at `^11.7.0`):
 
 ```typescript
 import * as sqliteVec from 'sqlite-vec'
@@ -217,14 +252,47 @@ function loadVecExtension(db: BetterSqlite3.Database): void {
 }
 ```
 
-### Existing (no changes)
+### Existing (no changes needed)
 
 ```
 LiteLLM proxy         # Already handles Claude routing, fallbacks, retries
+better-sqlite3        # Already a production dependency (^11.7.0)
 openai (Python SDK)   # Worker inference client (unchanged)
 ```
 
 ## Implementation Phases
+
+### Phase 0: Ollama GPU Passthrough + Model Setup
+
+**Scope:** Enable GPU inference for Ollama and pull the embedding model. This is a prerequisite for Phase 1 — without GPU passthrough, Ollama runs CPU-only and embedding latency would be unacceptable.
+
+**Where:** `infra/docker-compose.prod.yml`, `infra/litellm-config.yaml`
+
+- Add NVIDIA GPU reservation to the Ollama service in `docker-compose.prod.yml`:
+  ```yaml
+  ollama:
+    # ... existing config ...
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "2"  # extraction + embedding concurrently
+  ```
+- Add `local-embed` model to `litellm-config.yaml`:
+  ```yaml
+  - model_name: local-embed
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://ollama:11434
+      api_key: none
+  ```
+- Pull `nomic-embed-text` on the server: `docker exec job-finder-ollama ollama pull nomic-embed-text`
+- Verify GPU is being used: `docker exec job-finder-ollama ollama ps` should show VRAM allocation
+- Optionally upgrade extraction model from `llama3.1:8b` to `qwen3:8b` for better JSON extraction accuracy (~88 tok/s on RTX 3080, superior structured output). VRAM budget: ~5.0 GB (qwen3:8b Q4_K_M) + ~0.3 GB (nomic-embed-text) = ~5.3 GB of 10 GB
 
 ### Phase 1: Semantic Cache Layer
 
@@ -233,11 +301,12 @@ openai (Python SDK)   # Worker inference client (unchanged)
 **Where:** `job-finder-BE` — this is where `GeneratorWorkflowService`, `InferenceClient`, and `prompts.ts` live.
 
 - Add `sqlite-vec` to backend dependencies
-- Create backend migration for `job_cache_embeddings` + `document_cache` tables
-- Implement `SemanticDocumentCache` service (embed, store, lookup, invalidate)
+- Create backend migration (`051_semantic_document_cache.sql`) for `job_cache_embeddings` + `document_cache` tables
+- Implement `SemanticDocumentCache` service (embed via LiteLLM `local-embed`, store, lookup, invalidate)
 - Implement `computeContentHash()` utility with the spec above
 - Wire cache lookup into `GeneratorWorkflowService.buildResumeContent()` before the `agentManager.execute()` call
 - Wire cache write after successful generation + validation + grounding
+- Add `skipCache` boolean to `GenerateDocumentPayload` — when true, bypass Tier 1+2 lookup (user wants a fresh generation). Still write result to cache afterward.
 - Add configurable similarity thresholds (default 0.88 full / 0.75 partial)
 - Add dry-run logging mode: log similarity scores + cached vs. fresh output for threshold tuning
 
@@ -245,7 +314,7 @@ openai (Python SDK)   # Worker inference client (unchanged)
 
 **Scope:** Split prompts into system/user messages so Claude's automatic prompt caching kicks in. All calls still route through LiteLLM.
 
-- Add `systemPrompt` option to backend `InferenceClient.execute()`
+- Add `systemPrompt` option to backend `InferenceClient.execute()` (matching the existing `streamChat()` pattern)
 - Refactor `prompts.ts`: extract `buildResumeStablePrefix()` + `buildResumeJobPrompt()` (and cover letter equivalents)
 - Update `GeneratorWorkflowService.buildResumeContent()` and `buildCoverLetterContent()` to pass system prompt separately
 - Verify via LiteLLM logs that `cache_creation_input_tokens` / `cache_read_input_tokens` appear in responses
@@ -257,6 +326,7 @@ openai (Python SDK)   # Worker inference client (unchanged)
 
 - Implement `buildAdaptPrompt()` in `prompts.ts` that takes cached content + new JD delta
 - Add adaptation step to `GeneratorWorkflowService` workflow (cheaper than full generation)
+- Run adapted output through the same validation/grounding pipeline as full generations (FitEstimate, JSON schema validation) — adaptation can still produce invalid or hallucinated content
 - Track cache hit/miss/adapt metrics for tuning thresholds
 
 ## Metrics
@@ -277,18 +347,24 @@ Track to validate effectiveness:
 | Risk | Mitigation |
 |------|------------|
 | Anthropic API rate limits / costs | Tier 1+2 caching reduces AI calls significantly; LiteLLM tracks usage via budget settings |
-| Semantic cache returns content that's subtly wrong for the job | Conservative threshold (0.88); user review step still exists; partial hits get adaptation pass; dry-run logging for tuning |
-| Embedding model size (~80MB for local ONNX) | Start with LiteLLM embedding endpoint (zero local model); migrate to local only if latency is a problem |
-| `content_items_hash` invalidation too aggressive | Hash only fields that affect prompt output; version the hash algorithm |
-| sqlite-vec availability in Node.js | npm `sqlite-vec` package exists and works with `better-sqlite3`; fallback: WASM build |
-| Cache grows unbounded | 500-entry cap with LRU eviction; 30-day TTL pruning |
+| Semantic cache returns content that's subtly wrong for the job | Conservative threshold (0.88); user review step still exists; partial hits get adaptation pass with validation; dry-run logging for tuning |
+| Ollama GPU passthrough not configured | Phase 0 prerequisite; without GPU, embedding latency is unacceptable. Docker compose change is straightforward (add `deploy.resources.reservations.devices`) |
+| VRAM exhaustion (10 GB RTX 3080) | nomic-embed-text (~0.3 GB) + extraction model (~5 GB) = ~5.3 GB total; well within budget. Ollama's scheduler handles model loading/eviction automatically |
+| `content_items_hash` invalidation too aggressive | Hash only resume/cover letter prompt templates (not all prompts); hash only fields that affect prompt output; version the hash algorithm |
+| sqlite-vec availability in Node.js | npm `sqlite-vec` package exists and works with `better-sqlite3` (already a prod dependency); fallback: WASM build |
+| Cache grows unbounded | 500-entry cap with LRU eviction (`last_hit_at`); 30-day TTL pruning |
+| Embedding dimension mismatch | Schema hardcodes `FLOAT[768]` for nomic-embed-text. If the embedding model changes, a migration is needed to recreate the `vec0` table. Matryoshka support in nomic allows 384D/256D output if needed |
 
 ## References
 
 - [Prompt Caching — Claude API Docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
 - [LiteLLM Prompt Caching Passthrough](https://docs.litellm.ai/docs/completion/prompt_caching)
 - [sqlite-vec documentation](https://alexgarcia.xyz/sqlite-vec/)
+- [nomic-embed-text — Ollama](https://ollama.com/library/nomic-embed-text) — 768D, 8192 context, Matryoshka support
+- [Ollama GPU Hardware Support](https://docs.ollama.com/gpu)
+- [Qwen3 8B — structured output and reasoning model](https://qwenlm.github.io/blog/qwen3/) — recommended extraction model upgrade
 - `../imagingeer` — SQLite vector search implementation (migrations 068, 074; `lora_semantic_search.py`)
 - `job-finder-BE/server/src/modules/generator/workflow/prompts.ts` — current prompt builders
-- `job-finder-BE/server/src/modules/generator/ai/inference-client.ts` — current LiteLLM client
+- `job-finder-BE/server/src/modules/generator/ai/inference-client.ts` — current LiteLLM client (`execute()` lacks system message support; `streamChat()` has it)
 - `infra/litellm-config.yaml` — model routing config
+- `infra/docker-compose.prod.yml` — Ollama service (currently CPU-only, needs GPU passthrough)

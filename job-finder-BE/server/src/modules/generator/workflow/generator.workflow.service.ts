@@ -19,10 +19,15 @@ import { HtmlPdfService } from './services/html-pdf.service'
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
-import { buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt } from './prompts'
+import {
+  buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt,
+  buildResumeStablePrefix, buildResumeJobPrompt, buildCoverLetterStablePrefix, buildCoverLetterJobPrompt,
+  buildAdaptPrompt
+} from './prompts'
 import { InferenceClient, InferenceError } from '../ai/inference-client'
 import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
 import { estimateContentFit, getContentBudget } from './services/content-fit.service'
+import { SemanticDocumentCache, type CacheContext } from '../semantic-document-cache.service'
 
 export class UserFacingError extends Error {}
 
@@ -54,6 +59,7 @@ export interface GenerateDocumentPayload {
   }
   date?: string
   jobMatchId?: string
+  skipCache?: boolean
 }
 
 // Using DraftContentResponse from @shared/types
@@ -69,7 +75,8 @@ export class GeneratorWorkflowService {
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
-    private readonly log: Logger = logger
+    private readonly log: Logger = logger,
+    private readonly documentCache = new SemanticDocumentCache(logger)
   ) {
     this.agentManager = new InferenceClient(this.log)
   }
@@ -930,8 +937,40 @@ export class GeneratorWorkflowService {
     // Fetch and enrich with job match data if available
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
-    const prompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
-    const agentResult = await this.agentManager.execute('document', prompt)
+    // Build cache context for lookup and store
+    const cacheCtx: CacheContext = {
+      personalInfo,
+      contentItems,
+      documentType: 'resume',
+      jobDescriptionText: payload.job.jobDescriptionText || '',
+      role: payload.job.role,
+      company: payload.job.company,
+      jobMatch,
+    }
+
+    // Cache lookup (Tier 1 exact + Tier 2 semantic)
+    if (!payload.skipCache) {
+      const cacheResult = await this.documentCache.lookup(cacheCtx)
+      if (cacheResult.tier === 'exact' || cacheResult.tier === 'semantic-full') {
+        this.log.info({ tier: cacheResult.tier }, 'Returning cached resume content')
+        return cacheResult.document as ResumeContent
+      }
+      if (cacheResult.tier === 'semantic-partial') {
+        this.log.info({ tier: 'semantic-partial', similarity: cacheResult.similarity }, 'Partial cache hit — attempting adaptation')
+        const adapted = await this.tryAdaptResume(cacheResult.document as ResumeContent, payload, jobMatch, contentItems, personalInfo)
+        if (adapted) {
+          this.documentCache.store(cacheCtx, adapted, null).catch((err) => {
+            this.log.warn({ err }, 'Failed to store adapted resume in document cache')
+          })
+          return adapted
+        }
+        // Adaptation failed — fall through to full generation
+      }
+    }
+
+    const systemPrompt = buildResumeStablePrefix(personalInfo, contentItems)
+    const userPrompt = buildResumeJobPrompt(payload, jobMatch)
+    const agentResult = await this.agentManager.execute('document', userPrompt, undefined, { systemPrompt })
 
     this.log.info(
       { outputPreview: agentResult.output.slice(0, 400), agentId: agentResult.agentId, model: agentResult.model },
@@ -978,6 +1017,13 @@ export class GeneratorWorkflowService {
         parsed = await this.tryAdjustResume('expand', parsed, expandPrompt, contentItems, personalInfo, payload)
       }
 
+      // Cache the generated result (non-blocking, non-fatal)
+      if (!payload.skipCache) {
+        this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null).catch((err) => {
+          this.log.warn({ err }, 'Failed to store resume in document cache')
+        })
+      }
+
       return parsed
     } catch (error) {
       this.log.error({ err: error, output: agentResult.output.slice(0, 500) }, 'Failed to parse AI resume output as JSON')
@@ -995,8 +1041,40 @@ export class GeneratorWorkflowService {
     // Fetch and enrich with job match data if available
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
-    const prompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
-    const agentResult = await this.agentManager.execute('document', prompt)
+    // Build cache context for lookup and store
+    const cacheCtx: CacheContext = {
+      personalInfo,
+      contentItems,
+      documentType: 'cover_letter',
+      jobDescriptionText: payload.job.jobDescriptionText || '',
+      role: payload.job.role,
+      company: payload.job.company,
+      jobMatch,
+    }
+
+    // Cache lookup (Tier 1 exact + Tier 2 semantic)
+    if (!payload.skipCache) {
+      const cacheResult = await this.documentCache.lookup(cacheCtx)
+      if (cacheResult.tier === 'exact' || cacheResult.tier === 'semantic-full') {
+        this.log.info({ tier: cacheResult.tier }, 'Returning cached cover letter content')
+        return cacheResult.document as CoverLetterContent
+      }
+      if (cacheResult.tier === 'semantic-partial') {
+        this.log.info({ tier: 'semantic-partial', similarity: cacheResult.similarity }, 'Partial cache hit — attempting adaptation')
+        const adapted = await this.tryAdaptCoverLetter(cacheResult.document as CoverLetterContent, payload, jobMatch, contentItems)
+        if (adapted) {
+          this.documentCache.store(cacheCtx, adapted, null).catch((err) => {
+            this.log.warn({ err }, 'Failed to store adapted cover letter in document cache')
+          })
+          return adapted
+        }
+        // Adaptation failed — fall through to full generation
+      }
+    }
+
+    const systemPrompt = buildCoverLetterStablePrefix(personalInfo, contentItems)
+    const userPrompt = buildCoverLetterJobPrompt(payload, jobMatch)
+    const agentResult = await this.agentManager.execute('document', userPrompt, undefined, { systemPrompt })
 
     // Validate and recover AI output using schema validation
     const validation = validateCoverLetterContent(agentResult.output, this.log)
@@ -1017,7 +1095,80 @@ export class GeneratorWorkflowService {
     // Validate cover letter content against source data to catch potential hallucinations
     this.warnOnPotentialHallucinations(parsed, contentItems, payload)
 
+    // Cache the generated result (non-blocking, non-fatal)
+    if (!payload.skipCache) {
+      this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null).catch((err) => {
+        this.log.warn({ err }, 'Failed to store cover letter in document cache')
+      })
+    }
+
     return parsed
+  }
+
+  /**
+   * Attempt to adapt cached content for a new job via a lightweight AI pass.
+   * Returns adapted content on success, or null on failure (caller falls through to full generation).
+   */
+  private async tryAdaptResume(
+    cachedContent: ResumeContent,
+    payload: GenerateDocumentPayload,
+    jobMatch: JobMatchWithListing | null,
+    contentItems: ContentItem[],
+    personalInfo: PersonalInfo
+  ): Promise<ResumeContent | null> {
+    try {
+      const adaptPrompt = buildAdaptPrompt(cachedContent, payload, jobMatch, 'resume')
+      const agentResult = await this.agentManager.execute('document', adaptPrompt)
+
+      const validation = validateResumeContent(agentResult.output, this.log)
+      if (!validation.success) {
+        this.log.warn({ errors: validation.errors }, 'Adapt resume validation failed — falling through to full generation')
+        return null
+      }
+
+      let parsed = validation.data as ResumeContent
+      parsed = this.groundResumeContent(parsed, contentItems, personalInfo, payload)
+
+      // Fit check + refit
+      const fitCheck = estimateContentFit(parsed)
+      if (!fitCheck.fits) {
+        const refitPrompt = buildRefitPrompt(parsed, fitCheck, getContentBudget(), payload, jobMatch)
+        parsed = await this.tryAdjustResume('refit', parsed, refitPrompt, contentItems, personalInfo, payload)
+      }
+
+      return parsed
+    } catch (err) {
+      this.log.warn({ err }, 'Adapt resume failed — falling through to full generation')
+      return null
+    }
+  }
+
+  /**
+   * Attempt to adapt cached cover letter content for a new job.
+   */
+  private async tryAdaptCoverLetter(
+    cachedContent: CoverLetterContent,
+    payload: GenerateDocumentPayload,
+    jobMatch: JobMatchWithListing | null,
+    contentItems: ContentItem[]
+  ): Promise<CoverLetterContent | null> {
+    try {
+      const adaptPrompt = buildAdaptPrompt(cachedContent, payload, jobMatch, 'cover_letter')
+      const agentResult = await this.agentManager.execute('document', adaptPrompt)
+
+      const validation = validateCoverLetterContent(agentResult.output, this.log)
+      if (!validation.success) {
+        this.log.warn({ errors: validation.errors }, 'Adapt cover letter validation failed — falling through to full generation')
+        return null
+      }
+
+      const parsed = validation.data as CoverLetterContent
+      this.warnOnPotentialHallucinations(parsed, contentItems, payload)
+      return parsed
+    } catch (err) {
+      this.log.warn({ err }, 'Adapt cover letter failed — falling through to full generation')
+      return null
+    }
   }
 
   /**

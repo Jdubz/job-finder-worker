@@ -128,6 +128,15 @@ services:
     image: ollama/ollama:latest
     container_name: job-finder-ollama
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "2"  # extraction + embedding concurrently
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:

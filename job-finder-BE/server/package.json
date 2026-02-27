@@ -33,6 +33,7 @@
     "pino-http": "^10.2.0",
     "playwright-core": "^1.47.2",
     "sharp": "^0.34.5",
+    "sqlite-vec": "^0.1.7-alpha.2",
     "ws": "^8.18.3",
     "zod": "^3.24.1"
   },
