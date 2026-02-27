@@ -27,6 +27,7 @@ export function LlmStatusTab() {
       setHealth(data)
       setError(null)
     } catch {
+      setHealth(null)
       setError("Failed to fetch LLM health status")
     } finally {
       setLoading(false)

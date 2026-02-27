@@ -15,17 +15,11 @@ export function up(db: Database.Database): void {
   db.prepare('DELETE FROM job_finder_config WHERE id = ?').run('ai-settings')
 }
 
-export function down(db: Database.Database): void {
-  // Re-insert a minimal skeleton for rollback safety
-  const skeleton = {
-    agents: {},
-    taskFallbacks: { extraction: [], analysis: [], document: [] },
-    modelRates: {},
-    options: [],
-  }
-  const now = new Date().toISOString()
-  db.prepare(
-    `INSERT OR IGNORE INTO job_finder_config (id, payload_json, updated_at, updated_by)
-     VALUES (?, ?, ?, ?)`
-  ).run('ai-settings', JSON.stringify(skeleton), now, 'rollback')
+export function down(_db: Database.Database): void {
+  // Rollback is intentionally unsupported: the legacy ai-settings config is
+  // vestigial and any skeleton we insert would fail validation on revisions
+  // that expect a fully-populated payload.
+  throw new Error(
+    'Down migration for 20260226_001_remove-ai-settings is not supported: ai-settings config has been removed.'
+  )
 }

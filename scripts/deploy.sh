@@ -64,7 +64,7 @@ if [[ "${1:-}" == "--recreate" ]]; then
       break
     fi
     if [ "$i" -eq 30 ]; then
-      echo "[deploy] WARNING: Ollama container not ready after 30s, skipping model check" >&2
+      echo "[deploy] ERROR: Ollama container not ready after 30s" >&2
       exit 1
     fi
     sleep 1
