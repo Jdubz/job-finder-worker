@@ -437,7 +437,7 @@ const mockCoverLetterContent = {
       expect(draft).toBeNull()
     })
 
-    it('submitReview updates content and continues to render-pdf step', async () => {
+    it('submitReview updates content and returns nextStep pointing to render-pdf', async () => {
       const service = createService()
       const { requestId } = await service.createRequest(payload)
 
@@ -516,6 +516,55 @@ const mockCoverLetterContent = {
       expect(finalResult?.status).toBe('completed')
     })
 
+    it('submitReview returns nextStep without running render-pdf', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+
+      const result = await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      expect(result?.nextStep).toBe('render-pdf')
+      expect(result?.stepCompleted).toBe('review-resume')
+      expect(htmlPdfService.renderResume).not.toHaveBeenCalled()
+    })
+
+    it('submitReview stores edited resume content in intermediateResults', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+
+      const editedContent = { ...mockResumeContent, professionalSummary: 'Edited by user' }
+      await service.submitReview(requestId, 'resume', editedContent)
+
+      const request = repo.getRequest(requestId)
+      expect(request?.intermediateResults?.resumeContent).toEqual(editedContent)
+    })
+
+    it('submitReview for cover letter stores content and returns nextStep', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+
+      const editedContent = { ...mockCoverLetterContent, greeting: 'Dear Hiring Manager,' }
+      const result = await service.submitReview(requestId, 'coverLetter', editedContent)
+
+      expect(result?.nextStep).toBe('render-pdf')
+      expect(result?.stepCompleted).toBe('review-cover-letter')
+      expect(htmlPdfService.renderCoverLetter).not.toHaveBeenCalled()
+
+      const request = repo.getRequest(requestId)
+      expect(request?.intermediateResults?.coverLetterContent).toEqual(editedContent)
+    })
+
     it('handles both document types in sequence for generateType=both', async () => {
       const service = createService()
       const { requestId } = await service.createRequest({ ...payload, generateType: 'both' })
@@ -541,6 +590,227 @@ const mockCoverLetterContent = {
       // Complete
       const finalResult = await service.runNextStep(requestId)
       expect(finalResult?.status).toBe('completed')
+    })
+  })
+
+  describe('rejectReview', () => {
+    // rejectReview calls agentManager.execute directly (not buildResumeContent),
+    // so we restore the prototype spies so they don't interfere.
+    beforeEach(() => {
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent?.mockRestore?.()
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildCoverLetterContent?.mockRestore?.()
+    })
+
+    async function progressToResumeReview(service: GeneratorWorkflowService) {
+      // Need buildResumeContent spy for the generation step
+      vi.spyOn(GeneratorWorkflowService.prototype as any, 'buildResumeContent').mockResolvedValue(mockResumeContent)
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      // Restore so rejectReview uses the real path (agentManager.execute mock)
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent?.mockRestore?.()
+      return requestId
+    }
+
+    async function progressToCoverLetterReview(service: GeneratorWorkflowService) {
+      vi.spyOn(GeneratorWorkflowService.prototype as any, 'buildCoverLetterContent').mockResolvedValue(mockCoverLetterContent)
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildCoverLetterContent?.mockRestore?.()
+      return requestId
+    }
+
+    it('regenerates resume with feedback', async () => {
+      const service = createService()
+      const requestId = await progressToResumeReview(service)
+
+      const result = await service.rejectReview(requestId, 'resume', 'Make the summary more concise')
+
+      expect(result).not.toBeNull()
+      expect(result?.content).toBeDefined()
+      // Should have resume structure
+      expect((result?.content as any).personalInfo).toBeDefined()
+      expect((result?.content as any).professionalSummary).toBeDefined()
+      expect((result?.content as any).experience).toBeDefined()
+
+      // Verify AI was called with a prompt containing the feedback
+      const agentManager = (service as any).agentManager
+      expect(agentManager.execute).toHaveBeenCalled()
+      const callArgs = agentManager.execute.mock.calls
+      const lastCall = callArgs[callArgs.length - 1]
+      expect(lastCall[0]).toBe('document')
+      expect(lastCall[1]).toContain('Make the summary more concise')
+    })
+
+    it('regenerates cover letter with feedback', async () => {
+      const service = createService()
+      const requestId = await progressToCoverLetterReview(service)
+
+      const result = await service.rejectReview(requestId, 'coverLetter', 'More enthusiastic tone')
+
+      expect(result).not.toBeNull()
+      expect(result?.content).toBeDefined()
+      // Should have cover letter structure
+      expect((result?.content as any).greeting).toBeDefined()
+      expect((result?.content as any).openingParagraph).toBeDefined()
+
+      const agentManager = (service as any).agentManager
+      const callArgs = agentManager.execute.mock.calls
+      const lastCall = callArgs[callArgs.length - 1]
+      expect(lastCall[0]).toBe('document')
+      expect(lastCall[1]).toContain('More enthusiastic tone')
+    })
+
+    it('keeps request in awaiting_review status after rejection', async () => {
+      const service = createService()
+      const requestId = await progressToResumeReview(service)
+
+      await service.rejectReview(requestId, 'resume', 'Needs improvement')
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('awaiting_review')
+    })
+
+    it('returns null when request is not awaiting review', async () => {
+      const service = createService()
+      vi.spyOn(GeneratorWorkflowService.prototype as any, 'buildResumeContent').mockResolvedValue(mockResumeContent)
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data (status: processing)
+
+      const result = await service.rejectReview(requestId, 'resume', 'feedback')
+      expect(result).toBeNull()
+    })
+
+    it('returns null for non-existent request', async () => {
+      const service = createService()
+      const result = await service.rejectReview('non-existent-id', 'resume', 'feedback')
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('error handling', () => {
+    it('generate-resume step failure sets request status to failed', async () => {
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent.mockRejectedValue(
+        new Error('AI provider unavailable')
+      )
+
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+
+      const result = await service.runNextStep(requestId) // generate-resume (fails)
+
+      expect(result?.status).toBe('failed')
+      const failedStep = result?.steps.find((s) => s.id === 'generate-resume')
+      expect(failedStep?.status).toBe('failed')
+      expect(failedStep?.error?.message).toBeDefined()
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('failed')
+    })
+
+    it('generate-cover-letter step failure sets request status to failed', async () => {
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildCoverLetterContent.mockRejectedValue(
+        new Error('AI provider unavailable')
+      )
+
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+      await service.runNextStep(requestId) // collect-data
+
+      const result = await service.runNextStep(requestId) // generate-cover-letter (fails)
+
+      expect(result?.status).toBe('failed')
+      const failedStep = result?.steps.find((s) => s.id === 'generate-cover-letter')
+      expect(failedStep?.status).toBe('failed')
+      expect(failedStep?.error?.message).toBeDefined()
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('failed')
+    })
+
+    it('render-pdf step failure sets request status to failed', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      // Make render fail
+      htmlPdfService.renderResume.mockRejectedValueOnce(new Error('Puppeteer crash'))
+
+      const result = await service.runNextStep(requestId) // render-pdf (fails)
+
+      expect(result?.status).toBe('failed')
+      const failedStep = result?.steps.find((s) => s.id === 'render-pdf')
+      expect(failedStep?.status).toBe('failed')
+      expect(failedStep?.error?.message).toBeDefined()
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('failed')
+    })
+
+    it('InferenceError produces user-facing message in step error', async () => {
+      const { InferenceError } = InferenceClientModule as any
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent.mockRejectedValue(
+        new InferenceError('Model rate limited — please try again in 60s')
+      )
+
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+
+      const result = await service.runNextStep(requestId) // generate-resume (fails)
+
+      expect(result?.error).toBe('Model rate limited — please try again in 60s')
+      const failedStep = result?.steps.find((s) => s.id === 'generate-resume')
+      expect(failedStep?.error?.message).toBe('Model rate limited — please try again in 60s')
+    })
+
+    it('generic Error produces fallback user-friendly message', async () => {
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent.mockRejectedValue(
+        new Error('ECONNREFUSED 127.0.0.1:4000')
+      )
+
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+
+      const result = await service.runNextStep(requestId) // generate-resume (fails)
+
+      // Generic errors should use the user-friendly fallback, not expose internals
+      expect(result?.error).toBe(
+        'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
+      )
+    })
+
+    it('runNextStep returns null for non-existent request', async () => {
+      const service = createService()
+      const result = await service.runNextStep('non-existent-id')
+      expect(result).toBeNull()
+    })
+
+    it('runNextStep on completed request returns completed status', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+      await service.runNextStep(requestId) // render-pdf
+      const completeResult = await service.runNextStep(requestId) // completes workflow
+      expect(completeResult?.status).toBe('completed')
+
+      // Call again on an already-completed request
+      const extraResult = await service.runNextStep(requestId)
+      expect(extraResult?.status).toBe('completed')
+      expect(extraResult?.stepCompleted).toBe('completed')
     })
   })
 
