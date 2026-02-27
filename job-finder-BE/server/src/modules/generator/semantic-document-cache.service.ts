@@ -317,7 +317,10 @@ export class SemanticDocumentCache {
       const roleNormalized = normalizeRole(ctx.role)
       const techStack = this.extractTechStack(ctx.jobMatch)
       const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
-      const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash, `body:${ctx.company}`)
+      // Body cache is role-keyed (company-independent) — use roleFpHash so the dedup
+      // check in store() replaces prior entries for the same role/content instead of
+      // creating a new row per company.
+      const fingerprintHash = roleFpHash
 
       let embedding: number[]
       if (precomputedEmbedding) {
