@@ -5,7 +5,7 @@ Prompt functions return PromptPair (system, user) to enable:
 - Better instruction following on local models (clear system/user separation)
 """
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from job_finder.ai.extraction_prompts import PromptPair
 from job_finder.profile.schema import Profile

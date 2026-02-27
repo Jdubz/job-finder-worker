@@ -7,7 +7,6 @@ the system/user split preserves the expected content.
 from unittest.mock import Mock
 
 from job_finder.ai.extraction_prompts import (
-    PromptPair,
     build_extraction_prompt,
     build_repair_prompt,
 )
