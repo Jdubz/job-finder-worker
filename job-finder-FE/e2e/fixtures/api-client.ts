@@ -297,48 +297,6 @@ export async function seedBaseConfigs(request: APIRequestContext) {
   await upsert("prefilter-policy", MIN_PREFILTER)
   await upsert("match-policy", MIN_MATCH)
   await upsert("worker-settings", MIN_WORKER)
-  await upsert("ai-settings", {
-    agents: {
-      "gemini.api": {
-        provider: "gemini",
-        interface: "api",
-        defaultModel: "gemini-2.0-flash",
-        dailyBudget: 100,
-        dailyUsage: 0,
-        runtimeState: {
-          worker: { enabled: true, reason: null },
-          backend: { enabled: true, reason: null },
-        },
-        authRequirements: {
-          type: "api",
-          requiredEnv: ["GOOGLE_API_KEY"],
-        },
-      },
-    },
-    taskFallbacks: {
-      extraction: ["gemini.api"],
-      analysis: ["gemini.api"],
-      document: ["gemini.api"],
-    },
-    modelRates: {
-      "gemini-2.0-flash": 0.5,
-      "gemini-1.5-pro": 1.0,
-    },
-    options: [
-      {
-        value: "gemini",
-        interfaces: [
-          { value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
-        ],
-      },
-      {
-        value: "claude",
-        interfaces: [
-          { value: "cli", enabled: true, models: ["claude-sonnet-4-5", "claude-haiku-4-5"] },
-        ],
-      },
-    ],
-  })
   await upsert("personal-info", {
     email: "owner@jobfinder.dev",
     name: "E2E Owner",

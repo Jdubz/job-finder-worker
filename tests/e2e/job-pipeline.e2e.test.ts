@@ -284,48 +284,6 @@ async function ensureBaseConfigs(configClient: any, userEmail: string) {
   await upsert("prefilter-policy", minimalPrefilterPolicy)
   await upsert("match-policy", minimalMatchPolicy)
   await upsert("worker-settings", minimalWorkerSettings)
-  await upsert("ai-settings", {
-    agents: {
-      "gemini.api": {
-        provider: "gemini",
-        interface: "api",
-        defaultModel: "gemini-2.0-flash",
-        dailyBudget: 100,
-        dailyUsage: 0,
-        runtimeState: {
-          worker: { enabled: true, reason: null },
-          backend: { enabled: true, reason: null },
-        },
-        authRequirements: {
-          type: "api",
-          requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        },
-      },
-    },
-    taskFallbacks: {
-      extraction: ["gemini.api"],
-      analysis: ["gemini.api"],
-      document: ["gemini.api"],
-    },
-    modelRates: {
-      "gemini-2.0-flash": 0.5,
-      "gemini-1.5-pro": 1.0,
-    },
-    options: [
-      {
-        value: "gemini",
-        interfaces: [
-          { value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
-        ],
-      },
-      {
-        value: "claude",
-        interfaces: [
-          { value: "cli", enabled: true, models: ["claude-sonnet-4-5-latest"] },
-        ],
-      },
-    ],
-  })
   await upsert("personal-info", { ...TEST_PERSONAL_INFO, email: userEmail })
 }
 
