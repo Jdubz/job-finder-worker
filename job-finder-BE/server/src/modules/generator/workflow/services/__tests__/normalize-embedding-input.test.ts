@@ -136,6 +136,22 @@ Include a link to your GitHub profile.`
     expect(result).not.toContain('Submit your resume')
   })
 
+  it('strips boilerplate sections without trailing colon', () => {
+    const text = `${PRESERVED_BLOCK}
+
+About Us
+We are a leading fintech company founded in 2010.
+We have 500+ employees worldwide.
+
+Requirements
+- 3+ years TypeScript`
+    const result = normalizeForEmbedding(text)
+    expect(result).toContain('Build and maintain')
+    expect(result).toContain('Requirements')
+    expect(result).not.toContain('leading fintech')
+    expect(result).not.toContain('500+ employees')
+  })
+
   it('strips markdown-headed boilerplate sections', () => {
     const text = `## Responsibilities
 - Build scalable APIs

@@ -143,8 +143,9 @@ export class SemanticDocumentCache {
               const jaccard = computeTechStackJaccard(techStack, cachedTechStack)
               entry.similarity = entry.similarity * 0.7 + jaccard * 0.3
             }
-          } catch {
+          } catch (err) {
             // Corrupt tech_stack_json — skip boost, use pure embedding similarity
+            this.log.warn({ err, techStackJson: entry.techStackJson }, 'Document cache: corrupt tech_stack_json, skipping Jaccard boost')
           }
         }
       }

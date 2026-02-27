@@ -8,7 +8,7 @@ import { logger } from '../logger'
 function getDefaultMigrationsDir(): string {
   return process.env.JF_SQLITE_MIGRATIONS_DIR
     ? path.resolve(process.env.JF_SQLITE_MIGRATIONS_DIR)
-    : path.resolve(__dirname, '../../infra/sqlite/migrations')
+    : path.resolve(process.cwd(), 'infra/sqlite/migrations')
 }
 
 function ensureSchemaTable(db: Database.Database) {

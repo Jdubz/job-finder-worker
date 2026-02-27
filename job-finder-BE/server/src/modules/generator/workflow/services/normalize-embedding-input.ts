@@ -31,8 +31,8 @@ function isSectionHeader(line: string): boolean {
   if (!trimmed) return false
   // Markdown heading: ## Something
   if (/^#{1,4}\s+\S/.test(trimmed)) return true
-  // Plain section header: "Word Word:" or "Word Word Word:"
-  if (/^[A-Z][A-Za-z0-9''\s/&,-]{1,60}[:：]\s*$/.test(trimmed)) return true
+  // Plain section header: "Word Word" or "Word Word:" (trailing colon optional)
+  if (/^[A-Z][A-Za-z0-9''\s/&,-]{1,60}(?:[:：]\s*)?$/.test(trimmed)) return true
   return false
 }
 
