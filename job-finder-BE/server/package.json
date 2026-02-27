@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "migrate": "tsx src/scripts/migrate.ts",
     "migrate:techranks": "tsx src/scripts/migrate-tech-ranks.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "backfill:cache": "tsx src/scripts/backfill-document-cache.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
