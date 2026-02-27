@@ -31,9 +31,10 @@ ENV TZ=America/Los_Angeles
 # Chromium path for Playwright PDF generation
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Install gosu for dropping privileges, ca-certificates for TLS, chromium for PDF generation
+# Install gosu for dropping privileges, ca-certificates for TLS, chromium for PDF generation,
+# smbclient for copying generated PDFs to NAS
 # AI inference routes through LiteLLM proxy — no direct provider SDKs or CLIs needed
-RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates chromium tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu ca-certificates chromium tzdata smbclient \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g npm@11.6.3 \

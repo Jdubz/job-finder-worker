@@ -884,6 +884,56 @@ OUTPUT FORMAT (STRICT):
 - Your very first character must be '{' and your very last character must be '}'.`
 }
 
+/**
+ * Build a lightweight framing prompt for cover letters when body paragraphs are cached.
+ * Generates only: greeting, openingParagraph, closingParagraph, signature (~100 output tokens).
+ */
+export function buildCoverLetterFramingPrompt(
+  personalInfo: PersonalInfo,
+  payload: GenerateDocumentPayload,
+  cachedBodyParagraphs: string[],
+  jobMatch: JobMatchWithListing | null
+): string {
+  const matchContext: string[] = []
+  if (jobMatch?.matchedSkills?.length) {
+    matchContext.push(`Matched Skills: ${jobMatch.matchedSkills.join(', ')}`)
+  }
+  if (jobMatch?.keyStrengths?.length) {
+    matchContext.push(`Key Strengths: ${jobMatch.keyStrengths.join(', ')}`)
+  }
+
+  return `You are generating ONLY the company-specific framing for a cover letter.
+The body paragraphs are already written and cached — you do NOT generate them.
+
+CANDIDATE: ${personalInfo.name ?? 'the candidate'}
+TARGET ROLE: ${payload.job.role}
+COMPANY: ${payload.job.company}
+${payload.job.companyWebsite ? `COMPANY WEBSITE: ${payload.job.companyWebsite}` : ''}
+${jobMatch?.company?.about ? `COMPANY INFO: ${jobMatch.company.about}` : ''}
+${matchContext.length ? matchContext.join('\n') : ''}
+
+CACHED BODY PARAGRAPHS (already written — reference these for context but do NOT reproduce):
+${cachedBodyParagraphs.map((p, i) => `[${i + 1}] ${p.length > 120 ? p.slice(0, 120) + '...' : p}`).join('\n')}
+
+Generate a JSON object with exactly these four keys:
+{
+  "greeting": "e.g., Dear Hiring Manager,",
+  "openingParagraph": "1 short paragraph expressing interest in this specific role at this company",
+  "closingParagraph": "1 short paragraph closing confidently with a call to action",
+  "signature": "e.g., Best,"
+}
+
+RULES:
+- The opening must mention the COMPANY NAME and TARGET ROLE specifically.
+- The closing should be confident and reference this specific opportunity.
+- The signature is just the closing phrase (e.g., "Best,"). The candidate name is added separately.
+- Keep it concise — the body paragraphs carry the substance.
+
+OUTPUT FORMAT (STRICT):
+- Respond with the JSON object ONLY — no prose, no markdown, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.`
+}
+
 export function buildAdaptPrompt(
   cachedContent: unknown,
   payload: GenerateDocumentPayload,

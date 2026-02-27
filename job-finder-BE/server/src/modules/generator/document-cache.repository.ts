@@ -3,7 +3,7 @@ import { logger } from '../../logger'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type DocumentType = 'resume' | 'cover_letter'
+export type DocumentType = 'resume' | 'cover_letter' | 'cover_letter_body'
 
 export interface CacheStoreParams {
   embeddingVector: number[]
@@ -16,6 +16,7 @@ export interface CacheStoreParams {
   jobDescriptionText: string | null
   companyName: string | null
   modelVersion: string | null
+  roleFingerprintHash?: string | null
 }
 
 export interface CacheRow {
@@ -31,6 +32,7 @@ export interface SimilarityResult {
   documentContentJson: string
   roleNormalized: string
   companyName: string | null
+  techStackJson: string | null
   distance: number
   similarity: number
 }
@@ -84,6 +86,42 @@ export class DocumentCacheRepository {
   }
 
   /**
+   * Tier 1.5: Role fingerprint match (no company).
+   * For resumes, same role + tech stack at a different company should reuse cached content.
+   */
+  findByRoleFingerprint(
+    roleFingerprintHash: string,
+    contentItemsHash: string,
+    documentType: DocumentType
+  ): CacheRow | null {
+    const row = this.db.prepare(`
+      SELECT id, document_content_json, role_normalized, company_name, hit_count
+      FROM document_cache
+      WHERE role_fingerprint_hash = ?
+        AND content_items_hash = ?
+        AND document_type = ?
+      ORDER BY last_hit_at DESC
+      LIMIT 1
+    `).get(roleFingerprintHash, contentItemsHash, documentType) as {
+      id: number
+      document_content_json: string
+      role_normalized: string
+      company_name: string | null
+      hit_count: number
+    } | undefined
+
+    if (!row) return null
+
+    return {
+      id: row.id,
+      documentContentJson: row.document_content_json,
+      roleNormalized: row.role_normalized,
+      companyName: row.company_name,
+      hitCount: row.hit_count,
+    }
+  }
+
+  /**
    * Tier 2: KNN semantic similarity search.
    * Queries vec0 for k*3 nearest neighbors, then filters by content_items_hash
    * and document_type in application code (vec0 doesn't support post-filtering).
@@ -113,7 +151,7 @@ export class DocumentCacheRepository {
 
     const placeholders = rowids.map(() => '?').join(',')
     const cacheRows = this.db.prepare(`
-      SELECT id, embedding_rowid, document_content_json, role_normalized, company_name
+      SELECT id, embedding_rowid, document_content_json, role_normalized, company_name, tech_stack_json
       FROM document_cache
       WHERE embedding_rowid IN (${placeholders})
         AND content_items_hash = ?
@@ -124,6 +162,7 @@ export class DocumentCacheRepository {
       document_content_json: string
       role_normalized: string
       company_name: string | null
+      tech_stack_json: string | null
     }>
 
     // Combine with distances and sort by similarity descending.
@@ -137,6 +176,7 @@ export class DocumentCacheRepository {
           documentContentJson: row.document_content_json,
           roleNormalized: row.role_normalized,
           companyName: row.company_name,
+          techStackJson: row.tech_stack_json,
           distance,
           similarity: 1.0 - (distance * distance) / 2.0,
         }
@@ -195,8 +235,8 @@ export class DocumentCacheRepository {
         INSERT INTO document_cache (
           embedding_rowid, document_type, job_fingerprint_hash, content_items_hash,
           role_normalized, tech_stack_json, document_content_json,
-          job_description_text, company_name, model_version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          job_description_text, company_name, model_version, role_fingerprint_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         embeddingRowid,
         params.documentType,
@@ -207,7 +247,8 @@ export class DocumentCacheRepository {
         params.documentContentJson,
         params.jobDescriptionText,
         params.companyName,
-        params.modelVersion
+        params.modelVersion,
+        params.roleFingerprintHash ?? null
       )
     })
 

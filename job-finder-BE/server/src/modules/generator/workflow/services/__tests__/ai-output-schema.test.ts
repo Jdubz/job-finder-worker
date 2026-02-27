@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateResumeContent,
-  validateCoverLetterContent
+  validateCoverLetterContent,
+  validateCoverLetterFraming
 } from '../ai-output-schema'
 
 describe('AI Output Schema Validation', () => {
@@ -478,6 +479,68 @@ describe('AI Output Schema Validation', () => {
       expect(result.success).toBe(false)
       expect(result.errors).toBeDefined()
       expect(result.errors?.[0]).toContain('JSON parse error')
+    })
+  })
+
+  describe('validateCoverLetterFraming', () => {
+    it('validates well-formed framing JSON', () => {
+      const valid = JSON.stringify({
+        greeting: 'Dear Hiring Manager,',
+        openingParagraph: 'I am excited to apply for the role at Acme.',
+        closingParagraph: 'Thank you for your consideration.',
+        signature: 'Best regards,'
+      })
+
+      const result = validateCoverLetterFraming(valid)
+      expect(result.success).toBe(true)
+      expect(result.data).toBeDefined()
+      expect(result.data?.greeting).toBe('Dear Hiring Manager,')
+      expect(result.recovered).toBeFalsy()
+    })
+
+    it('extracts JSON from markdown code block', () => {
+      const wrapped = '```json\n{"greeting": "Hello,", "openingParagraph": "Test opening", "closingParagraph": "Thanks", "signature": "Best,"}\n```'
+
+      const result = validateCoverLetterFraming(wrapped)
+      expect(result.success).toBe(true)
+      expect(result.recovered).toBe(true)
+      expect(result.recoveryActions).toContain('Extracted JSON from markdown code block or surrounding text')
+    })
+
+    it('maps alternative field names', () => {
+      const altFields = JSON.stringify({
+        greeting: 'Hello,',
+        opening: 'Opening paragraph',
+        closing: 'Closing paragraph',
+        signOff: 'Cheers,'
+      })
+
+      const result = validateCoverLetterFraming(altFields)
+      expect(result.success).toBe(true)
+      expect(result.recovered).toBe(true)
+      expect(result.data?.openingParagraph).toBe('Opening paragraph')
+      expect(result.data?.closingParagraph).toBe('Closing paragraph')
+      expect(result.data?.signature).toBe('Cheers,')
+    })
+
+    it('returns error for completely invalid JSON', () => {
+      const invalid = 'This is not JSON at all!'
+
+      const result = validateCoverLetterFraming(invalid)
+      expect(result.success).toBe(false)
+      expect(result.errors).toBeDefined()
+      expect(result.errors?.[0]).toContain('JSON parse error')
+    })
+
+    it('provides defaults for missing fields', () => {
+      const minimal = JSON.stringify({ greeting: 'Hello,' })
+
+      const result = validateCoverLetterFraming(minimal)
+      expect(result.success).toBe(true)
+      expect(result.data?.greeting).toBe('Hello,')
+      expect(result.data?.openingParagraph).toBe('')
+      expect(result.data?.closingParagraph).toBe('')
+      expect(result.data?.signature).toBe('Best,')
     })
   })
 })

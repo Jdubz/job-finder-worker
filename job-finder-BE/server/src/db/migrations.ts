@@ -3,9 +3,13 @@ import path from 'node:path'
 import type Database from 'better-sqlite3'
 import { logger } from '../logger'
 
-const defaultMigrationsDir = process.env.JF_SQLITE_MIGRATIONS_DIR
-  ? path.resolve(process.env.JF_SQLITE_MIGRATIONS_DIR)
-  : path.resolve(__dirname, '../../infra/sqlite/migrations')
+// Resolved lazily (at call time) so that test setupFiles can set
+// JF_SQLITE_MIGRATIONS_DIR before the path is evaluated.
+function getDefaultMigrationsDir(): string {
+  return process.env.JF_SQLITE_MIGRATIONS_DIR
+    ? path.resolve(process.env.JF_SQLITE_MIGRATIONS_DIR)
+    : path.resolve(process.cwd(), 'infra/sqlite/migrations')
+}
 
 function ensureSchemaTable(db: Database.Database) {
   db.exec(`
@@ -24,7 +28,7 @@ function loadApplied(db: Database.Database): Set<string> {
   return new Set(rows.map((row) => row.name))
 }
 
-export function runMigrations(db: Database.Database, migrationsDir: string = defaultMigrationsDir): string[] {
+export function runMigrations(db: Database.Database, migrationsDir: string = getDefaultMigrationsDir()): string[] {
   logger.info({ migrationsDir }, '[migrations] checking for pending migrations')
 
   if (!fs.existsSync(migrationsDir)) {

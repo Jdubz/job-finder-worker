@@ -372,7 +372,7 @@ export async function executeGenerationStep(requestId: string): Promise<Generati
       method: "POST",
       body: JSON.stringify({}),
     }),
-    { maxRetries: 2, timeoutMs: 60000 } // Longer timeout for generation steps
+    { maxRetries: 2, timeoutMs: 120000 } // Match FE timeout — AI generation can take 60-90s
   )
 
   if (!res.ok) {
@@ -417,7 +417,7 @@ export async function submitDocumentReview(
       method: "POST",
       body: JSON.stringify({ documentType, content }),
     }),
-    { maxRetries: 2, timeoutMs: 30000 }
+    { maxRetries: 2, timeoutMs: 30000 } // Just saves content — render-pdf is driven by /step
   )
 
   if (!res.ok) {
@@ -443,7 +443,7 @@ export async function rejectDocumentReview(
       method: "POST",
       body: JSON.stringify({ documentType, feedback }),
     }),
-    { maxRetries: 1, timeoutMs: 60000 } // longer timeout for AI retry
+    { maxRetries: 1, timeoutMs: 120000 } // AI regeneration + render can take 60-90s
   )
 
   if (!res.ok) {

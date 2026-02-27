@@ -92,6 +92,31 @@ describe('DocumentCacheRepository', () => {
     expect(results).toHaveLength(0)
   })
 
+  it('findSimilar includes techStackJson in results', () => {
+    const embedding = makeEmbedding(4)
+    const techStack = ['react', 'typescript']
+    repo.store(makeStoreParams({
+      embeddingVector: embedding,
+      techStackJson: JSON.stringify(techStack),
+    }))
+
+    const results = repo.findSimilar(embedding, 'content-hash-1', 'resume', 5)
+    expect(results.length).toBeGreaterThanOrEqual(1)
+    expect(results[0].techStackJson).toBe(JSON.stringify(techStack))
+  })
+
+  it('findSimilar returns null techStackJson when not stored', () => {
+    const embedding = makeEmbedding(5)
+    repo.store(makeStoreParams({
+      embeddingVector: embedding,
+      techStackJson: null,
+    }))
+
+    const results = repo.findSimilar(embedding, 'content-hash-1', 'resume', 5)
+    expect(results.length).toBeGreaterThanOrEqual(1)
+    expect(results[0].techStackJson).toBeNull()
+  })
+
   it('findSimilar returns results sorted by similarity descending', () => {
     // Store two entries with different embeddings
     const emb1 = makeEmbedding(10)
@@ -190,6 +215,50 @@ describe('DocumentCacheRepository', () => {
     expect(pruned).toBe(0)
   })
 
+  // ── findByRoleFingerprint ─────────────────────────────────────────────
+
+  it('findByRoleFingerprint returns cached entry for same role across companies', () => {
+    repo.store(makeStoreParams({
+      roleFingerprintHash: 'role-fp-1',
+      companyName: 'Acme Corp',
+    }))
+
+    const result = repo.findByRoleFingerprint('role-fp-1', 'content-hash-1', 'resume')
+    expect(result).not.toBeNull()
+    expect(result!.companyName).toBe('Acme Corp')
+    expect(JSON.parse(result!.documentContentJson)).toEqual({ summary: 'Test resume content' })
+  })
+
+  it('findByRoleFingerprint returns null on miss', () => {
+    repo.store(makeStoreParams({ roleFingerprintHash: 'role-fp-1' }))
+
+    expect(repo.findByRoleFingerprint('wrong-role-fp', 'content-hash-1', 'resume')).toBeNull()
+    expect(repo.findByRoleFingerprint('role-fp-1', 'wrong-hash', 'resume')).toBeNull()
+    expect(repo.findByRoleFingerprint('role-fp-1', 'content-hash-1', 'cover_letter')).toBeNull()
+  })
+
+  it('findByRoleFingerprint returns a valid entry when multiple share the same role fingerprint', () => {
+    repo.store(makeStoreParams({
+      roleFingerprintHash: 'role-fp-shared',
+      jobFingerprintHash: 'fp-a',
+      companyName: 'Corp A',
+      embeddingVector: makeEmbedding(50),
+      documentContentJson: JSON.stringify({ v: 'a' }),
+    }))
+    repo.store(makeStoreParams({
+      roleFingerprintHash: 'role-fp-shared',
+      jobFingerprintHash: 'fp-b',
+      companyName: 'Corp B',
+      embeddingVector: makeEmbedding(51),
+      documentContentJson: JSON.stringify({ v: 'b' }),
+    }))
+
+    const result = repo.findByRoleFingerprint('role-fp-shared', 'content-hash-1', 'resume')
+    expect(result).not.toBeNull()
+    // Should return one of the entries with matching role fingerprint
+    expect(['Corp A', 'Corp B']).toContain(result!.companyName)
+  })
+
   // ── store deduplication ──────────────────────────────────────────────
 
   it('store replaces existing entry with same fingerprint instead of duplicating', () => {
@@ -231,6 +300,63 @@ describe('DocumentCacheRepository', () => {
       `SELECT hit_count FROM document_cache WHERE job_fingerprint_hash = 'fp-hash-1'`
     ).get() as { hit_count: number }
     expect(row.hit_count).toBe(1)
+  })
+
+  // ── cover_letter_body type ─────────────────────────────────────────────
+
+  it('stores and retrieves cover_letter_body type', () => {
+    const bodyParagraphs = ['First paragraph about skills.', 'Second paragraph about experience.']
+    repo.store(makeStoreParams({
+      documentType: 'cover_letter_body',
+      jobFingerprintHash: 'fp-body-1',
+      roleFingerprintHash: 'role-fp-body-1',
+      documentContentJson: JSON.stringify(bodyParagraphs),
+      embeddingVector: makeEmbedding(60),
+    }))
+
+    const result = repo.findExact('fp-body-1', 'content-hash-1', 'cover_letter_body')
+    expect(result).not.toBeNull()
+    expect(JSON.parse(result!.documentContentJson)).toEqual(bodyParagraphs)
+  })
+
+  it('findByRoleFingerprint retrieves cover_letter_body entries', () => {
+    const bodyParagraphs = ['Cached body paragraph.']
+    repo.store(makeStoreParams({
+      documentType: 'cover_letter_body',
+      jobFingerprintHash: 'fp-body-2',
+      roleFingerprintHash: 'role-fp-body-2',
+      documentContentJson: JSON.stringify(bodyParagraphs),
+      embeddingVector: makeEmbedding(61),
+    }))
+
+    const result = repo.findByRoleFingerprint('role-fp-body-2', 'content-hash-1', 'cover_letter_body')
+    expect(result).not.toBeNull()
+    expect(JSON.parse(result!.documentContentJson)).toEqual(bodyParagraphs)
+  })
+
+  it('cover_letter_body type does not collide with cover_letter type', () => {
+    repo.store(makeStoreParams({
+      documentType: 'cover_letter',
+      jobFingerprintHash: 'fp-cl-1',
+      roleFingerprintHash: 'role-fp-cl',
+      documentContentJson: JSON.stringify({ greeting: 'Hello' }),
+      embeddingVector: makeEmbedding(62),
+    }))
+    repo.store(makeStoreParams({
+      documentType: 'cover_letter_body',
+      jobFingerprintHash: 'fp-clb-1',
+      roleFingerprintHash: 'role-fp-cl',
+      documentContentJson: JSON.stringify(['Body only.']),
+      embeddingVector: makeEmbedding(63),
+    }))
+
+    // Looking up cover_letter should not find cover_letter_body
+    expect(repo.findExact('fp-clb-1', 'content-hash-1', 'cover_letter')).toBeNull()
+    // And vice versa
+    expect(repo.findExact('fp-cl-1', 'content-hash-1', 'cover_letter_body')).toBeNull()
+    // But each should find its own type
+    expect(repo.findExact('fp-cl-1', 'content-hash-1', 'cover_letter')).not.toBeNull()
+    expect(repo.findExact('fp-clb-1', 'content-hash-1', 'cover_letter_body')).not.toBeNull()
   })
 
   // ── LRU eviction ──────────────────────────────────────────────────────
