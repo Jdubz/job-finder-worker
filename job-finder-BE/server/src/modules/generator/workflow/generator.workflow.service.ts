@@ -186,7 +186,7 @@ export class GeneratorWorkflowService {
       return null
     }
 
-    const rejectionCount = (request.intermediateResults?.rejectionCount as number) ?? 0
+    const rejectionCount = request.intermediateResults?.rejectionCount ?? 0
     if (rejectionCount >= GeneratorWorkflowService.MAX_REJECTIONS) {
       throw new UserFacingError(
         `Maximum revision attempts (${GeneratorWorkflowService.MAX_REJECTIONS}) reached. Please edit the document directly or submit as-is.`
