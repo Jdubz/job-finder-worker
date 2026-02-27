@@ -60,15 +60,11 @@ class TestExtractionPromptPair:
         assert "2025-12-01" in user
 
     def test_user_contains_salary_when_provided(self):
-        _, user = build_extraction_prompt(
-            "Engineer", "desc", salary_range="USD 150000-200000"
-        )
+        _, user = build_extraction_prompt("Engineer", "desc", salary_range="USD 150000-200000")
         assert "USD 150000-200000" in user
 
     def test_user_contains_url_when_provided(self):
-        _, user = build_extraction_prompt(
-            "Engineer", "desc", url="https://example.com/job/123"
-        )
+        _, user = build_extraction_prompt("Engineer", "desc", url="https://example.com/job/123")
         assert "https://example.com/job/123" in user
 
     def test_system_does_not_contain_job_specific_data(self):
@@ -95,9 +91,7 @@ class TestRepairPromptPair:
         assert isinstance(user, str)
 
     def test_system_contains_field_hints(self):
-        system, _ = build_repair_prompt(
-            "Engineer", "desc", ["seniority", "work_arrangement"]
-        )
+        system, _ = build_repair_prompt("Engineer", "desc", ["seniority", "work_arrangement"])
         assert "seniority" in system
         assert "workArrangement" in system
 
@@ -154,31 +148,23 @@ class TestMatcherPromptPair:
         assert isinstance(user, str)
 
     def test_system_contains_profile_summary(self):
-        system, _ = JobMatchPrompts.analyze_job_match(
-            self._make_profile(), self._make_job()
-        )
+        system, _ = JobMatchPrompts.analyze_job_match(self._make_profile(), self._make_job())
         assert "Test User" in system
 
     def test_system_contains_deliverables(self):
-        system, _ = JobMatchPrompts.analyze_job_match(
-            self._make_profile(), self._make_job()
-        )
+        system, _ = JobMatchPrompts.analyze_job_match(self._make_profile(), self._make_job())
         assert "matched_skills" in system
         assert "missing_skills" in system
 
     def test_user_contains_job_details(self):
-        _, user = JobMatchPrompts.analyze_job_match(
-            self._make_profile(), self._make_job()
-        )
+        _, user = JobMatchPrompts.analyze_job_match(self._make_profile(), self._make_job())
         assert "Senior Engineer" in user
         assert "Acme Corp" in user
         assert "Build scalable systems" in user
 
     def test_system_does_not_contain_job_data(self):
         """System prompt should not contain job-specific data."""
-        system, _ = JobMatchPrompts.analyze_job_match(
-            self._make_profile(), self._make_job()
-        )
+        system, _ = JobMatchPrompts.analyze_job_match(self._make_profile(), self._make_job())
         assert "Acme Corp" not in system
         assert "Build scalable systems" not in system
 
@@ -206,7 +192,12 @@ class TestResumeIntakePromptPair:
         result = JobMatchPrompts.generate_resume_intake_data(
             self._make_profile(),
             {"title": "Engineer", "company": "Co", "description": "desc"},
-            {"matched_skills": ["Python"], "missing_skills": [], "key_strengths": [], "potential_concerns": []},
+            {
+                "matched_skills": ["Python"],
+                "missing_skills": [],
+                "key_strengths": [],
+                "potential_concerns": [],
+            },
         )
         assert isinstance(result, tuple)
         assert len(result) == 2
