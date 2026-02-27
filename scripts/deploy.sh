@@ -71,13 +71,27 @@ if [[ "${1:-}" == "--recreate" ]]; then
   cd "${PROD_DIR}"
   docker compose up -d --force-recreate ollama litellm api worker
   echo "[deploy] Containers recreated"
+
+  # Wait for Ollama container to be ready before checking/pulling models
+  echo "[deploy] Waiting for Ollama container to be ready..."
+  for i in $(seq 1 30); do
+    if docker exec job-finder-ollama ollama list >/dev/null 2>&1; then
+      echo "[deploy] Ollama container is ready"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "[deploy] ERROR: Ollama container not ready after 30s" >&2
+      exit 1
+    fi
+    sleep 1
+  done
 fi
 
 # Always verify Ollama models (not just on --recreate)
 if docker exec job-finder-ollama ollama list >/dev/null 2>&1; then
   for model in "${OLLAMA_MODEL}" "${OLLAMA_EMBED_MODEL}"; do
     echo "[deploy] Ensuring Ollama model '${model}' is available..."
-    if docker exec job-finder-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fq "${model}"; then
+    if docker exec job-finder-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "${model}"; then
       echo "[deploy] Model '${model}' already present"
     else
       echo "[deploy] Pulling '${model}' (this may take several minutes)..."
@@ -93,7 +107,10 @@ fi
 if [[ "${1:-}" == "--recreate" ]]; then
   echo ""
   echo "[deploy] Running post-deploy health check..."
-  "${REPO_ROOT}/scripts/health-check.sh" || echo "[deploy] WARNING: Health check reported failures (see above)"
+  if ! "${REPO_ROOT}/scripts/health-check.sh"; then
+    echo "[deploy] WARNING: Health check reported failures (see above)" >&2
+    exit 1
+  fi
 fi
 
 echo "[deploy] Done"

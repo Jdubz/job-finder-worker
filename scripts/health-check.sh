@@ -15,7 +15,7 @@ PROD_DIR="${DEPLOY_PATH:-/srv/job-finder}"
 
 # Load LiteLLM master key for authenticated endpoints
 if [[ -z "${LITELLM_MASTER_KEY:-}" && -f "${PROD_DIR}/.env" ]]; then
-  LITELLM_MASTER_KEY=$(grep -oP '^LITELLM_MASTER_KEY=\K.*' "${PROD_DIR}/.env" 2>/dev/null || true)
+  LITELLM_MASTER_KEY=$(sed -n 's/^LITELLM_MASTER_KEY=//p' "${PROD_DIR}/.env" 2>/dev/null | head -n1 || true)
 fi
 
 # ── Colors ───────────────────────────────────────────────────────────────────
@@ -91,30 +91,39 @@ echo -e "\n${BOLD}LiteLLM Models${NC}"
 
 EXPECTED_LITELLM_MODELS=(claude-document gemini-general local-extract local-embed)
 
-models_json=$(curl -s --max-time 5 -H "Authorization: Bearer ${LITELLM_MASTER_KEY:-}" http://localhost:4000/v1/models 2>/dev/null || true)
-if [[ -z "$models_json" ]]; then
-  fail "Could not reach LiteLLM /v1/models"
+models_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer ${LITELLM_MASTER_KEY:-}" http://localhost:4000/v1/models 2>/dev/null || true)
+if [[ "$models_status" == "401" || "$models_status" == "403" ]]; then
+  fail "LiteLLM /v1/models unauthorized (status ${models_status}) — missing/invalid LITELLM_MASTER_KEY?"
+elif [[ "$models_status" != "200" ]]; then
+  fail "LiteLLM /v1/models returned ${models_status:-timeout}"
 else
-  for model in "${EXPECTED_LITELLM_MODELS[@]}"; do
-    if echo "$models_json" | grep -q "\"$model\""; then
-      pass "LiteLLM model '$model' registered"
-    else
-      fail "LiteLLM model '$model' not found"
-    fi
-  done
+  models_json=$(curl -s --max-time 5 -H "Authorization: Bearer ${LITELLM_MASTER_KEY:-}" http://localhost:4000/v1/models 2>/dev/null || true)
+  if [[ -z "$models_json" ]]; then
+    fail "Could not reach LiteLLM /v1/models"
+  else
+    for model in "${EXPECTED_LITELLM_MODELS[@]}"; do
+      if echo "$models_json" | grep -q "\"$model\""; then
+        pass "LiteLLM model '$model' registered"
+      else
+        fail "LiteLLM model '$model' not found"
+      fi
+    done
+  fi
 fi
 
 # ── Ollama models ────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}Ollama Models${NC}"
 
-EXPECTED_OLLAMA_MODELS=(llama3.1:8b nomic-embed-text)
+OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1:8b}"
+OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
+EXPECTED_OLLAMA_MODELS=("$OLLAMA_MODEL" "$OLLAMA_EMBED_MODEL")
 
 ollama_list=$(docker exec job-finder-ollama ollama list 2>/dev/null || true)
 if [[ -z "$ollama_list" ]]; then
   fail "Could not list Ollama models (container may not be running)"
 else
   for model in "${EXPECTED_OLLAMA_MODELS[@]}"; do
-    if echo "$ollama_list" | awk '{print $1}' | grep -Fq "$model"; then
+    if echo "$ollama_list" | awk '{print $1}' | grep -Fxq "$model"; then
       pass "Ollama model '$model' pulled"
     else
       fail "Ollama model '$model' not found"
