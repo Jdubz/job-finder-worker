@@ -128,6 +128,83 @@ class TestInferenceClientExecute:
         result = client.execute("extraction", "test", scope="worker")
         assert result.text == "test response"
 
+    @patch("job_finder.ai.inference_client.OpenAI")
+    def test_system_prompt_prepends_system_message(self, mock_openai_cls):
+        """Should prepend a system message when system_prompt is provided."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._make_mock_response()
+        mock_openai_cls.return_value = mock_client
+
+        client = InferenceClient(api_key="test-key")
+        client.execute("extraction", "user text", system_prompt="system text")
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        messages = call_kwargs["messages"]
+        assert len(messages) == 2
+        assert messages[0] == {"role": "system", "content": "system text"}
+        assert messages[1] == {"role": "user", "content": "user text"}
+
+    @patch("job_finder.ai.inference_client.OpenAI")
+    def test_no_system_prompt_sends_user_only(self, mock_openai_cls):
+        """Should send only user message when system_prompt is not provided."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._make_mock_response()
+        mock_openai_cls.return_value = mock_client
+
+        client = InferenceClient(api_key="test-key")
+        client.execute("extraction", "user text")
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        messages = call_kwargs["messages"]
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "user text"}
+
+    @patch("job_finder.ai.inference_client.OpenAI")
+    def test_response_format_json_passes_json_object(self, mock_openai_cls):
+        """Should pass response_format=json_object when response_format='json'."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._make_mock_response()
+        mock_openai_cls.return_value = mock_client
+
+        client = InferenceClient(api_key="test-key")
+        client.execute("extraction", "test", response_format="json")
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["response_format"] == {"type": "json_object"}
+
+    @patch("job_finder.ai.inference_client.OpenAI")
+    def test_no_response_format_omits_param(self, mock_openai_cls):
+        """Should not pass response_format when not specified."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._make_mock_response()
+        mock_openai_cls.return_value = mock_client
+
+        client = InferenceClient(api_key="test-key")
+        client.execute("extraction", "test")
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert "response_format" not in call_kwargs
+
+    @patch("job_finder.ai.inference_client.OpenAI")
+    def test_backward_compat_without_new_params(self, mock_openai_cls):
+        """Should work without system_prompt or response_format (backward compat)."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._make_mock_response()
+        mock_openai_cls.return_value = mock_client
+
+        client = InferenceClient(api_key="test-key")
+        result = client.execute(
+            task_type="extraction",
+            prompt="test prompt",
+            max_tokens=2048,
+            temperature=0.1,
+        )
+        assert result.text == "test response"
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert len(call_kwargs["messages"]) == 1
+        assert "response_format" not in call_kwargs
+
 
 class TestInferenceClientErrors:
     """Test error handling and mapping."""

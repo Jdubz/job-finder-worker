@@ -1,57 +1,25 @@
-"""Prompt templates for job data extraction."""
+"""Prompt templates for job data extraction.
+
+Each prompt function returns a PromptPair (system, user) to enable:
+- Clear separation of general instructions (system) from per-request context (user)
+- Prompt caching on providers that support it (system prompt is stable per day)
+- Better instruction following on local models (clear system/user separation)
+"""
 
 from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+# (system_prompt, user_prompt)
+PromptPair = Tuple[str, str]
 
 
-def build_extraction_prompt(
-    title: str,
-    description: str,
-    location: Optional[str] = None,
-    posted_date: Optional[str] = None,
-    salary_range: Optional[str] = None,
-    url: Optional[str] = None,
-) -> str:
-    """
-    Build prompt for extracting structured data from a job posting.
-
-    AI extracts DATA ONLY - no scoring or match calculations.
-
-    Args:
-        title: Job title
-        description: Job description text
-        location: Optional location string from job posting
-        posted_date: Optional posted date string
-        salary_range: Optional pre-extracted salary range from ATS API
-        url: Optional job listing URL (may contain metadata like employmentType)
-
-    Returns:
-        Formatted prompt string for AI extraction
-    """
-    location_section = f"\nLocation: {location}" if location else ""
-    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
+def _build_extraction_system_prompt() -> str:
+    """Build the system prompt for extraction (stable per day, cacheable intra-day)."""
     today_str = date.today().isoformat()
 
-    # Build structured data section from pre-extracted ATS data
-    structured_lines = []
-    if salary_range:
-        structured_lines.append(f"Salary Range: {salary_range}")
-    if url:
-        structured_lines.append(f"URL: {url}")
-    structured_section = ""
-    if structured_lines:
-        structured_section = (
-            "\n\nPre-extracted structured data (from ATS API — authoritative):\n"
-            + "\n".join(structured_lines)
-        )
-
-    return f"""Extract structured information from this job posting. Return ONLY a valid JSON object.
+    return f"""You are a job posting data extractor. Extract structured information and return ONLY a valid JSON object.
 
 Today's date: {today_str}
-Job Title: {title}{location_section}{posted_section}{structured_section}
-
-Job Description:
-{description[:4000]}
 
 Extract and return this exact JSON structure (use null for unknown values, false for unknown booleans):
 {{
@@ -94,7 +62,7 @@ Rules:
    NOTE: Many companies list office locations alongside remote eligibility. A job listing offices does NOT mean it is hybrid — look for explicit remote language in the location field or description first.
 
 3. Parse salary as annual USD amounts (convert hourly/monthly if needed):
-   - If a salary range is provided in the structured data section above, parse it into salaryMin/salaryMax. This data comes from the ATS API and is authoritative.
+   - If a salary range is provided in the structured data section, parse it into salaryMin/salaryMax. This data comes from the ATS API and is authoritative.
      - "USD 165000-220000" -> salaryMin: 165000, salaryMax: 220000
      - "$150,000 - $170,000" -> salaryMin: 150000, salaryMax: 170000
    - "$150,000 - $200,000" -> salaryMin: 150000, salaryMax: 200000
@@ -151,6 +119,56 @@ Rules:
 Return ONLY the JSON object, no explanation or markdown."""
 
 
+def build_extraction_prompt(
+    title: str,
+    description: str,
+    location: Optional[str] = None,
+    posted_date: Optional[str] = None,
+    salary_range: Optional[str] = None,
+    url: Optional[str] = None,
+) -> PromptPair:
+    """
+    Build prompt for extracting structured data from a job posting.
+
+    AI extracts DATA ONLY - no scoring or match calculations.
+
+    Args:
+        title: Job title
+        description: Job description text
+        location: Optional location string from job posting
+        posted_date: Optional posted date string
+        salary_range: Optional pre-extracted salary range from ATS API
+        url: Optional job listing URL (may contain metadata like employmentType)
+
+    Returns:
+        PromptPair of (system_prompt, user_prompt) for AI extraction
+    """
+    system = _build_extraction_system_prompt()
+
+    location_section = f"\nLocation: {location}" if location else ""
+    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
+
+    # Build structured data section from pre-extracted ATS data
+    structured_lines = []
+    if salary_range:
+        structured_lines.append(f"Salary Range: {salary_range}")
+    if url:
+        structured_lines.append(f"URL: {url}")
+    structured_section = ""
+    if structured_lines:
+        structured_section = (
+            "\n\nPre-extracted structured data (from ATS API — authoritative):\n"
+            + "\n".join(structured_lines)
+        )
+
+    user = f"""Job Title: {title}{location_section}{posted_section}{structured_section}
+
+Job Description:
+{description[:4000]}"""
+
+    return (system, user)
+
+
 def build_simple_extraction_prompt(
     title: str,
     description: str,
@@ -199,7 +217,7 @@ def build_repair_prompt(
     missing_fields: List[str],
     location: Optional[str] = None,
     posted_date: Optional[str] = None,
-) -> str:
+) -> PromptPair:
     """Build a targeted repair prompt for fields the initial extraction missed.
 
     Args:
@@ -210,11 +228,9 @@ def build_repair_prompt(
         posted_date: Optional posted date string
 
     Returns:
-        Formatted prompt for repair extraction
+        PromptPair of (system_prompt, user_prompt) for repair extraction
     """
     today_str = date.today().isoformat()
-    location_section = f"\nLocation: {location}" if location else ""
-    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
 
     field_hints = {
         "seniority": "seniority (junior/mid/senior/staff/lead/principal) — infer from title, years of experience mentioned, or responsibility level",
@@ -227,17 +243,23 @@ def build_repair_prompt(
 
     field_descriptions = "\n".join(f"- {field_hints.get(f, f)}" for f in missing_fields)
 
-    return f"""The initial extraction of this job posting returned null/unknown for several fields. Re-examine the posting and try harder to infer these specific fields.
+    system = f"""You are a job posting data extractor performing a repair pass. The initial extraction returned null/unknown for several fields.
 
 Today's date: {today_str}
-Job Title: {title}{location_section}{posted_section}
-
-Job Description:
-{description[:4000]}
 
 Missing fields to fill:
 {field_descriptions}
 
-Return ONLY a JSON object with the fields you can now fill. Use the same field names as the original extraction (camelCase). For fields you still cannot determine, use null or "unknown" as appropriate. Do not include fields that were already successfully extracted.
+Re-examine the posting and try harder to infer these specific fields. Return ONLY a JSON object with the fields you can now fill. Use camelCase field names. For fields you still cannot determine, use null or "unknown" as appropriate. Do not include fields that were already successfully extracted.
 
 Return ONLY the JSON object, no explanation or markdown."""
+
+    location_section = f"\nLocation: {location}" if location else ""
+    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
+
+    user = f"""Job Title: {title}{location_section}{posted_section}
+
+Job Description:
+{description[:4000]}"""
+
+    return (system, user)

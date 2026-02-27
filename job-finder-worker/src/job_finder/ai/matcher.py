@@ -304,12 +304,14 @@ class AIJobMatcher:
         """
         response = None
         try:
-            prompt = self.prompts.analyze_job_match(self.profile, job)
+            system_prompt, user_prompt = self.prompts.analyze_job_match(self.profile, job)
 
             # Use AgentManager for AI execution (analysis task type)
             result = self.agent_manager.execute(
                 task_type="analysis",
-                prompt=prompt,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format="json",
                 max_tokens=1400,
                 temperature=0.2,
             )

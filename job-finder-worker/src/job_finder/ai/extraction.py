@@ -359,7 +359,7 @@ class JobExtractor:
         if not description or not title:
             raise ExtractionError("Empty title or description provided for extraction")
 
-        prompt = build_extraction_prompt(
+        system_prompt, user_prompt = build_extraction_prompt(
             title,
             description,
             location,
@@ -369,7 +369,9 @@ class JobExtractor:
         )
         result = self.agent_manager.execute(
             task_type="extraction",
-            prompt=prompt,
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            response_format="json",
             max_tokens=2048,
             temperature=0.1,  # Low temperature for consistent extraction
         )
@@ -468,7 +470,7 @@ class JobExtractor:
         )
 
         try:
-            repair_prompt = build_repair_prompt(
+            repair_system, repair_user = build_repair_prompt(
                 title,
                 description,
                 missing,
@@ -477,7 +479,9 @@ class JobExtractor:
             )
             repair_response = self.agent_manager.execute(
                 task_type="extraction",
-                prompt=repair_prompt,
+                prompt=repair_user,
+                system_prompt=repair_system,
+                response_format="json",
                 max_tokens=1024,
                 temperature=0.1,
             )

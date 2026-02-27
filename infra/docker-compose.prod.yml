@@ -140,7 +140,10 @@ services:
               count: 1
               capabilities: [gpu]
     environment:
-      OLLAMA_MAX_LOADED_MODELS: "2"  # extraction + embedding concurrently
+      OLLAMA_MAX_LOADED_MODELS: "1"    # 1 model in VRAM at a time (swap latency <3s)
+      OLLAMA_NUM_CTX: "8192"           # Cap context window (extraction needs <3K tokens)
+      OLLAMA_KEEP_ALIVE: "5m"          # Auto-unload idle models after 5 min
+      OLLAMA_FLASH_ATTENTION: "1"      # Reduce VRAM for attention computation
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:

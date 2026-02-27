@@ -131,6 +131,26 @@ else
   done
 fi
 
+# ── Ollama Memory ────────────────────────────────────────────────────────────
+echo -e "\n${BOLD}Ollama Memory${NC}"
+
+ollama_ps=$(docker exec job-finder-ollama ollama ps 2>/dev/null || true)
+if [[ -z "$ollama_ps" ]]; then
+  warn "Could not run 'ollama ps' (container may not be running)"
+else
+  # Count loaded models (subtract 1 for the header line)
+  loaded_count=$(echo "$ollama_ps" | tail -n +2 | grep -c . || true)
+  echo -e "  Loaded models: ${loaded_count}"
+  echo "$ollama_ps" | tail -n +2 | while IFS= read -r line; do
+    echo -e "    $line"
+  done
+  if [[ "$loaded_count" -le 1 ]]; then
+    pass "Ollama has at most 1 model loaded (OOM protection OK)"
+  else
+    fail "Ollama has ${loaded_count} models loaded (expected <= 1, check OLLAMA_MAX_LOADED_MODELS)"
+  fi
+fi
+
 # ── Config sync ──────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}Config Sync${NC}"
 

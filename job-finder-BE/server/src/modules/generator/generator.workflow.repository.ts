@@ -20,6 +20,8 @@ function safeJsonParse<T>(json: string | null | undefined, fieldName: string): T
 export interface IntermediateResults {
   resumeContent?: ResumeContent
   coverLetterContent?: CoverLetterContent
+  /** Number of times the user has rejected and regenerated a document. */
+  rejectionCount?: number
 }
 
 export interface GeneratorRequestRecord {
