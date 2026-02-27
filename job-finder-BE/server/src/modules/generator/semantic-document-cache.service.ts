@@ -22,7 +22,7 @@ export type CacheLookupResult =
   | { tier: 'exact'; document: unknown }
   | { tier: 'semantic-full'; document: unknown; similarity: number }
   | { tier: 'semantic-partial'; document: unknown; similarity: number }
-  | { tier: 'miss' }
+  | { tier: 'miss'; embedding?: number[] }
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
@@ -31,6 +31,7 @@ const CACHE_DRY_RUN = env.CACHE_DRY_RUN === 'true'
 const SIMILARITY_FULL_HIT = env.CACHE_SIMILARITY_FULL_HIT
 const SIMILARITY_PARTIAL_HIT = env.CACHE_SIMILARITY_PARTIAL_HIT
 const EMBEDDING_DIMS = 768
+const EMBEDDING_TIMEOUT_MS = 5_000
 const LITELLM_BASE_URL = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
 const LITELLM_API_KEY = process.env.LITELLM_MASTER_KEY || ''
 
@@ -53,12 +54,19 @@ export class SemanticDocumentCache {
     const contentItemsHash = computeContentHash(ctx.personalInfo, ctx.contentItems, prompts)
     const roleNormalized = normalizeRole(ctx.role)
     const techStack = this.extractTechStack(ctx.jobMatch)
-    const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash)
+    const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash, ctx.company)
 
     // Tier 1: Exact match
     const exactHit = this.repo.findExact(fingerprintHash, contentItemsHash, ctx.documentType)
     if (exactHit) {
-      const document = JSON.parse(exactHit)
+      let document: unknown
+      try {
+        document = JSON.parse(exactHit)
+      } catch (err) {
+        this.log.warn({ err }, 'Document cache: corrupt exact-hit entry, treating as miss')
+        return { tier: 'miss' }
+      }
+
       this.log.info(
         { tier: 'exact', documentType: ctx.documentType, role: ctx.role, company: ctx.company },
         'Document cache: exact hit'
@@ -101,16 +109,30 @@ export class SemanticDocumentCache {
           { similarity: best.similarity, threshold: { full: SIMILARITY_FULL_HIT, partial: SIMILARITY_PARTIAL_HIT } },
           'Document cache: dry-run mode — returning miss despite semantic hit'
         )
-        return { tier: 'miss' }
+        return { tier: 'miss', embedding }
       }
 
       if (best.similarity >= SIMILARITY_FULL_HIT) {
-        const document = JSON.parse(best.documentContentJson)
+        let document: unknown
+        try {
+          document = JSON.parse(best.documentContentJson)
+        } catch (err) {
+          this.log.warn({ err }, 'Document cache: corrupt semantic-hit entry, treating as miss')
+          return { tier: 'miss', embedding }
+        }
+        this.repo.recordHit(best.id)
         return { tier: 'semantic-full', document, similarity: best.similarity }
       }
 
       if (best.similarity >= SIMILARITY_PARTIAL_HIT) {
-        const document = JSON.parse(best.documentContentJson)
+        let document: unknown
+        try {
+          document = JSON.parse(best.documentContentJson)
+        } catch (err) {
+          this.log.warn({ err }, 'Document cache: corrupt semantic-hit entry, treating as miss')
+          return { tier: 'miss', embedding }
+        }
+        this.repo.recordHit(best.id)
         return { tier: 'semantic-partial', document, similarity: best.similarity }
       }
     }
@@ -119,14 +141,17 @@ export class SemanticDocumentCache {
       { documentType: ctx.documentType, role: ctx.role },
       'Document cache: miss'
     )
-    return { tier: 'miss' }
+    // Return the embedding so store() can reuse it instead of recomputing
+    return { tier: 'miss', embedding }
   }
 
   /**
    * Store a generated document in the cache.
    * Non-fatal — failures are logged but don't block the generation pipeline.
+   * Accepts an optional pre-computed embedding to avoid redundant computation
+   * when called after a lookup miss.
    */
-  async store(ctx: CacheContext, document: unknown, modelVersion: string | null): Promise<void> {
+  async store(ctx: CacheContext, document: unknown, modelVersion: string | null, precomputedEmbedding?: number[]): Promise<void> {
     if (!CACHE_ENABLED) return
 
     try {
@@ -134,14 +159,18 @@ export class SemanticDocumentCache {
       const contentItemsHash = computeContentHash(ctx.personalInfo, ctx.contentItems, prompts)
       const roleNormalized = normalizeRole(ctx.role)
       const techStack = this.extractTechStack(ctx.jobMatch)
-      const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash)
+      const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash, ctx.company)
 
       let embedding: number[]
-      try {
-        embedding = await this.embed(ctx.jobDescriptionText)
-      } catch (err) {
-        this.log.warn({ err }, 'Document cache: embedding failed during store, skipping cache write')
-        return
+      if (precomputedEmbedding) {
+        embedding = precomputedEmbedding
+      } else {
+        try {
+          embedding = await this.embed(ctx.jobDescriptionText)
+        } catch (err) {
+          this.log.warn({ err }, 'Document cache: embedding failed during store, skipping cache write')
+          return
+        }
       }
 
       this.repo.store({
@@ -170,17 +199,26 @@ export class SemanticDocumentCache {
    * Call LiteLLM /v1/embeddings endpoint to get a 768D vector.
    */
   private async embed(text: string): Promise<number[]> {
-    const response = await fetch(`${LITELLM_BASE_URL}/v1/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${LITELLM_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'local-embed',
-        input: text,
-      }),
-    })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS)
+
+    let response: Response
+    try {
+      response = await fetch(`${LITELLM_BASE_URL}/v1/embeddings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${LITELLM_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'local-embed',
+          input: text,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => '')
@@ -206,9 +244,10 @@ export class SemanticDocumentCache {
    */
   private extractTechStack(jobMatch: JobMatchWithListing | null): string[] {
     if (!jobMatch) return []
-    return [
+    const combined = [
       ...(jobMatch.matchedSkills ?? []),
       ...(jobMatch.resumeIntakeData?.atsKeywords ?? []),
     ]
+    return [...new Set(combined)]
   }
 }

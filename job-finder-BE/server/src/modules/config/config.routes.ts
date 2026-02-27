@@ -24,6 +24,7 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
+import { invalidateDocumentCacheAsync } from '../generator/document-cache-invalidation'
 
 const updateSchema = z.object({
   payload: z.record(z.unknown())
@@ -148,6 +149,11 @@ export function buildConfigRouter() {
 
       // Fire-and-forget reload to the worker so it rehydrates in-memory settings
       await triggerWorkerReload(id).catch(() => undefined)
+
+      // Invalidate document cache when profile content that feeds into prompts changes
+      if (id === 'personal-info' || id === 'ai-prompts') {
+        invalidateDocumentCacheAsync().catch(() => undefined)
+      }
 
       res.json(success(response))
     })

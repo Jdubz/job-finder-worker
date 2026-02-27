@@ -30,11 +30,14 @@ export function computeContentHash(
   const normalizedPersonal = {
     name: (personalInfo.name ?? '').trim(),
     email: (personalInfo.email ?? '').trim(),
+    title: (personalInfo.title ?? '').trim(),
     location: (personalInfo.location ?? '').trim(),
     phone: (personalInfo.phone ?? '').trim(),
     website: (personalInfo.website ?? '').trim(),
     linkedin: (personalInfo.linkedin ?? '').trim(),
     github: (personalInfo.github ?? '').trim(),
+    summary: (personalInfo.summary ?? '').trim(),
+    applicationInfo: (personalInfo.applicationInfo ?? '').trim(),
   }
 
   // Normalize content items — sort by id, include only prompt-relevant fields
@@ -68,16 +71,22 @@ export function computeContentHash(
 
 /**
  * Compute a fingerprint hash for a specific job + profile combination.
- * Two jobs with the same normalized role, tech stack, and profile hash
+ * Two jobs with the same normalized role, company, tech stack, and profile hash
  * will produce identical fingerprints (Tier 1 exact match).
+ *
+ * Company is included to prevent cross-company collisions when tech stack is
+ * empty (e.g. when jobMatch is null) — without it, the fingerprint collapses
+ * to just role + profileHash, which is too broad.
  */
 export function computeJobFingerprint(
   roleNormalized: string,
   techStack: string[],
-  contentItemsHash: string
+  contentItemsHash: string,
+  company: string = ''
 ): string {
   const payload = JSON.stringify([
     roleNormalized,
+    company.toLowerCase().trim(),
     [...techStack].map((s) => s.toLowerCase().trim()).sort(),
     contentItemsHash,
   ])

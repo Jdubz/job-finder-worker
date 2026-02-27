@@ -14,6 +14,7 @@ import type {
   UpdateContentItemResponse
 } from '@shared/types'
 import { ContentItemRepository, ContentItemInvalidParentError, ContentItemNotFoundError } from './content-item.repository'
+import { invalidateDocumentCacheAsync } from '../generator/document-cache-invalidation'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiHttpError } from '../../middleware/api-error'
@@ -156,6 +157,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const payload = createRequestSchema.parse(req.body) as CreateContentItemRequest
         const user = getAuthenticatedUser(req)
         const item = repo.create({ ...payload.itemData, userEmail: user.email })
+        invalidateDocumentCacheAsync().catch(() => undefined)
         const response: CreateContentItemResponse = { item, message: 'Content item created' }
         res.status(201).json(success(response))
       } catch (err) {
@@ -173,6 +175,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
         const user = getAuthenticatedUser(req)
         const item = repo.update(req.params.id, { ...payload.itemData, userEmail: user.email })
+        invalidateDocumentCacheAsync().catch(() => undefined)
         const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
         res.json(success(response))
       } catch (err) {
@@ -188,6 +191,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
     asyncHandler((req, res) => {
       try {
         repo.delete(req.params.id)
+        invalidateDocumentCacheAsync().catch(() => undefined)
         const response: DeleteContentItemResponse = {
           itemId: req.params.id,
           deleted: true,
@@ -209,6 +213,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const payload = reorderRequestSchema.parse(req.body)
         const user = getAuthenticatedUser(req)
         const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
+        // No cache invalidation needed: content hash is order-independent (sorted by id)
         const response: ReorderContentItemResponse = { item }
         res.json(success(response))
       } catch (err) {

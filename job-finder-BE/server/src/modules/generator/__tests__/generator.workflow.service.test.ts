@@ -650,4 +650,113 @@ const mockCoverLetterContent = {
       expect(result.skills[0].category).toBe('Valid')
     })
   })
+
+  describe('cache behavior', () => {
+    const personalInfo: PersonalInfo = {
+      name: 'Test User',
+      email: 'test@example.com',
+      title: 'Engineer',
+      applicationInfo: 'Test',
+    }
+
+    let mockDocumentCache: {
+      lookup: ReturnType<typeof vi.fn>
+      store: ReturnType<typeof vi.fn>
+    }
+
+    const createServiceWithCache = () =>
+      new GeneratorWorkflowService(
+        htmlPdfService as any,
+        repo as unknown as GeneratorWorkflowRepository,
+        personalInfoStore as unknown as PersonalInfoStore,
+        contentItemRepo as unknown as ContentItemRepository,
+        fakeJobMatchRepo,
+        mockLog as unknown as any,
+        mockDocumentCache as any
+      )
+
+    beforeEach(() => {
+      // Restore buildResumeContent/buildCoverLetterContent spies from the
+      // outer beforeEach so the real implementations run through the cache layer.
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent?.mockRestore?.()
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildCoverLetterContent?.mockRestore?.()
+
+      mockDocumentCache = {
+        lookup: vi.fn().mockResolvedValue({ tier: 'miss' }),
+        store: vi.fn().mockResolvedValue(undefined),
+      }
+    })
+
+    it('returns cached resume on exact hit — skips AI call', async () => {
+      mockDocumentCache.lookup.mockResolvedValue({ tier: 'exact', document: mockResumeContent })
+
+      const service = createServiceWithCache()
+      const result = await (service as any).buildResumeContent(payload, personalInfo)
+
+      expect(result).toEqual(mockResumeContent)
+      expect(mockDocumentCache.lookup).toHaveBeenCalledOnce()
+      expect((service as any).agentManager.execute).not.toHaveBeenCalled()
+    })
+
+    it('returns cached resume on semantic-full hit — skips AI call', async () => {
+      mockDocumentCache.lookup.mockResolvedValue({
+        tier: 'semantic-full',
+        document: mockResumeContent,
+        similarity: 0.95,
+      })
+
+      const service = createServiceWithCache()
+      const result = await (service as any).buildResumeContent(payload, personalInfo)
+
+      expect(result).toEqual(mockResumeContent)
+      expect(mockDocumentCache.lookup).toHaveBeenCalledOnce()
+      expect((service as any).agentManager.execute).not.toHaveBeenCalled()
+    })
+
+    it('returns cached cover letter on exact hit — skips AI call', async () => {
+      mockDocumentCache.lookup.mockResolvedValue({ tier: 'exact', document: mockCoverLetterContent })
+
+      const service = createServiceWithCache()
+      const result = await (service as any).buildCoverLetterContent(
+        { ...payload, generateType: 'coverLetter' },
+        personalInfo
+      )
+
+      expect(result).toEqual(mockCoverLetterContent)
+      expect(mockDocumentCache.lookup).toHaveBeenCalledOnce()
+      expect((service as any).agentManager.execute).not.toHaveBeenCalled()
+    })
+
+    it('skipCache bypasses lookup but still stores result', async () => {
+      const service = createServiceWithCache()
+      await (service as any).buildResumeContent({ ...payload, skipCache: true }, personalInfo)
+
+      expect(mockDocumentCache.lookup).not.toHaveBeenCalled()
+      // store is called as fire-and-forget (returns promise)
+      expect(mockDocumentCache.store).toHaveBeenCalledOnce()
+    })
+
+    it('passes embedding from lookup miss to store', async () => {
+      const fakeEmbedding = new Array(768).fill(0.1)
+      mockDocumentCache.lookup.mockResolvedValue({ tier: 'miss', embedding: fakeEmbedding })
+
+      const service = createServiceWithCache()
+      await (service as any).buildResumeContent(payload, personalInfo)
+
+      expect(mockDocumentCache.store).toHaveBeenCalledOnce()
+      const storeArgs = mockDocumentCache.store.mock.calls[0]
+      // store(cacheCtx, document, modelVersion, precomputedEmbedding)
+      expect(storeArgs[3]).toBe(fakeEmbedding)
+    })
+
+    it('calls store without embedding when skipCache is true (no lookup)', async () => {
+      const service = createServiceWithCache()
+      await (service as any).buildResumeContent({ ...payload, skipCache: true }, personalInfo)
+
+      expect(mockDocumentCache.store).toHaveBeenCalledOnce()
+      const storeArgs = mockDocumentCache.store.mock.calls[0]
+      // No embedding available since lookup was skipped
+      expect(storeArgs[3]).toBeUndefined()
+    })
+  })
 })

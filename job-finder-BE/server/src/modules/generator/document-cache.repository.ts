@@ -119,7 +119,9 @@ export class DocumentCacheRepository {
       company_name: string | null
     }>
 
-    // Combine with distances and sort by similarity descending
+    // Combine with distances and sort by similarity descending.
+    // vec0 returns L2 (Euclidean) distance. For normalized embeddings:
+    //   L2² = 2(1 - cos θ)  →  cos θ = 1 - L2²/2
     const results: SimilarityResult[] = cacheRows
       .map((row) => {
         const distance = distanceMap.get(row.embedding_rowid) ?? Infinity
@@ -129,24 +131,25 @@ export class DocumentCacheRepository {
           roleNormalized: row.role_normalized,
           companyName: row.company_name,
           distance,
-          similarity: 1.0 - distance / 2.0,
+          similarity: 1.0 - (distance * distance) / 2.0,
         }
       })
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, k)
 
-    // Update hit metadata for returned results
-    if (results.length > 0) {
-      const ids = results.map((r) => r.id)
-      const idPlaceholders = ids.map(() => '?').join(',')
-      this.db.prepare(`
-        UPDATE document_cache
-        SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
-        WHERE id IN (${idPlaceholders})
-      `).run(...ids)
-    }
-
     return results
+  }
+
+  /**
+   * Record a cache hit for a specific entry (updates hit_count and last_hit_at).
+   * Called by the service layer after it decides which result to actually use.
+   */
+  recordHit(id: number): void {
+    this.db.prepare(`
+      UPDATE document_cache
+      SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(id)
   }
 
   /**
@@ -191,57 +194,84 @@ export class DocumentCacheRepository {
   }
 
   /**
+   * Remove all cache entries whose content_items_hash differs from the current hash.
+   * Call after any profile mutation (personal info, content items, prompts) to purge stale entries.
+   * Returns the number of removed entries.
+   */
+  removeStaleEntries(currentContentHash: string): number {
+    const deleteTransaction = this.db.transaction(() => {
+      const rows = this.db.prepare(`
+        SELECT embedding_rowid FROM document_cache
+        WHERE content_items_hash != ?
+      `).all(currentContentHash) as Array<{ embedding_rowid: number }>
+
+      if (!rows.length) return 0
+
+      const rowids = rows.map((r) => r.embedding_rowid)
+      const placeholders = rowids.map(() => '?').join(',')
+      this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
+
+      this.db.prepare(`
+        DELETE FROM document_cache WHERE content_items_hash != ?
+      `).run(currentContentHash)
+
+      return rows.length
+    })
+
+    const removed = deleteTransaction()
+    if (removed > 0) {
+      logger.info({ removed }, 'Document cache: removed stale entries')
+    }
+    return removed
+  }
+
+  /**
    * Invalidate cache entries by content items hash and document type.
    * Used when the user's profile content changes.
    */
   invalidateByContentHash(contentItemsHash: string, documentType: DocumentType): void {
-    const rows = this.db.prepare(`
-      SELECT embedding_rowid FROM document_cache
-      WHERE content_items_hash = ? AND document_type = ?
-    `).all(contentItemsHash, documentType) as Array<{ embedding_rowid: number }>
+    this.db.transaction(() => {
+      const rows = this.db.prepare(`
+        SELECT embedding_rowid FROM document_cache
+        WHERE content_items_hash = ? AND document_type = ?
+      `).all(contentItemsHash, documentType) as Array<{ embedding_rowid: number }>
 
-    if (!rows.length) return
+      if (!rows.length) return
 
-    const deleteTransaction = this.db.transaction(() => {
-      // Delete embeddings
-      for (const row of rows) {
-        this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(row.embedding_rowid)
-      }
+      const rowids = rows.map((r) => r.embedding_rowid)
+      const placeholders = rowids.map(() => '?').join(',')
+      this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
 
-      // Delete cache entries
       this.db.prepare(`
         DELETE FROM document_cache
         WHERE content_items_hash = ? AND document_type = ?
       `).run(contentItemsHash, documentType)
-    })
-
-    deleteTransaction()
+    })()
   }
 
   /**
    * Prune entries older than the specified number of days.
    */
   pruneOlderThan(days: number): number {
-    const rows = this.db.prepare(`
-      SELECT embedding_rowid FROM document_cache
-      WHERE created_at < datetime('now', '-' || ? || ' days')
-    `).all(days) as Array<{ embedding_rowid: number }>
+    return this.db.transaction(() => {
+      const rows = this.db.prepare(`
+        SELECT embedding_rowid FROM document_cache
+        WHERE created_at < datetime('now', '-' || ? || ' days')
+      `).all(days) as Array<{ embedding_rowid: number }>
 
-    if (!rows.length) return 0
+      if (!rows.length) return 0
 
-    const pruneTransaction = this.db.transaction(() => {
-      for (const row of rows) {
-        this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(row.embedding_rowid)
-      }
+      const rowids = rows.map((r) => r.embedding_rowid)
+      const placeholders = rowids.map(() => '?').join(',')
+      this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
 
       this.db.prepare(`
         DELETE FROM document_cache
         WHERE created_at < datetime('now', '-' || ? || ' days')
       `).run(days)
-    })
 
-    pruneTransaction()
-    return rows.length
+      return rows.length
+    })()
   }
 
   /**
@@ -258,10 +288,15 @@ export class DocumentCacheRepository {
       LIMIT ?
     `).all(EVICTION_BATCH_SIZE) as Array<{ id: number; embedding_rowid: number }>
 
-    for (const row of toEvict) {
-      this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(row.embedding_rowid)
-      this.db.prepare(`DELETE FROM document_cache WHERE id = ?`).run(row.id)
-    }
+    if (!toEvict.length) return
+
+    const embeddingRowids = toEvict.map((r) => r.embedding_rowid)
+    const cacheIds = toEvict.map((r) => r.id)
+    const embPlaceholders = embeddingRowids.map(() => '?').join(',')
+    const cachePlaceholders = cacheIds.map(() => '?').join(',')
+
+    this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${embPlaceholders})`).run(...embeddingRowids)
+    this.db.prepare(`DELETE FROM document_cache WHERE id IN (${cachePlaceholders})`).run(...cacheIds)
 
     logger.info({ evicted: toEvict.length }, 'Document cache LRU eviction')
   }

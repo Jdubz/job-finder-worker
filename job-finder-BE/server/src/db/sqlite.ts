@@ -48,8 +48,8 @@ export function getDb(): Database.Database {
     sqliteVec.load(db)
     logger.info('sqlite-vec extension loaded')
   } catch (err) {
-    logger.error({ err }, 'Failed to load sqlite-vec extension')
-    throw err
+    // Non-fatal: core API works without sqlite-vec; only the semantic document cache needs it.
+    logger.warn({ err }, 'sqlite-vec extension not available — semantic document cache disabled')
   }
 
   if (!migrationsApplied) {

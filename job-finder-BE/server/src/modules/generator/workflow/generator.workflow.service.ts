@@ -949,6 +949,7 @@ export class GeneratorWorkflowService {
     }
 
     // Cache lookup (Tier 1 exact + Tier 2 semantic)
+    let cachedEmbedding: number[] | undefined
     if (!payload.skipCache) {
       const cacheResult = await this.documentCache.lookup(cacheCtx)
       if (cacheResult.tier === 'exact' || cacheResult.tier === 'semantic-full') {
@@ -965,6 +966,9 @@ export class GeneratorWorkflowService {
           return adapted
         }
         // Adaptation failed — fall through to full generation
+      }
+      if (cacheResult.tier === 'miss') {
+        cachedEmbedding = cacheResult.embedding
       }
     }
 
@@ -1018,11 +1022,10 @@ export class GeneratorWorkflowService {
       }
 
       // Cache the generated result (non-blocking, non-fatal)
-      if (!payload.skipCache) {
-        this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null).catch((err) => {
-          this.log.warn({ err }, 'Failed to store resume in document cache')
-        })
-      }
+      // Always store — skipCache only gates lookup, not store
+      this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null, cachedEmbedding).catch((err) => {
+        this.log.warn({ err }, 'Failed to store resume in document cache')
+      })
 
       return parsed
     } catch (error) {
@@ -1053,6 +1056,7 @@ export class GeneratorWorkflowService {
     }
 
     // Cache lookup (Tier 1 exact + Tier 2 semantic)
+    let cachedEmbedding: number[] | undefined
     if (!payload.skipCache) {
       const cacheResult = await this.documentCache.lookup(cacheCtx)
       if (cacheResult.tier === 'exact' || cacheResult.tier === 'semantic-full') {
@@ -1069,6 +1073,9 @@ export class GeneratorWorkflowService {
           return adapted
         }
         // Adaptation failed — fall through to full generation
+      }
+      if (cacheResult.tier === 'miss') {
+        cachedEmbedding = cacheResult.embedding
       }
     }
 
@@ -1096,11 +1103,10 @@ export class GeneratorWorkflowService {
     this.warnOnPotentialHallucinations(parsed, contentItems, payload)
 
     // Cache the generated result (non-blocking, non-fatal)
-    if (!payload.skipCache) {
-      this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null).catch((err) => {
-        this.log.warn({ err }, 'Failed to store cover letter in document cache')
-      })
-    }
+    // Always store — skipCache only gates lookup, not store
+    this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null, cachedEmbedding).catch((err) => {
+      this.log.warn({ err }, 'Failed to store cover letter in document cache')
+    })
 
     return parsed
   }
