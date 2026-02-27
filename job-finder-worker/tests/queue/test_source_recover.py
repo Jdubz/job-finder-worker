@@ -63,12 +63,6 @@ def mock_dependencies() -> Dict[str, Any]:
     queue_manager.update_status = MagicMock()
 
     config_loader = MagicMock()
-    config_loader.get_ai_settings.return_value = {
-        "agents": {},
-        "taskFallbacks": {},
-        "modelRates": {},
-        "options": [],
-    }
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],
         "excludedKeywords": [],

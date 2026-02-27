@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 #
-# deploy.sh - Sync docker-compose.prod.yml to the production directory
+# deploy.sh - Sync config files and manage the production stack
 #
 # DEPLOY ARCHITECTURE:
 # This project runs on the same machine where development happens.
 # - CI builds images and pushes to GHCR
 # - Watchtower (running locally) detects new images and recreates containers
-# - This script syncs compose file changes (run manually or via git hook)
-#
-# The SSH deployment code was removed because CI runs on GitHub's servers
-# but containers run locally. Watchtower handles image updates automatically.
+# - This script syncs compose/config changes (run manually or via git hook)
 #
 # USAGE:
-#   ./scripts/deploy.sh              # Sync compose file
-#   ./scripts/deploy.sh --recreate   # Sync and recreate containers
+#   ./scripts/deploy.sh              # Sync config files only
+#   ./scripts/deploy.sh --recreate   # Sync, recreate containers, ensure Ollama model
 #
 set -euo pipefail
 
@@ -23,6 +20,7 @@ COMPOSE_SRC="${REPO_ROOT}/infra/docker-compose.prod.yml"
 COMPOSE_DST="${PROD_DIR}/docker-compose.yml"
 LITELLM_CFG_SRC="${REPO_ROOT}/infra/litellm-config.yaml"
 LITELLM_CFG_DST="${PROD_DIR}/infra/litellm-config.yaml"
+OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1:8b}"
 
 # Verify source files exist
 for src in "${COMPOSE_SRC}" "${LITELLM_CFG_SRC}"; do
@@ -55,8 +53,32 @@ fi
 if [[ "${1:-}" == "--recreate" ]]; then
   echo "[deploy] Recreating containers with new config..."
   cd "${PROD_DIR}"
-  docker compose up -d --force-recreate api worker litellm
+  docker compose up -d --force-recreate ollama litellm api worker
   echo "[deploy] Containers recreated"
+
+  # Wait for Ollama container to be ready before checking/pulling models
+  echo "[deploy] Waiting for Ollama container to be ready..."
+  for i in $(seq 1 30); do
+    if docker exec job-finder-ollama ollama list >/dev/null 2>&1; then
+      echo "[deploy] Ollama container is ready"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "[deploy] ERROR: Ollama container not ready after 30s" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+
+  # Ensure the Ollama model is available (idempotent — skips if already pulled)
+  echo "[deploy] Ensuring Ollama model '${OLLAMA_MODEL}' is available..."
+  if docker exec job-finder-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "${OLLAMA_MODEL}"; then
+    echo "[deploy] Model '${OLLAMA_MODEL}' already present"
+  else
+    echo "[deploy] Pulling '${OLLAMA_MODEL}' (this may take several minutes)..."
+    docker exec job-finder-ollama ollama pull "${OLLAMA_MODEL}"
+    echo "[deploy] Model '${OLLAMA_MODEL}' pulled successfully"
+  fi
 fi
 
 echo "[deploy] Done"

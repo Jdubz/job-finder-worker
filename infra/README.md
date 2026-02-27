@@ -1,87 +1,100 @@
-# Infrastructure Overview
+# Infrastructure
 
-The `infra/` directory contains **templates and development configurations** for the job-finder stack. Production configurations with sensitive details are stored on the production server and **NOT** tracked in this public repository.
+Production configuration for the job-finder stack. All services run as Docker containers managed by `docker compose` at `/srv/job-finder/`.
 
 ## Directory Structure
 
 | Path | Purpose |
 | --- | --- |
-| [`infra/cloudflared/config.template.yml`](./cloudflared/config.template.yml) | **Template** for Cloudflared tunnel configuration. Production config lives in `/srv/job-finder/cloudflared/config.yml` |
-| [`infra/docker-compose.template.yml`](./docker-compose.template.yml) | **Template** for production Docker Compose stack. Production config lives in `/srv/job-finder/docker-compose.yml` |
-| [`infra/sqlite`](./sqlite) | SQLite schema, migrations, and seed/export workspace |
-| [`docs/backend/architecture/scheduler.md`](../docs/backend/architecture/scheduler.md) | Details on the API-owned scheduler (cron replacement) |
+| [`docker-compose.prod.yml`](./docker-compose.prod.yml) | Production Docker Compose stack (synced to `/srv/job-finder/docker-compose.yml`) |
+| [`litellm-config.yaml`](./litellm-config.yaml) | LiteLLM proxy model routing (synced to `/srv/job-finder/infra/`) |
+| [`litellm-config.dev.yaml`](./litellm-config.dev.yaml) | LiteLLM config for local development |
+| [`cloudflared/config.template.yml`](./cloudflared/config.template.yml) | Template for Cloudflare tunnel config |
+| [`sqlite/`](./sqlite) | SQLite schema, migrations, and seed/export workspace |
 
-## Production Configuration Locations
+## AI Inference Architecture
 
-**These files are NOT in the repository** for security reasons. They live on the production server:
+All AI calls route through the **LiteLLM proxy** (`litellm:4000`), which provides a unified OpenAI-compatible API.
 
-| File | Location | Contains |
+| Model Name | Provider | Use Case |
 | --- | --- | --- |
-| Docker Compose | `/srv/job-finder/docker-compose.yml` | Production paths and volume mounts |
-| Cloudflared Config | `/srv/job-finder/cloudflared/config.yml` | Actual tunnel ID and production hostname |
-| Cloudflared Credentials | `/srv/job-finder/cloudflared/*.json` | Tunnel authentication credentials |
-| Production Config | `/srv/job-finder/config/config.production.yaml` | Worker configuration with production settings |
-| Database | `/srv/job-finder/data/jobfinder.db` | SQLite database file |
-| Secrets | `/srv/job-finder/secrets/` | Firebase admin credentials and other secrets |
-| Logs | `/srv/job-finder/logs/` | Application logs |
-| Backups | `/srv/job-finder/backups/` | Database backups |
-| Artifacts | `/srv/job-finder/artifacts/` | Generated PDFs, images, etc. |
+| `claude-document` | Anthropic Claude Sonnet | Document generation, chat |
+| `gemini-general` | Google Gemini Flash | General-purpose, fallback |
+| `local-extract` | Ollama (llama3.1:8b) | Extraction/analysis, zero cost |
 
-## Setting Up Production
+Fallback chains: `claude-document → gemini-general`, `local-extract → gemini-general → claude-document`.
 
-1. Copy template files to production server:
+## Production Layout
+
+```
+/srv/job-finder/
+├── .env                   # LITELLM_MASTER_KEY, GOOGLE_CLOUD_PROJECT
+├── docker-compose.yml     # Synced from infra/docker-compose.prod.yml
+├── infra/
+│   └── litellm-config.yaml  # Synced from infra/litellm-config.yaml
+├── data/                  # SQLite database
+├── artifacts/             # Generated documents
+├── logs/                  # Application logs
+├── secrets/
+│   ├── api.env            # CORS, generator config
+│   ├── worker.env         # ANTHROPIC_API_KEY, GEMINI_API_KEY
+│   └── firebase-admin.json
+└── cloudflared/           # Tunnel config + credentials
+```
+
+## Deploying
+
+```bash
+# Sync config files only
+./scripts/deploy.sh
+
+# Sync and recreate containers (also pulls Ollama model if missing)
+./scripts/deploy.sh --recreate
+```
+
+Watchtower handles **image** updates automatically (pulls new images from GHCR every 5 minutes). Compose file and LiteLLM config changes require running `deploy.sh`.
+
+LiteLLM is excluded from Watchtower — update it deliberately:
+```bash
+cd /srv/job-finder && docker compose pull litellm && docker compose up -d litellm
+```
+
+## Fresh Setup
+
+1. Create required directories:
    ```bash
-   cp infra/docker-compose.template.yml /srv/job-finder/docker-compose.yml
-   cp infra/cloudflared/config.template.yml /srv/job-finder/cloudflared/config.yml
+   mkdir -p /srv/job-finder/{data,secrets,logs,artifacts,cloudflared,infra}
    ```
 
-2. Update the copied files with production values:
-   - Replace volume paths
-   - Set actual tunnel IDs and hostnames
-   - Configure environment variables
-
-3. Create service-specific environment files in `/srv/job-finder/secrets/`:
-
-   **API environment** (`/srv/job-finder/secrets/api.env`):
+2. Create `/srv/job-finder/.env`:
    ```bash
-   # CORS configuration - comma-separated list of allowed frontend origins
-   CORS_ALLOWED_ORIGINS="https://job-finder.joshwentworth.com"
+   LITELLM_MASTER_KEY=<generate-a-random-key>
+   GOOGLE_CLOUD_PROJECT=<your-gcp-project>
+   ```
 
-   # Firebase configuration (for auth verification)
-   FIREBASE_PROJECT_ID="your-project-id"
-   FIREBASE_CLIENT_EMAIL="your-service-account@project.iam.gserviceaccount.com"
-   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
-   ...
-   -----END PRIVATE KEY-----"
+3. Create secret files in `/srv/job-finder/secrets/`:
 
-   # Generator settings
+   **`api.env`** — API-specific config:
+   ```bash
+   CORS_ALLOWED_ORIGINS="https://your-domain.com"
    GENERATOR_BYPASS_TOKEN="your-secure-token"
    GENERATOR_ARTIFACTS_PUBLIC_BASE="https://your-domain.com/api/generator/artifacts"
    ```
 
-   **Worker environment** (`/srv/job-finder/secrets/worker.env`):
+   **`worker.env`** — AI provider keys (used by LiteLLM proxy):
    ```bash
-   # AI provider API keys (used by LiteLLM proxy)
    ANTHROPIC_API_KEY="sk-ant-..."
    GEMINI_API_KEY="..."
-
-   # Worker/WebSocket auth (shared secret between API and worker)
-   WORKER_WS_TOKEN="change-me"
+   WORKER_WS_TOKEN="shared-secret"
    ```
 
-   > **Note:** Service-specific env files follow least-privilege principle - each service only gets the secrets it needs. Common settings like `DATABASE_PATH` are defined directly in the compose file's `environment:` block.
+   **`firebase-admin.json`** — Firebase Admin SDK credentials
 
-4. Ensure all required directories exist:
+4. Deploy:
    ```bash
-   mkdir -p /srv/job-finder/{data,secrets,config,logs,worker-data,cloudflared,artifacts,backups}
+   ./scripts/deploy.sh --recreate
    ```
 
-5. Deploy using CI/CD (see `.github/workflows/deploy.yml`)
+## SQLite
 
-## SQLite Workspace
-
-- [`schema.sql`](./sqlite/schema.sql) is the authoritative schema used by the API and seeded via migrations.
-- Legacy cloud export snapshots now live under `data/backups/cloud-exports/` for reference only.
-
-
-Add new infrastructure modules (Terraform, Ansible, etc.) under this folder so they stay versioned with the rest of the stack.
+[`schema.sql`](./sqlite/schema.sql) is the authoritative schema. Migrations live in [`sqlite/migrations/`](./sqlite/migrations/).

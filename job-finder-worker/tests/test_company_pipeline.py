@@ -99,29 +99,6 @@ class TestCompanyPipeline:
                 "startupScore": 0,
             },
         }
-        config_loader.get_ai_settings.return_value = {
-            "agents": {
-                "gemini.api": {
-                    "provider": "gemini",
-                    "interface": "api",
-                    "defaultModel": "gemini-2.0-flash",
-                    "dailyBudget": 100,
-                    "dailyUsage": 0,
-                    "runtimeState": {
-                        "worker": {"enabled": True, "reason": None},
-                        "backend": {"enabled": True, "reason": None},
-                    },
-                    "authRequirements": {"type": "api", "requiredEnv": ["GOOGLE_CLOUD_PROJECT"]},
-                }
-            },
-            "taskFallbacks": {
-                "extraction": ["gemini.api"],
-                "analysis": ["gemini.api"],
-                "document": ["gemini.api"],
-            },
-            "modelRates": {"gemini-2.0-flash": 1.0},
-            "options": [],
-        }
         config_loader.get_personal_info.return_value = {}
         config_loader.get_prefilter_policy.return_value = {
             "title": {"requiredKeywords": [], "excludedKeywords": []},

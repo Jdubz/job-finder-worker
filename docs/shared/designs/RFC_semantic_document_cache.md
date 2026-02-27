@@ -4,13 +4,13 @@
 
 # RFC: Semantic Caching for Document Generation
 
-Reduce AI generation cost and latency for resumes and cover letters by caching at multiple tiers: exact match, semantic similarity (sqlite-vec), and LLM KV prefix reuse (claude-agent-sdk).
+Reduce AI generation cost and latency for resumes and cover letters by caching at multiple tiers: exact match, semantic similarity (sqlite-vec), and LLM prompt prefix caching via LiteLLM.
 
 ## Problem
 
-Every document generation is a cold start. The system rebuilds the full prompt (~4-8K tokens) from scratch and sends it to Claude CLI via `subprocess.run` with zero context reuse. ~60-70% of the prompt is identical across all generations (personal info, work experience, skills, projects, templates). When a user generates resumes for similar roles (e.g., "Senior Full-Stack Engineer" at different companies), the AI produces nearly identical output each time.
+Every document generation is a cold start. `GeneratorWorkflowService` (backend, TypeScript) rebuilds the full prompt (~4-8K tokens) from scratch, sends it as a single `user` message through `InferenceClient` → LiteLLM → Claude, and receives zero context reuse across calls. ~60-70% of the prompt is identical across all generations (personal info, work experience, skills, projects, templates, JSON schema, output rules). When a user generates resumes for similar roles (e.g., "Senior Full-Stack Engineer" at different companies), the AI produces nearly identical output each time.
 
-Current cost per generation: 1 full AI call (resume) + 0-1 refit/expand calls + 1 optional cover letter call = 2-3 AI calls per application.
+Current cost per generation: 1 full AI call (resume) + 0-1 refit/expand calls + 1 optional cover letter call = 2-3 AI calls per application. All calls route through `InferenceClient` → LiteLLM (`claude-document` model) → `anthropic/claude-sonnet-4-20250514`.
 
 ## Solution
 
@@ -34,8 +34,8 @@ Request arrives
            | miss or partial
            v
 +---------------------------+
-| TIER 3: AI Generation     |  claude-agent-sdk with persistent session
-| (with KV prefix caching)  |  ~92% prefix reuse -> faster TTFT
+| TIER 3: AI Generation     |  LiteLLM with system/user message split
+| (with prompt caching)     |  Stable prefix as system msg -> auto prefix cache
 |                           |  Result stored back into Tier 1+2 cache
 +---------------------------+
 ```
@@ -52,34 +52,37 @@ Uses the same pattern proven in `../imagingeer`: `sqlite-vec` virtual tables wit
 - **Partial hit (similarity >= 0.75):** Use cached content as a starting point. Run a lightweight "adapt" prompt that only adjusts company-specific details (summary, ATS keywords, bullet emphasis). ~3x cheaper than full generation.
 - **Miss (similarity < 0.75):** Fall through to Tier 3 for full AI generation.
 
-### Tier 3: claude-agent-sdk with Session Persistence
+Thresholds are configurable — see Metrics section for tuning approach.
 
-Replace `subprocess.run(["claude", "--print", prompt])` with `claude-agent-sdk`'s `ClaudeSDKClient`. This wraps the Claude Code CLI and inherits the Max subscription auth via `CLAUDE_CODE_OAUTH_TOKEN` — no API key billing.
+### Tier 3: LiteLLM with Prompt Prefix Caching
 
-The SDK provides:
-- **Session persistence:** Load stable context (personal info, experience, skills, projects, templates) once. Send only job-specific data per generation.
-- **Automatic KV prefix caching:** Claude Code applies `cache_control: ephemeral` to system prompt blocks server-side, achieving ~92% prefix reuse across requests in the same session.
-- **Session forking:** `fork_session=True` branches from a base session without losing cached context.
+The current `InferenceClient.execute()` sends the entire prompt as a single `user` message, which defeats Claude's automatic prompt caching. By splitting the prompt into a `system` message (stable prefix) and `user` message (variable job-specific content), Claude will automatically cache the system prompt prefix across calls (for prompts >1024 tokens on supported models).
 
-```python
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+This requires two changes:
 
-async with ClaudeSDKClient(options=ClaudeAgentOptions(
-    system_prompt=stable_prefix,  # personal info, experience, skills, templates, JSON schema
-    model="sonnet",
-    permission_mode="bypassPermissions",
-    tools=[],  # JSON generation only, no tools needed
-)) as client:
-    # Session loaded once — KV cache primed with stable prefix
+1. **Prompt restructuring** — Split `buildResumePrompt()` / `buildCoverLetterPrompt()` into stable prefix + variable suffix (see Prompt Restructuring section).
+2. **InferenceClient system message support** — Add a `systemPrompt` parameter to `InferenceClient.execute()` so the stable prefix goes in a `system` message and the variable content goes in the `user` message.
 
-    # Generation 1: only sends job-specific delta
-    await client.query(job_specific_prompt_for_company_A)
-    async for msg in client.receive_response(): ...
+The backend `InferenceClient` already supports system messages in `streamChat()` — `execute()` needs the same treatment. The worker `InferenceClient` needs a similar change for any worker-side generation.
 
-    # Generation 2: stable prefix already cached server-side
-    await client.query(job_specific_prompt_for_company_B)
-    async for msg in client.receive_response(): ...
+```typescript
+// Backend InferenceClient — updated execute() signature
+async execute(
+  taskType: string,
+  prompt: string,
+  modelOverride?: string,
+  options: { max_tokens?: number; temperature?: number; systemPrompt?: string } = {}
+): Promise<AgentExecutionResult> {
+  const model = modelOverride || getModelForTask(taskType)
+  const messages = [
+    ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
+    { role: 'user', content: prompt },
+  ]
+  // ... rest of fetch to LiteLLM
+}
 ```
+
+LiteLLM passes system messages through to Claude, which applies automatic prompt caching. No SDK changes needed — this is built into the Claude API for prompts exceeding the minimum token threshold.
 
 ## Schema
 
@@ -113,12 +116,32 @@ CREATE INDEX idx_document_cache_embedding ON document_cache(embedding_rowid);
 CREATE INDEX idx_document_cache_content_hash ON document_cache(content_items_hash);
 ```
 
+Cache is bounded to 500 entries max. Eviction is LRU based on `hit_count` (ascending) then `created_at` (oldest first). Each row is estimated at ~10-50KB (embeddings + serialized document JSON + JD text).
+
+## Content Items Hash Specification
+
+The `content_items_hash` is a SHA-256 digest of the normalized content that feeds into prompts. It determines whether cached generations are still valid for the current user profile.
+
+**Fields included:**
+- Personal info: `name`, `email`, `location`, `phone`, `website`, `linkedin`, `github`
+- All content items: `id`, `aiContext`, `title`, `role`, `description`, `skills`, `startDate`, `endDate`, `location`, `website`, `parentId`
+- Prompt template versions (from `PromptsRepository`)
+
+**Normalization rules:**
+1. Sort content items by `id` (stable ordering)
+2. For each item, serialize included fields as a JSON object with keys in sorted order
+3. Trim whitespace, lowercase strings where order-insensitive (skills)
+4. Concatenate: `JSON.stringify([personalInfoNormalized, ...sortedItemsNormalized, promptTemplateVersion])`
+5. Hash with SHA-256, hex-encode
+
+**Implementation:** Add `computeContentHash()` to a shared utility, called by the cache service before lookup and after content item mutations.
+
 ## Prompt Restructuring
 
-Current prompt structure mixes stable and variable content throughout. To maximize KV cache hits, the prompt must be restructured so all stable content is a contiguous prefix:
+The current `buildResumePrompt()` and `buildCoverLetterPrompt()` in `prompts.ts` concatenate template + data block + guidance + JSON schema into a single string. To maximize prompt cache hits, this is split into two parts:
 
 ```
-STABLE PREFIX (loaded into system_prompt, cached across sessions):
+STABLE PREFIX (system message, cached by Claude across calls):
 +--------------------------------------------------+
 | Template instructions (from DB prompts config)   |
 | JSON schema + output format rules                |
@@ -131,7 +154,7 @@ STABLE PREFIX (loaded into system_prompt, cached across sessions):
 | Background/narrative                             |
 +--------------------------------------------------+
 
-VARIABLE SUFFIX (sent per query, changes each generation):
+VARIABLE SUFFIX (user message, changes each generation):
 +--------------------------------------------------+
 | Target role + company name                       |
 | Job description text                             |
@@ -142,84 +165,99 @@ VARIABLE SUFFIX (sent per query, changes each generation):
 +--------------------------------------------------+
 ```
 
-The `buildResumePrompt()` and `buildCoverLetterPrompt()` functions in `prompts.ts` will be split into `buildStablePrefix()` (called once per session) and `buildJobSpecificPrompt()` (called per generation).
+New functions in `prompts.ts`:
+
+- `buildResumeStablePrefix(personalInfo, contentItems)` → system message (cacheable)
+- `buildResumeJobPrompt(payload, jobMatch)` → user message (variable)
+- `buildCoverLetterStablePrefix(personalInfo, contentItems)` → system message (cacheable)
+- `buildCoverLetterJobPrompt(payload, jobMatch)` → user message (variable)
+
+The existing `buildResumePrompt()` / `buildCoverLetterPrompt()` are refactored to call these internally for backward compatibility.
 
 ## Cache Invalidation
 
 | Trigger | Action |
 |---------|--------|
-| Content items modified (work, education, projects, skills) | Recompute `content_items_hash`, all cache entries with old hash become stale |
+| Content items modified (work, education, projects, skills) | Recompute `content_items_hash`; cache entries with old hash become stale |
 | Personal info modified | Same as above (hash includes personal info) |
 | Prompt templates modified in DB | Invalidate all cache entries (rare event) |
 | TTL expiry (30 days) | Prune old entries on a schedule |
+| Max entries exceeded (500) | Evict lowest `hit_count`, oldest `created_at` first |
 | Model version change | Entries tagged with `model_version`; old entries deprioritized but not deleted |
 
 ## Dependencies
 
-### New Python dependencies (worker)
+### New backend (TypeScript) dependencies
 
 ```
-claude-agent-sdk>=0.1.0    # Claude Code SDK with session persistence
-sqlite-vec>=0.1.0          # SQLite vector search extension
-sentence-transformers>=2.2.0  # Text embedding generation (all-MiniLM-L6-v2, 80MB)
+sqlite-vec           # SQLite vector search extension (native addon or WASM)
+```
+
+Embedding generation uses a lightweight approach — see Options below.
+
+### Embedding strategy options
+
+| Option | Size | Speed | Notes |
+|--------|------|-------|-------|
+| `onnxruntime` + `all-MiniLM-L6-v2` ONNX | ~80MB | ~50ms/embed | No PyTorch dependency; proven in imagingeer |
+| LiteLLM embedding endpoint | 0 (remote) | ~200ms/embed | Route through existing proxy; no local model |
+| `@xenova/transformers` (WASM) | ~80MB | ~100ms/embed | Pure JS, runs in Node; no native deps |
+
+Recommendation: Start with LiteLLM embedding endpoint (zero new deps, uses existing infra). If latency matters, migrate to ONNX or WASM later.
+
+### sqlite-vec extension loading
+
+Same pattern as imagingeer — load on every SQLite connection. For the TypeScript backend, use the `sqlite-vec` npm package with `better-sqlite3`:
+
+```typescript
+import * as sqliteVec from 'sqlite-vec'
+
+function loadVecExtension(db: BetterSqlite3.Database): void {
+  sqliteVec.load(db)
+}
 ```
 
 ### Existing (no changes)
 
 ```
-google-genai>=1.0.0        # Gemini fallback (unchanged)
-```
-
-### sqlite-vec extension loading
-
-Same pattern as imagingeer — load on every SQLite connection:
-
-```python
-import sqlite_vec
-
-def _load_vec_extension(dbapi_connection):
-    dbapi_connection.enable_load_extension(True)
-    sqlite_vec.load(dbapi_connection)
+LiteLLM proxy         # Already handles Claude routing, fallbacks, retries
+openai (Python SDK)   # Worker inference client (unchanged)
 ```
 
 ## Implementation Phases
 
-### Phase 1: Semantic Cache Layer (sqlite-vec)
+### Phase 1: Semantic Cache Layer
 
-**Scope:** Add Tier 1 + Tier 2 caching to the document generation pipeline.
+**Scope:** Add Tier 1 + Tier 2 caching to the backend document generation pipeline.
 
-- Add `sqlite-vec` and `sentence-transformers` to worker dependencies
-- Create migration for `job_cache_embeddings` + `document_cache` tables
+**Where:** `job-finder-BE` — this is where `GeneratorWorkflowService`, `InferenceClient`, and `prompts.ts` live.
+
+- Add `sqlite-vec` to backend dependencies
+- Create backend migration for `job_cache_embeddings` + `document_cache` tables
 - Implement `SemanticDocumentCache` service (embed, store, lookup, invalidate)
-- Wire cache lookup into `GeneratorWorkflowService` before AI generation steps
-- Wire cache write after successful generation
-- Add `content_items_hash` computation to `ContentItemRepository`
+- Implement `computeContentHash()` utility with the spec above
+- Wire cache lookup into `GeneratorWorkflowService.buildResumeContent()` before the `agentManager.execute()` call
+- Wire cache write after successful generation + validation + grounding
+- Add configurable similarity thresholds (default 0.88 full / 0.75 partial)
+- Add dry-run logging mode: log similarity scores + cached vs. fresh output for threshold tuning
 
-### Phase 2: Agent SDK Integration
+### Phase 2: Prompt Restructuring + Prefix Caching via LiteLLM
 
-**Scope:** Replace `ClaudeCLIProvider` subprocess approach with `claude-agent-sdk` session-based generation.
+**Scope:** Split prompts into system/user messages so Claude's automatic prompt caching kicks in. All calls still route through LiteLLM.
 
-- Add `claude-agent-sdk` to worker dependencies
-- Implement `ClaudeAgentProvider` using `ClaudeSDKClient` with session persistence
-- Restructure prompts: split into stable prefix + variable suffix
-- Update `AgentManager` to support the new provider alongside existing fallback chain
-- Manage session lifecycle (create on first generation, reuse within batch, cleanup)
+- Add `systemPrompt` option to backend `InferenceClient.execute()`
+- Refactor `prompts.ts`: extract `buildResumeStablePrefix()` + `buildResumeJobPrompt()` (and cover letter equivalents)
+- Update `GeneratorWorkflowService.buildResumeContent()` and `buildCoverLetterContent()` to pass system prompt separately
+- Verify via LiteLLM logs that `cache_creation_input_tokens` / `cache_read_input_tokens` appear in responses
+- Also update `buildRefitPrompt()` and `buildExpandPrompt()` to use system/user split where applicable
 
 ### Phase 3: Adaptation Pass for Partial Hits
 
 **Scope:** When Tier 2 returns a partial match (similarity 0.75-0.88), run a lightweight adaptation prompt instead of full generation.
 
-- Implement `buildAdaptPrompt()` that takes cached content + new JD delta
-- Add adaptation step to workflow (cheaper than full generation)
+- Implement `buildAdaptPrompt()` in `prompts.ts` that takes cached content + new JD delta
+- Add adaptation step to `GeneratorWorkflowService` workflow (cheaper than full generation)
 - Track cache hit/miss/adapt metrics for tuning thresholds
-
-### Phase 4: Backend Integration
-
-**Scope:** Extend caching to the TypeScript backend's generation pipeline.
-
-- Add sqlite-vec loading to backend's SQLite connection setup
-- Port cache lookup/write logic to TypeScript (or call worker service)
-- Consider shared cache database between worker and backend
 
 ## Metrics
 
@@ -230,23 +268,27 @@ Track to validate effectiveness:
 - AI calls saved per day/week
 - Cache size growth rate
 - Similarity threshold accuracy (are 0.88+ hits actually good enough?)
+- Prompt cache token stats (`cache_creation_input_tokens` vs `cache_read_input_tokens` from Claude responses via LiteLLM)
+
+**Threshold tuning:** Phase 1 includes a dry-run mode that logs what the cache _would_ return alongside fresh AI output. Review these logs after ~20-30 generations to validate/adjust the 0.88 and 0.75 thresholds before trusting cache hits.
 
 ## Risks & Mitigations
 
 | Risk | Mitigation |
 |------|------------|
-| Max subscription rate limits shared with Claude web/Code usage | Tier 1+2 caching reduces AI calls significantly; monitor daily usage |
-| Semantic cache returns content that's subtly wrong for the job | Conservative threshold (0.88); user review step still exists; partial hits get adaptation pass |
-| `sentence-transformers` model size (80MB) | One-time download; singleton loading pattern (imagingeer proven); runs on CPU in ~50ms |
+| Anthropic API rate limits / costs | Tier 1+2 caching reduces AI calls significantly; LiteLLM tracks usage via budget settings |
+| Semantic cache returns content that's subtly wrong for the job | Conservative threshold (0.88); user review step still exists; partial hits get adaptation pass; dry-run logging for tuning |
+| Embedding model size (~80MB for local ONNX) | Start with LiteLLM embedding endpoint (zero local model); migrate to local only if latency is a problem |
 | `content_items_hash` invalidation too aggressive | Hash only fields that affect prompt output; version the hash algorithm |
-| Session lifecycle complexity | Start simple: one session per batch of generations; clean up on idle timeout |
-| Anthropic TOS on subscription usage | This is a personal/internal tool, not a third-party product; monitor Anthropic policy updates |
+| sqlite-vec availability in Node.js | npm `sqlite-vec` package exists and works with `better-sqlite3`; fallback: WASM build |
+| Cache grows unbounded | 500-entry cap with LRU eviction; 30-day TTL pruning |
 
 ## References
 
-- [Claude Agent SDK — Python Reference](https://platform.claude.com/docs/en/agent-sdk/python)
-- [Claude Agent SDK — Session Management](https://platform.claude.com/docs/en/agent-sdk/sessions)
-- [Prompt Caching — Claude API Docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
-- [Context Engineering & Reuse Patterns in Claude Code](https://blog.lmcache.ai/en/2025/12/23/context-engineering-reuse-pattern-under-the-hood-of-claude-code/)
+- [Prompt Caching — Claude API Docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+- [LiteLLM Prompt Caching Passthrough](https://docs.litellm.ai/docs/completion/prompt_caching)
 - [sqlite-vec documentation](https://alexgarcia.xyz/sqlite-vec/)
 - `../imagingeer` — SQLite vector search implementation (migrations 068, 074; `lora_semantic_search.py`)
+- `job-finder-BE/server/src/modules/generator/workflow/prompts.ts` — current prompt builders
+- `job-finder-BE/server/src/modules/generator/ai/inference-client.ts` — current LiteLLM client
+- `infra/litellm-config.yaml` — model routing config

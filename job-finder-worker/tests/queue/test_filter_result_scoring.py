@@ -99,11 +99,6 @@ def queue_manager(temp_db):
 def mock_config_loader():
     """Create mock config loader with minimal config."""
     config_loader = MagicMock()
-    config_loader.get_ai_settings.return_value = {
-        "agents": {},
-        "taskFallbacks": {"extraction": [], "analysis": []},
-        "modelRates": {},
-    }
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],
         "excludedKeywords": [],

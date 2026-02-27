@@ -7,7 +7,7 @@ import { logger } from '../logger'
 import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
-import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig, type AISettings } from '@shared/types'
+import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig } from '@shared/types'
 import { MaintenanceService } from '../modules/maintenance'
 
 type CronJobKey = keyof CronConfig['jobs']
@@ -179,67 +179,9 @@ export async function triggerLogRotation() {
   }
 }
 
-export async function triggerAgentReset() {
-  try {
-    logger.info({ at: utcNowIso() }, 'Agent reset starting')
-    const repo = getConfigRepo()
-    const entry = repo.get<AISettings>('ai-settings')
-
-    if (!entry?.payload?.agents) {
-      logger.info({ at: utcNowIso() }, 'No agents configured, nothing to reset')
-      return { success: true, message: 'No agents to reset' }
-    }
-
-    const agents = entry.payload.agents
-    let resetCount = 0
-    let reenabledCount = 0
-
-    // Reset daily usage and re-enable quota-exhausted agents
-    for (const [agentId, config] of Object.entries(agents)) {
-      if (!config) continue
-
-      config.dailyUsage = 0
-
-      const runtime = config.runtimeState
-      if (runtime) {
-        for (const scope of Object.keys(runtime)) {
-          const scopeState = runtime[scope as keyof typeof runtime]
-          if (scopeState && !scopeState.enabled && scopeState.reason?.startsWith('quota_exhausted:')) {
-            scopeState.enabled = true
-            scopeState.reason = null
-            reenabledCount++
-            logger.info({ agentId, scope, at: utcNowIso() }, 'Re-enabling agent after quota reset')
-          }
-        }
-      }
-
-      resetCount++
-    }
-
-    repo.upsert('ai-settings', entry.payload, { updatedBy: 'cron-agent-reset' })
-    logger.info({ resetCount, reenabledCount, at: utcNowIso() }, 'Agent reset completed')
-
-    // Attempt to restart queue if it was stopped due to agent unavailability
-    if (reenabledCount > 0) {
-      try {
-        const workerEntry = repo.get<WorkerSettings>('worker-settings')
-        const runtime = workerEntry?.payload?.runtime
-        if (runtime?.stopReason?.startsWith('No agents available')) {
-          // Clear the stopReason to allow queue restart
-          runtime.stopReason = null
-          repo.upsert('worker-settings', workerEntry!.payload, { updatedBy: 'cron-agent-reset' })
-          logger.info({ at: utcNowIso() }, 'Cleared stopReason after re-enabling agents')
-        }
-      } catch (restartError) {
-        logger.warn({ error: restartError, at: utcNowIso() }, 'Failed to clear queue stopReason')
-      }
-    }
-
-    return { success: true, resetCount, reenabledCount }
-  } catch (error) {
-    logger.error({ error, at: utcNowIso() }, 'Agent reset failed')
-    return { success: false, error: error instanceof Error ? error.message : String(error) }
-  }
+export async function triggerAgentReset(): Promise<{ success: boolean; message: string; error?: string }> {
+  logger.info({ at: utcNowIso() }, 'agentReset is deprecated (LiteLLM handles budgets); skipping')
+  return { success: true, message: 'deprecated' }
 }
 
 let schedulerStarted = false

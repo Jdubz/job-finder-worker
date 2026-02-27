@@ -13,8 +13,6 @@ from job_finder.job_queue.models import (
 )
 from job_finder.job_queue.processor import QueueItemProcessor
 
-from tests.fixtures import MOCK_AI_SETTINGS
-
 
 @pytest.fixture
 def mock_managers():
@@ -28,7 +26,6 @@ def mock_managers():
         "requiredKeywords": ["engineer", "developer"],
         "excludedKeywords": [],
     }
-    config_loader.get_ai_settings.return_value = MOCK_AI_SETTINGS
     config_loader.get_prefilter_policy.return_value = {
         "title": {"requiredKeywords": [], "excludedKeywords": []},
         "freshness": {"maxAgeDays": 0},

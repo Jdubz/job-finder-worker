@@ -83,32 +83,6 @@ def mock_dependencies() -> Dict[str, Any]:
     queue_manager.add_item = MagicMock(return_value="scrape-001")
 
     config_loader = MagicMock()
-    config_loader.get_ai_settings.return_value = {
-        "agents": {
-            "claude.cli": {
-                "provider": "claude",
-                "interface": "cli",
-                "defaultModel": "default",
-                "dailyBudget": 100,
-                "dailyUsage": 0,
-                "runtimeState": {
-                    "worker": {"enabled": True, "reason": None},
-                    "backend": {"enabled": True, "reason": None},
-                },
-                "authRequirements": {
-                    "type": "cli",
-                    "requiredEnv": ["CLAUDE_CODE_OAUTH_TOKEN"],
-                },
-            }
-        },
-        "taskFallbacks": {
-            "extraction": ["claude.cli"],
-            "analysis": ["claude.cli"],
-            "document": ["claude.cli"],
-        },
-        "modelRates": {"default": 1.0},
-        "options": [],
-    }
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": ["engineer", "developer"],
         "excludedKeywords": [],

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { configClient } from "@/api/config-client"
-import type { MatchPolicy, AISettings, PreFilterPolicy, WorkerSettings, PersonalInfo } from "@shared/types"
+import type { MatchPolicy, PreFilterPolicy, WorkerSettings, PersonalInfo } from "@shared/types"
 import { deepClone, stableStringify } from "../utils/config-helpers"
 
 export function useConfigState() {
@@ -19,9 +19,6 @@ export function useConfigState() {
 
   const [workerSettings, setWorkerSettings] = useState<WorkerSettings | null>(null)
   const [originalWorkerSettings, setOriginalWorkerSettings] = useState<WorkerSettings | null>(null)
-
-  const [aiSettings, setAISettings] = useState<AISettings | null>(null)
-  const [originalAI, setOriginalAI] = useState<AISettings | null>(null)
 
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null)
   const [originalPersonalInfo, setOriginalPersonalInfo] = useState<PersonalInfo | null>(null)
@@ -70,17 +67,6 @@ export function useConfigState() {
         missing.push("worker-settings")
         setWorkerSettings(null)
         setOriginalWorkerSettings(null)
-      }
-
-      // AI settings - required
-      const aiData = map["ai-settings"] as AISettings | undefined
-      if (aiData) {
-        setAISettings(deepClone(aiData))
-        setOriginalAI(deepClone(aiData))
-      } else {
-        missing.push("ai-settings")
-        setAISettings(null)
-        setOriginalAI(null)
       }
 
       // Personal info - required
@@ -177,24 +163,6 @@ export function useConfigState() {
     }
   }
 
-  const handleSaveAISettings = async () => {
-    if (!aiSettings) {
-      setError("No AI settings to save")
-      return
-    }
-    setIsSaving(true)
-    setError(null)
-    try {
-      await configClient.updateAISettings(aiSettings)
-      setOriginalAI(deepClone(aiSettings))
-      setSuccess("AI settings saved")
-    } catch (_err) {
-      setError("Failed to save AI settings")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
   const updatePersonalInfoState = (updates: Partial<PersonalInfo>) => {
     setPersonalInfo((prev) => {
       if (!prev) return null
@@ -237,12 +205,6 @@ export function useConfigState() {
     originalMatchPolicy,
     handleSaveMatchPolicy,
     resetMatchPolicy: () => setMatchPolicy(deepClone(originalMatchPolicy)),
-
-    aiSettings,
-    setAISettings,
-    handleSaveAISettings,
-    hasAIChanges: stableStringify(aiSettings) !== stableStringify(originalAI),
-    resetAI: () => setAISettings(deepClone(originalAI)),
 
     workerSettings,
     setRuntimeSettings,

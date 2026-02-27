@@ -1,5 +1,4 @@
 import type {
-  AISettings,
   Company,
   JobListing,
   JobListingRecord,
@@ -143,50 +142,6 @@ export const mockWorkerSettings: WorkerSettings = {
   },
 }
 
-export const mockAISettings: AISettings = {
-  agents: {
-    "gemini.api": {
-      provider: "gemini",
-      interface: "api",
-      defaultModel: "gemini-2.0-flash",
-      dailyBudget: 100,
-      dailyUsage: 25,
-      runtimeState: {
-        worker: { enabled: true, reason: null },
-        backend: { enabled: true, reason: null },
-      },
-      authRequirements: {
-        type: "api",
-        requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-      },
-    },
-    "claude.cli": {
-      provider: "claude",
-      interface: "cli",
-      defaultModel: "claude-sonnet-4-5-latest",
-      dailyBudget: 50,
-      dailyUsage: 50,
-      runtimeState: {
-        worker: { enabled: false, reason: "quota_exhausted: daily budget reached" },
-        backend: { enabled: true, reason: null },
-      },
-      authRequirements: {
-        type: "cli",
-        requiredEnv: ["CLAUDE_CODE_OAUTH_TOKEN"],
-      },
-    },
-  },
-  taskFallbacks: {
-    extraction: ["gemini.api", "claude.cli"],
-    analysis: ["claude.cli", "gemini.api"],
-    document: ["claude.cli", "gemini.api"],
-  },
-  modelRates: {
-    "gemini-2.0-flash": 0.5,
-    "claude-sonnet-4-5-latest": 1,
-  },
-  options: [],
-}
 
 export const baseMatchPolicy: MatchPolicy = {
   minScore: 60,

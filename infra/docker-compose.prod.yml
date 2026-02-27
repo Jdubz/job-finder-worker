@@ -28,11 +28,13 @@
 # PRODUCTION PATHS:
 # -----------------
 # /srv/job-finder/
-#   ├── docker-compose.yml    <- This file (synced from repo)
+#   ├── .env                   <- LITELLM_MASTER_KEY, GOOGLE_CLOUD_PROJECT
+#   ├── docker-compose.yml     <- This file (synced from repo)
+#   ├── infra/                 <- litellm-config.yaml (synced from repo)
 #   ├── data/                  <- SQLite database
 #   ├── artifacts/             <- Generated documents (resumes, cover letters)
 #   ├── logs/                  <- Application logs
-#   ├── secrets/               <- api.env, worker.env
+#   ├── secrets/               <- api.env, worker.env, firebase-admin.json
 #   └── cloudflared/           <- Tunnel config
 #
 # =============================================================================
@@ -122,14 +124,29 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: job-finder-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - jobfinder
+    # No watchtower label — Ollama updates should be deliberate, not automatic.
+    # To update: docker compose pull ollama && docker compose up -d ollama
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: job-finder-litellm
     restart: unless-stopped
     ports:
       - "127.0.0.1:4000:4000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/readiness')"]
       interval: 10s
@@ -141,6 +158,10 @@ services:
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       TZ: America/Los_Angeles
+    depends_on:
+      # Weak dependency — LiteLLM can still serve Claude/Gemini if Ollama fails to start.
+      # Ollama is only needed for local-extract; LiteLLM's fallback chain handles its absence.
+      - ollama
     volumes:
       - ./infra/litellm-config.yaml:/app/config.yaml
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -208,4 +229,5 @@ networks:
   jobfinder:
     driver: bridge
 
-volumes: {}
+volumes:
+  ollama-models:

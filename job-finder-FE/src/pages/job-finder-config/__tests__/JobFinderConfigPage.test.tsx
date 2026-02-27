@@ -148,33 +148,6 @@ vi.mock("../hooks/useConfigState", () => ({
     originalMatchPolicy: matchPolicy,
     handleSaveMatchPolicy: vi.fn(),
     resetMatchPolicy: vi.fn(),
-    aiSettings: {
-      agents: {
-        "gemini.api": {
-          provider: "gemini",
-          interface: "api",
-          defaultModel: "gemini-2.0-flash",
-          dailyBudget: 100,
-          dailyUsage: 0,
-          runtimeState: {
-            worker: { enabled: true, reason: null },
-            backend: { enabled: true, reason: null },
-          },
-          authRequirements: { type: "api", requiredEnv: ["GEMINI_API_KEY"] },
-        },
-      },
-      taskFallbacks: {
-        extraction: ["gemini.api"],
-        analysis: ["gemini.api"],
-        document: ["gemini.api"],
-      },
-      modelRates: { "gemini-2.0-flash": 1 },
-      options: [],
-    },
-    setAISettings: vi.fn(),
-    handleSaveAISettings: vi.fn(),
-    hasAIChanges: false,
-    resetAI: vi.fn(),
     workerSettings,
     setRuntimeSettings: vi.fn(),
     handleSaveWorkerSettings: vi.fn(),
@@ -200,7 +173,7 @@ describe("JobFinderConfigPage", () => {
     expect(screen.getByText("Pre-Filter")).toBeInTheDocument()
     expect(screen.getByText("Scoring")).toBeInTheDocument()
     expect(screen.getByText("Worker Runtime")).toBeInTheDocument()
-    expect(screen.getByText("AI")).toBeInTheDocument()
+    expect(screen.getByText("LLM Status")).toBeInTheDocument()
     expect(screen.getByText("Personal")).toBeInTheDocument()
   })
 })

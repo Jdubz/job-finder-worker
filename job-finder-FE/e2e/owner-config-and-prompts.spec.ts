@@ -41,10 +41,10 @@ test.describe("Owner configuration and prompts", () => {
     await page.getByRole("tab", { name: "Worker Runtime" }).click()
     await expect(getActiveTab().getByLabel(/Processing Timeout/)).toBeVisible()
 
-    // AI settings tab
-    await page.getByRole("tab", { name: "AI", exact: true }).click()
-    // New AgentManager UI - verify agent configuration section is visible
-    await expect(getActiveTab().getByRole("heading", { name: /Configured Agents/i })).toBeVisible()
+    // LLM Status tab (read-only, conditional rendering — not TabsContent)
+    await page.getByRole("tab", { name: "LLM Status" }).click()
+    await expect(page.getByRole("heading", { name: /LiteLLM Proxy Health/i })).toBeVisible()
+    await expect(page.getByRole("heading", { name: /Model Routing/i })).toBeVisible()
 
     // AI prompts page
     await page.goto("/ai-prompts")

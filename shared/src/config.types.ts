@@ -33,100 +33,45 @@ export interface PromptConfig {
 /** Supported AI providers */
 export type AIProviderType = "claude" | "gemini" | "local"
 
-/** Interface types for connecting to providers */
+// -----------------------------------------------------------
+// Vestigial AI agent types (kept for historical config-migration compat)
+// These types are no longer used at runtime — LiteLLM handles all routing.
+// -----------------------------------------------------------
+
+/** @deprecated Interface types for connecting to providers */
 export type AIInterfaceType = "cli" | "api"
 
-/** Agent task types - abstract categories describing the nature of AI work */
+/** @deprecated Agent task types */
 export type AgentTaskType = "extraction" | "analysis" | "document"
 
-/** Agent ID format: "{provider}.{interface}" (e.g., "claude.cli", "gemini.api") */
+/** @deprecated Agent ID format */
 export type AgentId = `${AIProviderType}.${AIInterfaceType}`
 
-/**
- * Model selection is managed via ai-settings config, not hardcoded constants.
- * Use -latest aliases (e.g., "claude-sonnet-4-5-latest") for organic improvements.
- * See: agents[agentId].defaultModel in ai-settings
- */
-
-/** Interface availability option (used by backend to report CLI/API availability) */
-export interface AIInterfaceOption {
-  value: AIInterfaceType
-  models: string[]
-  enabled: boolean
-  reason?: string
+/** @deprecated */
+export interface AgentAuthRequirements {
+  type: AIInterfaceType
+  requiredEnv: string[]
+  requiredFiles?: string[]
 }
 
-/** Provider availability option (used by backend to report provider availability) */
-export interface AIProviderOption {
-  value: AIProviderType
-  interfaces: AIInterfaceOption[]
-}
-
-export type AgentScope = "worker" | "backend"
-
+/** @deprecated */
 export interface AgentRuntimeState {
   enabled: boolean
   reason: string | null
 }
 
-export interface AgentAuthRequirements {
-  /** Interface mode used for auth checks (cli or api) */
-  type: AIInterfaceType
-  /** Environment variables required for this agent */
-  requiredEnv: string[]
-  /** Files whose existence satisfies auth (e.g., CLI credentials) */
-  requiredFiles?: string[]
-}
+/** @deprecated */
+export type AgentScope = "worker" | "backend"
 
-/** Configuration for a single AI agent (provider/interface combination) */
+/** @deprecated */
 export interface AgentConfig {
-  /** AI provider type */
   provider: AIProviderType
-  /** Interface type (CLI or API) */
   interface: AIInterfaceType
-  /** Default model for this agent */
   defaultModel: string
-  /** Maximum daily usage units */
   dailyBudget: number
-  /** Current usage (reset at midnight) */
   dailyUsage: number
-  /** Scope-specific runtime state (auth/health per service) */
   runtimeState: Record<AgentScope, AgentRuntimeState>
-  /** Auth requirements for health checks */
   authRequirements: AgentAuthRequirements
-}
-
-/**
- * AI Settings configuration.
- *
- * Provider routing, fallbacks, retries, and budget tracking are now handled
- * by the LiteLLM proxy. This config is kept for backward compatibility,
- * frontend display, and cron-based agent reset.
- */
-export interface AISettings {
-  /** Configured agents keyed by agent ID (e.g., "claude.cli", "gemini.api", "local.api") */
-  agents: Partial<Record<AgentId, AgentConfig>>
-
-  /** Fallback chains per task type - ordered list of agent IDs to try */
-  taskFallbacks: Record<AgentTaskType, AgentId[]>
-
-  /** Model cost rates - how much budget each model consumes (default: 1.0) */
-  modelRates: Record<string, number>
-
-  /**
-   * @deprecated Provider selection is now handled by LiteLLM proxy.
-   * This field is kept for backwards compatibility and frontend display only.
-   */
-  documentGenerator?: {
-    selected?: {
-      provider: AIProviderType
-      interface: AIInterfaceType
-      model: string
-    }
-  }
-
-  /** Provider availability metadata (populated by backend) */
-  options: AIProviderOption[]
 }
 
 // -----------------------------------------------------------
@@ -604,7 +549,6 @@ export interface CronConfig {
 // -----------------------------------------------------------
 
 export type JobFinderConfigId =
-  | "ai-settings"
   | "ai-prompts"
   | "personal-info"
   | "prefilter-policy"
@@ -613,7 +557,6 @@ export type JobFinderConfigId =
   | "cron-config"
 
 export type JobFinderConfigPayloadMap = {
-  "ai-settings": AISettings
   "ai-prompts": PromptConfig
   "personal-info": PersonalInfo
   "prefilter-policy": PreFilterPolicy

@@ -34,14 +34,15 @@ model_list:
       api_key: os.environ/GEMINI_API_KEY
 
   # ── Local extraction/analysis ───────────────────────────────────────────────
-  # Ollama Llama 3.1 8B — zero cost, runs on host GPU
+  # Ollama Llama 3.1 8B — zero cost, runs locally via Docker
   - model_name: local-extract
     litellm_params:
       model: openai/llama3.1:8b
-      api_base: http://host.docker.internal:11434/v1
+      api_base: http://ollama:11434/v1
       api_key: none
 
 litellm_settings:
+  json_logs: true
   num_retries: 2
   request_timeout: 120
   fallbacks:
