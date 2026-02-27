@@ -61,6 +61,10 @@ services:
       TZ: America/Los_Angeles
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Semantic document cache (requires nomic-embed-text on Ollama)
+      # Set CACHE_DRY_RUN=true to log hits/misses without serving cached content
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      CACHE_DRY_RUN: ${CACHE_DRY_RUN:-false}
       # Firebase Admin SDK (auth)
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-admin.json
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
@@ -128,6 +132,15 @@ services:
     image: ollama/ollama:latest
     container_name: job-finder-ollama
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "2"  # extraction + embedding concurrently
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:

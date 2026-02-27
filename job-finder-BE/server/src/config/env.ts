@@ -32,6 +32,12 @@ const EnvSchema = z.object({
   // Cron scheduler
   CRON_ENABLED: z.string().optional(),
 
+  // Semantic document cache
+  CACHE_ENABLED: z.string().optional(),
+  CACHE_DRY_RUN: z.string().optional(),
+  CACHE_SIMILARITY_FULL_HIT: z.coerce.number().min(0).max(1).default(0.88),
+  CACHE_SIMILARITY_PARTIAL_HIT: z.coerce.number().min(0).max(1).default(0.75),
+
   // Network storage (SMB/CIFS) for document backup
   NETWORK_STORAGE_ENABLED: z.string().optional(),
   NETWORK_STORAGE_HOST: z.string().optional(),

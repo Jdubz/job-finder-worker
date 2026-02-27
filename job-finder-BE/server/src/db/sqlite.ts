@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import * as sqliteVec from 'sqlite-vec'
 import fs from 'node:fs'
 import path from 'node:path'
 import { env } from '../config/env'
@@ -9,8 +10,14 @@ type SQLiteOpenOptions = Database.Options & { uri?: boolean }
 
 let db: Database.Database | null = null
 let migrationsApplied = false
+let _vecAvailable = false
 let lastCheckpoint = 0
 const CHECKPOINT_THROTTLE_MS = 1000
+
+/** Whether the sqlite-vec extension loaded successfully. */
+export function isVecAvailable(): boolean {
+  return _vecAvailable
+}
 
 export function getDb(): Database.Database {
   if (db) {
@@ -43,6 +50,16 @@ export function getDb(): Database.Database {
   db.pragma('busy_timeout = 15000')
   db.pragma('synchronous = NORMAL')
 
+  try {
+    sqliteVec.load(db)
+    _vecAvailable = true
+    logger.info('sqlite-vec extension loaded')
+  } catch (err) {
+    _vecAvailable = false
+    // Non-fatal: core API works without sqlite-vec; only the semantic document cache needs it.
+    logger.warn({ err }, 'sqlite-vec extension not available — semantic document cache disabled')
+  }
+
   if (!migrationsApplied) {
     try {
       runMigrations(db)
@@ -62,6 +79,7 @@ export function closeDb(): void {
   logger.info('Closing SQLite database')
   db.close()
   db = null
+  _vecAvailable = false
   lastCheckpoint = 0 // Reset throttle so fresh connections checkpoint immediately
 }
 

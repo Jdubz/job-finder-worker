@@ -9,6 +9,7 @@ import { asyncHandler } from "../../utils/async-handler"
 import { success, failure } from "../../utils/api-response"
 import { PromptsRepository } from "./prompts.repository"
 import { publicReadPrivateWrite } from "../../middleware/optional-auth"
+import { invalidateDocumentCacheAsync } from "../generator/document-cache-invalidation"
 
 const promptSchema = z.object({
   resumeGeneration: z.string().min(1),
@@ -59,6 +60,7 @@ export function buildPromptsRouter() {
     asyncHandler((req, res) => {
       const { prompts, userEmail } = updateSchema.parse(req.body)
       const saved = repository.savePrompts(prompts, userEmail)
+      invalidateDocumentCacheAsync().catch(() => undefined)
       const response: UpdatePromptsResponse = { prompts: saved }
       res.json(success(response))
     })

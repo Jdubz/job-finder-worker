@@ -1,5 +1,6 @@
 import path from 'node:path'
 import sqlite3 from 'better-sqlite3'
+import * as sqliteVec from 'sqlite-vec'
 import { runMigrations } from '../db/migrations.js'
 
 const DB_PATH =
@@ -15,6 +16,7 @@ const MIGRATIONS_DIR =
 
 function main() {
   const db = sqlite3(DB_PATH)
+  sqliteVec.load(db)
   const applied = runMigrations(db, MIGRATIONS_DIR)
   if (!applied.length) {
     console.log('[migrate] database already up to date')

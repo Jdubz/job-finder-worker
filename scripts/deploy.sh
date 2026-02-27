@@ -21,6 +21,7 @@ COMPOSE_DST="${PROD_DIR}/docker-compose.yml"
 LITELLM_CFG_SRC="${REPO_ROOT}/infra/litellm-config.yaml"
 LITELLM_CFG_DST="${PROD_DIR}/infra/litellm-config.yaml"
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1:8b}"
+OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
 
 # Verify source files exist
 for src in "${COMPOSE_SRC}" "${LITELLM_CFG_SRC}"; do
@@ -70,15 +71,17 @@ if [[ "${1:-}" == "--recreate" ]]; then
     sleep 1
   done
 
-  # Ensure the Ollama model is available (idempotent — skips if already pulled)
-  echo "[deploy] Ensuring Ollama model '${OLLAMA_MODEL}' is available..."
-  if docker exec job-finder-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "${OLLAMA_MODEL}"; then
-    echo "[deploy] Model '${OLLAMA_MODEL}' already present"
-  else
-    echo "[deploy] Pulling '${OLLAMA_MODEL}' (this may take several minutes)..."
-    docker exec job-finder-ollama ollama pull "${OLLAMA_MODEL}"
-    echo "[deploy] Model '${OLLAMA_MODEL}' pulled successfully"
-  fi
+  # Ensure Ollama models are available (idempotent — skips if already pulled)
+  for model in "${OLLAMA_MODEL}" "${OLLAMA_EMBED_MODEL}"; do
+    echo "[deploy] Ensuring Ollama model '${model}' is available..."
+    if docker exec job-finder-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "${model}"; then
+      echo "[deploy] Model '${model}' already present"
+    else
+      echo "[deploy] Pulling '${model}' (this may take several minutes)..."
+      docker exec job-finder-ollama ollama pull "${model}"
+      echo "[deploy] Model '${model}' pulled successfully"
+    fi
+  done
 fi
 
 echo "[deploy] Done"

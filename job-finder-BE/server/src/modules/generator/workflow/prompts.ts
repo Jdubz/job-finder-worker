@@ -289,45 +289,139 @@ function formatSkillsItem(item: ContentItem): string {
   return skillsList.length ? `${categoryName}: ${skillsList.join(', ')}` : ''
 }
 
-export function buildResumePrompt(
-  payload: GenerateDocumentPayload,
+/**
+ * Build the stable prefix for resume generation (system message).
+ * Contains: DB template instructions (with job-specific placeholders neutralized),
+ * JSON schema, output rules, candidate personal info, all content items.
+ * This part is identical across generations for the same user profile.
+ */
+export function buildResumeStablePrefix(
   personalInfo: PersonalInfo,
-  contentItems: ContentItem[] = [],
-  jobMatch: JobMatchWithListing | null = null
+  contentItems: ContentItem[] = []
 ): string {
   const prompts = promptsRepo.getPrompts()
   const content = extractFormattedContent(contentItems)
 
-  const variables: PromptVariables = {
+  // Replace candidate-specific variables in the template; leave job-specific ones as neutral markers
+  const stableVariables: PromptVariables = {
     candidateName: personalInfo.name ?? 'the candidate',
-    jobTitle: payload.job.role,
-    companyName: payload.job.company,
-    jobDescription: payload.job.jobDescriptionText || 'No job description provided',
-    jobDescriptionUrl: payload.job.jobDescriptionUrl,
-    companyWebsite: payload.job.companyWebsite,
-    jobLocation: payload.job.location || jobMatch?.listing?.location || undefined,
+    jobTitle: '[TARGET_ROLE]',
+    companyName: '[TARGET_COMPANY]',
+    jobDescription: '[See user message for job description]',
+    jobDescriptionUrl: '',
+    companyWebsite: '',
+    jobLocation: '',
     candidateLocation: personalInfo.location || '',
     userExperience: content.workFormatted || 'No experience data available',
     userSkills: content.skillsFromCategories || content.allSkills || 'No skills data available',
-    additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
-    companyInfo: jobMatch?.company?.about || '',
-    matchedSkills: jobMatch?.matchedSkills?.join(', ') || '',
-    keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
-    atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
+    additionalInstructions: '[See user message for any additional instructions]',
+    companyInfo: '',
+    matchedSkills: '',
+    keyStrengths: '',
+    atsKeywords: ''
   }
 
-  const prompt = replaceVariables(prompts.resumeGeneration, variables)
-  const dataBlock = buildDataBlock(variables, content)
+  const templateInstructions = replaceVariables(prompts.resumeGeneration, stableVariables)
 
-  // Build conditional project guidance based on resumeIntakeData
+  const candidateDataBlock = `
+
+CANDIDATE DATA (authoritative — use exactly this):
+
+Candidate: ${personalInfo.name ?? 'the candidate'}
+Candidate Location: ${personalInfo.location || 'Unknown'}
+
+Work Experience:
+${content.workFormatted || 'None'}
+
+Education:
+${content.educationFormatted || 'None'}
+
+Projects:
+${content.projectsFormatted || 'None'}
+
+Skills:
+${content.skillsFromCategories || content.allSkills || 'None'}
+
+Background/Narrative:
+${content.narrativeText || 'None'}`
+
+  const jsonSchema = `
+OUTPUT FORMAT (STRICT):
+- You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- If you cannot populate a field, still include it and use the correct empty value by type:
+  - string fields: ""
+  - array fields: []
+  - optional/object fields: null
+
+Content rules:
+- Use ONLY the provided experience, education, projects, and skills. Do NOT invent companies, roles, achievements, technologies, or skills.
+- Every technology, tool, and skill you mention MUST appear in the CANDIDATE DATA above. If a technology is not listed in the candidate's work experience, projects, or skills, do NOT include it.
+- Do NOT add technologies the candidate does not have (e.g., do not add AWS, Kafka, Kubernetes, etc. unless they appear in the source data).
+- Rephrase and tailor the candidate's EXISTING achievements for this role — do not fabricate new ones.
+
+Return the result as a JSON object with this exact structure:
+{
+  "personalInfo": { "title": "Job Title matching target role" },
+  "professionalSummary": "2-3 sentence summary",
+  "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
+  "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
+  "skills": [
+    { "category": "CategoryName", "items": ["Skill1", "Skill2", "Skill3"] }
+  ],
+  "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
+}
+
+${getBalancedContentGuidance(4)}`
+
+  return templateInstructions + candidateDataBlock + jsonSchema
+}
+
+/**
+ * Build the variable job-specific prompt for resume generation (user message).
+ * Contains: target role, company, JD, matched skills, project guidance, preferences.
+ */
+export function buildResumeJobPrompt(
+  payload: GenerateDocumentPayload,
+  jobMatch: JobMatchWithListing | null = null
+): string {
   const resumeIntakeData = jobMatch?.resumeIntakeData
-  let projectGuidance = ''
+
+  const parts: string[] = [
+    `Generate a resume for this job:`,
+    ``,
+    `Target Role: ${payload.job.role}`,
+    `Company: ${payload.job.company}`,
+  ]
+
+  if (payload.job.companyWebsite) parts.push(`Company Website: ${payload.job.companyWebsite}`)
+  if (payload.job.location || jobMatch?.listing?.location) {
+    parts.push(`Job Location: ${payload.job.location || jobMatch?.listing?.location}`)
+  }
+  if (payload.job.jobDescriptionUrl) parts.push(`Job Post URL: ${payload.job.jobDescriptionUrl}`)
+
+  parts.push(``, `Job Description:`, payload.job.jobDescriptionText || 'No job description provided')
+
+  if (jobMatch?.company?.about) {
+    parts.push(``, `Company Info: ${jobMatch.company.about}`)
+  }
+
+  if (jobMatch?.matchedSkills?.length) {
+    parts.push(``, `Matched Skills: ${jobMatch.matchedSkills.join(', ')}`)
+  }
+  if (jobMatch?.keyStrengths?.length) {
+    parts.push(`Key Strengths: ${jobMatch.keyStrengths.join(', ')}`)
+  }
+  if (resumeIntakeData?.atsKeywords?.length) {
+    parts.push(`ATS Keywords: ${resumeIntakeData.atsKeywords.join(', ')}`)
+  }
+
+  // Project guidance
   if (resumeIntakeData?.projectsToInclude?.length) {
     const projectLines = resumeIntakeData.projectsToInclude
       .map((p) => `- ${p.name}: ${p.whyRelevant}\n  Emphasize: ${p.pointsToHighlight.join(', ')}`)
       .join('\n')
-    projectGuidance = `
-
+    parts.push(`
 EXPERIENCE PRIORITY:
 - ALWAYS include ALL relevant professional work experience. Work experience is the most valuable section.
 - Include as many experience entries as possible (up to the budget). Do NOT drop work experience to make room for projects.
@@ -344,15 +438,14 @@ ${projectLines}
 PROJECT HIGHLIGHT SELECTION (CRITICAL):
 A project is included to demonstrate a SPECIFIC skill gap. Its highlights MUST prove that skill.
 - Select ONLY highlights that directly demonstrate the skill gap the project fills.
-- Project bullets in the INPUT DATA are tagged [DOMAIN], [GENERIC], or [OTHER]. STRONGLY prefer [DOMAIN]-tagged bullets — these mention the project's core technologies. Avoid [GENERIC] bullets (testing, CI/CD, docs) unless no [DOMAIN] bullets exist.
+- Project bullets in the CANDIDATE DATA are tagged [DOMAIN], [GENERIC], or [OTHER]. STRONGLY prefer [DOMAIN]-tagged bullets — these mention the project's core technologies. Avoid [GENERIC] bullets (testing, CI/CD, docs) unless no [DOMAIN] bullets exist.
 - If the project fills an AI/ML gap, pick bullets about model integration, embeddings, vector search, inference, RAG, etc. — NOT about testing or deployment.
 - Drop generic highlights (testing, documentation, refactoring) unless they are the only ones available.
 - Rewrite/tailor selected highlights to emphasize the gap-filling skill when appropriate.
 
-If the candidate's work experience already covers the key requirements, return "projects": [].`
+If the candidate's work experience already covers the key requirements, return "projects": [].`)
   } else {
-    projectGuidance = `
-
+    parts.push(`
 EXPERIENCE PRIORITY:
 - ALWAYS include ALL relevant professional work experience. Work experience is the most valuable section.
 - Include as many experience entries as possible (up to the budget). Do NOT drop work experience to make room for projects.
@@ -366,93 +459,86 @@ genuine gaps — they should never replace or displace work experience.
 PROJECT HIGHLIGHT SELECTION (CRITICAL):
 A project is included to demonstrate a SPECIFIC skill gap. Its highlights MUST prove that skill.
 - Select ONLY highlights that directly demonstrate the skill gap the project fills.
-- Project bullets in the INPUT DATA are tagged [DOMAIN], [GENERIC], or [OTHER]. STRONGLY prefer [DOMAIN]-tagged bullets — these mention the project's core technologies. Avoid [GENERIC] bullets (testing, CI/CD, docs) unless no [DOMAIN] bullets exist.
+- Project bullets in the CANDIDATE DATA are tagged [DOMAIN], [GENERIC], or [OTHER]. STRONGLY prefer [DOMAIN]-tagged bullets — these mention the project's core technologies. Avoid [GENERIC] bullets (testing, CI/CD, docs) unless no [DOMAIN] bullets exist.
 - If the project fills an AI/ML gap, pick bullets about model integration, embeddings, vector search, inference, RAG, etc. — NOT about testing or deployment.
 - Drop generic highlights (testing, documentation, refactoring) unless they are the only ones available.
 - Rewrite/tailor selected highlights to emphasize the gap-filling skill when appropriate.
 
-If the candidate's work experience already covers the key requirements, return "projects": [].`
+If the candidate's work experience already covers the key requirements, return "projects": [].`)
   }
 
-  // JSON schema and output format instructions (content guidance is in database prompt)
-  const jsonSchema = `
-OUTPUT FORMAT (STRICT):
-- You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
-- Your very first character must be '{' and your very last character must be '}'.
-- If you cannot populate a field, still include it and use the correct empty value by type:
-  - string fields: ""
-  - array fields: []
-  - optional/object fields: null
+  if (payload.preferences?.emphasize?.length) {
+    parts.push(``, `Additional Instructions: ${payload.preferences.emphasize.join(', ')}`)
+  }
 
-Content rules:
-- Use ONLY the provided experience, education, projects, and skills. Do NOT invent companies, roles, achievements, technologies, or skills.
-- Every technology, tool, and skill you mention MUST appear in the INPUT DATA above. If a technology is not listed in the candidate's work experience, projects, or skills, do NOT include it.
-- Do NOT add technologies the candidate does not have (e.g., do not add AWS, Kafka, Kubernetes, etc. unless they appear in the source data).
-- Rephrase and tailor the candidate's EXISTING achievements for this role — do not fabricate new ones.
-
-Return the result as a JSON object with this exact structure:
-{
-  "personalInfo": { "title": "Job Title matching target role" },
-  "professionalSummary": "2-3 sentence summary",
-  "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
-  "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
-  "skills": [
-    { "category": "CategoryName", "items": ["Skill1", "Skill2", "Skill3"] }
-  ],
-  "education": [{ "institution": "...", "degree": "...", "field": "...", "endDate": "..." }]
-}
-${projectGuidance}
-
-${getBalancedContentGuidance(4)}`
-
-  return prompt + dataBlock + jsonSchema
+  return parts.join('\n')
 }
 
-export function buildCoverLetterPrompt(
+/**
+ * Build a complete resume prompt (combined system + user for backward compatibility).
+ * Used by retry/refit paths that need a single prompt string.
+ */
+export function buildResumePrompt(
   payload: GenerateDocumentPayload,
   personalInfo: PersonalInfo,
   contentItems: ContentItem[] = [],
   jobMatch: JobMatchWithListing | null = null
 ): string {
+  return buildResumeStablePrefix(personalInfo, contentItems) + '\n\n' + buildResumeJobPrompt(payload, jobMatch)
+}
+
+/**
+ * Build the stable prefix for cover letter generation (system message).
+ * Contains: DB template instructions, JSON schema, output rules, candidate data.
+ */
+export function buildCoverLetterStablePrefix(
+  personalInfo: PersonalInfo,
+  contentItems: ContentItem[] = []
+): string {
   const prompts = promptsRepo.getPrompts()
   const content = extractFormattedContent(contentItems)
 
-  const variables: PromptVariables = {
+  const stableVariables: PromptVariables = {
     candidateName: personalInfo.name ?? 'the candidate',
-    jobTitle: payload.job.role,
-    companyName: payload.job.company,
-    jobDescription: payload.job.jobDescriptionText || 'No job description provided',
-    jobDescriptionUrl: payload.job.jobDescriptionUrl,
-    companyWebsite: payload.job.companyWebsite,
-    jobLocation: payload.job.location || jobMatch?.listing?.location || undefined,
+    jobTitle: '[TARGET_ROLE]',
+    companyName: '[TARGET_COMPANY]',
+    jobDescription: '[See user message for job description]',
+    jobDescriptionUrl: '',
+    companyWebsite: '',
+    jobLocation: '',
     candidateLocation: personalInfo.location || '',
     userExperience: content.workFormatted || 'No experience data available',
     userSkills: content.allSkills || 'No skills data available',
-    additionalInstructions: payload.preferences?.emphasize?.join(', ') || '',
-    companyInfo: jobMatch?.company?.about || '',
-    matchedSkills: jobMatch?.matchedSkills?.join(', ') || content.allSkills,
-    keyStrengths: jobMatch?.keyStrengths?.join(', ') || '',
-    atsKeywords: jobMatch?.resumeIntakeData?.atsKeywords?.join(', ') || ''
+    additionalInstructions: '[See user message for any additional instructions]',
+    companyInfo: '',
+    matchedSkills: '',
+    keyStrengths: '',
+    atsKeywords: ''
   }
 
-  const prompt = replaceVariables(prompts.coverLetterGeneration, variables)
-  const dataBlock = buildDataBlock(variables, content, 'AUTHORITATIVE CANDIDATE DATA (use ONLY this information):')
+  const templateInstructions = replaceVariables(prompts.coverLetterGeneration, stableVariables)
 
-  // Build conditional gap mitigation guidance from resumeIntakeData
-  const resumeIntakeData = jobMatch?.resumeIntakeData
-  let gapMitigationGuidance = ''
-  if (resumeIntakeData?.gapMitigation?.length) {
-    const mitigationLines = resumeIntakeData.gapMitigation
-      .map((g) => `- Missing: ${g.missingSkill} → ${g.coverLetterPoint}`)
-      .join('\n')
-    gapMitigationGuidance = `
+  const candidateDataBlock = `
 
-GAP MITIGATION:
-When addressing skill gaps, reference the candidate's side projects as evidence
-of hands-on experience:
-${mitigationLines}
-`
-  }
+AUTHORITATIVE CANDIDATE DATA (use ONLY this information):
+
+Candidate: ${personalInfo.name ?? 'the candidate'}
+Candidate Location: ${personalInfo.location || 'Unknown'}
+
+Work Experience:
+${content.workFormatted || 'None'}
+
+Education:
+${content.educationFormatted || 'None'}
+
+Projects:
+${content.projectsFormatted || 'None'}
+
+Skills:
+${content.skillsFromCategories || content.allSkills || 'None'}
+
+Background/Narrative:
+${content.narrativeText || 'None'}`
 
   const jsonSchema = `
 OUTPUT FORMAT (STRICT):
@@ -477,7 +563,76 @@ Return the JSON object with exactly these keys:
   "signature": "e.g., Best,"
 }`
 
-  return prompt + dataBlock + gapMitigationGuidance + jsonSchema
+  return templateInstructions + candidateDataBlock + jsonSchema
+}
+
+/**
+ * Build the variable job-specific prompt for cover letter generation (user message).
+ */
+export function buildCoverLetterJobPrompt(
+  payload: GenerateDocumentPayload,
+  jobMatch: JobMatchWithListing | null = null
+): string {
+  const resumeIntakeData = jobMatch?.resumeIntakeData
+
+  const parts: string[] = [
+    `Generate a cover letter for this job:`,
+    ``,
+    `Target Role: ${payload.job.role}`,
+    `Company: ${payload.job.company}`,
+  ]
+
+  if (payload.job.companyWebsite) parts.push(`Company Website: ${payload.job.companyWebsite}`)
+  if (payload.job.location || jobMatch?.listing?.location) {
+    parts.push(`Job Location: ${payload.job.location || jobMatch?.listing?.location}`)
+  }
+  if (payload.job.jobDescriptionUrl) parts.push(`Job Post URL: ${payload.job.jobDescriptionUrl}`)
+
+  parts.push(``, `Job Description:`, payload.job.jobDescriptionText || 'No job description provided')
+
+  if (jobMatch?.company?.about) {
+    parts.push(``, `Company Info: ${jobMatch.company.about}`)
+  }
+
+  if (jobMatch?.matchedSkills?.length) {
+    parts.push(``, `Matched Skills: ${jobMatch.matchedSkills.join(', ')}`)
+  }
+  if (jobMatch?.keyStrengths?.length) {
+    parts.push(`Key Strengths: ${jobMatch.keyStrengths.join(', ')}`)
+  }
+  if (resumeIntakeData?.atsKeywords?.length) {
+    parts.push(`ATS Keywords: ${resumeIntakeData.atsKeywords.join(', ')}`)
+  }
+
+  // Gap mitigation guidance
+  if (resumeIntakeData?.gapMitigation?.length) {
+    const mitigationLines = resumeIntakeData.gapMitigation
+      .map((g) => `- Missing: ${g.missingSkill} → ${g.coverLetterPoint}`)
+      .join('\n')
+    parts.push(`
+GAP MITIGATION:
+When addressing skill gaps, reference the candidate's side projects as evidence
+of hands-on experience:
+${mitigationLines}`)
+  }
+
+  if (payload.preferences?.emphasize?.length) {
+    parts.push(``, `Additional Instructions: ${payload.preferences.emphasize.join(', ')}`)
+  }
+
+  return parts.join('\n')
+}
+
+/**
+ * Build a complete cover letter prompt (combined system + user for backward compatibility).
+ */
+export function buildCoverLetterPrompt(
+  payload: GenerateDocumentPayload,
+  personalInfo: PersonalInfo,
+  contentItems: ContentItem[] = [],
+  jobMatch: JobMatchWithListing | null = null
+): string {
+  return buildCoverLetterStablePrefix(personalInfo, contentItems) + '\n\n' + buildCoverLetterJobPrompt(payload, jobMatch)
 }
 
 export function buildRefitPrompt(
@@ -727,4 +882,58 @@ Keep all content that the user did not mention — only change what they asked f
 OUTPUT FORMAT (STRICT):
 - You are a JSON generator. Respond with the JSON object ONLY—no prose, no markdown, no bullet lists, no explanations.
 - Your very first character must be '{' and your very last character must be '}'.`
+}
+
+export function buildAdaptPrompt(
+  cachedContent: unknown,
+  payload: GenerateDocumentPayload,
+  jobMatch: JobMatchWithListing | null,
+  documentType: 'resume' | 'cover_letter'
+): string {
+  const resumeIntakeData = jobMatch?.resumeIntakeData
+
+  const matchContext: string[] = []
+  if (jobMatch?.matchedSkills?.length) {
+    matchContext.push(`Matched Skills: ${jobMatch.matchedSkills.join(', ')}`)
+  }
+  if (jobMatch?.keyStrengths?.length) {
+    matchContext.push(`Key Strengths: ${jobMatch.keyStrengths.join(', ')}`)
+  }
+  if (resumeIntakeData?.atsKeywords?.length) {
+    matchContext.push(`ATS Keywords: ${resumeIntakeData.atsKeywords.join(', ')}`)
+  }
+
+  const jsonSchemaNote = documentType === 'resume'
+    ? `Use the exact same JSON structure as the cached content (personalInfo, professionalSummary, experience, projects, skills, education).`
+    : `Use the exact same JSON structure as the cached content (greeting, openingParagraph, bodyParagraphs, closingParagraph, signature).`
+
+  return `You are a document ADAPTER. You have a previously generated ${documentType === 'resume' ? 'resume' : 'cover letter'} for a similar role. Make minimal adjustments to tailor it for a new job.
+
+CACHED CONTENT (starting point — keep ~85-95% identical):
+${JSON.stringify(cachedContent, null, 2)}
+
+NEW TARGET JOB:
+Role: ${payload.job.role}
+Company: ${payload.job.company}
+${payload.job.location ? `Location: ${payload.job.location}` : ''}
+${payload.job.companyWebsite ? `Company Website: ${payload.job.companyWebsite}` : ''}
+
+Job Description:
+${payload.job.jobDescriptionText || 'No job description provided'}
+
+${matchContext.length ? matchContext.join('\n') : ''}
+
+ADAPTATION INSTRUCTIONS:
+1. Keep the vast majority of content identical — this is an EDIT, not a rewrite.
+2. Update the professional summary / opening to reference the new company name and role.
+3. Re-weight bullet emphasis: prioritize highlights that match the new job's requirements.
+4. Update ATS keywords in the skills section if the new job emphasizes different technologies.
+5. Do NOT invent new achievements, companies, technologies, or skills that aren't already in the cached content.
+6. Do NOT remove experience entries or projects — only adjust emphasis and wording.
+7. Keep all factual data (dates, company names, role titles) exactly as-is.
+
+OUTPUT FORMAT (STRICT):
+- Respond with the JSON object ONLY — no prose, no markdown, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.
+- ${jsonSchemaNote}`
 }

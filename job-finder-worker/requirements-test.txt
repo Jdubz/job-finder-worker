@@ -13,3 +13,6 @@ mypy>=1.5.0
 # Code quality
 black>=23.7.0
 flake8>=6.1.0
+
+# SQLite extensions (needed for migrations that create vec0 virtual tables)
+sqlite-vec
