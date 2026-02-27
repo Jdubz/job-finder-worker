@@ -1,7 +1,8 @@
 """Prompt templates for AI job matching and analysis.
 
 Prompt functions return PromptPair (system, user) to enable:
-- Prompt caching on providers that support it (static system prompt is cached)
+- Clear separation of general instructions (system) from per-request context (user)
+- Prompt caching on providers that support it when the system prompt is stable for a use case
 - Better instruction following on local models (clear system/user separation)
 """
 

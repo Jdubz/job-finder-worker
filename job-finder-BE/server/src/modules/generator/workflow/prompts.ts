@@ -864,12 +864,14 @@ const MAX_FEEDBACK_LENGTH = 2000
 
 /**
  * Sanitize user-supplied feedback before including it in the LLM prompt.
- * Truncates to MAX_FEEDBACK_LENGTH and wraps in delimiters so the model
- * treats it as data rather than instructions.
+ * Truncates to MAX_FEEDBACK_LENGTH, escapes delimiter sequences, and wraps
+ * in delimiters so the model treats it as data rather than instructions.
  */
 function sanitizeFeedback(feedback: string): string {
-  const trimmed = feedback.trim().slice(0, MAX_FEEDBACK_LENGTH)
-  return trimmed
+  return feedback
+    .trim()
+    .slice(0, MAX_FEEDBACK_LENGTH)
+    .replaceAll('"""', '\\"\\"\\"')
 }
 
 export function buildResumeRetryPrompt(

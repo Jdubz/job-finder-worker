@@ -1,7 +1,8 @@
 """Prompt templates for job data extraction.
 
 Each prompt function returns a PromptPair (system, user) to enable:
-- Prompt caching on providers that support it (static system prompt is cached)
+- Clear separation of general instructions (system) from per-request context (user)
+- Prompt caching on providers that support it (system prompt is stable per day)
 - Better instruction following on local models (clear system/user separation)
 """
 
@@ -13,7 +14,7 @@ PromptPair = Tuple[str, str]
 
 
 def _build_extraction_system_prompt() -> str:
-    """Build the static system prompt for extraction (cacheable)."""
+    """Build the system prompt for extraction (stable per day, cacheable intra-day)."""
     today_str = date.today().isoformat()
 
     return f"""You are a job posting data extractor. Extract structured information and return ONLY a valid JSON object.
