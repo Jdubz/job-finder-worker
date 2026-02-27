@@ -620,10 +620,7 @@ class ScrapeRunner:
                 getattr(source_config, "render_wait_for", None),
             )
 
-        try:
-            request_timeout = get_request_timeout()
-        except Exception:
-            request_timeout = 30
+        request_timeout = get_request_timeout()
 
         scraper = GenericScraper(source_config, request_timeout=request_timeout)
 
