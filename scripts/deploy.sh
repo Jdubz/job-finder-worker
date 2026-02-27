@@ -56,9 +56,23 @@ if [[ "${1:-}" == "--recreate" ]]; then
   docker compose up -d --force-recreate ollama litellm api worker
   echo "[deploy] Containers recreated"
 
+  # Wait for Ollama container to be ready before checking/pulling models
+  echo "[deploy] Waiting for Ollama container to be ready..."
+  for i in $(seq 1 30); do
+    if docker exec job-finder-ollama ollama list >/dev/null 2>&1; then
+      echo "[deploy] Ollama container is ready"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "[deploy] WARNING: Ollama container not ready after 30s, skipping model check" >&2
+      exit 0
+    fi
+    sleep 1
+  done
+
   # Ensure the Ollama model is available (idempotent — skips if already pulled)
   echo "[deploy] Ensuring Ollama model '${OLLAMA_MODEL}' is available..."
-  if docker exec job-finder-ollama ollama list 2>/dev/null | grep -q "${OLLAMA_MODEL%%:*}"; then
+  if docker exec job-finder-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "${OLLAMA_MODEL}"; then
     echo "[deploy] Model '${OLLAMA_MODEL}' already present"
   else
     echo "[deploy] Pulling '${OLLAMA_MODEL}' (this may take several minutes)..."

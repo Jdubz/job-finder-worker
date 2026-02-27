@@ -199,7 +199,7 @@ Embedding generation uses a lightweight approach — see Options below.
 
 | Option | Size | Speed | Notes |
 |--------|------|-------|-------|
-| `onnxruntime` + `all-MiniLM-L6-v2` ONNX | ~80MB | ~50ms/embed | No PyTorch dependency; proven in imagineer |
+| `onnxruntime` + `all-MiniLM-L6-v2` ONNX | ~80MB | ~50ms/embed | No PyTorch dependency; proven in imagingeer |
 | LiteLLM embedding endpoint | 0 (remote) | ~200ms/embed | Route through existing proxy; no local model |
 | `@xenova/transformers` (WASM) | ~80MB | ~100ms/embed | Pure JS, runs in Node; no native deps |
 
@@ -207,7 +207,7 @@ Recommendation: Start with LiteLLM embedding endpoint (zero new deps, uses exist
 
 ### sqlite-vec extension loading
 
-Same pattern as imagineer — load on every SQLite connection. For the TypeScript backend, use the `sqlite-vec` npm package with `better-sqlite3`:
+Same pattern as imagingeer — load on every SQLite connection. For the TypeScript backend, use the `sqlite-vec` npm package with `better-sqlite3`:
 
 ```typescript
 import * as sqliteVec from 'sqlite-vec'
