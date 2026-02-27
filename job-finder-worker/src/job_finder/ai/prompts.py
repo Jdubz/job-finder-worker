@@ -1,7 +1,13 @@
-"""Prompt templates for AI job matching and analysis."""
+"""Prompt templates for AI job matching and analysis.
 
-from typing import Any, Dict
+Prompt functions return PromptPair (system, user) to enable:
+- Prompt caching on providers that support it (static system prompt is cached)
+- Better instruction following on local models (clear system/user separation)
+"""
 
+from typing import Any, Dict, Tuple
+
+from job_finder.ai.extraction_prompts import PromptPair
 from job_finder.profile.schema import Profile
 
 
@@ -179,35 +185,22 @@ class JobMatchPrompts:
         return "\n".join(lines)
 
     @staticmethod
-    def analyze_job_match(profile: Profile, job: Dict[str, Any]) -> str:
+    def analyze_job_match(profile: Profile, job: Dict[str, Any]) -> PromptPair:
         """
-        Create prompt to analyze job match against profile.
+        Create prompt pair to analyze job match against profile.
 
         Args:
             profile: User profile.
             job: Job posting dictionary.
 
         Returns:
-            Formatted prompt string.
+            PromptPair of (system_prompt, user_prompt).
         """
         profile_summary = JobMatchPrompts.build_profile_summary(profile)
 
-        prompt = f"""You are a concise job-match assistant. Summarize how the candidate fits this role and give only the guidance needed to tailor a resume and cover letter.
+        system = f"""You are a concise job-match assistant. Summarize how the candidate fits this role and give only the guidance needed to tailor a resume and cover letter.
 
 {profile_summary}
-
-# Job Posting
-
-**Title:** {job.get('title', 'N/A')}
-**Company:** {job.get('company', 'N/A')}
-**Location:** {job.get('location', 'N/A')}
-**Salary:** {job.get('salary', 'Not specified')}
-**Description:**
-{job.get('description', 'N/A')}
-{f'''
-**Company Information:**
-{job.get('company_info', '')}
-''' if job.get('company_info') else ''}
 
 # Deliverables (be brief and factual)
 
@@ -238,16 +231,29 @@ Return ONLY valid JSON in this shape (no prose, no markdown):
     "cover_letter_points": [],
     "keywords": []
   }}
-}}
-"""
-        return prompt
+}}"""
+
+        user = f"""# Job Posting
+
+**Title:** {job.get('title', 'N/A')}
+**Company:** {job.get('company', 'N/A')}
+**Location:** {job.get('location', 'N/A')}
+**Salary:** {job.get('salary', 'Not specified')}
+**Description:**
+{job.get('description', 'N/A')}
+{f'''
+**Company Information:**
+{job.get('company_info', '')}
+''' if job.get('company_info') else ''}"""
+
+        return (system, user)
 
     @staticmethod
     def generate_resume_intake_data(
         profile: Profile, job: Dict[str, Any], match_analysis: Dict[str, Any]
-    ) -> str:
+    ) -> PromptPair:
         """
-        Create prompt to generate resume intake data for this specific job.
+        Create prompt pair to generate resume intake data for this specific job.
 
         Args:
             profile: User profile.
@@ -255,30 +261,13 @@ Return ONLY valid JSON in this shape (no prose, no markdown):
             match_analysis: Previous match analysis results.
 
         Returns:
-            Formatted prompt string.
+            PromptPair of (system_prompt, user_prompt).
         """
         profile_summary = JobMatchPrompts.build_profile_summary(profile)
 
-        prompt = f"""You are an expert resume writer and ATS (Applicant Tracking System) optimization specialist. Create a detailed resume customization guide for this specific job application.
+        system = f"""You are an expert resume writer and ATS (Applicant Tracking System) optimization specialist. Create a detailed resume customization guide for this specific job application.
 
 {profile_summary}
-
-# Job Posting
-
-**Title:** {job.get('title', 'N/A')}
-**Company:** {job.get('company', 'N/A')}
-**Description:**
-{job.get('description', 'N/A')}
-{f'''
-**Company Information:**
-{job.get('company_info', '')}
-''' if job.get('company_info') else ''}
-# Match Analysis
-
-**Matched Skills:** {', '.join(match_analysis.get('matched_skills', []))}
-**Missing Skills:** {', '.join(match_analysis.get('missing_skills', []))}
-**Key Strengths:** {', '.join(match_analysis.get('key_strengths', []))}
-**Potential Concerns:** {', '.join(match_analysis.get('potential_concerns', []))}
 
 # Resume Customization Task
 
@@ -338,9 +327,9 @@ Generate specific, actionable guidance for tailoring the resume to THIS job. Foc
 Provide your intake data in the following JSON format:
 
 {{
-  "job_id": "{job.get('url', 'unknown')}",
-  "job_title": "{job.get('title', '')}",
-  "company": "{job.get('company', '')}",
+  "job_id": "<job_url>",
+  "job_title": "<title>",
+  "company": "<company>",
   "target_summary": "Results-driven software engineer with 5+ years...",
   "skills_priority": [
     "Python",
@@ -395,6 +384,23 @@ Provide your intake data in the following JSON format:
   ]
 }}
 
-Respond ONLY with valid JSON, no additional text.
-"""
-        return prompt
+Respond ONLY with valid JSON, no additional text."""
+
+        user = f"""# Job Posting
+
+**Title:** {job.get('title', 'N/A')}
+**Company:** {job.get('company', 'N/A')}
+**Description:**
+{job.get('description', 'N/A')}
+{f'''
+**Company Information:**
+{job.get('company_info', '')}
+''' if job.get('company_info') else ''}
+# Match Analysis
+
+**Matched Skills:** {', '.join(match_analysis.get('matched_skills', []))}
+**Missing Skills:** {', '.join(match_analysis.get('missing_skills', []))}
+**Key Strengths:** {', '.join(match_analysis.get('key_strengths', []))}
+**Potential Concerns:** {', '.join(match_analysis.get('potential_concerns', []))}"""
+
+        return (system, user)

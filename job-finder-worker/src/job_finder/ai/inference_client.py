@@ -88,6 +88,8 @@ class InferenceClient:
         max_tokens: int = 1000,
         temperature: float = 0.7,
         scope: Optional[str] = None,  # Accepted for API compat, unused
+        system_prompt: Optional[str] = None,
+        response_format: Optional[str] = None,
     ) -> AgentResult:
         """Execute an AI task via LiteLLM proxy.
 
@@ -102,6 +104,10 @@ class InferenceClient:
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature
             scope: Ignored (kept for API compatibility)
+            system_prompt: Optional system message prepended to the messages array.
+                Enables prompt caching on providers that support it (e.g. Claude).
+            response_format: When "json", passes response_format={"type": "json_object"}
+                to guarantee valid JSON output from the model.
 
         Returns:
             AgentResult with response text and metadata
@@ -114,13 +120,22 @@ class InferenceClient:
         """
         model = model_override or get_model_for_task(task_type)
 
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        kwargs: dict = dict(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        if response_format == "json":
+            kwargs["response_format"] = {"type": "json_object"}
+
         try:
-            response = self._client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
+            response = self._client.chat.completions.create(**kwargs)
 
             text = response.choices[0].message.content or ""
             actual_model = response.model or model

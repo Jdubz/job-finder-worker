@@ -30,6 +30,11 @@ services:
     image: ollama/ollama:latest
     container_name: job-finder-ollama-dev
     restart: unless-stopped
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_CTX: "8192"
+      OLLAMA_KEEP_ALIVE: "5m"
+      OLLAMA_FLASH_ATTENTION: "1"
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
