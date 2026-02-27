@@ -243,14 +243,16 @@ class GenericScraper:
         "guid": "id",
     }
 
-    def __init__(self, config: SourceConfig):
+    def __init__(self, config: SourceConfig, request_timeout: int = 30):
         """
         Initialize generic scraper.
 
         Args:
             config: Source configuration
+            request_timeout: Per-request HTTP timeout in seconds
         """
         self.config = config
+        self.request_timeout = max(request_timeout, 1)
 
     @lru_cache(maxsize=1)
     def _get_effective_url(self) -> str:
@@ -384,9 +386,11 @@ class GenericScraper:
         # Make request based on method
         if self.config.method.upper() == "POST":
             headers["Content-Type"] = "application/json"
-            response = requests.post(url, headers=headers, json=self.config.post_body, timeout=30)
+            response = requests.post(
+                url, headers=headers, json=self.config.post_body, timeout=self.request_timeout
+            )
         else:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=self.request_timeout)
 
         try:
             response.raise_for_status()
@@ -445,13 +449,16 @@ class GenericScraper:
         body = dict(self.config.post_body or {})
         limit = self._parse_int_with_default(body.get("limit"), 20)
         offset = self._parse_int_with_default(body.get("offset"), 0)
-        max_pages = 50  # safety cap to avoid infinite loops; tuned for Workday defaults
+        max_pages = self.config.max_pages
+        delay = get_fetch_delay_seconds()
 
-        for _ in range(max_pages):
+        for page_num in range(max_pages):
             payload = dict(body)
             payload["offset"] = offset
             payload["limit"] = limit
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response = requests.post(
+                url, headers=headers, json=payload, timeout=self.request_timeout
+            )
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
@@ -476,6 +483,10 @@ class GenericScraper:
                 break
 
             offset += limit
+
+            # Rate-limit between pages
+            if delay > 0 and page_num < max_pages - 1:
+                time.sleep(delay)
 
         if len(results) and len(results) / max(limit, 1) >= max_pages:
             logger.warning(
@@ -544,7 +555,7 @@ class GenericScraper:
         # Fetch with requests first to get raw content for anti-bot detection
         url = self._get_effective_url()
         headers = {**DEFAULT_HEADERS, **self.config.headers}
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=self.request_timeout)
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
@@ -746,9 +757,9 @@ class GenericScraper:
             body = dict(self.config.post_body or {})
             if cursor_token and self.config.cursor_send_in == "body":
                 body[self.config.pagination_param] = cursor_token
-            response = requests.post(url, headers=headers, json=body, timeout=30)
+            response = requests.post(url, headers=headers, json=body, timeout=self.request_timeout)
         else:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=self.request_timeout)
 
         try:
             response.raise_for_status()
@@ -820,7 +831,7 @@ class GenericScraper:
                 else:
                     raise ScrapeBlockedError(self.config.url, f"Render failed: {exc}") from exc
         else:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=self.request_timeout)
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
@@ -1045,7 +1056,7 @@ class GenericScraper:
         delay = get_fetch_delay_seconds()
         try:
             headers = {**DEFAULT_HEADERS, **self.config.headers}
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=min(self.request_timeout, 15))
 
             # Handle stale job listings gracefully - 404/410 means the job was removed
             if response.status_code in (404, 410):
@@ -1087,7 +1098,9 @@ class GenericScraper:
         ref_url = job.get("url") or ""
         delay = get_fetch_delay_seconds()
         try:
-            response = requests.get(ref_url, headers=DEFAULT_HEADERS, timeout=15)
+            response = requests.get(
+                ref_url, headers=DEFAULT_HEADERS, timeout=min(self.request_timeout, 15)
+            )
             response.raise_for_status()
             data = response.json()
         except (requests.RequestException, json.JSONDecodeError) as e:
@@ -1128,7 +1141,9 @@ class GenericScraper:
 
         delay = get_fetch_delay_seconds()
         try:
-            response = requests.get(detail_url, headers=DEFAULT_HEADERS, timeout=15)
+            response = requests.get(
+                detail_url, headers=DEFAULT_HEADERS, timeout=min(self.request_timeout, 15)
+            )
             response.raise_for_status()
             data = response.json()
         except (requests.RequestException, json.JSONDecodeError) as e:

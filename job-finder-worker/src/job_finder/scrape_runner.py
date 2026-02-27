@@ -15,7 +15,6 @@ out obviously unsuitable jobs BEFORE they enter the queue.
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Any, Dict, List, Optional
 
 from job_finder.exceptions import (
@@ -41,6 +40,7 @@ from job_finder.job_queue.models import (
 from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scrapers.config_expander import expand_config
 from job_finder.scrapers.generic_scraper import GenericScraper
+from job_finder.settings import get_request_timeout
 from job_finder.scrapers.platform_patterns import is_single_company_platform
 from job_finder.scrapers.source_config import SourceConfig
 from job_finder.storage.companies_manager import CompaniesManager
@@ -49,7 +49,6 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 
 logger = logging.getLogger(__name__)
-SOURCE_SCRAPE_TIMEOUT_SEC = 90  # watchdog per source to avoid hangs (JS render, huge APIs)
 TRANSIENT_FAILURE_THRESHOLD = 3  # disable source after N consecutive recoverable failures
 ZERO_JOBS_RECOVERY_THRESHOLD = (
     2  # spawn recovery after N consecutive zero-job runs (all source types)
@@ -614,27 +613,19 @@ class ScrapeRunner:
         except Exception as e:
             raise ConfigurationError(f"Invalid config for source {source_name}: {e}")
 
-        # Scrape using GenericScraper with a per-source watchdog to avoid hangs
+        # Scrape using GenericScraper — per-request timeouts protect against hangs
         if source_config.requires_js:
             logger.info(
                 "  Rendering with JS enabled (wait for: %s)",
                 getattr(source_config, "render_wait_for", None),
             )
 
-        scraper = GenericScraper(source_config)
+        request_timeout = get_request_timeout()
 
-        def _run_scrape() -> List[Any]:
-            return scraper.scrape()
+        scraper = GenericScraper(source_config, request_timeout=request_timeout)
 
         start = time.monotonic()
-        try:
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                jobs = pool.submit(_run_scrape).result(timeout=SOURCE_SCRAPE_TIMEOUT_SEC)
-        except TimeoutError:
-            elapsed = int(time.monotonic() - start)
-            raise ConfigurationError(
-                f"Source {source_name} timed out after {elapsed}s (possible render hang or slow API)"
-            )
+        jobs = scraper.scrape()
 
         stats["jobs_found"] = len(jobs)
 
