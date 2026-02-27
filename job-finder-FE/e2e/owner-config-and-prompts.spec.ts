@@ -41,10 +41,10 @@ test.describe("Owner configuration and prompts", () => {
     await page.getByRole("tab", { name: "Worker Runtime" }).click()
     await expect(getActiveTab().getByLabel(/Processing Timeout/)).toBeVisible()
 
-    // LLM Status tab (read-only)
+    // LLM Status tab (read-only, conditional rendering — not TabsContent)
     await page.getByRole("tab", { name: "LLM Status" }).click()
-    await expect(getActiveTab().getByText(/LiteLLM Proxy Health/i)).toBeVisible()
-    await expect(getActiveTab().getByText(/Model Routing/i)).toBeVisible()
+    await expect(page.getByText(/LiteLLM Proxy Health/i)).toBeVisible()
+    await expect(page.getByText(/Model Routing/i)).toBeVisible()
 
     // AI prompts page
     await page.goto("/ai-prompts")
