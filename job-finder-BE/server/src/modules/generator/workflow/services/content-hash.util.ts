@@ -40,9 +40,18 @@ export function computeContentHash(
     applicationInfo: (personalInfo.applicationInfo ?? '').trim(),
   }
 
-  // Normalize content items — sort by id, include only prompt-relevant fields
+  // Normalize content items — sort by parentId + order + id to reflect prompt ordering,
+  // include only prompt-relevant fields. Order is included because prompt generation
+  // preserves item ordering, so reordering items changes the prompt output.
+  // Id is used as tiebreaker for determinism when parentId and order are equal.
   const normalizedItems = [...contentItems]
-    .sort((a, b) => (a.id ?? '').localeCompare(b.id ?? ''))
+    .sort((a, b) => {
+      const parentCmp = (a.parentId ?? '').localeCompare(b.parentId ?? '')
+      if (parentCmp !== 0) return parentCmp
+      const orderCmp = (a.order ?? 0) - (b.order ?? 0)
+      if (orderCmp !== 0) return orderCmp
+      return (a.id ?? '').localeCompare(b.id ?? '')
+    })
     .map((item) => ({
       id: item.id,
       aiContext: item.aiContext ?? null,
@@ -55,6 +64,7 @@ export function computeContentHash(
       location: (item.location ?? '').trim(),
       website: (item.website ?? '').trim(),
       parentId: item.parentId ?? null,
+      order: item.order ?? 0,
     }))
 
   const payload = JSON.stringify([

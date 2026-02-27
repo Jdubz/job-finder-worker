@@ -28,8 +28,17 @@ def _apply_migrations(db_path: Path) -> None:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
+        vec0_unavailable = False
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            conn.executescript(sql_file.read_text())
+            if vec0_unavailable and sql_file.name.startswith(("051", "052")):
+                continue
+            try:
+                conn.executescript(sql_file.read_text())
+            except sqlite3.OperationalError as exc:
+                if "vec0" in str(exc):
+                    vec0_unavailable = True
+                else:
+                    raise
 
         # Some test runs skip older migrations that created the config table; ensure it exists
         conn.executescript("""

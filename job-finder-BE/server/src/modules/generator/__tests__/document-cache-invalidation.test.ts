@@ -22,6 +22,12 @@ vi.mock('../document-cache.repository', () => ({
   DocumentCacheRepository: vi.fn(() => ({ removeStaleEntries: mockRemoveStaleEntries })),
 }))
 
+vi.mock('../../../db/sqlite', () => ({
+  isVecAvailable: vi.fn(() => true),
+  getDb: vi.fn(),
+  checkpointWal: vi.fn(),
+}))
+
 // Use a stable mock for computeContentHash so we can assert on removeStaleEntries calls
 vi.mock('../workflow/services/content-hash.util', () => ({
   computeContentHash: vi.fn(() => 'mock-hash-abc'),

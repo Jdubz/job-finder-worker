@@ -155,7 +155,7 @@ describe('computeContentHash', () => {
     expect(hash1).not.toBe(hash2)
   })
 
-  it('is order-independent for content items (sorted by id)', () => {
+  it('is independent of input array order (deterministic sort)', () => {
     const item2: ContentItem = {
       ...baseContentItems[0],
       id: 'ci-2',
@@ -164,6 +164,14 @@ describe('computeContentHash', () => {
     const hash1 = computeContentHash(basePersonalInfo, [baseContentItems[0], item2], basePrompts)
     const hash2 = computeContentHash(basePersonalInfo, [item2, baseContentItems[0]], basePrompts)
     expect(hash1).toBe(hash2)
+  })
+
+  it('changes when content item order changes', () => {
+    const item1: ContentItem = { ...baseContentItems[0], order: 0 }
+    const item1Reordered: ContentItem = { ...baseContentItems[0], order: 1 }
+    const hash1 = computeContentHash(basePersonalInfo, [item1], basePrompts)
+    const hash2 = computeContentHash(basePersonalInfo, [item1Reordered], basePrompts)
+    expect(hash1).not.toBe(hash2)
   })
 })
 

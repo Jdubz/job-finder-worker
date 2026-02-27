@@ -1,5 +1,6 @@
 import type { PersonalInfo } from '@shared/types'
 import { logger } from '../../logger'
+import { isVecAvailable } from '../../db/sqlite'
 import { ConfigRepository } from '../config/config.repository'
 import { ContentItemRepository } from '../content-items/content-item.repository'
 import { PromptsRepository } from '../prompts/prompts.repository'
@@ -14,6 +15,8 @@ import { computeContentHash } from './workflow/services/content-hash.util'
  * Catches all errors internally — safe to call without awaiting.
  */
 export async function invalidateDocumentCacheAsync(): Promise<void> {
+  if (!isVecAvailable()) return
+
   try {
     const configRepo = new ConfigRepository()
     const contentItemRepo = new ContentItemRepository()

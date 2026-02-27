@@ -213,7 +213,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const payload = reorderRequestSchema.parse(req.body)
         const user = getAuthenticatedUser(req)
         const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
-        // No cache invalidation needed: content hash is order-independent (sorted by id)
+        invalidateDocumentCacheAsync().catch(() => undefined)
         const response: ReorderContentItemResponse = { item }
         res.json(success(response))
       } catch (err) {

@@ -24,8 +24,17 @@ def _apply_migrations(db_path: Path) -> None:
               updated_by TEXT
             );
             """)
+        vec0_unavailable = False
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            conn.executescript(sql_file.read_text())
+            if vec0_unavailable and sql_file.name.startswith(("051", "052")):
+                continue
+            try:
+                conn.executescript(sql_file.read_text())
+            except sqlite3.OperationalError as exc:
+                if "vec0" in str(exc):
+                    vec0_unavailable = True
+                else:
+                    raise
 
 
 def test_save_company_persists_influence_fields(tmp_path: Path):

@@ -49,31 +49,38 @@ export class DocumentCacheRepository {
 
   /**
    * Tier 1: Exact fingerprint match.
-   * Returns cached document content or null. Updates hit metadata on match.
+   * Returns cached document content or null. Does NOT update hit metadata —
+   * callers must explicitly call recordHit() when they decide to use the result.
    */
   findExact(
     fingerprintHash: string,
     contentItemsHash: string,
     documentType: DocumentType
-  ): string | null {
+  ): CacheRow | null {
     const row = this.db.prepare(`
-      SELECT id, document_content_json FROM document_cache
+      SELECT id, document_content_json, role_normalized, company_name, hit_count
+      FROM document_cache
       WHERE job_fingerprint_hash = ?
         AND content_items_hash = ?
         AND document_type = ?
       LIMIT 1
-    `).get(fingerprintHash, contentItemsHash, documentType) as { id: number; document_content_json: string } | undefined
+    `).get(fingerprintHash, contentItemsHash, documentType) as {
+      id: number
+      document_content_json: string
+      role_normalized: string
+      company_name: string | null
+      hit_count: number
+    } | undefined
 
     if (!row) return null
 
-    // Update hit metadata
-    this.db.prepare(`
-      UPDATE document_cache
-      SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(row.id)
-
-    return row.document_content_json
+    return {
+      id: row.id,
+      documentContentJson: row.document_content_json,
+      roleNormalized: row.role_normalized,
+      companyName: row.company_name,
+      hitCount: row.hit_count,
+    }
   }
 
   /**
@@ -153,13 +160,27 @@ export class DocumentCacheRepository {
   }
 
   /**
-   * Store a new cache entry. Evicts oldest entries if at capacity.
-   * Runs in a transaction: insert embedding → insert document_cache row.
+   * Store a cache entry, replacing any existing entry with the same fingerprint.
+   * Evicts oldest entries if at capacity.
+   * Runs in a transaction: remove duplicate → insert embedding → insert document_cache row.
    */
   store(params: CacheStoreParams): void {
     const embeddingBuffer = Buffer.from(new Float32Array(params.embeddingVector).buffer)
 
     const insertTransaction = this.db.transaction(() => {
+      // Remove existing entry for the same fingerprint to avoid duplicates
+      const existing = this.db.prepare(`
+        SELECT id, embedding_rowid FROM document_cache
+        WHERE job_fingerprint_hash = ? AND content_items_hash = ? AND document_type = ?
+      `).get(
+        params.jobFingerprintHash, params.contentItemsHash, params.documentType
+      ) as { id: number; embedding_rowid: number } | undefined
+
+      if (existing) {
+        this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid = ?`).run(existing.embedding_rowid)
+        this.db.prepare(`DELETE FROM document_cache WHERE id = ?`).run(existing.id)
+      }
+
       this.evictIfNeeded()
 
       // Insert embedding into vec0

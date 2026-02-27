@@ -2,6 +2,7 @@ import type { Logger } from 'pino'
 import type { PersonalInfo, ContentItem, JobMatchWithListing } from '@shared/types'
 import { logger as defaultLogger } from '../../logger'
 import { env } from '../../config/env'
+import { isVecAvailable } from '../../db/sqlite'
 import { DocumentCacheRepository, type DocumentType } from './document-cache.repository'
 import { PromptsRepository } from '../prompts/prompts.repository'
 import { computeContentHash, computeJobFingerprint, normalizeRole } from './workflow/services/content-hash.util'
@@ -46,22 +47,32 @@ export class SemanticDocumentCache {
   /**
    * Look up cached document content for a generation request.
    * Tries Tier 1 (exact match) then Tier 2 (semantic similarity).
+   * Gracefully degrades to a miss if sqlite-vec is unavailable or tables are missing.
    */
   async lookup(ctx: CacheContext): Promise<CacheLookupResult> {
-    if (!CACHE_ENABLED) return { tier: 'miss' }
+    if (!CACHE_ENABLED || !isVecAvailable()) return { tier: 'miss' }
 
+    try {
+      return await this.lookupInternal(ctx)
+    } catch (err) {
+      this.log.warn({ err }, 'Document cache: lookup failed (non-fatal), treating as miss')
+      return { tier: 'miss' }
+    }
+  }
+
+  private async lookupInternal(ctx: CacheContext): Promise<CacheLookupResult> {
     const prompts = this.promptsRepo.getPrompts()
     const contentItemsHash = computeContentHash(ctx.personalInfo, ctx.contentItems, prompts)
     const roleNormalized = normalizeRole(ctx.role)
     const techStack = this.extractTechStack(ctx.jobMatch)
     const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash, ctx.company)
 
-    // Tier 1: Exact match
+    // Tier 1: Exact match (non-mutating — hit is recorded only when result is used)
     const exactHit = this.repo.findExact(fingerprintHash, contentItemsHash, ctx.documentType)
     if (exactHit) {
       let document: unknown
       try {
-        document = JSON.parse(exactHit)
+        document = JSON.parse(exactHit.documentContentJson)
       } catch (err) {
         this.log.warn({ err }, 'Document cache: corrupt exact-hit entry, treating as miss')
         return { tier: 'miss' }
@@ -77,6 +88,7 @@ export class SemanticDocumentCache {
         return { tier: 'miss' }
       }
 
+      this.repo.recordHit(exactHit.id)
       return { tier: 'exact', document }
     }
 
@@ -152,7 +164,7 @@ export class SemanticDocumentCache {
    * when called after a lookup miss.
    */
   async store(ctx: CacheContext, document: unknown, modelVersion: string | null, precomputedEmbedding?: number[]): Promise<void> {
-    if (!CACHE_ENABLED) return
+    if (!CACHE_ENABLED || !isVecAvailable()) return
 
     try {
       const prompts = this.promptsRepo.getPrompts()

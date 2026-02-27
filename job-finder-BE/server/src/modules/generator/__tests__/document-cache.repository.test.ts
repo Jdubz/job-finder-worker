@@ -48,7 +48,8 @@ describe('DocumentCacheRepository', () => {
 
     const result = repo.findExact('fp-hash-1', 'content-hash-1', 'resume')
     expect(result).not.toBeNull()
-    expect(JSON.parse(result!)).toEqual({ summary: 'Test resume content' })
+    expect(JSON.parse(result!.documentContentJson)).toEqual({ summary: 'Test resume content' })
+    expect(result!.roleNormalized).toBe('frontend engineer')
   })
 
   it('findExact returns null on miss', () => {
@@ -187,6 +188,49 @@ describe('DocumentCacheRepository', () => {
     repo.store(makeStoreParams())
     const pruned = repo.pruneOlderThan(30)
     expect(pruned).toBe(0)
+  })
+
+  // ── store deduplication ──────────────────────────────────────────────
+
+  it('store replaces existing entry with same fingerprint instead of duplicating', () => {
+    repo.store(makeStoreParams({ documentContentJson: JSON.stringify({ v: 1 }) }))
+    repo.store(makeStoreParams({ documentContentJson: JSON.stringify({ v: 2 }) }))
+
+    const db = getDb()
+    const count = (db.prepare(
+      `SELECT COUNT(*) as count FROM document_cache
+       WHERE job_fingerprint_hash = 'fp-hash-1' AND content_items_hash = 'content-hash-1' AND document_type = 'resume'`
+    ).get() as { count: number }).count
+    expect(count).toBe(1)
+
+    const result = repo.findExact('fp-hash-1', 'content-hash-1', 'resume')
+    expect(JSON.parse(result!.documentContentJson)).toEqual({ v: 2 })
+  })
+
+  // ── recordHit ──────────────────────────────────────────────────────────
+
+  it('findExact does not update hit metadata (non-mutating)', () => {
+    repo.store(makeStoreParams())
+    repo.findExact('fp-hash-1', 'content-hash-1', 'resume')
+    repo.findExact('fp-hash-1', 'content-hash-1', 'resume')
+
+    const db = getDb()
+    const row = db.prepare(
+      `SELECT hit_count FROM document_cache WHERE job_fingerprint_hash = 'fp-hash-1'`
+    ).get() as { hit_count: number }
+    expect(row.hit_count).toBe(0)
+  })
+
+  it('recordHit increments hit count', () => {
+    repo.store(makeStoreParams())
+    const hit = repo.findExact('fp-hash-1', 'content-hash-1', 'resume')
+    repo.recordHit(hit!.id)
+
+    const db = getDb()
+    const row = db.prepare(
+      `SELECT hit_count FROM document_cache WHERE job_fingerprint_hash = 'fp-hash-1'`
+    ).get() as { hit_count: number }
+    expect(row.hit_count).toBe(1)
   })
 
   // ── LRU eviction ──────────────────────────────────────────────────────
