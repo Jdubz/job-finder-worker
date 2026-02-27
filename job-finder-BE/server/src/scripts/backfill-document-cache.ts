@@ -15,7 +15,7 @@ import {
   computeJobFingerprint,
   normalizeRole,
 } from '../modules/generator/workflow/services/content-hash.util'
-import type { DocumentType, CacheStoreParams } from '../modules/generator/document-cache.repository'
+import type { DocumentType } from '../modules/generator/document-cache.repository'
 import type { PersonalInfo, ContentItem, PromptConfig } from '@shared/types'
 
 // ── Configuration ─────────────────────────────────────────────────────────────
