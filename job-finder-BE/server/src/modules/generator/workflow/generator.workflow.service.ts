@@ -168,9 +168,13 @@ export class GeneratorWorkflowService {
     }
   }
 
+  /** Maximum number of AI regenerations allowed per document to prevent abuse. */
+  private static readonly MAX_REJECTIONS = 3
+
   /**
    * Reject review with feedback and regenerate the document using AI.
    * The request stays in awaiting_review so the user can review the new draft.
+   * Capped at MAX_REJECTIONS regenerations to prevent resource exhaustion.
    */
   async rejectReview(
     requestId: string,
@@ -180,6 +184,13 @@ export class GeneratorWorkflowService {
     const request = this.workflowRepo.getRequest(requestId)
     if (!request || request.status !== 'awaiting_review') {
       return null
+    }
+
+    const rejectionCount = (request.intermediateResults?.rejectionCount as number) ?? 0
+    if (rejectionCount >= GeneratorWorkflowService.MAX_REJECTIONS) {
+      throw new UserFacingError(
+        `Maximum revision attempts (${GeneratorWorkflowService.MAX_REJECTIONS}) reached. Please edit the document directly or submit as-is.`
+      )
     }
 
     const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? null
@@ -215,11 +226,12 @@ export class GeneratorWorkflowService {
       let parsed = validation.data as ResumeContent
       parsed = this.groundResumeContent(parsed, contentItems, personalInfo, payload)
 
-      // Update intermediate results with new content (keep status as awaiting_review)
+      // Update intermediate results with new content and increment rejection count
       this.workflowRepo.updateRequest(requestId, {
         intermediateResults: {
           ...request.intermediateResults,
-          resumeContent: parsed
+          resumeContent: parsed,
+          rejectionCount: rejectionCount + 1
         }
       })
 
@@ -245,11 +257,12 @@ export class GeneratorWorkflowService {
 
       const parsed = validation.data as CoverLetterContent
 
-      // Update intermediate results with new content (keep status as awaiting_review)
+      // Update intermediate results with new content and increment rejection count
       this.workflowRepo.updateRequest(requestId, {
         intermediateResults: {
           ...request.intermediateResults,
-          coverLetterContent: parsed
+          coverLetterContent: parsed,
+          rejectionCount: rejectionCount + 1
         }
       })
 
