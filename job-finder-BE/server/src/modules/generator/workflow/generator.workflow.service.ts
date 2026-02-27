@@ -22,10 +22,10 @@ import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import {
   buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt,
   buildResumeStablePrefix, buildResumeJobPrompt, buildCoverLetterStablePrefix, buildCoverLetterJobPrompt,
-  buildAdaptPrompt
+  buildAdaptPrompt, buildCoverLetterFramingPrompt
 } from './prompts'
 import { InferenceClient, InferenceError } from '../ai/inference-client'
-import { validateResumeContent, validateCoverLetterContent } from './services/ai-output-schema'
+import { validateResumeContent, validateCoverLetterContent, validateCoverLetterFraming } from './services/ai-output-schema'
 import { estimateContentFit, getContentBudget } from './services/content-fit.service'
 import { SemanticDocumentCache, type CacheContext } from '../semantic-document-cache.service'
 
@@ -960,12 +960,13 @@ export class GeneratorWorkflowService {
         this.log.info({ tier: 'semantic-partial', similarity: cacheResult.similarity }, 'Partial cache hit — attempting adaptation')
         const adapted = await this.tryAdaptResume(cacheResult.document as ResumeContent, payload, jobMatch, contentItems, personalInfo)
         if (adapted) {
-          this.documentCache.store(cacheCtx, adapted, null).catch((err) => {
+          this.documentCache.store(cacheCtx, adapted, null, cacheResult.embedding).catch((err) => {
             this.log.warn({ err }, 'Failed to store adapted resume in document cache')
           })
           return adapted
         }
-        // Adaptation failed — fall through to full generation
+        // Adaptation failed — preserve embedding for store() after full generation
+        cachedEmbedding = cacheResult.embedding
       }
       if (cacheResult.tier === 'miss') {
         cachedEmbedding = cacheResult.embedding
@@ -1067,15 +1068,32 @@ export class GeneratorWorkflowService {
         this.log.info({ tier: 'semantic-partial', similarity: cacheResult.similarity }, 'Partial cache hit — attempting adaptation')
         const adapted = await this.tryAdaptCoverLetter(cacheResult.document as CoverLetterContent, payload, jobMatch, contentItems)
         if (adapted) {
-          this.documentCache.store(cacheCtx, adapted, null).catch((err) => {
+          this.documentCache.store(cacheCtx, adapted, null, cacheResult.embedding).catch((err) => {
             this.log.warn({ err }, 'Failed to store adapted cover letter in document cache')
           })
           return adapted
         }
-        // Adaptation failed — fall through to full generation
+        // Adaptation failed — preserve embedding for store() after full generation
+        cachedEmbedding = cacheResult.embedding
       }
       if (cacheResult.tier === 'miss') {
         cachedEmbedding = cacheResult.embedding
+      }
+    }
+
+    // Sectional cache: try reusing body paragraphs with fresh framing
+    if (!payload.skipCache) {
+      const bodyHit = await this.documentCache.lookupCoverLetterBody(cacheCtx)
+      if (bodyHit) {
+        this.log.info({ bodyParagraphs: bodyHit.bodyParagraphs.length }, 'Cover letter body cache hit — generating framing only')
+        const composed = await this.tryComposeFromCachedBody(bodyHit.bodyParagraphs, personalInfo, payload, jobMatch, contentItems)
+        if (composed) {
+          this.documentCache.store(cacheCtx, composed, null, cachedEmbedding).catch((err) => {
+            this.log.warn({ err }, 'Failed to store composed cover letter in document cache')
+          })
+          return composed
+        }
+        // Framing generation failed — fall through to full generation
       }
     }
 
@@ -1107,6 +1125,13 @@ export class GeneratorWorkflowService {
     this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null, cachedEmbedding).catch((err) => {
       this.log.warn({ err }, 'Failed to store cover letter in document cache')
     })
+
+    // Also store body paragraphs separately for future reuse (non-blocking, non-fatal)
+    if (parsed.bodyParagraphs?.length) {
+      this.documentCache.storeCoverLetterBody(cacheCtx, parsed.bodyParagraphs, agentResult.model ?? null, cachedEmbedding).catch((err) => {
+        this.log.warn({ err }, 'Failed to store cover letter body in document cache')
+      })
+    }
 
     return parsed
   }
@@ -1173,6 +1198,44 @@ export class GeneratorWorkflowService {
       return parsed
     } catch (err) {
       this.log.warn({ err }, 'Adapt cover letter failed — falling through to full generation')
+      return null
+    }
+  }
+
+  /**
+   * Compose a full cover letter from cached body paragraphs + freshly generated framing.
+   * Returns null on failure (caller falls through to full generation).
+   */
+  private async tryComposeFromCachedBody(
+    cachedBodyParagraphs: string[],
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload,
+    jobMatch: JobMatchWithListing | null,
+    contentItems: ContentItem[]
+  ): Promise<CoverLetterContent | null> {
+    try {
+      const framingPrompt = buildCoverLetterFramingPrompt(personalInfo, payload, cachedBodyParagraphs, jobMatch)
+      const agentResult = await this.agentManager.execute('document', framingPrompt)
+
+      const validation = validateCoverLetterFraming(agentResult.output, this.log)
+      if (!validation.success) {
+        this.log.warn({ errors: validation.errors }, 'Cover letter framing validation failed — falling through to full generation')
+        return null
+      }
+
+      const framing = validation.data!
+      const composed: CoverLetterContent = {
+        greeting: framing.greeting,
+        openingParagraph: framing.openingParagraph,
+        bodyParagraphs: cachedBodyParagraphs,
+        closingParagraph: framing.closingParagraph,
+        signature: framing.signature,
+      }
+
+      this.warnOnPotentialHallucinations(composed, contentItems, payload)
+      return composed
+    } catch (err) {
+      this.log.warn({ err }, 'Cover letter framing generation failed — falling through to full generation')
       return null
     }
   }

@@ -4,6 +4,8 @@ import {
   normalizeRole,
   computeContentHash,
   computeJobFingerprint,
+  computeRoleFingerprint,
+  computeTechStackJaccard,
 } from '../workflow/services/content-hash.util'
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -221,5 +223,92 @@ describe('computeJobFingerprint', () => {
     const fp1 = computeJobFingerprint('engineer', [], contentHash, 'Acme Corp')
     const fp2 = computeJobFingerprint('engineer', [], contentHash, 'acme corp')
     expect(fp1).toBe(fp2)
+  })
+})
+
+// ── computeRoleFingerprint ─────────────────────────────────────────────
+
+describe('computeRoleFingerprint', () => {
+  const contentHash = computeContentHash(basePersonalInfo, baseContentItems, basePrompts)
+
+  it('returns deterministic hash for same input', () => {
+    const fp1 = computeRoleFingerprint('frontend engineer', ['react', 'typescript'], contentHash)
+    const fp2 = computeRoleFingerprint('frontend engineer', ['react', 'typescript'], contentHash)
+    expect(fp1).toBe(fp2)
+    expect(fp1).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('is company-independent (same role+tech at different companies)', () => {
+    const fp = computeRoleFingerprint('frontend engineer', ['react'], contentHash)
+    // Should be the same regardless of company — company is not an input
+    const fp2 = computeRoleFingerprint('frontend engineer', ['react'], contentHash)
+    expect(fp).toBe(fp2)
+  })
+
+  it('differs from computeJobFingerprint (which includes company)', () => {
+    const roleFp = computeRoleFingerprint('frontend engineer', ['react'], contentHash)
+    const jobFp = computeJobFingerprint('frontend engineer', ['react'], contentHash, 'Acme')
+    expect(roleFp).not.toBe(jobFp)
+  })
+
+  it('changes when role changes', () => {
+    const fp1 = computeRoleFingerprint('frontend engineer', ['react'], contentHash)
+    const fp2 = computeRoleFingerprint('backend engineer', ['react'], contentHash)
+    expect(fp1).not.toBe(fp2)
+  })
+
+  it('changes when tech stack changes', () => {
+    const fp1 = computeRoleFingerprint('engineer', ['react'], contentHash)
+    const fp2 = computeRoleFingerprint('engineer', ['vue'], contentHash)
+    expect(fp1).not.toBe(fp2)
+  })
+
+  it('is order-independent for tech stack', () => {
+    const fp1 = computeRoleFingerprint('engineer', ['react', 'typescript'], contentHash)
+    const fp2 = computeRoleFingerprint('engineer', ['typescript', 'react'], contentHash)
+    expect(fp1).toBe(fp2)
+  })
+
+  it('changes when content hash changes', () => {
+    const fp1 = computeRoleFingerprint('engineer', ['react'], 'hash-a')
+    const fp2 = computeRoleFingerprint('engineer', ['react'], 'hash-b')
+    expect(fp1).not.toBe(fp2)
+  })
+})
+
+// ── computeTechStackJaccard ────────────────────────────────────────────
+
+describe('computeTechStackJaccard', () => {
+  it('returns 1.0 for identical sets', () => {
+    expect(computeTechStackJaccard(['react', 'typescript'], ['react', 'typescript'])).toBeCloseTo(1.0)
+  })
+
+  it('returns 0.0 for completely disjoint sets', () => {
+    expect(computeTechStackJaccard(['react', 'vue'], ['python', 'django'])).toBeCloseTo(0.0)
+  })
+
+  it('returns correct fraction for partial overlap', () => {
+    // intersection = {react}, union = {react, typescript, vue} → 1/3
+    expect(computeTechStackJaccard(['react', 'typescript'], ['react', 'vue'])).toBeCloseTo(1 / 3)
+  })
+
+  it('returns 0 when first set is empty', () => {
+    expect(computeTechStackJaccard([], ['react'])).toBe(0)
+  })
+
+  it('returns 0 when second set is empty', () => {
+    expect(computeTechStackJaccard(['react'], [])).toBe(0)
+  })
+
+  it('returns 0 when both sets are empty', () => {
+    expect(computeTechStackJaccard([], [])).toBe(0)
+  })
+
+  it('is case-insensitive', () => {
+    expect(computeTechStackJaccard(['React', 'TypeScript'], ['react', 'typescript'])).toBeCloseTo(1.0)
+  })
+
+  it('handles duplicates in input', () => {
+    expect(computeTechStackJaccard(['react', 'react', 'typescript'], ['react', 'typescript'])).toBeCloseTo(1.0)
   })
 })

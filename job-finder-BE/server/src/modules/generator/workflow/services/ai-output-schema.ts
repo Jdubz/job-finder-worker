@@ -100,12 +100,24 @@ export const coverLetterContentSchema = z.object({
   signature: z.string().default('Best,')
 }).passthrough()
 
+/**
+ * Cover letter framing schema — only the company-specific parts.
+ * Used when body paragraphs are reused from cache and only framing needs generation.
+ */
+export const coverLetterFramingSchema = z.object({
+  greeting: z.string().default('Hello,'),
+  openingParagraph: z.string().default(''),
+  closingParagraph: z.string().default(''),
+  signature: z.string().default('Best,'),
+}).passthrough()
+
 // =============================================================================
 // Type exports
 // =============================================================================
 
 export type ValidatedResumeContent = z.infer<typeof resumeContentSchema>
 export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchema>
+export type ValidatedCoverLetterFraming = z.infer<typeof coverLetterFramingSchema>
 
 // =============================================================================
 // Recovery Functions
@@ -559,6 +571,78 @@ export function validateCoverLetterContent(
   return {
     success: true,
     data: result.data as CoverLetterContent,
+    recovered: recoveryActions.length > 0,
+    recoveryActions: recoveryActions.length > 0 ? recoveryActions : undefined
+  }
+}
+
+/**
+ * Validates and recovers cover letter framing (company-specific parts only).
+ * Used when body paragraphs are cached and only greeting/opening/closing/signature are generated.
+ */
+export function validateCoverLetterFraming(
+  rawOutput: string,
+  log?: Logger
+): ValidationResult<ValidatedCoverLetterFraming> {
+  const recoveryActions: string[] = []
+
+  let unwrapped = unwrapCliOutput(rawOutput)
+  if (unwrapped !== rawOutput) {
+    recoveryActions.push('Unwrapped CLI JSON output format')
+  }
+
+  let jsonStr = unwrapped
+  if (!unwrapped.trim().startsWith('{')) {
+    jsonStr = extractJsonFromText(unwrapped)
+    if (jsonStr !== unwrapped) {
+      recoveryActions.push('Extracted JSON from markdown code block or surrounding text')
+    }
+  }
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(jsonStr)
+  } catch (parseError) {
+    log?.warn({ rawOutput: rawOutput.slice(0, 500) }, 'Failed to parse cover letter framing JSON')
+    return {
+      success: false,
+      errors: [`JSON parse error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`]
+    }
+  }
+
+  // Handle alternative field names
+  if (!parsed.openingParagraph && parsed.opening) {
+    parsed.openingParagraph = parsed.opening
+    recoveryActions.push('Mapped "opening" to "openingParagraph"')
+  }
+  if (!parsed.closingParagraph && parsed.closing) {
+    parsed.closingParagraph = parsed.closing
+    recoveryActions.push('Mapped "closing" to "closingParagraph"')
+  }
+  if (!parsed.signature && parsed.signOff) {
+    parsed.signature = parsed.signOff
+    recoveryActions.push('Mapped "signOff" to "signature"')
+  }
+
+  const result = coverLetterFramingSchema.safeParse(parsed)
+
+  if (!result.success) {
+    const errors = result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`)
+    log?.warn({ errors, parsed }, 'Cover letter framing validation failed after recovery')
+    return {
+      success: false,
+      errors,
+      recoveryActions: recoveryActions.length > 0 ? recoveryActions : undefined
+    }
+  }
+
+  if (recoveryActions.length > 0) {
+    log?.info({ recoveryActions }, 'Cover letter framing recovered successfully')
+  }
+
+  return {
+    success: true,
+    data: result.data,
     recovered: recoveryActions.length > 0,
     recoveryActions: recoveryActions.length > 0 ? recoveryActions : undefined
   }

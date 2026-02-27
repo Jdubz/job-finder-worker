@@ -20,6 +20,7 @@ export default defineConfig({
     ],
     env: {
       DATABASE_PATH: 'file:memory:?cache=shared',
+      JF_SQLITE_MIGRATIONS_DIR: path.resolve(__dirname, '../../infra/sqlite/migrations'),
     },
     environment: 'node',
     setupFiles: ['tests/setup-env.ts'],

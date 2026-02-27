@@ -103,3 +103,42 @@ export function computeJobFingerprint(
 
   return createHash('sha256').update(payload).digest('hex')
 }
+
+/**
+ * Compute a role-only fingerprint (no company).
+ * Used for resume Tier 1.5 lookup — same role + tech stack at different companies
+ * should reuse cached resumes because resumes are role/tech-driven, not company-specific.
+ */
+export function computeRoleFingerprint(
+  roleNormalized: string,
+  techStack: string[],
+  contentItemsHash: string
+): string {
+  const payload = JSON.stringify([
+    roleNormalized,
+    [...techStack].map((s) => s.toLowerCase().trim()).sort(),
+    contentItemsHash,
+  ])
+
+  return createHash('sha256').update(payload).digest('hex')
+}
+
+/**
+ * Compute Jaccard similarity index between two tech stacks.
+ * Returns |A ∩ B| / |A ∪ B|, or 0 if either set is empty.
+ * Comparison is case-insensitive.
+ */
+export function computeTechStackJaccard(a: string[], b: string[]): number {
+  if (!a.length || !b.length) return 0
+
+  const setA = new Set(a.map((s) => s.toLowerCase().trim()))
+  const setB = new Set(b.map((s) => s.toLowerCase().trim()))
+
+  let intersection = 0
+  for (const item of setA) {
+    if (setB.has(item)) intersection++
+  }
+
+  const union = new Set([...setA, ...setB]).size
+  return union === 0 ? 0 : intersection / union
+}
