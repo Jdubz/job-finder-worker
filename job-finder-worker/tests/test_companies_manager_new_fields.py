@@ -20,7 +20,12 @@ def _apply_migrations(db_path: Path) -> None:
             );
             """)
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            conn.executescript(sql_file.read_text())
+            try:
+                conn.executescript(sql_file.read_text())
+            except sqlite3.OperationalError as exc:
+                if "vec0" in str(exc):
+                    continue
+                raise
 
 
 def test_save_company_persists_influence_fields(tmp_path: Path):

@@ -24,7 +24,14 @@ def _apply_migrations(db_path: Path) -> None:
     migrations_dir = Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            conn.executescript(sql_file.read_text())
+            try:
+                conn.executescript(sql_file.read_text())
+            except sqlite3.OperationalError as exc:
+                # sqlite-vec (vec0) is not available in the CI Python environment;
+                # skip migrations that require it — they only affect the document cache.
+                if "vec0" in str(exc):
+                    continue
+                raise
 
         # Some test runs skip older migrations that created the config table; ensure it exists
         conn.executescript("""

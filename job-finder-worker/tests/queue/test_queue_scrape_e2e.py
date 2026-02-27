@@ -30,7 +30,13 @@ def _apply_migrations(db_path: Path) -> None:
     migrations_dir = Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            conn.executescript(sql_file.read_text())
+            try:
+                conn.executescript(sql_file.read_text())
+            except sqlite3.OperationalError as exc:
+                # sqlite-vec (vec0) not available in CI Python; skip cache migrations
+                if "vec0" in str(exc):
+                    continue
+                raise
 
 
 class DummyMatcher:
