@@ -7,6 +7,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sqlite_vec
+
 from job_finder.ai.matcher import JobMatchResult
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.job_queue import ConfigLoader, QueueManager
@@ -23,15 +25,11 @@ def _apply_migrations(db_path: Path) -> None:
     """Replay all SQLite migrations into a fresh database."""
     migrations_dir = Path(__file__).resolve().parents[3] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            try:
-                conn.executescript(sql_file.read_text())
-            except sqlite3.OperationalError as exc:
-                # sqlite-vec (vec0) is not available in the CI Python environment;
-                # skip migrations that require it — they only affect the document cache.
-                if "vec0" in str(exc):
-                    continue
-                raise
+            conn.executescript(sql_file.read_text())
 
         # Some test runs skip older migrations that created the config table; ensure it exists
         conn.executescript("""

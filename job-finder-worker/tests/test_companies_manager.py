@@ -6,6 +6,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import sqlite_vec
+
 from job_finder.storage.companies_manager import CompaniesManager
 
 
@@ -13,13 +15,11 @@ def _apply_migrations(db_path: Path) -> None:
     # Migrations are at monorepo root: job-finder-bot/infra/sqlite/migrations
     migrations_dir = Path(__file__).resolve().parents[2] / "infra" / "sqlite" / "migrations"
     with sqlite3.connect(db_path) as conn:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
         for sql_file in sorted(migrations_dir.glob("*.sql")):
-            try:
-                conn.executescript(sql_file.read_text())
-            except sqlite3.OperationalError as exc:
-                if "vec0" in str(exc):
-                    continue
-                raise
+            conn.executescript(sql_file.read_text())
 
 
 def test_save_company_strips_careers_suffix(tmp_path: Path):
