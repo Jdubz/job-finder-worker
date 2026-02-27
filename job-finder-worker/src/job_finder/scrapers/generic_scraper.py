@@ -386,7 +386,9 @@ class GenericScraper:
         # Make request based on method
         if self.config.method.upper() == "POST":
             headers["Content-Type"] = "application/json"
-            response = requests.post(url, headers=headers, json=self.config.post_body, timeout=self.request_timeout)
+            response = requests.post(
+                url, headers=headers, json=self.config.post_body, timeout=self.request_timeout
+            )
         else:
             response = requests.get(url, headers=headers, timeout=self.request_timeout)
 
@@ -454,7 +456,9 @@ class GenericScraper:
             payload = dict(body)
             payload["offset"] = offset
             payload["limit"] = limit
-            response = requests.post(url, headers=headers, json=payload, timeout=self.request_timeout)
+            response = requests.post(
+                url, headers=headers, json=payload, timeout=self.request_timeout
+            )
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
@@ -1094,7 +1098,9 @@ class GenericScraper:
         ref_url = job.get("url") or ""
         delay = get_fetch_delay_seconds()
         try:
-            response = requests.get(ref_url, headers=DEFAULT_HEADERS, timeout=min(self.request_timeout, 15))
+            response = requests.get(
+                ref_url, headers=DEFAULT_HEADERS, timeout=min(self.request_timeout, 15)
+            )
             response.raise_for_status()
             data = response.json()
         except (requests.RequestException, json.JSONDecodeError) as e:
@@ -1135,7 +1141,9 @@ class GenericScraper:
 
         delay = get_fetch_delay_seconds()
         try:
-            response = requests.get(detail_url, headers=DEFAULT_HEADERS, timeout=min(self.request_timeout, 15))
+            response = requests.get(
+                detail_url, headers=DEFAULT_HEADERS, timeout=min(self.request_timeout, 15)
+            )
             response.raise_for_status()
             data = response.json()
         except (requests.RequestException, json.JSONDecodeError) as e:
