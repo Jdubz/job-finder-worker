@@ -85,7 +85,6 @@ WORKER_RESTART_DELAY_SECONDS = 5
 
 # Migration guards
 REQUIRED_CONFIG_MIGRATIONS = {
-    "20251205_001_ai-settings-agent-manager",
     "20251205_002_tech-ranks-normalize",
 }
 REQUIRED_SCHEMA_MIN_ID = 46  # latest known schema migration in repo

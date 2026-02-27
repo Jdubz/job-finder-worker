@@ -4,7 +4,6 @@ import type {
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
-  AISettings,
   JobFinderConfigId,
   PromptConfig,
   WorkerSettings,
@@ -14,7 +13,6 @@ import type {
 } from '@shared/types'
 import {
   ApiErrorCode,
-  isAISettings,
   isPersonalInfo,
   isWorkerSettings,
   isMatchPolicy,
@@ -32,42 +30,12 @@ const updateSchema = z.object({
 })
 
 type KnownPayload =
-  | AISettings
   | MatchPolicy
   | PromptConfig
   | WorkerSettings
   | PreFilterPolicy
   | CronConfig
   | Record<string, unknown>
-
-/**
- * Check provider availability via LiteLLM proxy health.
- *
- * All AI calls route through LiteLLM — provider credentials live in the
- * litellm container, not the API container. We check proxy reachability
- * and mark all configured providers as available if LiteLLM is healthy.
- */
-async function buildProviderOptionsWithAvailability(configuredOptions?: AISettings['options']) {
-  if (!configuredOptions) return []
-
-  const baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
-  let litellmHealthy = false
-  try {
-    const res = await fetch(`${baseUrl}/health/readiness`, { signal: AbortSignal.timeout(5000) })
-    litellmHealthy = res.ok
-  } catch {
-    // proxy unreachable
-  }
-
-  return configuredOptions.map((provider) => ({
-    ...provider,
-    interfaces: provider.interfaces.map((iface) => ({
-      ...iface,
-      enabled: litellmHealthy,
-      reason: litellmHealthy ? undefined : 'LiteLLM proxy unreachable',
-    })),
-  }))
-}
 
 function toCamelCaseKey(key: string): string {
   return key.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
@@ -80,8 +48,6 @@ function normalizeKeys<T extends Record<string, any>>(obj: Record<string, any>):
 
 function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>): KnownPayload {
   switch (id) {
-    case 'ai-settings':
-      return normalizeKeys<AISettings>(payload)
     case 'match-policy':
       return normalizeKeys<MatchPolicy>(payload)
     case 'prefilter-policy':
@@ -100,8 +66,6 @@ function coercePayload(id: JobFinderConfigId, payload: Record<string, unknown>):
 
 function validatePayload(id: JobFinderConfigId, payload: KnownPayload): boolean {
   switch (id) {
-    case 'ai-settings':
-      return isAISettings(payload)
     case 'match-policy':
       return isMatchPolicy(payload)
     case 'prefilter-policy':
@@ -160,22 +124,6 @@ export function buildConfigRouter() {
         return
       }
 
-      // For ai-settings, populate provider/interface availability dynamically
-      if (id === 'ai-settings') {
-        const aiPayload = entry.payload as AISettings
-        const response: GetConfigEntryResponse = {
-          config: {
-            ...entry,
-            payload: {
-              ...aiPayload,
-              options: await buildProviderOptionsWithAvailability(aiPayload.options),
-            },
-          },
-        }
-        res.json(success(response))
-        return
-      }
-
       const response: GetConfigEntryResponse = { config: entry }
       res.json(success(response))
     })
@@ -189,9 +137,6 @@ export function buildConfigRouter() {
 
       const coerced = coercePayload(id, body.payload)
       if (!validatePayload(id, coerced)) {
-        if (id === 'ai-settings') {
-          logger.error({ payload: coerced }, 'ai-settings validation failed during upsert')
-        }
         res.status(400).json(failure(ApiErrorCode.VALIDATION_FAILED, 'Invalid config payload'))
         return
       }
@@ -200,28 +145,6 @@ export function buildConfigRouter() {
 
       const entry = repo.upsert(id, coerced, { updatedBy: userEmail ?? undefined })
       const response: UpsertConfigEntryResponse = { config: entry }
-
-      // Log AI settings changes for visibility
-      if (id === 'ai-settings') {
-        const aiPayload = coerced as AISettings
-        const configuredAgents = Object.keys(aiPayload.agents ?? {})
-        const enabledAgentsWorker = Object.entries(aiPayload.agents ?? {})
-          .filter(([, config]) => config?.runtimeState?.worker?.enabled)
-          .map(([id]) => id)
-        const enabledAgentsBackend = Object.entries(aiPayload.agents ?? {})
-          .filter(([, config]) => config?.runtimeState?.backend?.enabled)
-          .map(([id]) => id)
-        logger.info({
-          configId: id,
-          configuredAgents,
-          enabledAgentsWorker,
-          enabledAgentsBackend,
-          extractionFallbacks: aiPayload.taskFallbacks?.extraction ?? [],
-          analysisFallbacks: aiPayload.taskFallbacks?.analysis ?? [],
-          documentFallbacks: aiPayload.taskFallbacks?.document ?? [],
-          updatedBy: userEmail,
-        }, 'AI settings updated')
-      }
 
       // Fire-and-forget reload to the worker so it rehydrates in-memory settings
       await triggerWorkerReload(id).catch(() => undefined)

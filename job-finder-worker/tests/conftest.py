@@ -5,14 +5,6 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from tests.fixtures import MOCK_AI_SETTINGS
-
-
-@pytest.fixture
-def mock_ai_settings():
-    """Return standardized AI settings for tests."""
-    return MOCK_AI_SETTINGS.copy()
-
 
 @pytest.fixture(autouse=True)
 def set_test_environment(monkeypatch):

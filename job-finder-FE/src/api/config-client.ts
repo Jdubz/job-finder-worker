@@ -1,7 +1,6 @@
 import { BaseApiClient } from "./base-client"
 import { API_CONFIG } from "@/config/api"
 import type {
-  AISettings,
   ListConfigEntriesResponse,
   GetConfigEntryResponse,
   UpsertConfigEntryResponse,
@@ -30,33 +29,6 @@ export class ConfigClient extends BaseApiClient {
       payload,
     })
     return response.data.config
-  }
-
-  async getAISettings(): Promise<AISettings> {
-    return this.getConfigEntry<AISettings>("ai-settings")
-  }
-
-  async updateAISettings(settings: Partial<AISettings>): Promise<void> {
-    // Fetch existing to merge - throws if not configured
-    const existing = await this.getAISettings()
-    await this.updateConfigEntry("ai-settings", {
-      ...existing,
-      ...settings,
-      // Preserve options from existing config
-      options: existing.options,
-      // Merge agents if provided
-      agents: settings.agents
-        ? { ...existing.agents, ...settings.agents }
-        : existing.agents,
-      // Merge taskFallbacks if provided
-      taskFallbacks: settings.taskFallbacks
-        ? { ...existing.taskFallbacks, ...settings.taskFallbacks }
-        : existing.taskFallbacks,
-      // Merge modelRates if provided
-      modelRates: settings.modelRates
-        ? { ...existing.modelRates, ...settings.modelRates }
-        : existing.modelRates,
-    })
   }
 
   async getPrefilterPolicy(): Promise<PreFilterPolicy> {

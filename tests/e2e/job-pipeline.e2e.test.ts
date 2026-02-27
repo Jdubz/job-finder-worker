@@ -558,41 +558,6 @@ describe("Configuration flows", () => {
     const queueSettings = await configClient.getQueueSettings()
     expect(queueSettings?.processingTimeoutSeconds).toBe(1200)
 
-    await configClient.updateAISettings({
-      agents: {
-        "gemini.api": {
-          provider: "gemini",
-          interface: "api",
-          defaultModel: "gemini-2.0-flash",
-          dailyBudget: 100,
-          dailyUsage: 0,
-          runtimeState: {
-            worker: { enabled: true, reason: null },
-            backend: { enabled: true, reason: null },
-          },
-          authRequirements: {
-            type: "api",
-            requiredEnv: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-          },
-        },
-      },
-      taskFallbacks: {
-        extraction: ["gemini.api"],
-        analysis: ["gemini.api"],
-        document: ["gemini.api"],
-      },
-      modelRates: { "gemini-2.0-flash": 0.5 },
-      options: [
-        {
-          value: "gemini",
-          interfaces: [{ value: "api", enabled: true, models: ["gemini-2.0-flash", "gemini-1.5-pro"] }],
-        },
-      ],
-    })
-    const aiSettings = await configClient.getAISettings()
-    expect(aiSettings?.agents?.["gemini.api"]?.provider).toBe("gemini")
-    expect(aiSettings?.agents?.["gemini.api"]?.defaultModel).toBe("gemini-2.0-flash")
-
     const personalInfo = await configClient.updatePersonalInfo(
       {
         summary: "Automation-focused QA",

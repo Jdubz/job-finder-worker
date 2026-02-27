@@ -19,31 +19,6 @@ def mock_dependencies():
     """Create mock dependencies for JobProcessor."""
     queue_manager = MagicMock()
     config_loader = MagicMock()
-    config_loader.get_ai_settings.return_value = {
-        "agents": {
-            "test.agent": {
-                "provider": "test",
-                "interface": "cli",
-                "defaultModel": "test-model",
-                "dailyBudget": 100,
-                "dailyUsage": 0,
-                "runtimeState": {
-                    "worker": {"enabled": True, "reason": None},
-                    "backend": {"enabled": True, "reason": None},
-                },
-                "authRequirements": {
-                    "type": "cli",
-                    "requiredEnv": ["PATH"],
-                },
-            }
-        },
-        "taskFallbacks": {
-            "extraction": ["test.agent"],
-            "analysis": ["test.agent"],
-            "document": ["test.agent"],
-        },
-        "modelRates": {"test-model": 0.5},
-    }
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],
         "excludedKeywords": [],

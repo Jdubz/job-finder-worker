@@ -4,7 +4,7 @@
  * Type definitions for AI-powered resume and cover letter generation.
  * Used by both job-finder-BE (Cloud Functions) and job-finder-FE.
  *
- * Provider configuration is shared with job-finder worker via AISettings.
+ * Provider configuration is handled by LiteLLM proxy.
  */
 
 import type { TimestampLike } from "./time.types"

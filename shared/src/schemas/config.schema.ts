@@ -13,65 +13,6 @@ export const configListSchema = z.object({
   configs: z.array(configEntrySchema),
 })
 
-const aiProviderSelectionSchema = z.object({
-  provider: z.enum(["claude", "gemini"]),
-  interface: z.enum(["cli", "api"]),
-  model: z.string(),
-})
-
-const aiInterfaceOptionSchema = z.object({
-  value: z.enum(["cli", "api"]),
-  models: z.array(z.string()),
-  enabled: z.boolean(),
-  reason: z.string().optional(),
-})
-
-const aiProviderOptionSchema = z.object({
-  value: z.enum(["claude", "gemini"]),
-  interfaces: z.array(aiInterfaceOptionSchema),
-})
-
-const agentRuntimeStateSchema = z.object({
-  enabled: z.boolean(),
-  reason: z.string().nullable(),
-})
-
-const agentAuthRequirementsSchema = z.object({
-  type: z.enum(["cli", "api"]),
-  requiredEnv: z.array(z.string()).min(1),
-  requiredFiles: z.array(z.string()).optional(),
-})
-
-const agentConfigSchema = z.object({
-  provider: z.enum(["claude", "gemini"]),
-  interface: z.enum(["cli", "api"]),
-  defaultModel: z.string(),
-  dailyBudget: z.number(),
-  dailyUsage: z.number(),
-  runtimeState: z.object({
-    worker: agentRuntimeStateSchema,
-    backend: agentRuntimeStateSchema,
-  }),
-  authRequirements: agentAuthRequirementsSchema,
-})
-
-export const aiSettingsSchema = z.object({
-  agents: z.record(z.string(), agentConfigSchema).refine((value) => Object.keys(value).length > 0, {
-    message: "At least one agent must be configured",
-  }),
-  taskFallbacks: z.object({
-    extraction: z.array(z.string()).min(1),
-    analysis: z.array(z.string()).min(1),
-    document: z.array(z.string()).min(1),
-  }),
-  modelRates: z.record(z.string(), z.number()),
-  /** @deprecated - kept for backwards compatibility */
-  documentGenerator: z.object({
-    selected: aiProviderSelectionSchema.optional(),
-  }).optional(),
-  options: z.array(aiProviderOptionSchema),
-})
-
 // -----------------------------
 // Prefilter policy
 // -----------------------------
@@ -302,7 +243,6 @@ export const personalInfoSchema = z.object({
 }).strict()
 
 export const configPayloadSchemaMap = {
-  "ai-settings": aiSettingsSchema,
   "ai-prompts": promptConfigSchema,
   "personal-info": personalInfoSchema,
   "prefilter-policy": prefilterPolicySchema,

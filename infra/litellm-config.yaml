@@ -42,6 +42,7 @@ model_list:
       api_key: none
 
 litellm_settings:
+  json_logs: true
   num_retries: 2
   request_timeout: 120
   fallbacks:

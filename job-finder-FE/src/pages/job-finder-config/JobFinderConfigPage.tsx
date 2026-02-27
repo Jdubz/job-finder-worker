@@ -4,10 +4,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
-import { QueueSettingsTab, AISettingsTab, PersonalInfoTab, PrefilterPolicyTab, MatchPolicyTab } from "./components/tabs"
+import { QueueSettingsTab, LlmStatusTab, PersonalInfoTab, PrefilterPolicyTab, MatchPolicyTab } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 
-type TabType = "prefilter" | "scoring" | "queue" | "ai" | "personal"
+type TabType = "prefilter" | "scoring" | "queue" | "llm" | "personal"
 
 export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
@@ -82,11 +82,11 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="prefilter">Pre-Filter</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="queue">Worker Runtime</TabsTrigger>
-          <TabsTrigger value="ai">AI</TabsTrigger>
+          <TabsTrigger value="llm">LLM Status</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
@@ -134,16 +134,7 @@ export function JobFinderConfigPage() {
             />
           )}
 
-          {activeTab === "ai" && (
-            <AISettingsTab
-              isSaving={configState.isSaving}
-              aiSettings={configState.aiSettings}
-              setAISettings={configState.setAISettings}
-              hasAIChanges={configState.hasAIChanges}
-              handleSaveAISettings={configState.handleSaveAISettings}
-              resetAI={configState.resetAI}
-            />
-          )}
+          {activeTab === "llm" && <LlmStatusTab />}
 
           {activeTab === "personal" && (
             <PersonalInfoTab

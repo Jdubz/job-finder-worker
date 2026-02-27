@@ -9,8 +9,7 @@
  */
 
 import type { TimestampLike } from "./time.types"
-import type { AISettings, AIProviderType, AIInterfaceType, AgentConfig, AgentId, AgentTaskType } from "./config.types"
-export type { AISettings, AIProviderType, AIInterfaceType, AgentConfig, AgentId, AgentTaskType } from "./config.types"
+export type { AIProviderType, AIInterfaceType, AgentConfig, AgentId, AgentTaskType } from "./config.types"
 
 /**
  * Queue status values as const array for Zod schema validation.

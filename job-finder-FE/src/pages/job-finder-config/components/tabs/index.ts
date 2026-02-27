@@ -1,5 +1,5 @@
 export { QueueSettingsTab } from "./QueueSettingsTab"
-export { AISettingsTab } from "./AISettingsTab"
+export { LlmStatusTab } from "./LlmStatusTab"
 export { PersonalInfoTab } from "./PersonalInfoTab"
 export { PrefilterPolicyTab } from "./PrefilterPolicyTab"
 export { MatchPolicyTab } from "./ScoringConfigTab"

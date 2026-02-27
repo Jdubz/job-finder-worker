@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import {
   configEntrySchema,
   configListSchema,
-  aiSettingsSchema,
   promptConfigSchema,
   personalInfoSchema,
   prefilterPolicySchema,
@@ -34,54 +33,6 @@ describe('config contract', () => {
       console.error(parsed.error.format())
     }
     expect(parsed.success).toBe(true)
-  })
-
-  it('gets ai-settings config with shared schema', async () => {
-    repo.upsert('ai-settings', {
-      agents: {
-        'gemini.api': {
-          provider: 'gemini',
-          interface: 'api',
-          defaultModel: 'gemini-2.0-flash',
-          dailyBudget: 100,
-          dailyUsage: 0,
-          runtimeState: {
-            worker: { enabled: true, reason: null },
-            backend: { enabled: true, reason: null },
-          },
-          authRequirements: {
-            type: 'api',
-            requiredEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
-          },
-        },
-      },
-      taskFallbacks: {
-        extraction: ['gemini.api'],
-        analysis: ['gemini.api'],
-        document: ['gemini.api'],
-      },
-      modelRates: { 'gemini-2.0-flash': 0.5 },
-      options: [
-        {
-          value: 'gemini',
-          interfaces: [{ value: 'api', models: ['gemini-2.0-flash'], enabled: true }],
-        },
-      ],
-    })
-    const res = await request(app).get('/config/ai-settings')
-    expect(res.status).toBe(200)
-    const parsed = configEntrySchema.safeParse(res.body.data.config)
-    if (!parsed.success) {
-      console.error(parsed.error.format())
-      expect(parsed.success).toBe(true)
-      return
-    }
-
-    const payloadParse = aiSettingsSchema.safeParse(parsed.data.payload)
-    if (!payloadParse.success) {
-      console.error(payloadParse.error.format())
-    }
-    expect(payloadParse.success).toBe(true)
   })
 
   it('validates other config payloads against shared schemas', async () => {
