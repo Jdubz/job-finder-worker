@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react"
 import { queueClient } from "@/api/queue-client"
 import type { AgentCliHealth } from "@shared/types"
 
+// Keep in sync with infra/litellm-config.yaml and worker ai/task_router.py TASK_MODEL_MAP
 const TASK_MODEL_MAP = [
   { task: "extraction", model: "local-extract", provider: "Ollama Llama 3.1", fallback: "gemini, claude" },
   { task: "document", model: "claude-document", provider: "Claude Sonnet", fallback: "gemini" },
