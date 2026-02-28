@@ -741,7 +741,10 @@ class TestScoringEngine:
 
         assert result.passed is False
         assert result.rejection_reason is not None
-        assert "role" in result.rejection_reason.lower() or "non-software" in result.rejection_reason.lower()
+        assert (
+            "role" in result.rejection_reason.lower()
+            or "non-software" in result.rejection_reason.lower()
+        )
 
     def test_mixed_role_types_with_non_software_still_rejected(self, engine_factory):
         """Rejected role type takes precedence even when mixed with preferred types."""
