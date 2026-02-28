@@ -162,8 +162,10 @@ export async function submitReview(
           '<div class="empty-placeholder">Loading next document for review...</div>'
         deps.setStatus("Review submitted. Loading next document...", "loading")
 
-        // Clear state for the completed document
-        state.currentReviewRequestId = null
+        // Clear document-specific state for the completed review step.
+        // Keep currentReviewRequestId — it tracks the overall generation
+        // flow and will be updated by handleGenerationAwaitingReview on
+        // success, or used for recovery if loading the next document fails.
         state.currentReviewDocumentType = null
         state.currentReviewContent = null
         // Reset feedback area
@@ -174,11 +176,18 @@ export async function submitReview(
         try {
           // Fetch and render next document in-place
           await handleGenerationAwaitingReview(result.data, state, deps)
-        } finally {
-          // Re-enable buttons after loading completes (success or failure)
+          // Re-enable buttons after successfully loading the next document
           deps.dom.approveReviewBtn.disabled = false
           deps.dom.cancelReviewBtn.disabled = false
           deps.dom.rejectReviewBtn.disabled = false
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Failed to load next document for review"
+          deps.setStatus(message, "error")
+          // Close the modal and restore BrowserView to avoid inconsistent state
+          deps.dom.reviewModalOverlay.classList.add("hidden")
+          state.currentReviewRequestId = null
+          await deps.api.showBrowserView()
         }
       } else {
         // Generation completed or continuing — hide modal and clean up

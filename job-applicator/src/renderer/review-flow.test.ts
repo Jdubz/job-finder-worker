@@ -388,6 +388,84 @@ describe("submitReview", () => {
     expect(fetchDraftContent).toHaveBeenCalledTimes(1)
   })
 
+  it("next document fetch failure: closes modal, restores BrowserView, clears state", async () => {
+    const awaitingProgress = makeProgress({ status: "awaiting_review" })
+    const state = createState({
+      currentReviewRequestId: "req-123",
+      currentReviewDocumentType: "resume",
+      currentReviewContent: { ...MOCK_RESUME_CONTENT },
+    })
+    const deps = createDeps({
+      collectReviewedContent: vi.fn().mockReturnValue(MOCK_RESUME_CONTENT),
+      api: {
+        submitDocumentReview: vi.fn().mockResolvedValue({
+          success: true,
+          data: awaitingProgress,
+        }),
+        // fetchDraftContent fails when loading the next document
+        fetchDraftContent: vi.fn().mockRejectedValue(new Error("Network timeout")),
+        hideBrowserView: vi.fn().mockResolvedValue({ success: true }),
+        showBrowserView: vi.fn().mockResolvedValue({ success: true }),
+      },
+    })
+
+    await submitReview(state, deps)
+
+    // Modal should be closed on failure
+    expect(deps.dom.reviewModalOverlay.classList.add).toHaveBeenCalledWith("hidden")
+    // BrowserView should be restored
+    expect(deps.api.showBrowserView).toHaveBeenCalled()
+    // State should be fully cleared
+    expect(state.currentReviewRequestId).toBeNull()
+    expect(state.currentReviewDocumentType).toBeNull()
+    expect(state.currentReviewContent).toBeNull()
+    // Error message shown
+    expect(deps.setStatus).toHaveBeenCalledWith("Network timeout", "error")
+  })
+
+  it("requestId preserved across document transitions until flow completes", async () => {
+    const awaitingProgress = makeProgress({ status: "awaiting_review" })
+    const state = createState({
+      currentReviewRequestId: "req-123",
+      currentReviewDocumentType: "resume",
+      currentReviewContent: { ...MOCK_RESUME_CONTENT },
+    })
+
+    // Track when requestId changes
+    const requestIdSnapshots: (string | null)[] = []
+    const originalFetchDraft = vi.fn().mockImplementation(async () => {
+      // Capture requestId state at the moment fetchDraftContent is called
+      requestIdSnapshots.push(state.currentReviewRequestId)
+      return {
+        success: true,
+        data: {
+          requestId: "req-123",
+          documentType: "coverLetter",
+          content: MOCK_COVER_LETTER,
+          status: "awaiting_review",
+        },
+      }
+    })
+
+    const deps = createDeps({
+      collectReviewedContent: vi.fn().mockReturnValue(MOCK_RESUME_CONTENT),
+      api: {
+        submitDocumentReview: vi.fn().mockResolvedValue({
+          success: true,
+          data: awaitingProgress,
+        }),
+        fetchDraftContent: originalFetchDraft,
+        hideBrowserView: vi.fn().mockResolvedValue({ success: true }),
+        showBrowserView: vi.fn(),
+      },
+    })
+
+    await submitReview(state, deps)
+
+    // requestId should NOT have been null when fetchDraftContent was called
+    expect(requestIdSnapshots[0]).toBe("req-123")
+  })
+
   it("generation continuing: shows generation progress, sets loading status", async () => {
     const processingProgress = makeProgress({ status: "processing" })
     const state = createState({
