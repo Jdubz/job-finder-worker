@@ -6,6 +6,7 @@ import {
   computeJobFingerprint,
   computeRoleFingerprint,
   computeTechStackJaccard,
+  computeArchetypeFingerprint,
 } from '../workflow/services/content-hash.util'
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -287,9 +288,13 @@ describe('computeTechStackJaccard', () => {
     expect(computeTechStackJaccard(['react', 'vue'], ['python', 'django'])).toBeCloseTo(0.0)
   })
 
-  it('returns correct fraction for partial overlap', () => {
-    // intersection = {react}, union = {react, typescript, vue} → 1/3
-    expect(computeTechStackJaccard(['react', 'typescript'], ['react', 'vue'])).toBeCloseTo(1 / 3)
+  it('returns correct fraction for partial overlap with soft Jaccard', () => {
+    // union = {react, typescript, vue}
+    // react: exact match → 1.0
+    // typescript: only in A, category=language, no language in B → 0.0
+    // vue: only in B, category=frontend, react is frontend in A → 0.5
+    // total = 1.5 / 3 = 0.5
+    expect(computeTechStackJaccard(['react', 'typescript'], ['react', 'vue'])).toBeCloseTo(0.5)
   })
 
   it('returns 0 when first set is empty', () => {
@@ -310,5 +315,67 @@ describe('computeTechStackJaccard', () => {
 
   it('handles duplicates in input', () => {
     expect(computeTechStackJaccard(['react', 'react', 'typescript'], ['react', 'typescript'])).toBeCloseTo(1.0)
+  })
+
+  it('canonicalizes synonyms before comparison', () => {
+    // "reactjs" and "React.js" both map to "react"
+    expect(computeTechStackJaccard(['reactjs', 'typescript'], ['React.js', 'typescript'])).toBeCloseTo(1.0)
+  })
+
+  it('gives partial credit for same-category techs', () => {
+    // react (frontend) vs vue (frontend) — no exact match but same category
+    // union = {react, vue}, react gets 0.5, vue gets 0.5 → 1.0/2 = 0.5
+    expect(computeTechStackJaccard(['react'], ['vue'])).toBeCloseTo(0.5)
+  })
+
+  it('gives no partial credit for cross-category techs', () => {
+    // react (frontend) vs python (language) — different categories
+    expect(computeTechStackJaccard(['react'], ['python'])).toBeCloseTo(0.0)
+  })
+
+  it('gives no partial credit for unknown techs', () => {
+    // unknown techs have no category — no partial credit
+    expect(computeTechStackJaccard(['rust'], ['go'])).toBeCloseTo(0.0)
+  })
+})
+
+// ── computeArchetypeFingerprint ─────────────────────────────────────────
+
+describe('computeArchetypeFingerprint', () => {
+  it('returns deterministic hash for same input', () => {
+    const fp1 = computeArchetypeFingerprint('frontend', ['react', 'typescript'], 'hash-1')
+    const fp2 = computeArchetypeFingerprint('frontend', ['react', 'typescript'], 'hash-1')
+    expect(fp1).toBe(fp2)
+    expect(fp1).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('changes when archetype changes', () => {
+    const fp1 = computeArchetypeFingerprint('frontend', ['react'], 'hash-1')
+    const fp2 = computeArchetypeFingerprint('backend', ['react'], 'hash-1')
+    expect(fp1).not.toBe(fp2)
+  })
+
+  it('changes when tech stack changes', () => {
+    const fp1 = computeArchetypeFingerprint('frontend', ['react'], 'hash-1')
+    const fp2 = computeArchetypeFingerprint('frontend', ['vue'], 'hash-1')
+    expect(fp1).not.toBe(fp2)
+  })
+
+  it('changes when content hash changes', () => {
+    const fp1 = computeArchetypeFingerprint('frontend', ['react'], 'hash-a')
+    const fp2 = computeArchetypeFingerprint('frontend', ['react'], 'hash-b')
+    expect(fp1).not.toBe(fp2)
+  })
+
+  it('is order-independent for tech stack', () => {
+    const fp1 = computeArchetypeFingerprint('frontend', ['react', 'typescript'], 'hash-1')
+    const fp2 = computeArchetypeFingerprint('frontend', ['typescript', 'react'], 'hash-1')
+    expect(fp1).toBe(fp2)
+  })
+
+  it('canonicalizes tech stack synonyms', () => {
+    const fp1 = computeArchetypeFingerprint('frontend', ['react', 'typescript'], 'hash-1')
+    const fp2 = computeArchetypeFingerprint('frontend', ['reactjs', 'ts'], 'hash-1')
+    expect(fp1).toBe(fp2)
   })
 })

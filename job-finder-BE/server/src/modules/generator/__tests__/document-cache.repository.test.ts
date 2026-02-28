@@ -359,6 +359,49 @@ describe('DocumentCacheRepository', () => {
     expect(repo.findExact('fp-clb-1', 'content-hash-1', 'cover_letter_body')).not.toBeNull()
   })
 
+  // ── findByArchetypeFingerprint ──────────────────────────────────────────
+
+  it('findByArchetypeFingerprint returns cached entry for same archetype', () => {
+    repo.store(makeStoreParams({
+      archetypeFingerprintHash: 'arch-fp-1',
+      companyName: 'Acme Corp',
+    }))
+
+    const result = repo.findByArchetypeFingerprint('arch-fp-1', 'content-hash-1', 'resume')
+    expect(result).not.toBeNull()
+    expect(result!.companyName).toBe('Acme Corp')
+    expect(JSON.parse(result!.documentContentJson)).toEqual({ summary: 'Test resume content' })
+  })
+
+  it('findByArchetypeFingerprint returns null on miss', () => {
+    repo.store(makeStoreParams({ archetypeFingerprintHash: 'arch-fp-1' }))
+
+    expect(repo.findByArchetypeFingerprint('wrong-arch-fp', 'content-hash-1', 'resume')).toBeNull()
+    expect(repo.findByArchetypeFingerprint('arch-fp-1', 'wrong-hash', 'resume')).toBeNull()
+    expect(repo.findByArchetypeFingerprint('arch-fp-1', 'content-hash-1', 'cover_letter')).toBeNull()
+  })
+
+  it('findByArchetypeFingerprint returns a valid entry when multiple share the same archetype fingerprint', () => {
+    repo.store(makeStoreParams({
+      archetypeFingerprintHash: 'arch-fp-shared',
+      jobFingerprintHash: 'fp-a',
+      companyName: 'Corp A',
+      embeddingVector: makeEmbedding(70),
+      documentContentJson: JSON.stringify({ v: 'a' }),
+    }))
+    repo.store(makeStoreParams({
+      archetypeFingerprintHash: 'arch-fp-shared',
+      jobFingerprintHash: 'fp-b',
+      companyName: 'Corp B',
+      embeddingVector: makeEmbedding(71),
+      documentContentJson: JSON.stringify({ v: 'b' }),
+    }))
+
+    const result = repo.findByArchetypeFingerprint('arch-fp-shared', 'content-hash-1', 'resume')
+    expect(result).not.toBeNull()
+    expect(['Corp A', 'Corp B']).toContain(result!.companyName)
+  })
+
   // ── LRU eviction ──────────────────────────────────────────────────────
 
   it('evicts LRU entries when cache reaches capacity', () => {

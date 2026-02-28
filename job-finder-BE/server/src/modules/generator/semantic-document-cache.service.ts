@@ -5,7 +5,9 @@ import { env } from '../../config/env'
 import { isVecAvailable } from '../../db/sqlite'
 import { DocumentCacheRepository, type DocumentType } from './document-cache.repository'
 import { PromptsRepository } from '../prompts/prompts.repository'
-import { computeContentHash, computeJobFingerprint, computeRoleFingerprint, computeTechStackJaccard, normalizeRole } from './workflow/services/content-hash.util'
+import { computeContentHash, computeJobFingerprint, computeRoleFingerprint, computeArchetypeFingerprint, computeTechStackJaccard, normalizeRole } from './workflow/services/content-hash.util'
+import { canonicalizeTechStack } from './workflow/services/tech-taxonomy'
+import { getRoleArchetype } from './workflow/services/role-archetype'
 import { normalizeForEmbedding } from './workflow/services/normalize-embedding-input'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -117,6 +119,39 @@ export class SemanticDocumentCache {
           } else {
             this.repo.recordHit(roleHit.id)
             return { tier: 'exact', document }
+          }
+        }
+      }
+    }
+
+    // Tier 1.75: Archetype fingerprint match (resumes only)
+    // Groups "React Developer" and "Frontend Engineer" under the same archetype
+    if (ctx.documentType === 'resume') {
+      const archetype = getRoleArchetype(roleNormalized)
+      if (archetype) {
+        const archetypeFpHash = computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
+        const archetypeHit = this.repo.findByArchetypeFingerprint(archetypeFpHash, contentItemsHash, ctx.documentType)
+        if (archetypeHit) {
+          let document: unknown
+          try {
+            document = JSON.parse(archetypeHit.documentContentJson)
+          } catch (err) {
+            this.log.warn({ err }, 'Document cache: corrupt archetype-fingerprint entry, treating as miss')
+            // Fall through to Tier 2
+          }
+
+          if (document) {
+            this.log.info(
+              { tier: 'archetype-fingerprint', documentType: ctx.documentType, role: ctx.role, archetype, cachedRole: archetypeHit.roleNormalized, cachedCompany: archetypeHit.companyName, newCompany: ctx.company },
+              'Document cache: archetype-fingerprint hit (cross-role resume reuse)'
+            )
+
+            if (CACHE_DRY_RUN) {
+              this.log.info('Document cache: dry-run mode — returning miss despite archetype-fingerprint hit')
+            } else {
+              this.repo.recordHit(archetypeHit.id)
+              return { tier: 'exact', document }
+            }
           }
         }
       }
@@ -237,6 +272,10 @@ export class SemanticDocumentCache {
       }
 
       const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
+      const archetype = getRoleArchetype(roleNormalized)
+      const archetypeFpHash = archetype
+        ? computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
+        : null
 
       this.repo.store({
         embeddingVector: embedding,
@@ -250,6 +289,7 @@ export class SemanticDocumentCache {
         companyName: ctx.company || null,
         modelVersion,
         roleFingerprintHash: roleFpHash,
+        archetypeFingerprintHash: archetypeFpHash,
       })
 
       this.log.info(
@@ -334,6 +374,11 @@ export class SemanticDocumentCache {
         }
       }
 
+      const archetype = getRoleArchetype(roleNormalized)
+      const archetypeFpHash = archetype
+        ? computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
+        : null
+
       this.repo.store({
         embeddingVector: embedding,
         documentType: 'cover_letter_body',
@@ -346,6 +391,7 @@ export class SemanticDocumentCache {
         companyName: ctx.company || null,
         modelVersion,
         roleFingerprintHash: roleFpHash,
+        archetypeFingerprintHash: archetypeFpHash,
       })
 
       this.log.info(
@@ -410,6 +456,6 @@ export class SemanticDocumentCache {
       ...(jobMatch.matchedSkills ?? []),
       ...(jobMatch.resumeIntakeData?.atsKeywords ?? []),
     ]
-    return [...new Set(combined)]
+    return canonicalizeTechStack(combined)
   }
 }
