@@ -152,6 +152,8 @@ class ScraperIntake:
 
         try:
             apply_url = derive_apply_url(normalized_url)
+            if not apply_url and job.get("company_website"):
+                apply_url = job["company_website"]
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),

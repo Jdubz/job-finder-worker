@@ -1084,11 +1084,11 @@ class GenericScraper:
             headers = {**DEFAULT_HEADERS, **self.config.headers}
             response = requests.get(url, headers=headers, timeout=min(self.request_timeout, 15))
 
-            # Handle stale job listings gracefully - 404/410 means the job was removed
-            if response.status_code in (404, 410):
+            # Handle inaccessible detail pages gracefully
+            if response.status_code in (403, 404, 410):
                 logger.debug(
-                    "Detail page not found (stale listing?), skipping enrichment: %s",
-                    url,
+                    "Detail page inaccessible (%d), skipping enrichment: %s",
+                    response.status_code, url,
                 )
                 return job
 
@@ -1774,6 +1774,21 @@ class GenericScraper:
                         return url
                 except Exception:
                     pass
+
+        # Fallback: first external <a href> URL in description
+        href_pattern = r'<a\s+href="(https?://[^"]+)"'
+        for match in re.finditer(href_pattern, description, re.IGNORECASE):
+            url = match.group(1)
+            try:
+                parsed = urlparse(url)
+                host = (parsed.hostname or "").lower()
+                # Skip self-referencing aggregator links
+                if any(agg in host for agg in ("weworkremotely", "remotive", "remoteok", "jobicy")):
+                    continue
+                if parsed.scheme in ("http", "https") and parsed.netloc:
+                    return url
+            except Exception:
+                pass
 
         return None
 
