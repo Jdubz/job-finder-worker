@@ -57,15 +57,17 @@ export function up(db: Database.Database): void {
 
   if (prefilterRow) {
     const parsed = JSON.parse(prefilterRow.payload_json) as PrefilterPolicy
-    const existing = new Set(parsed.title.excludedKeywords.map((k) => k.toLowerCase()))
-    const toAdd = NON_SOFTWARE_DISCIPLINES.filter((k) => !existing.has(k))
+    if (parsed?.title && Array.isArray(parsed.title.excludedKeywords)) {
+      const existing = new Set(parsed.title.excludedKeywords.map((k) => k.toLowerCase()))
+      const toAdd = NON_SOFTWARE_DISCIPLINES.filter((k) => !existing.has(k))
 
-    if (toAdd.length > 0) {
-      parsed.title.excludedKeywords.push(...toAdd)
+      if (toAdd.length > 0) {
+        parsed.title.excludedKeywords.push(...toAdd)
 
-      db.prepare(
-        'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
-      ).run(JSON.stringify(parsed), new Date().toISOString(), 'config-migration', 'prefilter-policy')
+        db.prepare(
+          'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
+        ).run(JSON.stringify(parsed), new Date().toISOString(), 'config-migration', 'prefilter-policy')
+      }
     }
   }
 
@@ -76,14 +78,16 @@ export function up(db: Database.Database): void {
 
   if (matchRow) {
     const parsed = JSON.parse(matchRow.payload_json) as MatchPolicy
-    const existing = new Set(parsed.roleFit.rejected.map((r) => r.toLowerCase()))
+    if (parsed?.roleFit && Array.isArray(parsed.roleFit.rejected)) {
+      const existing = new Set(parsed.roleFit.rejected.map((r) => r.toLowerCase()))
 
-    if (!existing.has('non-software')) {
-      parsed.roleFit.rejected.push('non-software')
+      if (!existing.has('non-software')) {
+        parsed.roleFit.rejected.push('non-software')
 
-      db.prepare(
-        'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
-      ).run(JSON.stringify(parsed), new Date().toISOString(), 'config-migration', 'match-policy')
+        db.prepare(
+          'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
+        ).run(JSON.stringify(parsed), new Date().toISOString(), 'config-migration', 'match-policy')
+      }
     }
   }
 }
@@ -96,19 +100,21 @@ export function down(db: Database.Database): void {
 
   if (prefilterRow) {
     const parsed = JSON.parse(prefilterRow.payload_json) as PrefilterPolicy
-    const toRemove = new Set(NON_SOFTWARE_DISCIPLINES)
-    parsed.title.excludedKeywords = parsed.title.excludedKeywords.filter(
-      (k) => !toRemove.has(k.toLowerCase())
-    )
+    if (parsed?.title && Array.isArray(parsed.title.excludedKeywords)) {
+      const toRemove = new Set(NON_SOFTWARE_DISCIPLINES)
+      parsed.title.excludedKeywords = parsed.title.excludedKeywords.filter(
+        (k) => !toRemove.has(k.toLowerCase())
+      )
 
-    db.prepare(
-      'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
-    ).run(
-      JSON.stringify(parsed),
-      new Date().toISOString(),
-      'config-migration-rollback',
-      'prefilter-policy'
-    )
+      db.prepare(
+        'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
+      ).run(
+        JSON.stringify(parsed),
+        new Date().toISOString(),
+        'config-migration-rollback',
+        'prefilter-policy'
+      )
+    }
   }
 
   // 2. Remove "non-software" from match-policy roleFit.rejected
@@ -118,17 +124,19 @@ export function down(db: Database.Database): void {
 
   if (matchRow) {
     const parsed = JSON.parse(matchRow.payload_json) as MatchPolicy
-    parsed.roleFit.rejected = parsed.roleFit.rejected.filter(
-      (r) => r.toLowerCase() !== 'non-software'
-    )
+    if (parsed?.roleFit && Array.isArray(parsed.roleFit.rejected)) {
+      parsed.roleFit.rejected = parsed.roleFit.rejected.filter(
+        (r) => r.toLowerCase() !== 'non-software'
+      )
 
-    db.prepare(
-      'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
-    ).run(
-      JSON.stringify(parsed),
-      new Date().toISOString(),
-      'config-migration-rollback',
-      'match-policy'
-    )
+      db.prepare(
+        'UPDATE job_finder_config SET payload_json = ?, updated_at = ?, updated_by = ? WHERE id = ?'
+      ).run(
+        JSON.stringify(parsed),
+        new Date().toISOString(),
+        'config-migration-rollback',
+        'match-policy'
+      )
+    }
   }
 }

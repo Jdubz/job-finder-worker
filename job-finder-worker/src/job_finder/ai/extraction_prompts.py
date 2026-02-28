@@ -209,7 +209,7 @@ Description: {desc_truncated}
 If salary is in structured data above, parse into salaryMin/salaryMax. If location contains "Remote", set workArrangement to "remote".
 
 Return:
-{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","devops","ml-ai","data","security","consulting","clearance-required","non-software"],"timezoneFlexible":false}}"""
+{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","fullstack","devops","ml-ai","data","security","mobile","embedded","qa","consulting","clearance-required","non-software"],"timezoneFlexible":false}}"""
 
 
 def build_repair_prompt(
