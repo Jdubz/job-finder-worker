@@ -265,7 +265,10 @@ def test_enrich_workday_converts_absolute_human_url_to_cxs(monkeypatch):
     # Fetch URL should be the CXS API format
     assert "/wday/cxs/gevernova/Vernova_ExternalSite/job/" in fake_get.last_url
     # Job URL should remain the human-readable URL
-    assert enriched["url"] == "https://gevernova.wd5.myworkdayjobs.com/vernova_externalsite/job/Remote/Senior-Engineer_R5032667"
+    assert (
+        enriched["url"]
+        == "https://gevernova.wd5.myworkdayjobs.com/vernova_externalsite/job/Remote/Senior-Engineer_R5032667"
+    )
 
 
 def test_should_enrich_rules(monkeypatch):
@@ -304,7 +307,9 @@ class TestShouldEnrichDescriptionQualityGate:
         )
         scraper = GenericScraper(cfg)
         # Short description like ManTech's "- R63172" should trigger enrichment
-        assert scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"}) is True
+        assert (
+            scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"}) is True
+        )
 
     def test_rss_does_not_enrich_when_description_is_adequate(self):
         """RSS sources should skip enrichment when description is long enough."""
@@ -317,7 +322,9 @@ class TestShouldEnrichDescriptionQualityGate:
         )
         scraper = GenericScraper(cfg)
         long_desc = "A" * 200
-        assert scraper._should_enrich({"description": long_desc, "posted_date": "2026-01-01"}) is False
+        assert (
+            scraper._should_enrich({"description": long_desc, "posted_date": "2026-01-01"}) is False
+        )
 
     def test_html_enriches_when_description_is_empty(self):
         """HTML sources should trigger enrichment when description is empty."""
@@ -344,7 +351,10 @@ class TestShouldEnrichDescriptionQualityGate:
         )
         scraper = GenericScraper(cfg)
         # Short description on API source should NOT trigger enrichment
-        assert scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"}) is False
+        assert (
+            scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"})
+            is False
+        )
 
 
 # ============================================================
@@ -659,7 +669,10 @@ class TestWorkdayDetailApiUrl:
         result = scraper._workday_detail_api_url(
             "https://acme.wd5.myworkdayjobs.com/careers/job/Remote/Engineer_R123"
         )
-        assert result == "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Remote/Engineer_R123"
+        assert (
+            result
+            == "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Remote/Engineer_R123"
+        )
 
     def test_converts_relative_url_to_cxs(self):
         scraper = self._make_scraper(
@@ -667,7 +680,10 @@ class TestWorkdayDetailApiUrl:
             base_url="https://acme.wd5.myworkdayjobs.com/careers",
         )
         result = scraper._workday_detail_api_url("job/Remote/Engineer_R123")
-        assert result == "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Remote/Engineer_R123"
+        assert (
+            result
+            == "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Remote/Engineer_R123"
+        )
 
     def test_already_cxs_url_returned_as_is(self):
         scraper = self._make_scraper(
