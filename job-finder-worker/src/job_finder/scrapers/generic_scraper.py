@@ -1088,7 +1088,8 @@ class GenericScraper:
             if response.status_code in (403, 404, 410):
                 logger.debug(
                     "Detail page inaccessible (%d), skipping enrichment: %s",
-                    response.status_code, url,
+                    response.status_code,
+                    url,
                 )
                 return job
 
