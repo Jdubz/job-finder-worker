@@ -1,6 +1,8 @@
--- Fix disabled sources - 2026-02-27
+-- Fix disabled sources - 2026-02-27 (STEP 1 of 2)
 -- Repairs and re-enables sources that were disabled by old timeout bugs or need config fixes.
 -- Run against: /srv/job-finder/data/jobfinder.db
+-- EXECUTION ORDER: Run this FIRST, then fix_remaining_disabled_sources.sql (which supersedes
+-- some decisions here after deeper investigation found working APIs).
 
 -- ============================================================================
 -- CATEGORY 1: Re-enable timeout-disabled sources (all verified working)
@@ -115,11 +117,12 @@ SET status = 'active',
     config_json = json('{"type":"api","url":"https://superlinear.recruitee.com/api/offers","response_path":"offers","company_name":"Radix","fields":{"title":"title","location":"location","url":"careers_url","description":"description","posted_date":"published_at","department":"department"}}')
 WHERE id = '0801a170-735c-40bc-92f6-c223ad56677d';
 
--- 2j. Stord: Fix wrong URL (pointed to akersolutions)
--- Delete this source - it's misconfigured beyond repair (wrong company entirely)
+-- 2j. Stord: was pointing to wrong company (akersolutions instead of Stord).
+-- Temporarily disabled here; fix_remaining_disabled_sources.sql reconfigures it
+-- with the correct Workday API URL and re-enables it.
 UPDATE job_sources
 SET status = 'disabled',
-    config_json = json_set(config_json, '$.disabled_notes', 'URL points to wrong company (akersolutions instead of Stord). Needs rediscovery.')
+    config_json = json_set(config_json, '$.disabled_notes', 'URL points to wrong company (akersolutions instead of Stord). Reconfigured in fix_remaining_disabled_sources.sql.')
 WHERE id = '149274eb-cb59-47d1-9e4d-11b3dd41a31d';
 
 -- 2k. Automattic: Enable JS rendering for SPA
@@ -187,8 +190,10 @@ WHERE id = '09d6de0d-91fe-4a61-90e1-23d3b286df8d';
 -- CATEGORY 4: Fix other disabled HTML sources
 -- ============================================================================
 
--- 4a. Digital Resource (ADP) - ADP Workforce Now doesn't have scrapable structure, keep disabled
--- 4b. DreamRider Productions - wrong URL (single job application page), keep disabled
+-- 4a. Digital Resource (ADP) - initially thought unscrapable; fix_remaining_disabled_sources.sql
+--      found a working ADP Workforce Now API endpoint and re-enables it.
+-- 4b. DreamRider Productions - initially wrong URL; fix_remaining_disabled_sources.sql
+--      found correct Humi/applytojobs page and re-enables it.
 
 -- 4c. Glama - SSR page, fixable with proper selectors
 UPDATE job_sources
@@ -196,7 +201,8 @@ SET status = 'active',
     config_json = json('{"type":"html","url":"https://glama.ai/careers","job_selector":"a[href*=\"/careers/\"]","fields":{"title":"::text","url":"@href"},"company_name":"Glama"}')
 WHERE id = 'de8c9ee8-94a0-4937-a3e6-bccfcf5a0164';
 
--- 4d. Pharmavise - no job listings structure, keep disabled
+-- 4d. Pharmavise - initially no listings structure found; fix_remaining_disabled_sources.sql
+--      discovered a working Zoho Recruit API endpoint and re-enables it.
 -- 4e. RealPage - iCIMS HTML board
 UPDATE job_sources
 SET status = 'active',

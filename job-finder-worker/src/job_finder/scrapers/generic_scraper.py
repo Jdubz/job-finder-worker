@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import feedparser
 import json
 import requests
+from requests.exceptions import InvalidSchema, InvalidURL, MissingSchema, URLRequired
 from bs4 import BeautifulSoup
 
 from job_finder.exceptions import (
@@ -362,15 +363,22 @@ class GenericScraper:
             raise
         except requests.Timeout as e:
             # Convert timeouts to transient errors so the strike system handles them
-            logger.warning(f"Request timeout scraping {self.config.url}: {e}")
+            logger.debug(f"Request timeout scraping {self.config.url}: {e}")
             raise ScrapeTransientError(
                 self.config.url,
                 f"Request timed out (timeout={self.request_timeout}s)",
                 status_code=None,
             ) from e
+        except (URLRequired, MissingSchema, InvalidSchema, InvalidURL) as e:
+            # These are config errors, not transient — don't retry
+            raise ScrapeConfigError(
+                self.config.url,
+                f"Invalid URL configuration: {e}",
+                status_code=None,
+            ) from e
         except requests.RequestException as e:
             # Surface network/HTTP failures as transient errors for retry
-            logger.error(f"Request error scraping {self.config.url}: {e}")
+            logger.debug(f"Request error scraping {self.config.url}: {e}")
             raise ScrapeTransientError(
                 self.config.url,
                 f"Network error: {e}",

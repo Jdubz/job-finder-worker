@@ -1,5 +1,8 @@
--- Fix remaining 14 disabled sources (excluding 3 anti-bot)
+-- Fix remaining 14 disabled sources (excluding 3 anti-bot) - (STEP 2 of 2)
 -- Run against: /srv/job-finder/data/jobfinder.db
+-- EXECUTION ORDER: Run AFTER fix_disabled_sources.sql. This script supersedes some
+-- decisions from step 1 (e.g., Stord, Digital Resource, DreamRider, Pharmavise)
+-- after deeper investigation discovered working APIs.
 
 -- ============================================================================
 -- Sources with discovered API endpoints
@@ -50,18 +53,21 @@ WHERE id = 'f306a62a-b9e9-4ef4-95c8-08ecd290a3f2';
 -- 7. MORI Associates -> JazzHR/applytojob (4 jobs, SSR HTML)
 UPDATE job_sources
 SET status = 'active',
+    source_type = 'html',
     config_json = json('{"type":"html","url":"https://moriassociates.applytojob.com/apply","job_selector":"li.list-group-item","fields":{"title":"a, .job-title, h3","url":"a@href"},"company_name":"MORI Associates","base_url":"https://moriassociates.applytojob.com"}')
 WHERE id = 'f3f41ac4-089a-47f4-8a3e-72ac16fb7a5a';
 
 -- 8. Radity -> Manatal careers-page.com (6 jobs, SSR HTML)
 UPDATE job_sources
 SET status = 'active',
+    source_type = 'html',
     config_json = json('{"type":"html","url":"https://radity.careers-page.com/","job_selector":"article.job-card","fields":{"title":".jobs-title","url":"a@href"},"company_name":"Radity","base_url":"https://radity.careers-page.com"}')
 WHERE id = '84f87fb3-b9f1-4616-b94d-284ea882f78b';
 
 -- 9. DreamRider Productions -> Humi/applytojobs (1 job, SSR HTML)
 UPDATE job_sources
 SET status = 'active',
+    source_type = 'html',
     config_json = json('{"type":"html","url":"https://dreamriderproductions.applytojobs.ca/","job_selector":"div.job-posting","fields":{"title":"a","url":"a@href"},"company_name":"DreamRider Productions","base_url":"https://dreamriderproductions.applytojobs.ca"}')
 WHERE id = '7cfd7788-c8d5-4929-a0ba-a0e5357caad4';
 
