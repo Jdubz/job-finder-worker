@@ -1406,15 +1406,11 @@ ipcMain.handle(
         options.content
       )
 
-      // If still awaiting review (e.g., for both documents), return that status immediately
+      // If still awaiting review (e.g., for both documents), return that status immediately.
+      // Note: We do NOT send a "generation-awaiting-review" IPC event here because the
+      // invoke return already carries the status, and submitReview() handles it directly.
+      // Sending both would cause duplicate fetchDraftContent() calls that race each other.
       if (stepResult.status === "awaiting_review") {
-        if (mainWindow) {
-          mainWindow.webContents.send("generation-awaiting-review", {
-            requestId: options.requestId,
-            status: "awaiting_review",
-            steps: stepResult.steps,
-          })
-        }
         return {
           success: true,
           data: {

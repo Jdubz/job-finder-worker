@@ -168,7 +168,7 @@ def test_enrich_smartrecruiters_detail(monkeypatch):
 
 
 def test_enrich_workday_detail(monkeypatch):
-    """Workday detail fetch should hydrate description and normalize URL."""
+    """Workday detail fetch should hydrate description via CXS API URL."""
 
     payload = {
         "jobPostingInfo": {
@@ -199,7 +199,8 @@ def test_enrich_workday_detail(monkeypatch):
     cfg = SourceConfig.from_dict(
         {
             "type": "api",
-            "url": "https://acme.wd5.myworkdayjobs.com/en-US/careers",
+            "url": "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/jobs",
+            "base_url": "https://acme.wd5.myworkdayjobs.com/careers",
             "response_path": "jobPostings",
             "fields": {"title": "title", "url": "externalPath"},
         }
@@ -212,8 +213,113 @@ def test_enrich_workday_detail(monkeypatch):
     assert enriched["title"] == "Platform Engineer"
     assert enriched["location"] == "San Francisco, CA"
     assert enriched["posted_date"] == "2025-12-07"
-    assert enriched["url"].endswith("job/12345")
-    assert "job/12345" in fake_get.last_url
+    # URL should be the human-readable URL, not the CXS API URL
+    assert enriched["url"] == "https://acme.wd5.myworkdayjobs.com/careers/job/12345"
+    # The fetch should have used the CXS API URL
+    assert "/wday/cxs/acme/careers/job/12345" in fake_get.last_url
+
+
+def test_enrich_workday_converts_absolute_human_url_to_cxs(monkeypatch):
+    """Workday enrichment should convert absolute human URLs to CXS API URLs."""
+
+    payload = {
+        "jobPostingInfo": {
+            "jobDescription": "<p>Full description from CXS API</p>",
+        }
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        fake_get.last_url = url
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://gevernova.wd5.myworkdayjobs.com/wday/cxs/gevernova/Vernova_ExternalSite/jobs",
+            "base_url": "https://gevernova.wd5.myworkdayjobs.com/Vernova_ExternalSite",
+            "response_path": "jobPostings",
+            "fields": {"title": "title", "url": "externalPath"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    # Simulate absolute human URL (as stored in job_listings)
+    job = {
+        "url": "https://gevernova.wd5.myworkdayjobs.com/vernova_externalsite/job/Remote/Senior-Engineer_R5032667",
+        "description": "",
+    }
+
+    enriched = scraper._enrich_from_detail(job)
+    assert enriched["description"] == "<p>Full description from CXS API</p>"
+    # Fetch URL should be the CXS API format
+    assert "/wday/cxs/gevernova/Vernova_ExternalSite/job/" in fake_get.last_url
+    # Job URL should remain the human-readable URL
+    assert (
+        enriched["url"]
+        == "https://gevernova.wd5.myworkdayjobs.com/vernova_externalsite/job/Remote/Senior-Engineer_R5032667"
+    )
+
+
+def test_enrich_workday_relative_url_with_cxs_config_derives_human_url(monkeypatch):
+    """When base_url is not set and config.url is CXS, human URL should strip /wday/cxs/{tenant}."""
+
+    payload = {
+        "jobPostingInfo": {
+            "jobDescription": "<p>Full job description</p>",
+        }
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        fake_get.last_url = url
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    # Config has NO base_url; url is a CXS endpoint
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://gevernova.wd5.myworkdayjobs.com/wday/cxs/gevernova/Vernova_ExternalSite/jobs",
+            "response_path": "jobPostings",
+            "fields": {"title": "title", "url": "externalPath"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    # Relative URL as returned by Workday API
+    job = {
+        "url": "job/Remote/Senior-Engineer_R5032667",
+        "description": "",
+    }
+
+    enriched = scraper._enrich_from_detail(job)
+    # Human URL should NOT contain /wday/cxs/
+    assert "/wday/cxs/" not in enriched["url"]
+    assert (
+        enriched["url"]
+        == "https://gevernova.wd5.myworkdayjobs.com/Vernova_ExternalSite/job/Remote/Senior-Engineer_R5032667"
+    )
+    assert enriched["description"] == "<p>Full job description</p>"
 
 
 def test_should_enrich_rules(monkeypatch):
@@ -236,6 +342,70 @@ def test_should_enrich_rules(monkeypatch):
     assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is False
     scraper.config.follow_detail = True
     assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is True
+
+
+class TestShouldEnrichDescriptionQualityGate:
+    """Tests for description length quality gate in _should_enrich."""
+
+    def test_rss_enriches_when_description_is_short(self):
+        """RSS sources should trigger enrichment when description is too short."""
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "rss",
+                "url": "https://example.com/feed.xml",
+                "fields": {"title": "title", "url": "link", "description": "description"},
+            }
+        )
+        scraper = GenericScraper(cfg)
+        # Short description like ManTech's "- R63172" should trigger enrichment
+        assert (
+            scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"}) is True
+        )
+
+    def test_rss_does_not_enrich_when_description_is_adequate(self):
+        """RSS sources should skip enrichment when description is long enough."""
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "rss",
+                "url": "https://example.com/feed.xml",
+                "fields": {"title": "title", "url": "link", "description": "description"},
+            }
+        )
+        scraper = GenericScraper(cfg)
+        long_desc = "A" * 200
+        assert (
+            scraper._should_enrich({"description": long_desc, "posted_date": "2026-01-01"}) is False
+        )
+
+    def test_html_enriches_when_description_is_empty(self):
+        """HTML sources should trigger enrichment when description is empty."""
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "html",
+                "url": "https://example.com/jobs",
+                "job_selector": ".job",
+                "fields": {"title": "h2", "url": "a@href"},
+            }
+        )
+        scraper = GenericScraper(cfg)
+        assert scraper._should_enrich({"description": "", "posted_date": "2026-01-01"}) is True
+
+    def test_api_ignores_description_quality(self):
+        """API sources should NOT auto-enrich based on description length."""
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "api",
+                "url": "https://example.com/api/jobs",
+                "response_path": "jobs",
+                "fields": {"title": "title", "url": "url", "description": "desc"},
+            }
+        )
+        scraper = GenericScraper(cfg)
+        # Short description on API source should NOT trigger enrichment
+        assert (
+            scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"})
+            is False
+        )
 
 
 # ============================================================
@@ -525,6 +695,76 @@ class TestEnrichFromDetailHtmlFallback:
         enriched = scraper._enrich_from_detail(job)
         # JSON-LD date should take priority
         assert enriched["posted_date"] == "2025-12-01"
+
+
+class TestWorkdayDetailApiUrl:
+    """Tests for converting Workday human URLs to CXS API URLs."""
+
+    def _make_scraper(self, config_url, base_url=None):
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "api",
+                "url": config_url,
+                "base_url": base_url,
+                "response_path": "jobPostings",
+                "fields": {"title": "title", "url": "externalPath"},
+            }
+        )
+        return GenericScraper(cfg)
+
+    def test_converts_absolute_human_url_to_cxs(self):
+        scraper = self._make_scraper(
+            config_url="https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/jobs",
+            base_url="https://acme.wd5.myworkdayjobs.com/careers",
+        )
+        result = scraper._workday_detail_api_url(
+            "https://acme.wd5.myworkdayjobs.com/careers/job/Remote/Engineer_R123"
+        )
+        assert (
+            result
+            == "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Remote/Engineer_R123"
+        )
+
+    def test_converts_relative_url_to_cxs(self):
+        scraper = self._make_scraper(
+            config_url="https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/jobs",
+            base_url="https://acme.wd5.myworkdayjobs.com/careers",
+        )
+        result = scraper._workday_detail_api_url("job/Remote/Engineer_R123")
+        assert (
+            result
+            == "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Remote/Engineer_R123"
+        )
+
+    def test_already_cxs_url_returned_as_is(self):
+        scraper = self._make_scraper(
+            config_url="https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/jobs",
+        )
+        cxs_url = "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/job/Engineer_R123"
+        assert scraper._workday_detail_api_url(cxs_url) == cxs_url
+
+    def test_fallback_when_config_url_not_cxs_format(self):
+        """When config URL isn't in CXS format, derive tenant from hostname."""
+        scraper = self._make_scraper(
+            config_url="https://acme.wd5.myworkdayjobs.com/careers",
+        )
+        result = scraper._workday_detail_api_url(
+            "https://acme.wd5.myworkdayjobs.com/careers/job/Engineer_R123"
+        )
+        assert "/wday/cxs/acme/" in result
+        assert result.endswith("/job/Engineer_R123")
+
+    def test_handles_language_prefix_in_fallback(self):
+        """Fallback should strip language prefix like /en-US/ from site path."""
+        scraper = self._make_scraper(
+            config_url="https://acme.wd5.myworkdayjobs.com/en-US/careers",
+        )
+        result = scraper._workday_detail_api_url(
+            "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Engineer_R123"
+        )
+        assert "/wday/cxs/acme/" in result
+        assert "/en-US/" not in result
+        assert result.endswith("/job/Engineer_R123")
 
 
 class TestFetchDelaySettings:

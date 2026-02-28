@@ -10,6 +10,11 @@ import type {
   AgentStatusData,
 } from "../types.js"
 import type { ResumeContent, CoverLetterContent, DraftContentResponse } from "@shared/types"
+import {
+  handleGenerationAwaitingReview as handleGenerationAwaitingReviewImpl,
+  submitReview as submitReviewImpl,
+} from "./review-flow.js"
+import type { ReviewFlowState, ReviewFlowDeps } from "./review-flow.js"
 
 // ============================================================================
 // Agent Output Parser (inlined to avoid ES module issues in renderer)
@@ -901,50 +906,46 @@ function cleanupGenerationProgressListener() {
 // Document Review Form
 // ============================================================================
 
-// Handle generation awaiting review
+// Review flow state proxy — bridges extracted module with app.ts `let` variables
+const reviewState: ReviewFlowState = {
+  get currentReviewRequestId() { return currentReviewRequestId },
+  set currentReviewRequestId(v) { currentReviewRequestId = v },
+  get currentReviewDocumentType() { return currentReviewDocumentType },
+  set currentReviewDocumentType(v) { currentReviewDocumentType = v },
+  get currentReviewContent() { return currentReviewContent },
+  set currentReviewContent(v) { currentReviewContent = v },
+}
+
+// Review flow dependencies — wires extracted module to app.ts DOM/API/callbacks
+const reviewDeps: ReviewFlowDeps = {
+  api: {
+    fetchDraftContent: (requestId) => api.fetchDraftContent(requestId),
+    submitDocumentReview: (options) => api.submitDocumentReview(options),
+    hideBrowserView: () => api.hideBrowserView(),
+    showBrowserView: () => api.showBrowserView(),
+  },
+  dom: {
+    reviewModalOverlay,
+    reviewTitle,
+    reviewContent,
+    approveReviewBtn,
+    cancelReviewBtn,
+    rejectReviewBtn,
+    reviewFeedbackArea,
+    reviewFeedbackInput,
+    generationProgress,
+    generateBtn,
+  },
+  setStatus,
+  renderReviewForm,
+  collectReviewedContent,
+  handleGenerationProgress,
+  log,
+}
+
+// Handle generation awaiting review — delegates to extracted module
 async function handleGenerationAwaitingReview(progress: GenerationProgress) {
-  log.info("Generation awaiting review:", progress.requestId)
-
-  // Show loading state while fetching draft
-  setStatus("Loading content for review...", "loading")
-
-  // Fetch the draft content
-  const result = await api.fetchDraftContent(progress.requestId)
-  if (!result.success || !result.data) {
-    setStatus(result.message || "Failed to fetch draft content", "error")
-    generationProgress.classList.add("hidden")
-    generateBtn.disabled = false
-    return
-  }
-
-  const draft = result.data
-  currentReviewRequestId = progress.requestId
-  currentReviewDocumentType = draft.documentType
-  currentReviewContent = draft.content
-  log.info("handleGenerationAwaitingReview: State set", {
-    requestId: currentReviewRequestId,
-    documentType: currentReviewDocumentType,
-    hasContent: !!currentReviewContent
-  })
-
-  // Hide generation progress, show review modal
-  generationProgress.classList.add("hidden")
-
-  // Hide BrowserView so modal overlay is visible (BrowserView renders on top of HTML)
-  log.info("handleGenerationAwaitingReview: Hiding BrowserView...")
-  const hideResult = await api.hideBrowserView()
-  log.info("handleGenerationAwaitingReview: hideBrowserView result", hideResult)
-  reviewModalOverlay.classList.remove("hidden")
-  log.info("handleGenerationAwaitingReview: Modal shown")
-
-  // Set title based on document type
-  const docTypeLabel = draft.documentType === "resume" ? "resume" : "cover letter"
-  reviewTitle.textContent = draft.documentType === "resume" ? "Review Resume" : "Review Cover Letter"
-
-  // Render the editable content
-  renderReviewForm(draft.documentType, draft.content)
-
-  setStatus(`Review your ${docTypeLabel} before generating PDF`, "loading")
+  return handleGenerationAwaitingReviewImpl(progress, reviewState, reviewDeps)
 }
 
 // Render the review form based on document type
@@ -1170,74 +1171,9 @@ function collectCoverLetterContent(original: CoverLetterContent): CoverLetterCon
   }
 }
 
-// Submit the reviewed content
+// Submit the reviewed content — delegates to extracted module
 async function submitReview() {
-  log.info("submitReview called", { currentReviewRequestId, currentReviewDocumentType })
-
-  if (!currentReviewRequestId || !currentReviewDocumentType) {
-    log.error("submitReview: No review in progress", { currentReviewRequestId, currentReviewDocumentType })
-    setStatus("No review in progress", "error")
-    return
-  }
-
-  const editedContent = collectReviewedContent()
-  if (!editedContent) {
-    log.error("submitReview: Failed to collect content")
-    setStatus("Failed to collect reviewed content", "error")
-    return
-  }
-
-  log.info("submitReview: Submitting...", { documentType: currentReviewDocumentType })
-  setStatus("Submitting review...", "loading")
-  approveReviewBtn.disabled = true
-
-  try {
-    const result = await api.submitDocumentReview({
-      requestId: currentReviewRequestId,
-      documentType: currentReviewDocumentType,
-      content: editedContent,
-    })
-
-    log.info("submitReview: Got result", { success: result.success, status: result.data?.status, message: result.message })
-
-    if (result.success && result.data) {
-      // Hide review modal temporarily
-      reviewModalOverlay.classList.add("hidden")
-      approveReviewBtn.disabled = false
-      currentReviewRequestId = null
-      currentReviewDocumentType = null
-      currentReviewContent = null
-      // Reset feedback area
-      reviewFeedbackArea.classList.add("hidden")
-      reviewFeedbackInput.value = ""
-      rejectReviewBtn.textContent = "Reject & Retry"
-
-      // Check if there's another review needed or if generation is complete
-      if (result.data.status === "awaiting_review") {
-        // Another document needs review - trigger the handler directly
-        // (handleGenerationAwaitingReview will hide BrowserView again)
-        setStatus("Review submitted. Loading next document...", "loading")
-        await handleGenerationAwaitingReview(result.data)
-      } else {
-        // Restore BrowserView now that modal is closed
-        await api.showBrowserView()
-        if (result.data.status === "completed") {
-          handleGenerationProgress(result.data)
-        } else {
-          // Generation is continuing
-          generationProgress.classList.remove("hidden")
-          setStatus("Generating PDF...", "loading")
-        }
-      }
-    } else {
-      setStatus(result.message || "Failed to submit review", "error")
-      approveReviewBtn.disabled = false
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to submit review"
-    setStatus(message, "error")
-    approveReviewBtn.disabled = false
-  }
+  return submitReviewImpl(reviewState, reviewDeps)
 }
 
 // Cancel the review
