@@ -575,8 +575,9 @@ class TestGenericScraperAPI:
 
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_scrape_api_error_handling(self, mock_get):
-        """Test that API errors propagate (fail loud, fail early)."""
+        """Test that API errors are wrapped as ScrapeTransientError."""
         import requests
+        from job_finder.exceptions import ScrapeTransientError
 
         mock_get.side_effect = requests.RequestException("API Error")
 
@@ -587,7 +588,43 @@ class TestGenericScraperAPI:
         )
         scraper = GenericScraper(config)
 
-        with pytest.raises(requests.RequestException, match="API Error"):
+        with pytest.raises(ScrapeTransientError, match="Network error"):
+            scraper.scrape()
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_scrape_api_timeout_handling(self, mock_get):
+        """Test that API timeouts are wrapped as ScrapeTransientError."""
+        import requests
+        from job_finder.exceptions import ScrapeTransientError
+
+        mock_get.side_effect = requests.Timeout("Request timed out")
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.example.com/jobs",
+            fields={"title": "title", "url": "url"},
+        )
+        scraper = GenericScraper(config)
+
+        with pytest.raises(ScrapeTransientError, match="Request timed out"):
+            scraper.scrape()
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_scrape_api_invalid_url_raises_config_error(self, mock_get):
+        """Test that invalid URL errors are raised as ScrapeConfigError, not transient."""
+        from requests.exceptions import MissingSchema
+        from job_finder.exceptions import ScrapeConfigError
+
+        mock_get.side_effect = MissingSchema("No scheme supplied")
+
+        config = SourceConfig(
+            type="api",
+            url="not-a-valid-url",
+            fields={"title": "title", "url": "url"},
+        )
+        scraper = GenericScraper(config)
+
+        with pytest.raises(ScrapeConfigError, match="Invalid URL configuration"):
             scraper.scrape()
 
 
