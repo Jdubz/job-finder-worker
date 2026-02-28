@@ -176,6 +176,12 @@ export async function submitReview(
         try {
           // Fetch and render next document in-place
           await handleGenerationAwaitingReview(result.data, state, deps)
+          // Guard: handleGenerationAwaitingReview returns early (no throw)
+          // when fetchDraftContent resolves with {success:false}, leaving
+          // state null. Detect and treat as failure.
+          if (!state.currentReviewDocumentType || !state.currentReviewContent) {
+            throw new Error("Failed to load next document for review")
+          }
           // Re-enable buttons after successfully loading the next document
           deps.dom.approveReviewBtn.disabled = false
           deps.dom.cancelReviewBtn.disabled = false

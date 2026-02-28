@@ -423,6 +423,44 @@ describe("submitReview", () => {
     expect(deps.setStatus).toHaveBeenCalledWith("Network timeout", "error")
   })
 
+  it("next document non-throwing fetch failure: closes modal, restores BrowserView, clears state", async () => {
+    const awaitingProgress = makeProgress({ status: "awaiting_review" })
+    const state = createState({
+      currentReviewRequestId: "req-123",
+      currentReviewDocumentType: "resume",
+      currentReviewContent: { ...MOCK_RESUME_CONTENT },
+    })
+    const deps = createDeps({
+      collectReviewedContent: vi.fn().mockReturnValue(MOCK_RESUME_CONTENT),
+      api: {
+        submitDocumentReview: vi.fn().mockResolvedValue({
+          success: true,
+          data: awaitingProgress,
+        }),
+        // fetchDraftContent resolves with {success:false} (no rejection)
+        fetchDraftContent: vi.fn().mockResolvedValue({
+          success: false,
+          message: "Draft not found",
+        }),
+        hideBrowserView: vi.fn().mockResolvedValue({ success: true }),
+        showBrowserView: vi.fn().mockResolvedValue({ success: true }),
+      },
+    })
+
+    await submitReview(state, deps)
+
+    // Modal should be closed on failure
+    expect(deps.dom.reviewModalOverlay.classList.add).toHaveBeenCalledWith("hidden")
+    // BrowserView should be restored
+    expect(deps.api.showBrowserView).toHaveBeenCalled()
+    // State should be fully cleared
+    expect(state.currentReviewRequestId).toBeNull()
+    expect(state.currentReviewDocumentType).toBeNull()
+    expect(state.currentReviewContent).toBeNull()
+    // Error message shown
+    expect(deps.setStatus).toHaveBeenCalledWith("Failed to load next document for review", "error")
+  })
+
   it("requestId preserved across document transitions until flow completes", async () => {
     const awaitingProgress = makeProgress({ status: "awaiting_review" })
     const state = createState({

@@ -271,6 +271,59 @@ def test_enrich_workday_converts_absolute_human_url_to_cxs(monkeypatch):
     )
 
 
+def test_enrich_workday_relative_url_with_cxs_config_derives_human_url(monkeypatch):
+    """When base_url is not set and config.url is CXS, human URL should strip /wday/cxs/{tenant}."""
+
+    payload = {
+        "jobPostingInfo": {
+            "jobDescription": "<p>Full job description</p>",
+        }
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        fake_get.last_url = url
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr(
+        "job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0
+    )
+
+    # Config has NO base_url; url is a CXS endpoint
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://gevernova.wd5.myworkdayjobs.com/wday/cxs/gevernova/Vernova_ExternalSite/jobs",
+            "response_path": "jobPostings",
+            "fields": {"title": "title", "url": "externalPath"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    # Relative URL as returned by Workday API
+    job = {
+        "url": "job/Remote/Senior-Engineer_R5032667",
+        "description": "",
+    }
+
+    enriched = scraper._enrich_from_detail(job)
+    # Human URL should NOT contain /wday/cxs/
+    assert "/wday/cxs/" not in enriched["url"]
+    assert (
+        enriched["url"]
+        == "https://gevernova.wd5.myworkdayjobs.com/Vernova_ExternalSite/job/Remote/Senior-Engineer_R5032667"
+    )
+    assert enriched["description"] == "<p>Full job description</p>"
+
+
 def test_should_enrich_rules(monkeypatch):
     cfg = SourceConfig.from_dict(
         {

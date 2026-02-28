@@ -1207,10 +1207,15 @@ class GenericScraper:
         job_url = job.get("url") or ""
         detail_url = self._workday_detail_api_url(job_url)
 
-        # Keep the human-readable URL for the listing
-        base_url = self.config.base_url or self.config.url
+        # Keep the human-readable URL for the listing.
+        # If base_url falls back to config.url (a CXS URL), strip
+        # /wday/cxs/{tenant} and /jobs to derive the human base URL.
+        human_base = self.config.base_url or self.config.url
+        if "/wday/cxs/" in human_base:
+            human_base = re.sub(r"/wday/cxs/[^/]+", "", human_base)
+            human_base = re.sub(r"/jobs/?$", "", human_base)
         if not job_url.startswith("http"):
-            human_url = f"{base_url.rstrip('/')}/{job_url.lstrip('/')}"
+            human_url = f"{human_base.rstrip('/')}/{job_url.lstrip('/')}"
         else:
             human_url = job_url
 
