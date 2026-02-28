@@ -294,9 +294,7 @@ def test_enrich_workday_relative_url_with_cxs_config_derives_human_url(monkeypat
         return Resp()
 
     monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
-    monkeypatch.setattr(
-        "job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0
-    )
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
 
     # Config has NO base_url; url is a CXS endpoint
     cfg = SourceConfig.from_dict(
