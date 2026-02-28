@@ -360,10 +360,22 @@ class GenericScraper:
         except ScrapeBlockedError:
             # Let blocking errors propagate so the caller can disable the source
             raise
+        except requests.Timeout as e:
+            # Convert timeouts to transient errors so the strike system handles them
+            logger.warning(f"Request timeout scraping {self.config.url}: {e}")
+            raise ScrapeTransientError(
+                self.config.url,
+                f"Request timed out (timeout={self.request_timeout}s)",
+                status_code=None,
+            ) from e
         except requests.RequestException as e:
-            # Surface network/HTTP failures so callers can record failure or disable the source
+            # Surface network/HTTP failures as transient errors for retry
             logger.error(f"Request error scraping {self.config.url}: {e}")
-            raise
+            raise ScrapeTransientError(
+                self.config.url,
+                f"Network error: {e}",
+                status_code=None,
+            ) from e
         except Exception as e:
             logger.error(f"Error scraping {self.config.url}: {e}")
             raise

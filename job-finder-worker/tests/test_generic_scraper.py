@@ -575,8 +575,9 @@ class TestGenericScraperAPI:
 
     @patch("job_finder.scrapers.generic_scraper.requests.get")
     def test_scrape_api_error_handling(self, mock_get):
-        """Test that API errors propagate (fail loud, fail early)."""
+        """Test that API errors are wrapped as ScrapeTransientError."""
         import requests
+        from job_finder.exceptions import ScrapeTransientError
 
         mock_get.side_effect = requests.RequestException("API Error")
 
@@ -587,7 +588,7 @@ class TestGenericScraperAPI:
         )
         scraper = GenericScraper(config)
 
-        with pytest.raises(requests.RequestException, match="API Error"):
+        with pytest.raises(ScrapeTransientError, match="Network error"):
             scraper.scrape()
 
 
