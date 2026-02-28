@@ -348,7 +348,6 @@ function isBrowserViewAlive(): boolean {
  */
 const AUTH_PROVIDER_HOSTS = new Set([
   "linkedin.com",
-  "www.linkedin.com",
   "accounts.google.com",
   "login.microsoftonline.com",
   "login.live.com",
@@ -364,7 +363,7 @@ function isOAuthPopup(url: string): boolean {
     const parsed = new URL(url)
     // Well-known identity provider domains — always auth flows when opened as popups
     const host = parsed.hostname.replace(/^www\./, "")
-    if (AUTH_PROVIDER_HOSTS.has(host) || AUTH_PROVIDER_HOSTS.has(parsed.hostname)) return true
+    if (AUTH_PROVIDER_HOSTS.has(host)) return true
     if (parsed.searchParams.has("redirect_uri")) return true
     // Match common auth paths: /oauth, /oauth2, /authorize, /auth, /saml, /sso
     if (/\/(oauth2?|authorize|auth|saml|sso)\b/i.test(parsed.pathname)) return true
@@ -429,63 +428,83 @@ async function createWindow(): Promise<void> {
   // Allow all popups — the BrowserView should behave like a normal browser.
   // We only need special handling for OAuth/SSO popups to protect the opener
   // page from being navigated away by the auth provider's redirect chain.
-  let pendingPopupUrl = ""
   browserView.webContents.setWindowOpenHandler(({ url }) => {
     logger.info(`Allowing popup: ${url}`)
-    pendingPopupUrl = url
     return { action: "allow" }
   })
 
-  browserView.webContents.on("did-create-window", (childWindow) => {
-    // getURL() is empty at creation time; use the URL captured in setWindowOpenHandler
-    const childUrl = pendingPopupUrl
-    pendingPopupUrl = ""
-    logger.info(`Child window created: ${childUrl}`)
+  browserView.webContents.on("did-create-window", (childWindow, details) => {
+    logger.info(`Child window created: ${details.url}`)
 
-    // For OAuth/SSO popups, protect the opener page from cross-origin
-    // redirects. Some ATS providers (e.g. eightfold.ai) let the auth
-    // provider redirect window.opener.location, which navigates the
-    // application form away and leaves the user on a broken callback page.
-    if (isOAuthPopup(childUrl)) {
-      logger.info(`[OAuth] Protecting opener during auth popup: ${childUrl}`)
+    // Protect the opener page from cross-origin redirects during OAuth.
+    // Some ATS providers (e.g. eightfold.ai) let the auth provider redirect
+    // window.opener.location, which navigates the application form away.
+    //
+    // We set up protection in a helper so it can be activated either
+    // immediately (URL is already an auth provider) or lazily (popup opens
+    // as about:blank and later navigates to an auth provider via JS).
+    let openerProtected = false
+    let blockOpenerRedirect: ((event: Electron.Event, url: string) => void) | null = null
+    let oauthTimeout: ReturnType<typeof setTimeout> | null = null
 
-      const preAuthOrigin = isBrowserViewAlive()
-        ? new URL(browserView!.webContents.getURL()).origin
-        : null
-      const blockOpenerRedirect = (event: Electron.Event, url: string) => {
+    const enableOpenerProtection = (triggerUrl: string) => {
+      if (openerProtected || !isBrowserViewAlive()) return
+      openerProtected = true
+      logger.info(`[OAuth] Protecting opener during auth popup: ${triggerUrl}`)
+
+      const preAuthOrigin = new URL(browserView!.webContents.getURL()).origin
+      blockOpenerRedirect = (event: Electron.Event, url: string) => {
         try {
-          const navOrigin = new URL(url).origin
-          if (preAuthOrigin && navOrigin === preAuthOrigin) {
-            return // Allow same-origin navigations
-          }
+          if (new URL(url).origin === preAuthOrigin) return
         } catch { /* malformed URL — block it */ }
         logger.info(`[OAuth] Blocking cross-origin opener navigation during active popup: ${url}`)
         event.preventDefault()
       }
-      if (isBrowserViewAlive()) {
-        browserView!.webContents.on("will-navigate", blockOpenerRedirect)
-      }
+      browserView!.webContents.on("will-navigate", blockOpenerRedirect)
 
-      const cleanupOAuth = () => {
-        if (isBrowserViewAlive()) {
-          browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
-        }
-      }
-
-      const oauthTimeout = setTimeout(() => {
+      oauthTimeout = setTimeout(() => {
         if (!childWindow.isDestroyed()) {
           logger.info("Closing stale OAuth popup after timeout")
           childWindow.close()
         }
-        cleanupOAuth()
       }, OAUTH_POPUP_TIMEOUT_MS)
+    }
 
+    const cleanupOAuth = () => {
+      if (oauthTimeout) clearTimeout(oauthTimeout)
+      if (blockOpenerRedirect && isBrowserViewAlive()) {
+        browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
+      }
+    }
+
+    // If the popup URL is already a known auth provider, protect immediately
+    if (isOAuthPopup(details.url)) {
+      enableOpenerProtection(details.url)
+    } else {
+      // For about:blank or other popups that may redirect to an auth provider
+      // via JS, monitor navigations and enable protection lazily.
+      const onChildNavigate = (_event: Electron.Event, url: string) => {
+        if (isOAuthPopup(url)) {
+          enableOpenerProtection(url)
+          // Stop listening — protection is active, no need to keep checking
+          childWindow.webContents.removeListener("did-navigate", onChildNavigate)
+        }
+      }
+      childWindow.webContents.on("did-navigate", onChildNavigate)
+
+      // Clean up the listener when the popup closes, in case it never
+      // navigated to an auth provider
       childWindow.on("closed", () => {
-        clearTimeout(oauthTimeout)
-        cleanupOAuth()
-        logger.info("[OAuth] Popup closed, opener navigation unblocked")
+        childWindow.webContents.removeListener("did-navigate", onChildNavigate)
       })
     }
+
+    childWindow.on("closed", () => {
+      cleanupOAuth()
+      if (openerProtected) {
+        logger.info("[OAuth] Popup closed, opener navigation unblocked")
+      }
+    })
   })
 
   // Notify renderer when URL changes
