@@ -1743,9 +1743,10 @@ ipcMain.handle(
         })
       })
 
-      // Get complete form fill prompt (workflow + safety rules)
-      // The prompt is now hardcoded in the Electron app - see form-fill-safety.ts
-      const prompt = getFormFillPrompt()
+      // Get complete form fill prompt with user profile and job context inlined.
+      // Embedding context in the prompt avoids parallel tool calls on the first turn,
+      // which triggers a Claude CLI bug ("tool_use ids must be unique").
+      const prompt = getFormFillPrompt(profileText, options.jobContext)
       logger.info(`[FillForm] Loaded prompt (${prompt.length} chars total)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
@@ -1772,6 +1773,7 @@ ipcMain.handle(
         "--strict-mcp-config",
         "--debug",
       ]
+
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
       // Platform-specific spawn options:
       // - Windows: shell:true + windowsHide:true hides console; detached:false avoids visible window
