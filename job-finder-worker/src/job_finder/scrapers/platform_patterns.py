@@ -455,9 +455,12 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         api_url_template="https://{company}.applytojob.com/apply/",
         response_path="",
         fields={
-            "title": "title",
-            "url": "url",
+            "title": "a, .job-title, h3",
+            "url": "a@href",
         },
+        job_selector="li.list-group-item",
+        config_type="html",
+        base_url_template="https://{company}.applytojob.com",
         validation_key="",
         auth_required=True,  # JazzHR API requires authentication
     ),
@@ -473,7 +476,9 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
             "location": ".mt-1.text-md span:nth-child(3)",
             "department": ".mt-1.text-md span:first-child",
         },
-        job_selector="li.w-full:has(a[href*='/jobs/'])",
+        # Note: :has() pseudo-class is NOT supported by BeautifulSoup's soupsieve.
+        # Use a parent container class instead.
+        job_selector="li.w-full",
         config_type="html",
         validation_key="",
     ),
