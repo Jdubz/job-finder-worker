@@ -105,7 +105,6 @@ import { initiateLogin, logout, restoreSession, getAuthHeaders } from "./auth-ma
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
 // Timeout for closing orphaned popup windows (5 seconds)
-const POPUP_CLEANUP_TIMEOUT_MS = 5000
 
 // Timeout for OAuth/SSO popups (default 2 min — configurable for enterprise SSO with 2FA)
 const OAUTH_POPUP_TIMEOUT_MS = (() => {
@@ -342,10 +341,30 @@ function isBrowserViewAlive(): boolean {
   return !!browserView?.webContents && !browserView.webContents.isDestroyed()
 }
 
+/**
+ * Well-known identity provider hostnames whose popups are always auth flows.
+ * These use non-standard paths (e.g. LinkedIn's /uas/login, /checkpoint/lg/login)
+ * that don't match generic OAuth path patterns.
+ */
+const AUTH_PROVIDER_HOSTS = new Set([
+  "linkedin.com",
+  "www.linkedin.com",
+  "accounts.google.com",
+  "login.microsoftonline.com",
+  "login.live.com",
+  "appleid.apple.com",
+  "github.com",
+  "auth0.com",
+  "login.salesforce.com",
+])
+
 /** Detect OAuth/SSO popup URLs that must open as real windows. */
 function isOAuthPopup(url: string): boolean {
   try {
     const parsed = new URL(url)
+    // Well-known identity provider domains — always auth flows when opened as popups
+    const host = parsed.hostname.replace(/^www\./, "")
+    if (AUTH_PROVIDER_HOSTS.has(host) || AUTH_PROVIDER_HOSTS.has(parsed.hostname)) return true
     if (parsed.searchParams.has("redirect_uri")) return true
     // Match common auth paths: /oauth, /oauth2, /authorize, /auth, /saml, /sso
     if (/\/(oauth2?|authorize|auth|saml|sso)\b/i.test(parsed.pathname)) return true
@@ -407,58 +426,29 @@ async function createWindow(): Promise<void> {
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
-  // Track whether the next popup is an OAuth/SSO flow that needs a real window
-  let nextPopupIsOAuth = false
-
-  // Intercept new window/tab requests and navigate in the same BrowserView
-  // This prevents job application pages from opening in separate windows
-  // which would break the form fill flow
+  // Allow all popups — the BrowserView should behave like a normal browser.
+  // We only need special handling for OAuth/SSO popups to protect the opener
+  // page from being navigated away by the auth provider's redirect chain.
+  let pendingPopupUrl = ""
   browserView.webContents.setWindowOpenHandler(({ url }) => {
-    logger.info(`Intercepted new window request: ${url}`)
-
-    // For about:blank or javascript: URLs, sites often open a blank window
-    // and then redirect via JS. We need to allow these to open so we can
-    // capture the redirect. Return "allow" and handle in did-create-window.
-    if (!url || url === "about:blank" || url.startsWith("javascript:")) {
-      logger.info(`Allowing popup for redirect capture: ${url}`)
-      return { action: "allow" }
-    }
-
-    // OAuth/SSO popups must open as real windows so the original page
-    // (the opener) stays intact to receive the auth callback via postMessage.
-    if (isOAuthPopup(url)) {
-      logger.info(`Allowing OAuth/SSO popup: ${url}`)
-      nextPopupIsOAuth = true
-      return { action: "allow" }
-    }
-
-    // For real URLs, navigate in the same BrowserView
-    if (isBrowserViewAlive()) {
-      browserView!.webContents.loadURL(url)
-    }
-    return { action: "deny" }
+    logger.info(`Allowing popup: ${url}`)
+    pendingPopupUrl = url
+    return { action: "allow" }
   })
 
-  // Capture child windows (popups) and redirect their navigation to main BrowserView
   browserView.webContents.on("did-create-window", (childWindow) => {
-    // OAuth/SSO popups must complete their flow uninterrupted — the opener
-    // page needs the popup alive to receive the auth callback.
-    if (nextPopupIsOAuth) {
-      nextPopupIsOAuth = false
-      logger.info("OAuth popup opened, letting it complete without interception")
+    // getURL() is empty at creation time; use the URL captured in setWindowOpenHandler
+    const childUrl = pendingPopupUrl
+    pendingPopupUrl = ""
+    logger.info(`Child window created: ${childUrl}`)
 
-      // Block the popup from navigating the main BrowserView via
-      // window.opener.location. Some ATS providers (e.g. eightfold.ai)
-      // redirect the opener during OAuth, which navigates the application
-      // page away and leaves the user on a broken callback page.
-      //
-      // Scope: only block cross-origin navigations (the OAuth redirect chain
-      // goes to different domains like LinkedIn/Google), while allowing
-      // same-origin navigations the application page itself may trigger.
-      //
-      // Note: will-navigate fires for renderer-initiated navigations only
-      // (JS, links, form submits). Our own loadURL() calls from the main
-      // process do NOT trigger will-navigate, so IPC handlers are unaffected.
+    // For OAuth/SSO popups, protect the opener page from cross-origin
+    // redirects. Some ATS providers (e.g. eightfold.ai) let the auth
+    // provider redirect window.opener.location, which navigates the
+    // application form away and leaves the user on a broken callback page.
+    if (isOAuthPopup(childUrl)) {
+      logger.info(`[OAuth] Protecting opener during auth popup: ${childUrl}`)
+
       const preAuthOrigin = isBrowserViewAlive()
         ? new URL(browserView!.webContents.getURL()).origin
         : null
@@ -476,18 +466,12 @@ async function createWindow(): Promise<void> {
         browserView!.webContents.on("will-navigate", blockOpenerRedirect)
       }
 
-      // Log popup navigations for debugging
-      childWindow.webContents.on("did-navigate", (_event: Electron.Event, url: string) => {
-        logger.info(`[OAuth popup] Navigated to: ${url}`)
-      })
-
       const cleanupOAuth = () => {
         if (isBrowserViewAlive()) {
           browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
         }
       }
 
-      // Still set a generous cleanup timeout in case the popup gets stuck
       const oauthTimeout = setTimeout(() => {
         if (!childWindow.isDestroyed()) {
           logger.info("Closing stale OAuth popup after timeout")
@@ -501,56 +485,7 @@ async function createWindow(): Promise<void> {
         cleanupOAuth()
         logger.info("[OAuth] Popup closed, opener navigation unblocked")
       })
-      return
     }
-
-    logger.info(`Child window created, setting up redirect capture`)
-
-    // Track timeout for cleanup
-    let cleanupTimeout: NodeJS.Timeout | null = null
-
-    // Handler for navigation events - close child and redirect to main view
-    const handleNavigation = (_event: Electron.Event, url: string) => {
-      if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
-        logger.info(`Capturing child window navigation: ${url}`)
-        if (isBrowserViewAlive()) {
-          browserView!.webContents.loadURL(url)
-        }
-        childWindow.close()
-      }
-    }
-
-    // Cleanup function to remove listeners and clear timeout
-    const cleanup = () => {
-      if (cleanupTimeout) {
-        clearTimeout(cleanupTimeout)
-        cleanupTimeout = null
-      }
-      if (!childWindow.isDestroyed()) {
-        childWindow.webContents.removeListener("will-navigate", handleNavigation)
-        childWindow.webContents.removeListener("did-navigate", handleNavigation)
-      }
-    }
-
-    // When the child window navigates to a real URL, close it and navigate main view
-    childWindow.webContents.on("will-navigate", handleNavigation)
-
-    // Also handle did-navigate for cases where will-navigate doesn't fire
-    childWindow.webContents.on("did-navigate", handleNavigation)
-
-    // Clean up listeners when window is closed
-    childWindow.on("closed", cleanup)
-
-    // Close after a timeout if no navigation happens (cleanup orphaned windows)
-    cleanupTimeout = setTimeout(() => {
-      if (!childWindow.isDestroyed()) {
-        const url = childWindow.webContents.getURL()
-        if (!url || url === "about:blank") {
-          logger.info(`Closing orphaned child window`)
-          childWindow.close()
-        }
-      }
-    }, POPUP_CLEANUP_TIMEOUT_MS)
   })
 
   // Notify renderer when URL changes
