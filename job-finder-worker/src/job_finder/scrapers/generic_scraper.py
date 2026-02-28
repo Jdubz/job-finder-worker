@@ -439,19 +439,25 @@ class GenericScraper:
         # Navigate to jobs array using response_path
         return self._navigate_path(data, self.config.response_path)
 
+    # Minimum description length to consider "adequate".  Anything shorter
+    # triggers detail-page enrichment for HTML/RSS sources (where the cost
+    # of an extra request is acceptable).
+    _MIN_DESCRIPTION_LENGTH = 200
+
     def _should_enrich(self, job: Dict[str, Any]) -> bool:
         """
         Decide whether to follow the detail page/API for enrichment.
 
         Rules:
         - For API sources: only if config.follow_detail is True (avoid thousands of detail hits)
-        - For HTML/RSS: if config.follow_detail OR description is missing OR posted_date is missing
+        - For HTML/RSS: if config.follow_detail OR description is missing/too short OR posted_date is missing
         """
         if self.config.type == "api":
             return self.config.follow_detail
+        desc = (job.get("description") or "").strip()
         return (
             self.config.follow_detail
-            or not (job.get("description") or "").strip()
+            or len(desc) < self._MIN_DESCRIPTION_LENGTH
             or not job.get("posted_date")
         )
 
@@ -1150,14 +1156,63 @@ class GenericScraper:
 
         return job
 
-    def _enrich_workday(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch Workday job detail for description and qualifications."""
-        external_path = job.get("url") or ""
+    def _workday_detail_api_url(self, job_url: str) -> str:
+        """Convert a Workday human/relative URL to the CXS API detail URL.
+
+        Human: https://{tenant}.{wd}.myworkdayjobs.com/{site_id}/job/{path}
+        API:   https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/job/{path}
+
+        The list API (config.url) is already in CXS format, so we derive the
+        detail base from it.  Falls back to hostname-based construction when
+        the config URL isn't in CXS format.
+        """
+        # Resolve relative URLs first
         base_url = self.config.base_url or self.config.url
-        if external_path.startswith("http"):
-            detail_url = external_path
+        if not job_url.startswith("http"):
+            job_url = f"{base_url.rstrip('/')}/{job_url.lstrip('/')}"
+
+        # Already a CXS URL? Return as-is.
+        if "/wday/cxs/" in job_url:
+            return job_url
+
+        # Derive CXS base from config URL (strip /jobs suffix)
+        config_url = self.config.url or ""
+        if "/wday/cxs/" in config_url:
+            cxs_base = re.sub(r"/jobs/?$", "", config_url)
         else:
-            detail_url = f"{base_url.rstrip('/')}/{external_path.lstrip('/')}"
+            # Fallback: construct CXS prefix from hostname
+            parsed = urlparse(job_url)
+            tenant = (parsed.hostname or "").split(".")[0]
+            path = parsed.path
+            job_idx = path.lower().find("/job/")
+            site_path = path[:job_idx] if job_idx >= 0 else path
+            # Strip optional language prefix (e.g., /en-US/)
+            site_path = re.sub(r"^/[a-z]{2}(-[A-Z]{2})?/", "/", site_path)
+            cxs_base = f"{parsed.scheme}://{parsed.hostname}/wday/cxs/{tenant}{site_path}"
+
+        # Extract /job/... detail path from the human URL
+        match = re.search(r"/job/", job_url, re.IGNORECASE)
+        if match:
+            detail_path = job_url[match.start() :]
+            return f"{cxs_base}{detail_path}"
+
+        return job_url
+
+    def _enrich_workday(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        """Fetch Workday job detail for description and qualifications.
+
+        Converts the human-readable job URL to the Workday CXS API URL
+        to get the full job description via JSON.
+        """
+        job_url = job.get("url") or ""
+        detail_url = self._workday_detail_api_url(job_url)
+
+        # Keep the human-readable URL for the listing
+        base_url = self.config.base_url or self.config.url
+        if not job_url.startswith("http"):
+            human_url = f"{base_url.rstrip('/')}/{job_url.lstrip('/')}"
+        else:
+            human_url = job_url
 
         delay = get_fetch_delay_seconds()
         try:
@@ -1195,8 +1250,8 @@ class GenericScraper:
         if posted:
             job.setdefault("posted_date", posted)
 
-        # Normalize URL to be absolute
-        job["url"] = detail_url
+        # Normalize URL to be the human-readable absolute URL
+        job["url"] = human_url
         return job
 
     def _extract_from_jsonld(self, soup: BeautifulSoup, job: Dict[str, Any]) -> None:
