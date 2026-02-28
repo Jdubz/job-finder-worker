@@ -108,6 +108,34 @@ class TestTitleFilter:
         assert results[1].passed is False  # Missing required
         assert results[2].passed is False  # Has excluded
 
+    def test_non_software_disciplines_rejected(self):
+        """Non-software engineering discipline keywords are rejected."""
+        config = {
+            "requiredKeywords": ["engineer", "developer", "software"],
+            "excludedKeywords": ["mechanical", "electrical", "civil", "structural", "chemical"],
+        }
+        filter = TitleFilter(config)
+
+        assert filter.filter("Mechanical Engineer").passed is False
+        assert filter.filter("Electrical Engineer").passed is False
+        assert filter.filter("Civil Engineer").passed is False
+        assert filter.filter("Senior Structural Engineer").passed is False
+        assert filter.filter("Chemical Engineer II").passed is False
+
+    def test_software_engineer_not_affected_by_discipline_keywords(self):
+        """Software engineering titles still pass with discipline exclusions."""
+        config = {
+            "requiredKeywords": ["engineer", "developer", "software"],
+            "excludedKeywords": ["mechanical", "electrical", "civil"],
+        }
+        filter = TitleFilter(config)
+
+        assert filter.filter("Software Engineer").passed is True
+        assert filter.filter("Senior Software Developer").passed is True
+        assert filter.filter("Cloud Engineer").passed is True
+        assert filter.filter("Platform Engineer").passed is True
+        assert filter.filter("DevOps Engineer").passed is True
+
     def test_to_dict(self, default_config):
         """TitleFilterResult.to_dict() returns serializable dict."""
         filter = TitleFilter(default_config)

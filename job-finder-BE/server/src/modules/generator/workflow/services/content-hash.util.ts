@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { PersonalInfo, ContentItem } from '@shared/types'
+import { canonicalizeTechStack, getTechCategory } from './tech-taxonomy'
+import type { RoleArchetype } from './role-archetype'
 
 /**
  * Normalize a role title for fingerprinting.
@@ -97,7 +99,7 @@ export function computeJobFingerprint(
   const payload = JSON.stringify([
     roleNormalized,
     company.toLowerCase().trim(),
-    [...techStack].map((s) => s.toLowerCase().trim()).sort(),
+    canonicalizeTechStack(techStack),
     contentItemsHash,
   ])
 
@@ -116,7 +118,7 @@ export function computeRoleFingerprint(
 ): string {
   const payload = JSON.stringify([
     roleNormalized,
-    [...techStack].map((s) => s.toLowerCase().trim()).sort(),
+    canonicalizeTechStack(techStack),
     contentItemsHash,
   ])
 
@@ -124,21 +126,83 @@ export function computeRoleFingerprint(
 }
 
 /**
- * Compute Jaccard similarity index between two tech stacks.
- * Returns |A ∩ B| / |A ∪ B|, or 0 if either set is empty.
- * Comparison is case-insensitive.
+ * Soft Jaccard similarity between two tech stacks.
+ * Canonicalizes inputs, then for each tech in the union:
+ *   - exact match in other set → 1.0 credit
+ *   - same-category match in other set → 0.5 credit
+ *   - no match → 0.0
+ * Score = totalCredit / unionSize.  Returns 0 if either set is empty.
  */
 export function computeTechStackJaccard(a: string[], b: string[]): number {
   if (!a.length || !b.length) return 0
 
-  const setA = new Set(a.map((s) => s.toLowerCase().trim()))
-  const setB = new Set(b.map((s) => s.toLowerCase().trim()))
+  const canonA = canonicalizeTechStack(a)
+  const canonB = canonicalizeTechStack(b)
 
-  let intersection = 0
-  for (const item of setA) {
-    if (setB.has(item)) intersection++
+  const setA = new Set(canonA)
+  const setB = new Set(canonB)
+
+  // Build category sets for each side
+  const categoriesB = new Map<string, Set<string>>() // category → set of canonicals in B
+  for (const tech of setB) {
+    const cat = getTechCategory(tech)
+    if (cat) {
+      if (!categoriesB.has(cat)) categoriesB.set(cat, new Set())
+      categoriesB.get(cat)!.add(tech)
+    }
+  }
+  const categoriesA = new Map<string, Set<string>>()
+  for (const tech of setA) {
+    const cat = getTechCategory(tech)
+    if (cat) {
+      if (!categoriesA.has(cat)) categoriesA.set(cat, new Set())
+      categoriesA.get(cat)!.add(tech)
+    }
   }
 
-  const union = new Set([...setA, ...setB]).size
-  return union === 0 ? 0 : intersection / union
+  const union = new Set([...setA, ...setB])
+  let totalCredit = 0
+
+  for (const tech of union) {
+    const inA = setA.has(tech)
+    const inB = setB.has(tech)
+
+    if (inA && inB) {
+      // Exact match
+      totalCredit += 1.0
+    } else {
+      // Only in one side — check for same-category partial credit
+      const cat = getTechCategory(tech)
+      if (cat) {
+        if (inA && categoriesB.has(cat)) {
+          totalCredit += 0.5
+        } else if (inB && categoriesA.has(cat)) {
+          totalCredit += 0.5
+        }
+      }
+      // else: no match, 0 credit
+    }
+  }
+
+  return union.size === 0 ? 0 : totalCredit / union.size
+}
+
+/**
+ * Compute an archetype-based fingerprint hash.
+ * Groups roles by broad archetype (e.g. "frontend") instead of exact title,
+ * enabling Tier 1.75 cache hits across role title variations like
+ * "React Developer" and "Frontend Engineer".
+ */
+export function computeArchetypeFingerprint(
+  archetype: RoleArchetype,
+  techStack: string[],
+  contentItemsHash: string
+): string {
+  const payload = JSON.stringify([
+    archetype,
+    canonicalizeTechStack(techStack),
+    contentItemsHash,
+  ])
+
+  return createHash('sha256').update(payload).digest('hex')
 }

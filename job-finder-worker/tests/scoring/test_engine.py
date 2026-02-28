@@ -67,7 +67,7 @@ def default_config():
             "preferred": ["backend", "ml-ai", "devops", "data", "security"],
             "acceptable": ["fullstack"],
             "penalized": ["frontend", "consulting"],
-            "rejected": ["clearance-required", "management"],
+            "rejected": ["clearance-required", "management", "non-software"],
             "preferredScore": 5,
             "penalizedScore": -5,
         },
@@ -727,6 +727,38 @@ class TestScoringEngine:
         ai_adj = next((a for a in company_adjustments if "AI/ML" in a.reason), None)
         assert ai_adj is not None, f"Expected AI/ML focus adjustment, got: {company_adjustments}"
         assert ai_adj.points == default_config["company"]["aiMlFocusScore"]
+
+    def test_non_software_role_hard_rejected(self, engine_factory):
+        """Non-software role type causes hard rejection."""
+        engine = engine_factory()
+        extraction = JobExtractionResult(
+            role_types=["non-software"],
+            seniority="senior",
+            work_arrangement="remote",
+        )
+
+        result = engine.score(extraction, "Mechanical Engineer", "Mechanical design role")
+
+        assert result.passed is False
+        assert result.rejection_reason is not None
+        assert (
+            "role" in result.rejection_reason.lower()
+            or "non-software" in result.rejection_reason.lower()
+        )
+
+    def test_mixed_role_types_with_non_software_still_rejected(self, engine_factory):
+        """Rejected role type takes precedence even when mixed with preferred types."""
+        engine = engine_factory()
+        extraction = JobExtractionResult(
+            role_types=["non-software", "backend"],
+            seniority="senior",
+            work_arrangement="remote",
+        )
+
+        result = engine.score(extraction, "Engineer", "Ambiguous role")
+
+        assert result.passed is False
+        assert result.rejection_reason is not None
 
     def test_company_remote_first_bonus(self, default_config):
         """Remote-first companies should get bonus."""

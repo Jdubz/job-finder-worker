@@ -17,6 +17,7 @@ export interface CacheStoreParams {
   companyName: string | null
   modelVersion: string | null
   roleFingerprintHash?: string | null
+  archetypeFingerprintHash?: string | null
 }
 
 export interface CacheRow {
@@ -103,6 +104,43 @@ export class DocumentCacheRepository {
       ORDER BY last_hit_at DESC
       LIMIT 1
     `).get(roleFingerprintHash, contentItemsHash, documentType) as {
+      id: number
+      document_content_json: string
+      role_normalized: string
+      company_name: string | null
+      hit_count: number
+    } | undefined
+
+    if (!row) return null
+
+    return {
+      id: row.id,
+      documentContentJson: row.document_content_json,
+      roleNormalized: row.role_normalized,
+      companyName: row.company_name,
+      hitCount: row.hit_count,
+    }
+  }
+
+  /**
+   * Tier 1.75: Archetype fingerprint match.
+   * Broader than role fingerprint — groups "React Developer" and "Frontend Engineer"
+   * under the same archetype. Returns null when no match or archetype is null.
+   */
+  findByArchetypeFingerprint(
+    archetypeFingerprintHash: string,
+    contentItemsHash: string,
+    documentType: DocumentType
+  ): CacheRow | null {
+    const row = this.db.prepare(`
+      SELECT id, document_content_json, role_normalized, company_name, hit_count
+      FROM document_cache
+      WHERE archetype_fingerprint_hash = ?
+        AND content_items_hash = ?
+        AND document_type = ?
+      ORDER BY last_hit_at DESC
+      LIMIT 1
+    `).get(archetypeFingerprintHash, contentItemsHash, documentType) as {
       id: number
       document_content_json: string
       role_normalized: string
@@ -235,8 +273,9 @@ export class DocumentCacheRepository {
         INSERT INTO document_cache (
           embedding_rowid, document_type, job_fingerprint_hash, content_items_hash,
           role_normalized, tech_stack_json, document_content_json,
-          job_description_text, company_name, model_version, role_fingerprint_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          job_description_text, company_name, model_version, role_fingerprint_hash,
+          archetype_fingerprint_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         embeddingRowid,
         params.documentType,
@@ -248,7 +287,8 @@ export class DocumentCacheRepository {
         params.jobDescriptionText,
         params.companyName,
         params.modelVersion,
-        params.roleFingerprintHash ?? null
+        params.roleFingerprintHash ?? null,
+        params.archetypeFingerprintHash ?? null
       )
     })
 
