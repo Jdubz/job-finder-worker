@@ -712,7 +712,6 @@ ${JSON.stringify(firstAttempt, null, 2)}
 
 OVERFLOW DIAGNOSIS:
 - Main column lines: ${fitEstimate.mainColumnLines} (max: 64)
-- Sidebar lines: ${fitEstimate.sidebarLines} (max: 64)
 - Overflow: ${fitEstimate.overflow} lines over limit
 - Suggestions: ${fitEstimate.suggestions.length ? fitEstimate.suggestions.join('; ') : 'none'}
 
@@ -826,7 +825,6 @@ ${JSON.stringify(currentResume, null, 2)}
 PAGE CAPACITY:
 - Main column lines: ${fitEstimate.mainColumnLines} (max: 64)
 - Spare room: ${spareLines} lines available to fill
-- Sidebar lines: ${fitEstimate.sidebarLines} (max: 64)
 
 CONTENT BUDGET (do NOT exceed):
 - Max experience entries: ${contentBudget.maxExperiences}

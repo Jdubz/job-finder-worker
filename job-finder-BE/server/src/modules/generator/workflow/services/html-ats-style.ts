@@ -39,9 +39,10 @@ export const atsCss = `
     text-align: center;
     margin-bottom: 4px;
     position: relative;
+    padding: 0 60px; /* Reserve space for absolutely positioned avatar/logo */
   }
 
-  .header-avatar {
+  .header .header-avatar {
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -51,7 +52,7 @@ export const atsCss = `
     left: 0;
   }
 
-  .header-logo {
+  .header .header-logo {
     height: 28px;
     width: auto;
     opacity: 0.85;
