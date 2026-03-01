@@ -1,12 +1,12 @@
 import { cleanText } from './text.util'
 
 const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
 ]
 
 /**
- * Format date to "Month YYYY" (e.g., "February 2025").
+ * Format date to "Mon YYYY" (e.g., "Feb 2025").
  * Handles various input formats: "2025-02", "2025-02-15", "Feb 2025", etc.
  */
 export function formatDate(dateStr: string | undefined | null): string {

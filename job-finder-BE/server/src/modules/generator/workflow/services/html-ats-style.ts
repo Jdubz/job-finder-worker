@@ -10,7 +10,7 @@
  * Visual flair (human-eye appeal):
  *   - Accent-colored section headings with bottom border
  *   - Subtle accent on role dates and skill category labels
- *   - Clean typographic hierarchy (18 / 13 / 11 pt)
+ *   - Clean typographic hierarchy (22 / 13 / 11.5 / 11 pt)
  *   - Tasteful horizontal rules and spacing
  */
 export const atsCss = `
@@ -22,10 +22,12 @@ export const atsCss = `
     font-family: 'Calibri', 'Arial', 'Helvetica Neue', sans-serif;
     color: #1a1a1a;
     font-size: 11px;
-    line-height: 1.5;
+    line-height: 1.35;
   }
 
   a { color: #1a1a1a; text-decoration: none; }
+
+  h1, h2, h3 { margin: 0; padding: 0; font-size: inherit; }
 
   .page {
     max-width: 7in;
@@ -36,12 +38,7 @@ export const atsCss = `
   .header {
     text-align: center;
     margin-bottom: 4px;
-  }
-
-  .header-content {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
+    position: relative;
   }
 
   .header-avatar {
@@ -49,22 +46,18 @@ export const atsCss = `
     height: 48px;
     border-radius: 50%;
     object-fit: cover;
-    flex-shrink: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
   }
 
   .header-logo {
     height: 28px;
     width: auto;
-    flex-shrink: 0;
     opacity: 0.85;
-  }
-
-  .header-text {
-    text-align: left;
-  }
-
-  .header:not(:has(.header-avatar)):not(:has(.header-logo)) .header-text {
-    text-align: center;
+    position: absolute;
+    top: 0;
+    right: 0;
   }
 
   .header .name {
@@ -107,8 +100,11 @@ export const atsCss = `
   }
 
   /* ── Section headings ───────────────────────────────────── */
+  h2 { page-break-after: avoid; }
+  h3 { page-break-after: avoid; }
+
   .section-heading {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     text-transform: uppercase;
     color: #2563eb;
@@ -121,14 +117,15 @@ export const atsCss = `
   /* ── Summary ────────────────────────────────────────────── */
   .summary {
     font-size: 11px;
-    line-height: 1.55;
+    line-height: 1.4;
     color: #222;
     margin-bottom: 2px;
   }
 
   /* ── Experience ─────────────────────────────────────────── */
   .exp-entry {
-    margin-bottom: 8px;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
   }
 
   .exp-header {
@@ -138,7 +135,7 @@ export const atsCss = `
   }
 
   .exp-role {
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     color: #111;
   }
@@ -161,7 +158,7 @@ export const atsCss = `
     margin: 2px 0 0 16px;
     padding: 0;
     font-size: 10.5px;
-    line-height: 1.45;
+    line-height: 1.35;
     color: #222;
   }
 
@@ -174,7 +171,7 @@ export const atsCss = `
   }
 
   .exp-tech {
-    font-size: 9.5px;
+    font-size: 10px;
     color: #666;
     font-style: italic;
     margin-top: 2px;
@@ -189,7 +186,7 @@ export const atsCss = `
   .skill-row {
     font-size: 10.5px;
     margin-bottom: 2px;
-    line-height: 1.45;
+    line-height: 1.35;
   }
 
   .skill-row .label {
@@ -200,6 +197,7 @@ export const atsCss = `
   /* ── Projects ───────────────────────────────────────────── */
   .project-entry {
     margin-bottom: 6px;
+    page-break-inside: avoid;
   }
 
   .project-name {
@@ -216,6 +214,7 @@ export const atsCss = `
   /* ── Education ──────────────────────────────────────────── */
   .edu-entry {
     margin-bottom: 4px;
+    page-break-inside: avoid;
   }
 
   .edu-header {
@@ -249,6 +248,16 @@ export const atsCss = `
 
   .letter-header {
     margin-bottom: 16px;
+  }
+
+  .letter-header .header-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .letter-header .header-text {
+    text-align: left;
   }
 
   .letter-header .name {

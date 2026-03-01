@@ -362,12 +362,16 @@ Content rules:
 - Write achievement-based bullet points following: [Action verb] [what] [using what], resulting in [quantified outcome]
 - Every bullet should contain at least one measurable outcome. If exact numbers aren't available, omit rather than fabricate.
 - Mirror exact phrases from the job description when they match candidate's actual experience.
+- SKILL DUAL-PLACEMENT: Every skill listed in the "skills" section must also appear naturally in at least one experience bullet or project highlight. Skills that only appear in the skills list without context are less valued by ATS.
+- NEVER use first-person pronouns (I, my, me, we, our) in bullet points or summary.
+- NEVER start bullets with weak verbs: "Worked on", "Helped with", "Responsible for", "Participated in", "Assisted with", "Involved in". Always use strong action verbs (Architected, Engineered, Optimized, Led, etc.).
+- On first mention of a key acronym in the skills section, include the full form: e.g., "CI/CD (Continuous Integration/Continuous Deployment)". This doubles ATS search coverage.
 - Use standard ATS section headings: "Professional Summary", "Work Experience", "Technical Skills", "Projects", "Education"
 
 Return the result as a JSON object with this exact structure:
 {
   "personalInfo": { "title": "Job Title matching target role" },
-  "professionalSummary": "2-3 sentence summary",
+  "professionalSummary": "2-4 sentence summary (50-70 words)",
   "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
   "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
   "skills": [
@@ -707,8 +711,8 @@ FIRST ATTEMPT (the resume content that overflowed):
 ${JSON.stringify(firstAttempt, null, 2)}
 
 OVERFLOW DIAGNOSIS:
-- Main column lines: ${fitEstimate.mainColumnLines} (max: 60)
-- Sidebar lines: ${fitEstimate.sidebarLines} (max: 60)
+- Main column lines: ${fitEstimate.mainColumnLines} (max: 64)
+- Sidebar lines: ${fitEstimate.sidebarLines} (max: 64)
 - Overflow: ${fitEstimate.overflow} lines over limit
 - Suggestions: ${fitEstimate.suggestions.length ? fitEstimate.suggestions.join('; ') : 'none'}
 
@@ -742,7 +746,7 @@ OUTPUT FORMAT (STRICT):
 Return the trimmed resume as a JSON object with this exact structure:
 {
   "personalInfo": { "title": "Job Title matching target role" },
-  "professionalSummary": "2-3 sentence summary",
+  "professionalSummary": "2-4 sentence summary (50-70 words)",
   "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
   "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
   "skills": [
@@ -820,9 +824,9 @@ CURRENT RESUME (has spare room):
 ${JSON.stringify(currentResume, null, 2)}
 
 PAGE CAPACITY:
-- Main column lines: ${fitEstimate.mainColumnLines} (max: 60)
+- Main column lines: ${fitEstimate.mainColumnLines} (max: 64)
 - Spare room: ${spareLines} lines available to fill
-- Sidebar lines: ${fitEstimate.sidebarLines} (max: 60)
+- Sidebar lines: ${fitEstimate.sidebarLines} (max: 64)
 
 CONTENT BUDGET (do NOT exceed):
 - Max experience entries: ${contentBudget.maxExperiences}
@@ -854,7 +858,7 @@ OUTPUT FORMAT (STRICT):
 Return the expanded resume as a JSON object with this exact structure:
 {
   "personalInfo": { "title": "Job Title matching target role" },
-  "professionalSummary": "2-3 sentence summary",
+  "professionalSummary": "2-4 sentence summary (50-70 words)",
   "experience": [{ "role": "...", "company": "...", "location": "...", "startDate": "...", "endDate": "...", "highlights": ["bullet1", "bullet2"], "technologies": ["tech1", "tech2"] }],
   "projects": [{ "name": "...", "description": "...", "highlights": ["point1", "point2"], "technologies": ["tech1"], "link": "..." }],
   "skills": [
