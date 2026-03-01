@@ -50,8 +50,7 @@ function generateSecureToken(): string {
   return randomBytes(6).toString('hex')
 }
 
-function buildFilename(metadata: ArtifactMetadata): string {
-  const extension = '.pdf'
+function buildFilename(metadata: ArtifactMetadata, extension = '.pdf'): string {
   const maxBaseLength = MAX_FILENAME_LENGTH - extension.length
 
   // Keep the final label short for forms that reject long filenames
@@ -96,11 +95,11 @@ function buildFilename(metadata: ArtifactMetadata): string {
 
 function buildHumanReadablePath(
   metadata: ArtifactMetadata,
-  options?: { runId?: string }
+  options?: { runId?: string; extension?: string }
 ): { folder: string; filename: string } {
   const date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD in UTC
   const runFolder = sanitize(options?.runId ?? `run-${generateSecureToken()}`, 32)
-  const filename = buildFilename(metadata)
+  const filename = buildFilename(metadata, options?.extension)
 
   // Folder structure: {date}/{run}/ to avoid filename collisions across runs
   const folder = path.posix.join(date, runFolder)
@@ -128,7 +127,7 @@ export class LocalStorageService {
   async saveArtifactWithMetadata(
     buffer: Buffer,
     metadata: ArtifactMetadata,
-    options?: { runId?: string }
+    options?: { runId?: string; extension?: string }
   ): Promise<UploadResult> {
     const { folder, filename } = buildHumanReadablePath(metadata, options)
     const relativePath = path.posix.join(folder, filename)

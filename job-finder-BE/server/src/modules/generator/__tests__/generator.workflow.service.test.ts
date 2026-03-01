@@ -277,9 +277,15 @@ const mockCoverLetterContent = {
     repo.mockArtifacts = []
   })
 
+  const mockDocxService = {
+    renderResume: vi.fn().mockResolvedValue(Buffer.from('docx-resume')),
+    renderCoverLetter: vi.fn().mockResolvedValue(Buffer.from('docx-cover-letter'))
+  }
+
   const createService = () =>
     new GeneratorWorkflowService(
       htmlPdfService as any,
+      mockDocxService as any,
       repo as unknown as GeneratorWorkflowRepository,
       personalInfoStore as unknown as PersonalInfoStore,
       contentItemRepo as unknown as ContentItemRepository,
@@ -870,7 +876,7 @@ const mockCoverLetterContent = {
       }
 
       const result = callGround(parsed, items)
-      expect(result.skills[0].items).toEqual(['javascript', 'TYPESCRIPT', 'node.js'])
+      expect(result.skills[0].items).toEqual(['JavaScript', 'TypeScript', 'Node.js'])
     })
 
     it('includes skills from description of skills-context items', () => {
@@ -949,6 +955,7 @@ const mockCoverLetterContent = {
     const createServiceWithCache = () =>
       new GeneratorWorkflowService(
         htmlPdfService as any,
+        mockDocxService as any,
         repo as unknown as GeneratorWorkflowRepository,
         personalInfoStore as unknown as PersonalInfoStore,
         contentItemRepo as unknown as ContentItemRepository,

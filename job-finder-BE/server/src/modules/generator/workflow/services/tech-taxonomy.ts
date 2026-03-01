@@ -72,6 +72,98 @@ for (const entry of TAXONOMY) {
   }
 }
 
+// ── Display names (canonical → human-readable) ─────────────────────────────
+
+const DISPLAY_NAMES: Record<string, string> = {
+  // Frontend
+  react: 'React',
+  nextjs: 'Next.js',
+  vue: 'Vue.js',
+  angular: 'Angular',
+  svelte: 'Svelte',
+  tailwind: 'Tailwind CSS',
+  materialui: 'Material UI',
+  chakraui: 'Chakra UI',
+  redux: 'Redux',
+  zustand: 'Zustand',
+  storybook: 'Storybook',
+  webpack: 'Webpack',
+  vite: 'Vite',
+
+  // Languages
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  python: 'Python',
+  golang: 'Go',
+  rust: 'Rust',
+  java: 'Java',
+  csharp: 'C#',
+  cpp: 'C++',
+  ruby: 'Ruby',
+  php: 'PHP',
+  swift: 'Swift',
+  kotlin: 'Kotlin',
+
+  // Backend
+  'node.js': 'Node.js',
+  express: 'Express',
+  fastapi: 'FastAPI',
+  django: 'Django',
+  flask: 'Flask',
+  nestjs: 'NestJS',
+  rails: 'Ruby on Rails',
+
+  // API
+  graphql: 'GraphQL',
+  rest: 'REST',
+  grpc: 'gRPC',
+  websocket: 'WebSocket',
+
+  // Cloud
+  aws: 'AWS',
+  gcp: 'Google Cloud',
+  azure: 'Azure',
+
+  // Databases
+  postgres: 'PostgreSQL',
+  mysql: 'MySQL',
+  mongodb: 'MongoDB',
+  redis: 'Redis',
+  sql: 'SQL',
+  nosql: 'NoSQL',
+  sqlite: 'SQLite',
+  elasticsearch: 'Elasticsearch',
+  dynamodb: 'DynamoDB',
+
+  // DevOps
+  docker: 'Docker',
+  kubernetes: 'Kubernetes',
+  terraform: 'Terraform',
+  jenkins: 'Jenkins',
+  cicd: 'CI/CD',
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  git: 'Git',
+
+  // Testing
+  jest: 'Jest',
+  vitest: 'Vitest',
+  cypress: 'Cypress',
+  playwright: 'Playwright',
+
+  // Other
+  linux: 'Linux',
+  nginx: 'NGINX',
+  rabbitmq: 'RabbitMQ',
+  kafka: 'Kafka',
+  oauth: 'OAuth',
+  jwt: 'JWT',
+  sass: 'Sass',
+  scss: 'SCSS',
+  css: 'CSS',
+  html: 'HTML',
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -105,4 +197,36 @@ export function canonicalizeTechStack(techs: string[]): string[] {
  */
 export function getTechCategory(canonical: string): string | null {
   return categoryLookup.get(canonical) ?? null
+}
+
+/**
+ * Get the human-readable display name for a tech term.
+ * Resolves synonyms first, then looks up display name.
+ * Unknown terms are title-cased as a best guess.
+ */
+export function displayTech(tech: string): string {
+  const canonical = canonicalizeTech(tech)
+  if (DISPLAY_NAMES[canonical]) return DISPLAY_NAMES[canonical]
+  // Preserve original casing for unknown terms if it looks intentional
+  const trimmed = tech.trim()
+  if (trimmed && trimmed[0] === trimmed[0].toUpperCase()) return trimmed
+  // Title-case as fallback
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+}
+
+/**
+ * Deduplicate and normalize capitalization of a tech list.
+ * Preserves order of first occurrence.
+ */
+export function normalizeTechList(techs: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const t of techs) {
+    const canonical = canonicalizeTech(t)
+    if (!seen.has(canonical)) {
+      seen.add(canonical)
+      result.push(displayTech(t))
+    }
+  }
+  return result
 }
