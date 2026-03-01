@@ -104,9 +104,6 @@ import { initiateLogin, logout, restoreSession, getAuthHeaders } from "./auth-ma
 // Temp directory for downloaded documents
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
-// Timeout for closing orphaned popup windows (5 seconds)
-const POPUP_CLEANUP_TIMEOUT_MS = 5000
-
 // Timeout for OAuth/SSO popups (default 2 min — configurable for enterprise SSO with 2FA)
 const OAUTH_POPUP_TIMEOUT_MS = (() => {
   const raw = process.env.OAUTH_POPUP_TIMEOUT_MS
@@ -342,10 +339,31 @@ function isBrowserViewAlive(): boolean {
   return !!browserView?.webContents && !browserView.webContents.isDestroyed()
 }
 
+/**
+ * Well-known identity provider hostnames whose popups are always auth flows.
+ * These use non-standard paths (e.g. LinkedIn's /uas/login, /checkpoint/lg/login)
+ * that don't match generic OAuth path patterns.
+ */
+const AUTH_PROVIDER_HOSTS = new Set([
+  "linkedin.com",
+  "accounts.google.com",
+  "login.microsoftonline.com",
+  "login.live.com",
+  "appleid.apple.com",
+  "github.com",
+  "auth0.com",
+  "login.salesforce.com",
+])
+// Note: isOAuthPopup() strips leading "www." before checking, so only
+// canonical (non-www) hostnames are needed in the set above.
+
 /** Detect OAuth/SSO popup URLs that must open as real windows. */
 function isOAuthPopup(url: string): boolean {
   try {
     const parsed = new URL(url)
+    // Well-known identity provider domains — always auth flows when opened as popups
+    const host = parsed.hostname.replace(/^www\./, "")
+    if (AUTH_PROVIDER_HOSTS.has(host)) return true
     if (parsed.searchParams.has("redirect_uri")) return true
     // Match common auth paths: /oauth, /oauth2, /authorize, /auth, /saml, /sso
     if (/\/(oauth2?|authorize|auth|saml|sso)\b/i.test(parsed.pathname)) return true
@@ -407,150 +425,102 @@ async function createWindow(): Promise<void> {
   updateBrowserViewBounds()
   browserView.setAutoResize({ width: true, height: true })
 
-  // Track whether the next popup is an OAuth/SSO flow that needs a real window
-  let nextPopupIsOAuth = false
-
-  // Intercept new window/tab requests and navigate in the same BrowserView
-  // This prevents job application pages from opening in separate windows
-  // which would break the form fill flow
+  // Allow all popups — the BrowserView should behave like a normal browser.
+  // We only need special handling for OAuth/SSO popups to protect the opener
+  // page from being navigated away by the auth provider's redirect chain.
   browserView.webContents.setWindowOpenHandler(({ url }) => {
-    logger.info(`Intercepted new window request: ${url}`)
-
-    // For about:blank or javascript: URLs, sites often open a blank window
-    // and then redirect via JS. We need to allow these to open so we can
-    // capture the redirect. Return "allow" and handle in did-create-window.
-    if (!url || url === "about:blank" || url.startsWith("javascript:")) {
-      logger.info(`Allowing popup for redirect capture: ${url}`)
-      return { action: "allow" }
+    // Only allow safe schemes to prevent local-file exposure or script injection
+    try {
+      const scheme = new URL(url).protocol
+      if (!["http:", "https:", "about:"].includes(scheme)) {
+        logger.warn(`Blocking popup with unsafe scheme: ${url}`)
+        return { action: "deny" }
+      }
+    } catch {
+      // about:blank and empty URLs don't parse — allow them (common OAuth pattern)
     }
-
-    // OAuth/SSO popups must open as real windows so the original page
-    // (the opener) stays intact to receive the auth callback via postMessage.
-    if (isOAuthPopup(url)) {
-      logger.info(`Allowing OAuth/SSO popup: ${url}`)
-      nextPopupIsOAuth = true
-      return { action: "allow" }
-    }
-
-    // For real URLs, navigate in the same BrowserView
-    if (isBrowserViewAlive()) {
-      browserView!.webContents.loadURL(url)
-    }
-    return { action: "deny" }
+    logger.info(`Allowing popup: ${url}`)
+    return { action: "allow" }
   })
 
-  // Capture child windows (popups) and redirect their navigation to main BrowserView
-  browserView.webContents.on("did-create-window", (childWindow) => {
-    // OAuth/SSO popups must complete their flow uninterrupted — the opener
-    // page needs the popup alive to receive the auth callback.
-    if (nextPopupIsOAuth) {
-      nextPopupIsOAuth = false
-      logger.info("OAuth popup opened, letting it complete without interception")
+  browserView.webContents.on("did-create-window", (childWindow, details) => {
+    logger.info(`Child window created: ${details.url}`)
 
-      // Block the popup from navigating the main BrowserView via
-      // window.opener.location. Some ATS providers (e.g. eightfold.ai)
-      // redirect the opener during OAuth, which navigates the application
-      // page away and leaves the user on a broken callback page.
-      //
-      // Scope: only block cross-origin navigations (the OAuth redirect chain
-      // goes to different domains like LinkedIn/Google), while allowing
-      // same-origin navigations the application page itself may trigger.
-      //
-      // Note: will-navigate fires for renderer-initiated navigations only
-      // (JS, links, form submits). Our own loadURL() calls from the main
-      // process do NOT trigger will-navigate, so IPC handlers are unaffected.
-      const preAuthOrigin = isBrowserViewAlive()
-        ? new URL(browserView!.webContents.getURL()).origin
-        : null
-      const blockOpenerRedirect = (event: Electron.Event, url: string) => {
+    // Protect the opener page from cross-origin redirects during OAuth.
+    // Some ATS providers (e.g. eightfold.ai) let the auth provider redirect
+    // window.opener.location, which navigates the application form away.
+    //
+    // We set up protection in a helper so it can be activated either
+    // immediately (URL is already an auth provider) or lazily (popup opens
+    // as about:blank and later navigates to an auth provider via JS).
+    let openerProtected = false
+    let blockOpenerRedirect: ((event: Electron.Event, url: string) => void) | null = null
+    let oauthTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const enableOpenerProtection = (triggerUrl: string) => {
+      if (openerProtected || !isBrowserViewAlive()) return
+      openerProtected = true
+      logger.info(`[OAuth] Protecting opener during auth popup: ${triggerUrl}`)
+
+      let preAuthOrigin: string
+      try {
+        preAuthOrigin = new URL(browserView!.webContents.getURL()).origin
+      } catch {
+        logger.warn("[OAuth] BrowserView has no valid URL yet, skipping opener protection")
+        return
+      }
+      blockOpenerRedirect = (event: Electron.Event, url: string) => {
         try {
-          const navOrigin = new URL(url).origin
-          if (preAuthOrigin && navOrigin === preAuthOrigin) {
-            return // Allow same-origin navigations
-          }
+          if (new URL(url).origin === preAuthOrigin) return
         } catch { /* malformed URL — block it */ }
         logger.info(`[OAuth] Blocking cross-origin opener navigation during active popup: ${url}`)
         event.preventDefault()
       }
-      if (isBrowserViewAlive()) {
-        browserView!.webContents.on("will-navigate", blockOpenerRedirect)
-      }
+      browserView!.webContents.on("will-navigate", blockOpenerRedirect)
 
-      // Log popup navigations for debugging
-      childWindow.webContents.on("did-navigate", (_event: Electron.Event, url: string) => {
-        logger.info(`[OAuth popup] Navigated to: ${url}`)
-      })
-
-      const cleanupOAuth = () => {
-        if (isBrowserViewAlive()) {
-          browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
-        }
-      }
-
-      // Still set a generous cleanup timeout in case the popup gets stuck
-      const oauthTimeout = setTimeout(() => {
+      oauthTimeout = setTimeout(() => {
         if (!childWindow.isDestroyed()) {
           logger.info("Closing stale OAuth popup after timeout")
           childWindow.close()
         }
-        cleanupOAuth()
       }, OAUTH_POPUP_TIMEOUT_MS)
+    }
 
+    const cleanupOAuth = () => {
+      if (oauthTimeout) clearTimeout(oauthTimeout)
+      if (blockOpenerRedirect && isBrowserViewAlive()) {
+        browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
+      }
+    }
+
+    // If the popup URL is already a known auth provider, protect immediately
+    if (isOAuthPopup(details.url)) {
+      enableOpenerProtection(details.url)
+    } else {
+      // For about:blank or other popups that may redirect to an auth provider
+      // via JS, monitor navigations and enable protection lazily.
+      const onChildNavigate = (_event: Electron.Event, url: string) => {
+        if (isOAuthPopup(url)) {
+          enableOpenerProtection(url)
+          // Stop listening — protection is active, no need to keep checking
+          childWindow.webContents.removeListener("did-navigate", onChildNavigate)
+        }
+      }
+      childWindow.webContents.on("did-navigate", onChildNavigate)
+
+      // Clean up the listener when the popup closes, in case it never
+      // navigated to an auth provider
       childWindow.on("closed", () => {
-        clearTimeout(oauthTimeout)
-        cleanupOAuth()
-        logger.info("[OAuth] Popup closed, opener navigation unblocked")
+        childWindow.webContents.removeListener("did-navigate", onChildNavigate)
       })
-      return
     }
 
-    logger.info(`Child window created, setting up redirect capture`)
-
-    // Track timeout for cleanup
-    let cleanupTimeout: NodeJS.Timeout | null = null
-
-    // Handler for navigation events - close child and redirect to main view
-    const handleNavigation = (_event: Electron.Event, url: string) => {
-      if (url && url !== "about:blank" && !url.startsWith("javascript:")) {
-        logger.info(`Capturing child window navigation: ${url}`)
-        if (isBrowserViewAlive()) {
-          browserView!.webContents.loadURL(url)
-        }
-        childWindow.close()
+    childWindow.on("closed", () => {
+      cleanupOAuth()
+      if (openerProtected) {
+        logger.info("[OAuth] Popup closed, opener navigation unblocked")
       }
-    }
-
-    // Cleanup function to remove listeners and clear timeout
-    const cleanup = () => {
-      if (cleanupTimeout) {
-        clearTimeout(cleanupTimeout)
-        cleanupTimeout = null
-      }
-      if (!childWindow.isDestroyed()) {
-        childWindow.webContents.removeListener("will-navigate", handleNavigation)
-        childWindow.webContents.removeListener("did-navigate", handleNavigation)
-      }
-    }
-
-    // When the child window navigates to a real URL, close it and navigate main view
-    childWindow.webContents.on("will-navigate", handleNavigation)
-
-    // Also handle did-navigate for cases where will-navigate doesn't fire
-    childWindow.webContents.on("did-navigate", handleNavigation)
-
-    // Clean up listeners when window is closed
-    childWindow.on("closed", cleanup)
-
-    // Close after a timeout if no navigation happens (cleanup orphaned windows)
-    cleanupTimeout = setTimeout(() => {
-      if (!childWindow.isDestroyed()) {
-        const url = childWindow.webContents.getURL()
-        if (!url || url === "about:blank") {
-          logger.info(`Closing orphaned child window`)
-          childWindow.close()
-        }
-      }
-    }, POPUP_CLEANUP_TIMEOUT_MS)
+    })
   })
 
   // Notify renderer when URL changes
@@ -1808,9 +1778,10 @@ ipcMain.handle(
         })
       })
 
-      // Get complete form fill prompt (workflow + safety rules)
-      // The prompt is now hardcoded in the Electron app - see form-fill-safety.ts
-      const prompt = getFormFillPrompt()
+      // Get complete form fill prompt with user profile and job context inlined.
+      // Embedding context in the prompt avoids parallel tool calls on the first turn,
+      // which triggers a Claude CLI bug ("tool_use ids must be unique").
+      const prompt = getFormFillPrompt(profileText, options.jobContext)
       logger.info(`[FillForm] Loaded prompt (${prompt.length} chars total)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)
@@ -1837,6 +1808,7 @@ ipcMain.handle(
         "--strict-mcp-config",
         "--debug",
       ]
+
       logger.info(`[FillForm] Spawning: claude ${spawnArgs.join(" ")} (prompt via stdin)`)
       // Platform-specific spawn options:
       // - Windows: shell:true + windowsHide:true hides console; detached:false avoids visible window

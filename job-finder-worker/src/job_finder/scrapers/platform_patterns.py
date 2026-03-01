@@ -329,7 +329,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         config_type="rss",
         is_remote_source=True,
         company_extraction="from_title",
-        follow_detail=True,
+        follow_detail=False,  # WWR blocks detail page scraping (403)
         is_multi_company=True,
     ),
     PlatformPattern(

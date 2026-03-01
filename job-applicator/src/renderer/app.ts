@@ -683,13 +683,14 @@ async function selectJobMatch(id: string) {
   markAppliedBtn.disabled = match.status === "applied"
   markIgnoredBtn.disabled = match.status === "ignored"
 
-  // Load the job URL in BrowserView
+  // Load the job URL in BrowserView — prefer direct apply URL over aggregator listing
+  const targetUrl = match.listing.applyUrl || match.listing.url
   setStatus("Loading job listing...", "loading")
   // Note: navigate always returns {success, message?, aborted?} but we use optional chaining
   // as defensive programming for the IPC boundary edge cases
-  const navResult = await api.navigate(match.listing.url)
+  const navResult = await api.navigate(targetUrl)
   if (navResult.success) {
-    urlInput.value = match.listing.url
+    urlInput.value = targetUrl
     setStatus("Job listing loaded", "success")
   } else {
     setStatus(navResult.message || "Failed to load job listing", "error")

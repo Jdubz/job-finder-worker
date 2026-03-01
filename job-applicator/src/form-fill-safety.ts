@@ -18,7 +18,7 @@
  * Use getFormFillPrompt() to get the complete assembled prompt.
  */
 
-import { FORM_FILL_WORKFLOW_PROMPT } from "./prompts/form-fill-workflow.js"
+import { buildFormFillWorkflowPrompt } from "./prompts/form-fill-workflow.js"
 
 /**
  * Hardcoded safety rules appended to every form fill prompt.
@@ -56,20 +56,17 @@ Only leave a field empty if ALL of these are true:
 Standard fields like name, email, work history, education should NEVER be left empty.`
 
 /**
- * Get the complete form fill prompt (workflow + safety rules).
- * This is the ONLY way to get the form fill prompt for use with the agent.
+ * Get the complete form fill prompt (workflow + safety rules) with user context inlined.
  *
- * @returns Combined prompt with workflow instructions + safety rules
+ * Embedding profile and job context directly in the prompt eliminates the need for
+ * Claude to call get_user_profile/get_job_context as its first action, which avoids
+ * a known Claude CLI bug with parallel MCP tool calls ("tool_use ids must be unique").
+ *
+ * @param userProfile - User profile text (name, experience, education, etc.)
+ * @param jobContext - Job details text (title, company, description, etc.)
+ * @returns Combined prompt with context + workflow instructions + safety rules
  */
-export function getFormFillPrompt(): string {
-  return `${FORM_FILL_WORKFLOW_PROMPT.trim()}\n\n\n${FORM_FILL_SAFETY_RULES}`
-}
-
-/**
- * @deprecated Use getFormFillPrompt() instead. This function exists for backwards compatibility.
- * @param workflowPrompt - Ignored; workflow is now hardcoded
- * @returns Combined prompt with workflow instructions + safety rules
- */
-export function buildFormFillPrompt(_workflowPrompt?: string): string {
-  return getFormFillPrompt()
+export function getFormFillPrompt(userProfile: string, jobContext: string): string {
+  const workflow = buildFormFillWorkflowPrompt(userProfile, jobContext)
+  return `${workflow.trim()}\n\n\n${FORM_FILL_SAFETY_RULES}`
 }

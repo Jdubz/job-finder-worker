@@ -29,7 +29,12 @@ from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
 from job_finder.utils.company_name_utils import clean_company_name
-from job_finder.utils.url_utils import compute_content_fingerprint, derive_apply_url, normalize_url
+from job_finder.utils.url_utils import (
+    AGGREGATOR_HOST_SUBSTRINGS,
+    compute_content_fingerprint,
+    derive_apply_url,
+    normalize_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +157,14 @@ class ScraperIntake:
 
         try:
             apply_url = derive_apply_url(normalized_url)
+            if not apply_url and job.get("company_website"):
+                # Only use company_website for aggregator listings where the
+                # listing URL points to the aggregator (not a direct apply page).
+                from urllib.parse import urlparse
+
+                host = (urlparse(normalized_url).hostname or "").lower()
+                if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
+                    apply_url = job["company_website"]
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),

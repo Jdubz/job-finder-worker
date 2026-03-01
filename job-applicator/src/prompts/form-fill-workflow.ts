@@ -10,23 +10,38 @@
  * See: ../form-fill-safety.ts for the safety rules and full architecture documentation.
  */
 
-export const FORM_FILL_WORKFLOW_PROMPT = `You are filling a job application form. Your job is to complete the form by filling any EMPTY fields.
+/**
+ * Build the form fill workflow prompt with user profile and job context inlined.
+ *
+ * Embedding context directly avoids a parallel tool-call on the first API turn,
+ * which triggers a known Claude CLI bug ("tool_use ids must be unique").
+ */
+export function buildFormFillWorkflowPrompt(userProfile: string, jobContext: string): string {
+  return `You are filling a job application form. Your job is to complete the form by filling any EMPTY fields.
+
+============================================================
+USER PROFILE
+============================================================
+${userProfile}
+
+============================================================
+JOB CONTEXT
+============================================================
+${jobContext}
 
 ============================================================
 AVAILABLE TOOLS (provided by MCP server "job-applicator")
 ============================================================
 The following tools are provided by the job-applicator MCP server.
 Call them by name (the MCP prefix is handled automatically):
-- get_user_profile, get_job_context - Get user data and job details
 - screenshot - Capture the current page state
 - get_form_fields - Discover all form fields with their selectors and current values
 - get_buttons - Find all clickable buttons
 - fill_field, select_option, select_combobox, set_checkbox - Fill form fields
 - click_element - Click buttons and links
 - upload_file, find_upload_areas - Handle file uploads
+- get_user_profile, get_job_context - Re-fetch user data or job details (already provided above)
 - done - Signal completion
-
-Start by calling get_user_profile to get the user's information.
 
 ============================================================
 !!! CRITICAL: HANDLING PARTIALLY COMPLETED FORMS !!!
@@ -169,9 +184,9 @@ If a screenshot shows empty fields or wrong values, FIX THEM before proceeding.
 ============================================================
 WORKFLOW: FOLLOW THIS EXACT ORDER
 ============================================================
-STEP 1: GET CONTEXT
-- Call get_user_profile and get_job_context to get user data and job details
-- This is MANDATORY - do not skip
+STEP 1: REVIEW CONTEXT
+- The user profile and job context are provided above — review them now
+- You already have all the data needed to fill the form
 
 STEP 2: INITIAL SCREENSHOT
 - Take a screenshot to see the form layout
@@ -397,8 +412,8 @@ These are fallbacks for broken forms. Prefer selectors.
 ============================================================
 BEGIN NOW
 ============================================================
-Start by calling get_user_profile and get_job_context to get the user profile and job details.
-Then take a screenshot to see the form's current state.
+The user profile and job context are provided at the top of this prompt.
+Start by taking a screenshot to see the form's current state.
 Then call get_form_fields to discover all fields AND their current values.
 
 IMPORTANT: If get_form_fields shows embeddedFormDetected: true, call done() immediately
@@ -412,3 +427,4 @@ For work/education: Check if entries already exist before adding new ones.
 - If sections are complete → Verify and move on
 
 Do NOT call done() until all empty fields are filled.`
+}

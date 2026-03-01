@@ -827,11 +827,11 @@ class TestEnrichStaleListings:
         )
         return GenericScraper(cfg)
 
-    @pytest.mark.parametrize("status_code", [404, 410])
-    def test_enrich_returns_job_unmodified_on_stale_listing(
+    @pytest.mark.parametrize("status_code", [403, 404, 410])
+    def test_enrich_returns_job_unmodified_on_inaccessible_page(
         self, monkeypatch, scraper, status_code
     ):
-        """Job should be returned unmodified when detail page returns 404 or 410."""
+        """Job should be returned unmodified when detail page returns 403, 404, or 410."""
         sleep_calls = []
 
         def fake_get(url, headers=None, timeout=None):
@@ -880,3 +880,71 @@ class TestEnrichStaleListings:
 
         with pytest.raises(requests.HTTPError):
             scraper._enrich_from_detail(job)
+
+
+class TestExtractCompanyWebsiteFromDescription:
+    """Tests for _extract_company_website_from_description."""
+
+    @pytest.fixture
+    def scraper(self):
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "rss",
+                "url": "https://weworkremotely.com/remote-jobs.rss",
+                "fields": {"title": "title", "url": "link", "description": "description"},
+            }
+        )
+        return GenericScraper(cfg)
+
+    def test_extracts_from_wwr_url_strong_pattern(self, scraper):
+        """Should extract from WeWorkRemotely URL:</strong> format."""
+        desc = (
+            "<p>Some job description</p>"
+            '<strong>URL:</strong> <a href="https://acme.com/careers">https://acme.com/careers</a>'
+        )
+        assert scraper._extract_company_website_from_description(desc) == "https://acme.com/careers"
+
+    def test_fallback_extracts_first_external_href(self, scraper):
+        """Should fall back to first external <a href> in RSS description."""
+        desc = (
+            "<p>We are hiring!</p>"
+            '<a href="https://coolstartup.io/jobs">Apply here</a>'
+            '<a href="https://other.com">Other link</a>'
+        )
+        assert (
+            scraper._extract_company_website_from_description(desc) == "https://coolstartup.io/jobs"
+        )
+
+    def test_fallback_skips_aggregator_links(self, scraper):
+        """Aggregator self-links should be skipped in fallback."""
+        desc = (
+            '<a href="https://weworkremotely.com/listings/some-job">View on WWR</a>'
+            '<a href="https://company.com/careers">Company site</a>'
+        )
+        assert (
+            scraper._extract_company_website_from_description(desc) == "https://company.com/careers"
+        )
+
+    def test_fallback_handles_href_not_first_attribute(self, scraper):
+        """Should extract href even when it's not the first attribute on the tag."""
+        desc = '<a target="_blank" href="https://example.com/apply">Apply</a>'
+        assert (
+            scraper._extract_company_website_from_description(desc) == "https://example.com/apply"
+        )
+
+    def test_fallback_handles_single_quotes(self, scraper):
+        """Should extract href with single-quoted attribute values."""
+        desc = "<a href='https://example.com/jobs'>Jobs</a>"
+        assert scraper._extract_company_website_from_description(desc) == "https://example.com/jobs"
+
+    def test_returns_none_for_empty_description(self, scraper):
+        assert scraper._extract_company_website_from_description("") is None
+        assert scraper._extract_company_website_from_description(None) is None
+
+    def test_returns_none_when_only_aggregator_links(self, scraper):
+        """Should return None when all links are from aggregator domains."""
+        desc = (
+            '<a href="https://weworkremotely.com/foo">WWR</a>'
+            '<a href="https://remotive.com/bar">Remotive</a>'
+        )
+        assert scraper._extract_company_website_from_description(desc) is None

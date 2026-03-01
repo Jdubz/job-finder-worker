@@ -33,6 +33,7 @@ from job_finder.scrapers.text_sanitizer import (
 )
 from job_finder.settings import get_fetch_delay_seconds
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.utils.url_utils import AGGREGATOR_HOST_SUBSTRINGS
 
 logger = logging.getLogger(__name__)
 
@@ -1065,9 +1066,9 @@ class GenericScraper:
         Only fills fields that are missing to avoid clobbering list-page data.
         Applies rate limiting delay after HTTP requests, even on failure.
 
-        404/410 errors are handled gracefully (stale job listings) - the job is
-        returned unmodified. Other HTTP errors propagate to allow source-level
-        error handling.
+        403/404/410 errors are handled gracefully (blocked or stale listings) -
+        the job is returned unmodified. Other HTTP errors propagate to allow
+        source-level error handling.
         """
         url = job.get("url")
         if not url:
@@ -1084,10 +1085,11 @@ class GenericScraper:
             headers = {**DEFAULT_HEADERS, **self.config.headers}
             response = requests.get(url, headers=headers, timeout=min(self.request_timeout, 15))
 
-            # Handle stale job listings gracefully - 404/410 means the job was removed
-            if response.status_code in (404, 410):
+            # Handle inaccessible detail pages gracefully
+            if response.status_code in (403, 404, 410):
                 logger.debug(
-                    "Detail page not found (stale listing?), skipping enrichment: %s",
+                    "Detail page inaccessible (%d), skipping enrichment: %s",
+                    response.status_code,
                     url,
                 )
                 return job
@@ -1774,6 +1776,28 @@ class GenericScraper:
                         return url
                 except Exception:
                     pass
+
+        # Fallback: first external <a href> URL in description (robust to attribute order/quotes)
+        try:
+            soup = BeautifulSoup(description, "html.parser")
+        except Exception:
+            soup = None
+
+        if soup is not None:
+            for a in soup.find_all("a", href=True):
+                url = a.get("href")
+                if not isinstance(url, str):
+                    continue
+                try:
+                    parsed = urlparse(url)
+                    host = (parsed.hostname or "").lower()
+                    # Skip self-referencing aggregator links
+                    if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
+                        continue
+                    if parsed.scheme in ("http", "https") and parsed.netloc:
+                        return url
+                except Exception:
+                    continue
 
         return None
 
