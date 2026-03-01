@@ -14,6 +14,7 @@ out obviously unsuitable jobs BEFORE they enter the queue.
 """
 
 import logging
+import math
 import time
 from typing import Any, Dict, List, Optional
 
@@ -49,6 +50,7 @@ from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 
 logger = logging.getLogger(__name__)
+DEFAULT_SCRAPES_PER_DAY = 4  # cron runs per day; used to auto-chunk unlimited runs
 TRANSIENT_FAILURE_THRESHOLD = 3  # disable source after N consecutive recoverable failures
 ZERO_JOBS_RECOVERY_THRESHOLD = (
     2  # spawn recovery after N consecutive zero-job runs (all source types)
@@ -141,17 +143,29 @@ class ScrapeRunner:
         else:
             logger.info(f"Target matches: {target_matches}")
 
-        if max_sources is None:
-            logger.info("Max sources: UNLIMITED")
+        # Auto-chunk when max_sources is uncapped and no explicit source list
+        effective_max = max_sources
+        if effective_max is None and not source_ids:
+            active_count = len(self.sources_manager.get_active_sources())
+            effective_max = math.ceil(active_count / DEFAULT_SCRAPES_PER_DAY)
+            logger.info(
+                "Auto-chunking: %d active sources / %d daily runs = %d sources this run",
+                active_count,
+                DEFAULT_SCRAPES_PER_DAY,
+                effective_max,
+            )
+        elif effective_max is not None:
+            logger.info(f"Max sources: {effective_max}")
         else:
-            logger.info(f"Max sources: {max_sources}")
+            # source_ids provided with no cap — scrape all requested sources
+            logger.info("Max sources: UNLIMITED (explicit source list)")
 
         if source_ids:
             logger.info(f"Specific sources: {source_ids}")
         else:
             logger.info("Using all sources with rotation (oldest first)")
 
-        sources = self._get_sources(max_sources, source_ids)
+        sources = self._get_sources(effective_max, source_ids)
         logger.info(f"Found {len(sources)} sources to scrape")
 
         # Create persistent scrape report
