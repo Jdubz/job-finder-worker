@@ -151,6 +151,7 @@ QueueSource = Literal[
     "email",
     "manual_submission",
     "user_request",
+    "auto_recovery",
 ]
 
 

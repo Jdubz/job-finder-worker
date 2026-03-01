@@ -150,22 +150,23 @@ class TestAnalyzeMatch:
 
         assert analysis is None
 
-    def test_analyze_match_validates_required_fields(
+    def test_analyze_match_corrects_shape_on_missing_fields(
         self, mock_inference_client, mock_profile, sample_job
     ):
-        """Test validation of required fields in response."""
-        mock_inference_client.execute.return_value = Mock(text="""
-            {
-                "match_score": 85,
-                "matched_skills": ["Python"]
-            }
-            """)
+        """Test that missing required fields trigger a shape correction call."""
+        # First call returns wrong keys, second call (correction) returns right keys
+        mock_inference_client.execute.side_effect = [
+            Mock(text='{"match_score": 85, "skills_matched": ["Python"], "skills_gaps": ["Go"]}'),
+            Mock(text='{"matched_skills": ["Python"], "missing_skills": ["Go"]}'),
+        ]
 
         matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
         analysis = matcher._analyze_match(sample_job)
 
-        # Missing required field (missing_skills)
-        assert analysis is None
+        assert analysis is not None
+        assert analysis["matched_skills"] == ["Python"]
+        assert analysis["missing_skills"] == ["Go"]
+        assert mock_inference_client.execute.call_count == 2
 
 
 class TestAnalyzeJob:
