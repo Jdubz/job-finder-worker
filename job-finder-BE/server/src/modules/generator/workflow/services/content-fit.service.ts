@@ -7,8 +7,9 @@ import type { ResumeContent } from '@shared/types'
  *   All content flows in one column — header, summary, experience,
  *   skills, projects, education — top to bottom.
  *
- * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable
- * At 11px Calibri with 1.5 line-height ≈ 68 raw lines, minus spacing ≈ 65 max.
+ * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable (940.8px)
+ * Dominant line height: bullet text 10.5px × 1.45 = 15.225px → 940.8 / 15.225 ≈ 62 raw lines.
+ * With safety margin → 60 max.
  *
  * Margin value (0.6in top/bottom, 0.75in left/right) must stay in sync
  * with @page margin in html-ats-style.ts.
@@ -22,9 +23,10 @@ export interface FitEstimate {
   suggestions: string[]
 }
 
-// Characters per line at 11px Calibri in single-column layout (~7in content width)
-const CHARS_PER_LINE = 95
-const BULLET_CHARS_PER_LINE = 90
+// Characters per line at 11px Calibri in single-column layout (~7in / 672px content width)
+// Body: 672px / 5.8px avg char width ≈ 116; bullets at 10.5px: (672-16) / 5.5 ≈ 119
+const CHARS_PER_LINE = 110
+const BULLET_CHARS_PER_LINE = 105
 
 // Heuristic averages for functions that don't have actual text to measure
 const AVG_LINES_PER_BULLET = 2
@@ -50,7 +52,7 @@ const LAYOUT = {
   SKILL_CATEGORY_LINES: 1.5,   // "Category: item, item, item" on one line
   EDUCATION_ENTRY_LINES: 2,    // Degree + school
 
-  MAX_LINES: 65,
+  MAX_LINES: 60,
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {

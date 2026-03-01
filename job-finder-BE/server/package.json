@@ -24,7 +24,6 @@
     "better-sqlite3": "^11.7.0",
     "cookie": "^1.1.0",
     "cors": "^2.8.5",
-    "docx": "^9.6.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "google-auth-library": "^10.5.0",

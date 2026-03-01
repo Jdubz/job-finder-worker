@@ -277,15 +277,9 @@ const mockCoverLetterContent = {
     repo.mockArtifacts = []
   })
 
-  const mockDocxService = {
-    renderResume: vi.fn().mockResolvedValue(Buffer.from('docx-resume')),
-    renderCoverLetter: vi.fn().mockResolvedValue(Buffer.from('docx-cover-letter'))
-  }
-
   const createService = () =>
     new GeneratorWorkflowService(
       htmlPdfService as any,
-      mockDocxService as any,
       repo as unknown as GeneratorWorkflowRepository,
       personalInfoStore as unknown as PersonalInfoStore,
       contentItemRepo as unknown as ContentItemRepository,
@@ -955,7 +949,6 @@ const mockCoverLetterContent = {
     const createServiceWithCache = () =>
       new GeneratorWorkflowService(
         htmlPdfService as any,
-        mockDocxService as any,
         repo as unknown as GeneratorWorkflowRepository,
         personalInfoStore as unknown as PersonalInfoStore,
         contentItemRepo as unknown as ContentItemRepository,

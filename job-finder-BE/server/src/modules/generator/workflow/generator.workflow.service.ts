@@ -16,7 +16,7 @@ import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { storageService, type ArtifactMetadata, type ArtifactType } from './services/storage.service'
 import { networkStorageService } from './services/network-storage.service'
 import { HtmlPdfService } from './services/html-pdf.service'
-import { DocxService } from './services/docx.service'
+
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
@@ -74,7 +74,6 @@ export class GeneratorWorkflowService {
 
   constructor(
     private readonly htmlPdf = new HtmlPdfService(),
-    private readonly docx = new DocxService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
     private readonly personalInfoStore = new PersonalInfoStore(),
     private readonly contentItemRepo = new ContentItemRepository(),
@@ -590,10 +589,6 @@ export class GeneratorWorkflowService {
     const pdf = await this.htmlPdf.renderResume(resume, personalInfo)
     const primaryUrl = await saveArtifact(pdf, 'resume', 'Resume')
 
-    // Render DOCX alongside PDF
-    const docxBuffer = await this.docx.renderResume(resume, personalInfo)
-    await saveArtifact(docxBuffer, 'resume', 'ResumeDocx', '.docx')
-
     return primaryUrl
   }
 
@@ -672,17 +667,6 @@ export class GeneratorWorkflowService {
     // Render PDF
     const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, clOpts)
     const primaryUrl = await saveArtifact(pdf, 'cover-letter', 'CoverLetter')
-
-    // Render DOCX alongside PDF
-    const docxBuffer = await this.docx.renderCoverLetter(coverLetter, {
-      name: personalInfo.name,
-      email: personalInfo.email,
-      location: personalInfo.location,
-      phone: personalInfo.phone,
-      date: payload.date,
-      title
-    })
-    await saveArtifact(docxBuffer, 'cover-letter', 'CoverLetterDocx', '.docx')
 
     return primaryUrl
   }
