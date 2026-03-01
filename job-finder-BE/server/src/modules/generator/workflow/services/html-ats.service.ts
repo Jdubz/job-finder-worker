@@ -1,5 +1,5 @@
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
-import { cleanText } from './text.util'
+import { safeText, escapeAttr } from './text.util'
 import { normalizeUrl } from './url.util'
 import { formatDate } from './date.util'
 import { atsCss } from './html-ats-style'
@@ -14,22 +14,22 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   // Contact row: pipe-separated with text labels
   const contactParts: string[] = []
   if (info?.email) {
-    contactParts.push(`Email: <a href="mailto:${info.email}">${cleanText(info.email)}</a>`)
+    contactParts.push(`Email: <a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
   }
   if (info?.phone) {
-    contactParts.push(`Phone: ${cleanText(info.phone)}`)
+    contactParts.push(`Phone: ${safeText(info.phone)}`)
   }
   if (info?.location) {
-    contactParts.push(cleanText(info.location))
+    contactParts.push(safeText(info.location))
   }
   if (info?.website) {
-    contactParts.push(`<a href="${normalizeUrl(info.website)}">${cleanText(info.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.website))}">${safeText(info.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`)
   }
   if (info?.linkedin) {
-    contactParts.push(`LinkedIn: <a href="${normalizeUrl(info.linkedin)}">LinkedIn</a>`)
+    contactParts.push(`LinkedIn: <a href="${escapeAttr(normalizeUrl(info.linkedin))}">LinkedIn</a>`)
   }
   if (info?.github) {
-    contactParts.push(`GitHub: <a href="${normalizeUrl(info.github)}">GitHub</a>`)
+    contactParts.push(`GitHub: <a href="${escapeAttr(normalizeUrl(info.github))}">GitHub</a>`)
   }
   const contactRow = contactParts.length
     ? `<div class="contact-row">${contactParts.join('<span class="sep">|</span>')}</div>`
@@ -40,19 +40,19 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
     .map((exp) => {
       const dates = `${formatDate(exp.startDate)} - ${formatDate(exp.endDate) || 'Present'}`
       const bullets = (exp.highlights || [])
-        .map((b) => `<li>${cleanText(b)}</li>`)
+        .map((b) => `<li>${safeText(b)}</li>`)
         .join('')
       const tech = Array.isArray(exp.technologies) && exp.technologies.length
-        ? `<div class="exp-tech">${cleanText(exp.technologies.join(', '))}</div>`
+        ? `<div class="exp-tech">${safeText(exp.technologies.join(', '))}</div>`
         : ''
 
       return `
         <div class="exp-entry">
           <div class="exp-header">
-            <span class="exp-role">${cleanText(exp.role)}</span>
+            <span class="exp-role">${safeText(exp.role)}</span>
             <span class="exp-dates">${dates}</span>
           </div>
-          <div class="exp-company">${cleanText(exp.company)}${exp.location ? ' - ' + cleanText(exp.location) : ''}</div>
+          <div class="exp-company">${safeText(exp.company)}${exp.location ? ' - ' + safeText(exp.location) : ''}</div>
           ${bullets ? `<ul class="exp-bullets">${bullets}</ul>` : ''}
           ${tech}
         </div>
@@ -63,7 +63,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   // Skills
   const skillsHtml = (content.skills || [])
     .map((s) => {
-      return `<div class="skill-row"><span class="label">${cleanText(s.category)}:</span> ${s.items.map((i) => cleanText(i)).join(', ')}</div>`
+      return `<div class="skill-row"><span class="label">${safeText(s.category)}:</span> ${s.items.map((i) => safeText(i)).join(', ')}</div>`
     })
     .join('')
 
@@ -71,20 +71,20 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   const projectsHtml = (content.projects || [])
     .map((proj) => {
       const bullets = (proj.highlights || [])
-        .map((b) => `<li>${cleanText(b)}</li>`)
+        .map((b) => `<li>${safeText(b)}</li>`)
         .join('')
-      const desc = !bullets && proj.description ? `<li>${cleanText(proj.description)}</li>` : ''
+      const desc = !bullets && proj.description ? `<li>${safeText(proj.description)}</li>` : ''
       const allBullets = bullets || desc
       const tech = proj.technologies?.length
-        ? `<div class="exp-tech">${cleanText(proj.technologies.join(', '))}</div>`
+        ? `<div class="exp-tech">${safeText(proj.technologies.join(', '))}</div>`
         : ''
       const link = proj.link
-        ? ` <span class="project-link">(<a href="${normalizeUrl(proj.link)}">${cleanText(proj.link.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>)</span>`
+        ? ` <span class="project-link">(<a href="${escapeAttr(normalizeUrl(proj.link))}">${safeText(proj.link.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>)</span>`
         : ''
 
       return `
         <div class="project-entry">
-          <span class="project-name">${cleanText(proj.name)}</span>${link}
+          <span class="project-name">${safeText(proj.name)}</span>${link}
           ${allBullets ? `<ul class="exp-bullets">${allBullets}</ul>` : ''}
           ${tech}
         </div>
@@ -100,20 +100,20 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       return `
         <div class="edu-entry">
           <div class="edu-header">
-            <span class="edu-degree">${cleanText(degreeField)}</span>
+            <span class="edu-degree">${safeText(degreeField)}</span>
             ${gradDate ? `<span class="edu-date">${formatDate(gradDate)}</span>` : ''}
           </div>
-          <div class="edu-school">${cleanText(e.institution)}</div>
+          <div class="edu-school">${safeText(e.institution)}</div>
         </div>
       `
     })
     .join('')
 
   const avatarHtml = info?.avatar
-    ? `<img class="header-avatar" src="${info.avatar}" alt="" />`
+    ? `<img class="header-avatar" src="${escapeAttr(info.avatar)}" alt="" />`
     : ''
   const logoHtml = info?.logo
-    ? `<img class="header-logo" src="${info.logo}" alt="" />`
+    ? `<img class="header-logo" src="${escapeAttr(info.logo)}" alt="" />`
     : ''
 
   return `
@@ -129,8 +129,8 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
         <div class="header-content">
           ${avatarHtml}
           <div class="header-text">
-            <div class="name">${cleanText(info?.name || '')}</div>
-            <div class="title">${cleanText(info?.title || content.personalInfo?.title || '')}</div>
+            <div class="name">${safeText(info?.name || '')}</div>
+            <div class="title">${safeText(info?.title || content.personalInfo?.title || '')}</div>
           </div>
           ${logoHtml}
         </div>
@@ -139,7 +139,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       ${contactRow}
 
       <div class="section-heading">Professional Summary</div>
-      <div class="summary">${cleanText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
+      <div class="summary">${safeText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
 
       <div class="section-heading">Work Experience</div>
       ${experiences}
@@ -185,21 +185,21 @@ export function atsCoverLetterHtml(
   }
 ): string {
   const contactParts: string[] = []
-  if (opts.email) contactParts.push(cleanText(opts.email))
-  if (opts.phone) contactParts.push(cleanText(opts.phone))
-  if (opts.location) contactParts.push(cleanText(opts.location))
+  if (opts.email) contactParts.push(safeText(opts.email))
+  if (opts.phone) contactParts.push(safeText(opts.phone))
+  if (opts.location) contactParts.push(safeText(opts.location))
   const contactLine = contactParts.join(' | ')
 
   const avatarHtml = opts.avatar
-    ? `<img class="header-avatar" src="${opts.avatar}" alt="" />`
+    ? `<img class="header-avatar" src="${escapeAttr(opts.avatar)}" alt="" />`
     : ''
   const logoHtml = opts.logo
-    ? `<img class="header-logo" src="${opts.logo}" alt="" />`
+    ? `<img class="header-logo" src="${escapeAttr(opts.logo)}" alt="" />`
     : ''
 
   const bodyParas = [content.openingParagraph, ...(content.bodyParagraphs || []), content.closingParagraph]
     .filter(Boolean)
-    .map((p) => `<p>${cleanText(p || '')}</p>`)
+    .map((p) => `<p>${safeText(p || '')}</p>`)
     .join('')
 
   return `
@@ -215,8 +215,8 @@ export function atsCoverLetterHtml(
         <div class="header-content">
           ${avatarHtml}
           <div class="header-text">
-            <div class="name">${cleanText(opts.name)}</div>
-            ${opts.title ? `<div class="title">${cleanText(opts.title)}</div>` : ''}
+            <div class="name">${safeText(opts.name)}</div>
+            ${opts.title ? `<div class="title">${safeText(opts.title)}</div>` : ''}
           </div>
           ${logoHtml}
         </div>
@@ -224,17 +224,17 @@ export function atsCoverLetterHtml(
       </div>
       <hr class="header-rule" />
 
-      ${opts.date ? `<div class="letter-date">${cleanText(opts.date)}</div>` : ''}
+      ${opts.date ? `<div class="letter-date">${safeText(opts.date)}</div>` : ''}
 
-      <div class="letter-greeting">${cleanText(content.greeting)}</div>
+      <div class="letter-greeting">${safeText(content.greeting)}</div>
 
       <div class="letter-body">
         ${bodyParas}
       </div>
 
       <div class="letter-signature">
-        <div class="closing">${cleanText(typeof content.signature === 'string' && content.signature ? content.signature : 'Sincerely,')}</div>
-        <div class="signer">${cleanText(opts.name)}</div>
+        <div class="closing">${safeText(typeof content.signature === 'string' && content.signature ? content.signature : 'Sincerely,')}</div>
+        <div class="signer">${safeText(opts.name)}</div>
       </div>
     </div>
   </body>

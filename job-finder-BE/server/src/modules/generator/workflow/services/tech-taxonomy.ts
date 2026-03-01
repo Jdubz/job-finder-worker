@@ -207,10 +207,11 @@ export function getTechCategory(canonical: string): string | null {
 export function displayTech(tech: string): string {
   const canonical = canonicalizeTech(tech)
   if (DISPLAY_NAMES[canonical]) return DISPLAY_NAMES[canonical]
-  // Preserve original casing for unknown terms if it looks intentional
+  // Preserve original casing for unknown terms if it contains any uppercase letters
+  // (handles intentional mixed casing like "iOS", "eBPF", "GraphQL")
   const trimmed = tech.trim()
-  if (trimmed && trimmed[0] === trimmed[0].toUpperCase()) return trimmed
-  // Title-case as fallback
+  if (trimmed && trimmed !== trimmed.toLowerCase()) return trimmed
+  // Title-case as fallback for all-lowercase strings
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
 }
 

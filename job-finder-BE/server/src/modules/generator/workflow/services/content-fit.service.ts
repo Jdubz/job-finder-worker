@@ -76,7 +76,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     for (const bullet of exp.highlights || []) {
       mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE)
     }
-    const techText = ((exp as any).technologies || []).join(', ')
+    const techText = (exp.technologies || []).join(', ')
     if (techText) {
       mainLines += textToLines(techText, CHARS_PER_LINE)
     }

@@ -563,33 +563,8 @@ export class GeneratorWorkflowService {
       throw new Error('No resume content found in intermediateResults. Run generate-resume step first.')
     }
 
-    const saveArtifact = async (buffer: Buffer, type: ArtifactType, label: string, extension?: string) => {
-      const metadata: ArtifactMetadata = {
-        name: personalInfo.name,
-        company: payload.job.company,
-        role: payload.job.role,
-        type
-      }
-      const saved = await storageService.saveArtifactWithMetadata(buffer, metadata, { runId: requestId, extension })
-      this.workflowRepo.addArtifact({
-        id: randomUUID(),
-        requestId,
-        artifactType: type,
-        filename: saved.filename,
-        storagePath: saved.storagePath,
-        sizeBytes: saved.size,
-        createdAt: new Date().toISOString()
-      })
-      const absolutePath = storageService.getAbsolutePath(saved.storagePath)
-      networkStorageService.copyToNetwork(absolutePath, saved.filename, label)
-      return storageService.createPublicUrl(saved.storagePath)
-    }
-
-    // Render PDF
     const pdf = await this.htmlPdf.renderResume(resume, personalInfo)
-    const primaryUrl = await saveArtifact(pdf, 'resume', 'Resume')
-
-    return primaryUrl
+    return this.saveArtifact(requestId, personalInfo, payload, pdf, 'resume', 'Resume')
   }
 
   /**
@@ -642,33 +617,38 @@ export class GeneratorWorkflowService {
       github: personalInfo.github
     }
 
-    const saveArtifact = async (buffer: Buffer, type: ArtifactType, label: string, extension?: string) => {
-      const metadata: ArtifactMetadata = {
-        name: personalInfo.name,
-        company: payload.job.company,
-        role: payload.job.role,
-        type
-      }
-      const saved = await storageService.saveArtifactWithMetadata(buffer, metadata, { runId: requestId, extension })
-      this.workflowRepo.addArtifact({
-        id: randomUUID(),
-        requestId,
-        artifactType: type,
-        filename: saved.filename,
-        storagePath: saved.storagePath,
-        sizeBytes: saved.size,
-        createdAt: new Date().toISOString()
-      })
-      const absolutePath = storageService.getAbsolutePath(saved.storagePath)
-      networkStorageService.copyToNetwork(absolutePath, saved.filename, label)
-      return storageService.createPublicUrl(saved.storagePath)
-    }
-
-    // Render PDF
     const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, clOpts)
-    const primaryUrl = await saveArtifact(pdf, 'cover-letter', 'CoverLetter')
+    return this.saveArtifact(requestId, personalInfo, payload, pdf, 'cover-letter', 'CoverLetter')
+  }
 
-    return primaryUrl
+  private async saveArtifact(
+    requestId: string,
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload,
+    buffer: Buffer,
+    type: ArtifactType,
+    label: string,
+    extension?: string
+  ): Promise<string> {
+    const metadata: ArtifactMetadata = {
+      name: personalInfo.name,
+      company: payload.job.company,
+      role: payload.job.role,
+      type
+    }
+    const saved = await storageService.saveArtifactWithMetadata(buffer, metadata, { runId: requestId, extension })
+    this.workflowRepo.addArtifact({
+      id: randomUUID(),
+      requestId,
+      artifactType: type,
+      filename: saved.filename,
+      storagePath: saved.storagePath,
+      sizeBytes: saved.size,
+      createdAt: new Date().toISOString()
+    })
+    const absolutePath = storageService.getAbsolutePath(saved.storagePath)
+    networkStorageService.copyToNetwork(absolutePath, saved.filename, label)
+    return storageService.createPublicUrl(saved.storagePath)
   }
 
   private enrichPayloadWithJobMatch(payload: GenerateDocumentPayload): JobMatchWithListing | null {
@@ -894,25 +874,15 @@ export class GeneratorWorkflowService {
     parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
 
     // Normalize tech names: deduplicate and fix capitalization
-    for (const exp of parsed.experience) {
-      if (exp.technologies?.length) {
-        exp.technologies = normalizeTechList(exp.technologies)
-      }
-    }
-    if (parsed.projects) {
-      for (const proj of parsed.projects) {
-        if (proj.technologies?.length) {
-          proj.technologies = normalizeTechList(proj.technologies)
-        }
-      }
-    }
-    if (parsed.skills) {
-      for (const skill of parsed.skills) {
-        if (skill.items?.length) {
-          skill.items = normalizeTechList(skill.items)
-        }
-      }
-    }
+    parsed.experience.forEach(exp => {
+      if (exp.technologies?.length) exp.technologies = normalizeTechList(exp.technologies)
+    })
+    parsed.projects?.forEach(proj => {
+      if (proj.technologies?.length) proj.technologies = normalizeTechList(proj.technologies)
+    })
+    parsed.skills?.forEach(skill => {
+      if (skill.items?.length) skill.items = normalizeTechList(skill.items)
+    })
 
     return parsed
   }

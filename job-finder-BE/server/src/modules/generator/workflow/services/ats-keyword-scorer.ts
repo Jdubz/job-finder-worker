@@ -1,5 +1,7 @@
 import type { ResumeContent } from '@shared/types'
 
+const MAX_JD_KEYWORDS = 30
+
 export interface AtsKeywordScore {
   score: number           // 0-100
   matchedKeywords: string[]
@@ -91,7 +93,7 @@ export function scoreAtsKeywords(
   const jdKeywords = jdText ? extractJdKeywords(jdText) : []
 
   // Explicit keywords get priority — use them as the primary scoring set
-  const primaryKeywords = explicitKeywords.length > 0 ? explicitKeywords : jdKeywords.slice(0, 30)
+  const primaryKeywords = explicitKeywords.length > 0 ? explicitKeywords : jdKeywords.slice(0, MAX_JD_KEYWORDS)
 
   if (primaryKeywords.length === 0) {
     return { score: 0, matchedKeywords: [], missingKeywords: [], coverage: 0 }
@@ -101,7 +103,10 @@ export function scoreAtsKeywords(
   const missing: string[] = []
 
   for (const keyword of primaryKeywords) {
-    if (resumeText.includes(keyword)) {
+    // Use word boundaries to avoid substring false positives (e.g. "sql" matching "postgresql")
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`\\b${escaped}\\b`)
+    if (pattern.test(resumeText)) {
       matched.push(keyword)
     } else {
       missing.push(keyword)
