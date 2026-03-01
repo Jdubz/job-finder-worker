@@ -1743,13 +1743,16 @@ class GenericScraper:
 
     def _extract_company_website_from_description(self, description: str) -> Optional[str]:
         """
-        Extract company website URL from description HTML.
+        Extract company website URL from a job description.
 
-        WeWorkRemotely descriptions contain company URLs in format:
-        <strong>URL:</strong> <a href="https://company.com">https://company.com</a>
+        Handles both HTML and plain-text descriptions. WeWorkRemotely
+        descriptions contain company URLs in formats like:
+
+        HTML:  ``<strong>URL:</strong> <a href="https://company.com">…</a>``
+        Plain: ``URL: https://company.com``
 
         Args:
-            description: HTML description text
+            description: Job description (HTML or plain text)
 
         Returns:
             Company website URL if found, None otherwise
@@ -1757,27 +1760,50 @@ class GenericScraper:
         if not description:
             return None
 
-        # Pattern to match URL field in WeWorkRemotely format
-        # Handles both encoded (&lt;) and decoded (<) HTML
-        patterns = [
+        def _validate_non_aggregator(url: str) -> Optional[str]:
+            """Return *url* if it's a valid, non-aggregator HTTP(S) URL."""
+            try:
+                url = url.rstrip(".,;)")
+                parsed = urlparse(url)
+                host = (parsed.hostname or "").lower()
+                if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
+                    return None
+                if parsed.scheme in ("http", "https") and parsed.netloc:
+                    return url
+            except Exception:
+                pass
+            return None
+
+        # --- 1. Plain-text patterns (description is usually already sanitized) ---
+        # "URL: https://company.com" (most common in WWR)
+        m = re.search(r"(?:^|\n)\s*URL:\s*(https?://\S+)", description, re.IGNORECASE)
+        if m:
+            result = _validate_non_aggregator(m.group(1))
+            if result:
+                return result
+
+        # "To apply: https://company.com/careers"
+        m = re.search(r"(?:^|\n)\s*To apply:\s*(https?://\S+)", description, re.IGNORECASE)
+        if m:
+            result = _validate_non_aggregator(m.group(1))
+            if result:
+                return result
+
+        # --- 2. HTML patterns (in case description is still raw HTML) ---
+        html_patterns = [
             r'URL:</strong>\s*<a\s+href="(https?://[^"]+)"',
             r"URL:&lt;/strong&gt;\s*&lt;a\s+href=&quot;(https?://[^&]+)&quot;",
             r'URL:</strong>\s*<a href="(https?://[^"]+)"',
         ]
 
-        for pattern in patterns:
-            match = re.search(pattern, description, re.IGNORECASE)
-            if match:
-                url = match.group(1)
-                # Validate URL structure using urlparse
-                try:
-                    parsed = urlparse(url)
-                    if parsed.scheme in ("http", "https") and parsed.netloc:
-                        return url
-                except Exception:
-                    pass
+        for pattern in html_patterns:
+            m = re.search(pattern, description, re.IGNORECASE)
+            if m:
+                result = _validate_non_aggregator(m.group(1))
+                if result:
+                    return result
 
-        # Fallback: first external <a href> URL in description (robust to attribute order/quotes)
+        # --- 3. Fallback: first external <a href> in HTML ---
         try:
             soup = BeautifulSoup(description, "html.parser")
         except Exception:
@@ -1788,16 +1814,9 @@ class GenericScraper:
                 url = a.get("href")
                 if not isinstance(url, str):
                     continue
-                try:
-                    parsed = urlparse(url)
-                    host = (parsed.hostname or "").lower()
-                    # Skip self-referencing aggregator links
-                    if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
-                        continue
-                    if parsed.scheme in ("http", "https") and parsed.netloc:
-                        return url
-                except Exception:
-                    continue
+                result = _validate_non_aggregator(url)
+                if result:
+                    return result
 
         return None
 

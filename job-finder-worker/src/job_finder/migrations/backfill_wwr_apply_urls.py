@@ -1,11 +1,11 @@
 """
-Backfill apply_url for WeWorkRemotely listings using company website from descriptions.
+Backfill apply_url for aggregator listings (WeWorkRemotely, Remotive, etc.).
 
-WWR descriptions contain the company website in plain-text format:
-    URL: https://company.com
-
-This migration extracts the URL and sets it as apply_url so the frontend
-navigates directly to the company site instead of the WWR paywall page.
+Two-stage resolution:
+    1. Extract company URL from the description text
+       (e.g. ``URL: https://company.com`` or ``To apply: https://…``)
+    2. Fall back to the company website stored in the ``companies`` table
+       (matched via ``company_id`` on the listing)
 
 Usage:
     python -m job_finder.migrations.backfill_wwr_apply_urls /path/to/database.db --dry-run
@@ -16,7 +16,7 @@ import logging
 import re
 import sqlite3
 import sys
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 from job_finder.utils.url_utils import AGGREGATOR_HOST_SUBSTRINGS
@@ -25,8 +25,23 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
+def _validate_non_aggregator(url: str) -> Optional[str]:
+    """Return *url* if it's a valid, non-aggregator HTTP(S) URL."""
+    try:
+        url = url.rstrip(".,;)")
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
+            return None
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            return url
+    except Exception:
+        pass
+    return None
+
+
 def _extract_company_url(description: str) -> Optional[str]:
-    """Extract company website from a plain-text WWR description.
+    """Extract company website from a plain-text aggregator description.
 
     Checks two patterns in order:
         1. ``URL: https://company.com`` (most common in WWR descriptions)
@@ -37,35 +52,27 @@ def _extract_company_url(description: str) -> Optional[str]:
     if not description:
         return None
 
-    # Pattern 1: explicit "URL: <url>" line (most common in WWR descriptions)
     match = re.search(r"(?:^|\n)\s*URL:\s*(https?://\S+)", description, re.IGNORECASE)
     if match:
-        url = match.group(1).rstrip(".,;)")
-        try:
-            parsed = urlparse(url)
-            host = (parsed.hostname or "").lower()
-            if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
-                return None
-            if parsed.scheme in ("http", "https") and parsed.netloc:
-                return url
-        except Exception:
-            pass
+        result = _validate_non_aggregator(match.group(1))
+        if result:
+            return result
 
-    # Pattern 2: "To apply: <url>" line
     match = re.search(r"(?:^|\n)\s*To apply:\s*(https?://\S+)", description, re.IGNORECASE)
     if match:
-        url = match.group(1).rstrip(".,;)")
-        try:
-            parsed = urlparse(url)
-            host = (parsed.hostname or "").lower()
-            if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
-                return None
-            if parsed.scheme in ("http", "https") and parsed.netloc:
-                return url
-        except Exception:
-            pass
+        result = _validate_non_aggregator(match.group(1))
+        if result:
+            return result
 
     return None
+
+
+def _load_company_websites(conn: sqlite3.Connection) -> Dict[str, str]:
+    """Build a {company_id: website} map for companies with a non-empty website."""
+    rows = conn.execute(
+        "SELECT id, website FROM companies WHERE website IS NOT NULL AND website != ''"
+    ).fetchall()
+    return {r["id"]: r["website"] for r in rows}
 
 
 def run(db_path: str, dry_run: bool = True) -> None:
@@ -75,26 +82,24 @@ def run(db_path: str, dry_run: bool = True) -> None:
 
     # Ensure apply_url column exists
     columns = [row["name"] for row in conn.execute("PRAGMA table_info(job_listings)").fetchall()]
-    has_apply_url = "apply_url" in columns
-    if not has_apply_url:
+    if "apply_url" not in columns:
         logger.info("Adding apply_url column to job_listings")
         conn.execute("ALTER TABLE job_listings ADD COLUMN apply_url TEXT")
         conn.commit()
-        has_apply_url = True
 
-    # Find all WWR source IDs
+    # Find all aggregator source IDs (WWR, Remotive, etc.)
     sources = conn.execute(
-        "SELECT id, name FROM job_sources WHERE aggregator_domain = 'weworkremotely.com'"
+        "SELECT id, name FROM job_sources WHERE aggregator_domain IS NOT NULL AND aggregator_domain != ''"
     ).fetchall()
 
     if not sources:
-        logger.info("No WeWorkRemotely sources found")
+        logger.info("No aggregator sources found")
         conn.close()
         return
 
     source_ids = [s["id"] for s in sources]
     logger.info(
-        "Found %d WWR sources: %s",
+        "Found %d aggregator sources: %s",
         len(sources),
         ", ".join(s["name"] for s in sources),
     )
@@ -102,16 +107,20 @@ def run(db_path: str, dry_run: bool = True) -> None:
     placeholders = ",".join("?" * len(source_ids))
     rows = conn.execute(
         f"""
-        SELECT id, url, description, apply_url
+        SELECT id, url, description, apply_url, company_id, company_name
         FROM job_listings
         WHERE source_id IN ({placeholders})
         """,
         source_ids,
     ).fetchall()
 
-    logger.info("Found %d WWR listings total", len(rows))
+    logger.info("Found %d aggregator listings total", len(rows))
+
+    # Pre-load company websites for the DB-fallback stage
+    company_websites = _load_company_websites(conn)
 
     updated = 0
+    updated_from_db = 0
     skipped_has_apply = 0
     skipped_no_url = 0
 
@@ -120,7 +129,17 @@ def run(db_path: str, dry_run: bool = True) -> None:
             skipped_has_apply += 1
             continue
 
+        # Stage 1: extract from description text
         company_url = _extract_company_url(row["description"])
+
+        # Stage 2: fall back to company website from companies table
+        if not company_url and row["company_id"]:
+            website = company_websites.get(row["company_id"])
+            if website:
+                company_url = _validate_non_aggregator(website)
+                if company_url:
+                    updated_from_db += 1
+
         if not company_url:
             skipped_no_url += 1
             logger.debug("No company URL found for %s", row["url"])
@@ -139,8 +158,9 @@ def run(db_path: str, dry_run: bool = True) -> None:
         conn.commit()
 
     logger.info(
-        "Results: %d updated, %d already had apply_url, %d no company URL found",
+        "Results: %d updated (%d from companies table), %d already had apply_url, %d unresolved",
         updated,
+        updated_from_db,
         skipped_has_apply,
         skipped_no_url,
     )

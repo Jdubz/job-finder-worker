@@ -157,14 +157,28 @@ class ScraperIntake:
 
         try:
             apply_url = derive_apply_url(normalized_url)
-            if not apply_url and job.get("company_website"):
-                # Only use company_website for aggregator listings where the
-                # listing URL points to the aggregator (not a direct apply page).
+            if not apply_url:
                 from urllib.parse import urlparse
 
                 host = (urlparse(normalized_url).hostname or "").lower()
-                if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
+                is_aggregator = any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS)
+
+                if is_aggregator and job.get("company_website"):
+                    # Use company_website extracted by the scraper.
                     apply_url = job["company_website"]
+
+                if is_aggregator and not apply_url and self.companies_manager:
+                    # Fallback: look up the company's website from the DB.
+                    company_name = job.get("company", "").strip()
+                    if company_name:
+                        company = self.companies_manager.get_company(company_name)
+                        if company and company.get("website"):
+                            apply_url = company["website"]
+                            logger.debug(
+                                "Resolved apply_url from companies table for %s: %s",
+                                company_name,
+                                apply_url,
+                            )
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),
