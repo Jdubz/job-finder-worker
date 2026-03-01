@@ -1792,28 +1792,34 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
     return { success: false, error: "Type requires text parameter" }
   }
 
-  // Check if focused element can receive text
+  // Check if focused element can receive text AND retrieve its current value.
+  // Returns { canType: true, currentValue: string } or { canType: false }.
   const canTypeScript = `
     (() => {
       const el = document.activeElement;
-      if (!el) return false;
+      if (!el) return { canType: false };
       const tag = el.tagName.toLowerCase();
-      return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+      const isInput = tag === 'input' || tag === 'textarea' || el.isContentEditable;
+      if (!isInput) return { canType: false };
+      const currentValue = el.value !== undefined ? el.value : (el.textContent || '');
+      return { canType: true, currentValue: String(currentValue) };
     })()
   `
 
-  let canType = await browserView.webContents.executeJavaScript(canTypeScript)
+  type CanTypeResult = { canType: boolean; currentValue?: string }
+
+  let result: CanTypeResult = await browserView.webContents.executeJavaScript(canTypeScript)
 
   // If focus is inside an iframe, document.activeElement in the main frame is the <iframe> itself.
   // Probe subframes to see if an input/textarea is actually focused.
-  if (!canType) {
+  if (!result?.canType) {
     const frames = getAllFramesFromWebContents()
     if (frames && frames.length > 0) {
       for (const frame of frames) {
         try {
-          const frameCanType = await frame.executeJavaScript!(canTypeScript)
-          if (frameCanType) {
-            canType = true
+          const frameResult = await frame.executeJavaScript!(canTypeScript) as CanTypeResult
+          if (frameResult?.canType) {
+            result = frameResult
             break
           }
         } catch {
@@ -1823,8 +1829,22 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
     }
   }
 
-  if (!canType) {
+  if (!result?.canType) {
     return { success: false, error: "Focused element cannot receive text input" }
+  }
+
+  // Guard: block typing into elements that already have a value.
+  // Internal callers (e.g. handleFillField strategy 2) clear the field via
+  // SelectAll+Backspace before calling handleType, so the field is empty by
+  // the time we get here. This guard only blocks the agent's direct use of
+  // the coordinate-based type() tool on already-filled fields.
+  if (result.currentValue && result.currentValue.trim() !== "") {
+    logger.warn(`[ToolExecutor] Blocked type() — focused element already has value (${result.currentValue.length} chars)`)
+    return {
+      success: false,
+      error: "Focused element already has a value. Use fill_field(selector, value) instead, which will skip already-filled fields automatically.",
+      currentValue: result.currentValue,
+    }
   }
 
   const debugger_ = browserView.webContents.debugger

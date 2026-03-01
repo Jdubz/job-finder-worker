@@ -79,8 +79,9 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
-import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
-import { getFormFillPrompt } from "./form-fill-safety.js"
+import { executeTool, setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
+import { getFormFillPrompt, parseFormScanResult } from "./form-fill-safety.js"
+import type { FormScanResult } from "./form-fill-safety.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -1826,6 +1827,31 @@ ipcMain.handle(
         }
       })
 
+      // Pre-scan form state to detect mostly-filled forms.
+      // If most fields are already filled, we activate TARGETED MODE in the prompt
+      // which gives the agent a shorter workflow focused only on empty fields.
+      let formScan: FormScanResult | null = null
+      try {
+        logger.info(`[FillForm] Pre-scanning form fields...`)
+        const scanResult = await executeTool("get_form_fields", {})
+        if (scanResult.success && scanResult.data) {
+          const data = scanResult.data as { fields?: Array<Record<string, unknown>> }
+          if (data.fields && Array.isArray(data.fields) && data.fields.length > 0) {
+            formScan = parseFormScanResult(data.fields)
+            logger.info(
+              `[FillForm] Pre-scan: ${formScan.totalFields} fields (${formScan.filledFields.length} filled, ${formScan.emptyFields.length} empty, ratio=${(formScan.filledRatio * 100).toFixed(0)}%, targeted=${formScan.isTargetedMode})`
+            )
+          } else {
+            logger.info(`[FillForm] Pre-scan: no countable fields found (embedded form or empty page)`)
+          }
+        } else {
+          logger.warn(`[FillForm] Pre-scan failed: ${scanResult.error || "unknown error"}`)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[FillForm] Pre-scan error (non-fatal): ${message}`)
+      }
+
       // Set completion callback to kill CLI when done is called
       logger.info(`[FillForm] Setting completion callback`)
       setCompletionCallback((summary: string) => {
@@ -1844,7 +1870,7 @@ ipcMain.handle(
       // Get complete form fill prompt with user profile and job context inlined.
       // Embedding context in the prompt avoids parallel tool calls on the first turn,
       // which triggers a Claude CLI bug ("tool_use ids must be unique").
-      const prompt = getFormFillPrompt(profileText, options.jobContext)
+      const prompt = getFormFillPrompt(profileText, options.jobContext, formScan)
       logger.info(`[FillForm] Loaded prompt (${prompt.length} chars total)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)

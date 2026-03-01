@@ -94,13 +94,13 @@ export const tools: Tool[] = [
     name: "fill_field",
     description:
       "Fill a form field by CSS selector. More reliable than click+type. " +
-      "Use the selector from get_form_fields. Works for text inputs, textareas, and similar fields (including fields inside iframes).",
+      "Use the selector from get_form_fields. Works for text inputs, textareas, and similar fields (including fields inside iframes). " +
+      "Fields that already have values will be SKIPPED automatically.",
     inputSchema: {
       type: "object",
       properties: {
         selector: { type: "string", description: "CSS selector for the field (from get_form_fields)" },
         value: { type: "string", description: "Value to fill in" },
-        force: { type: "boolean", description: "Set true to overwrite an existing value. Default: false (skip fields that already have values)." },
       },
       required: ["selector", "value"],
     },
@@ -110,13 +110,13 @@ export const tools: Tool[] = [
     description:
       "Select an option in a native <select> dropdown. " +
       "Use the selector from get_form_fields and match against the options array. " +
-      "Only works for fields with type='select-one' or 'select-multiple'.",
+      "Only works for fields with type='select-one' or 'select-multiple'. " +
+      "Fields that already have values will be SKIPPED automatically.",
     inputSchema: {
       type: "object",
       properties: {
         selector: { type: "string", description: "CSS selector for the select element" },
         value: { type: "string", description: "Option value to select (use 'value' from options, or 'text' if value is empty)" },
-        force: { type: "boolean", description: "Set true to overwrite an existing value. Default: false (skip fields that already have values)." },
       },
       required: ["selector", "value"],
     },
@@ -128,13 +128,13 @@ export const tools: Tool[] = [
       "IMPROVED: First opens dropdown without typing, then types incrementally if needed. " +
       "Selects the BEST available match (not just exact). " +
       "For confirmation fields, 'yes'/'agree' will match 'I confirm and consent...' options. " +
-      "Use for school/company pickers, month/year pickers, or any searchable dropdown.",
+      "Use for school/company pickers, month/year pickers, or any searchable dropdown. " +
+      "Fields that already have values will be SKIPPED automatically.",
     inputSchema: {
       type: "object",
       properties: {
         selector: { type: "string", description: "CSS selector for the input field" },
         value: { type: "string", description: "Value to search for - will match best available option" },
-        force: { type: "boolean", description: "Set true to overwrite an existing value. Default: false (skip fields that already have values)." },
       },
       required: ["selector", "value"],
     },
