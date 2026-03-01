@@ -767,6 +767,63 @@ async function findCdpFrameIdForUrl(debugger_: Electron.Debugger, frameUrl: stri
   return { mainFrameId, frameId }
 }
 
+// Fallback: walk every CDP frame and try querySelector in each frame's content document.
+// Used when URL-based frame matching fails to locate the file input.
+async function querySelectorInAllFrames(
+  debugger_: Electron.Debugger,
+  mainDocNodeId: number,
+  selector: string
+): Promise<number> {
+  try {
+    const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as { frameTree: PageFrameTreeNode }
+    const mainFrameId = frameTree?.frame?.id
+
+    // Collect all non-main frame IDs
+    const frameIds: string[] = []
+    const walk = (node: PageFrameTreeNode) => {
+      if (node.frame.id !== mainFrameId) frameIds.push(node.frame.id)
+      for (const child of node.childFrames || []) walk(child)
+    }
+    if (frameTree) walk(frameTree)
+
+    for (const frameId of frameIds) {
+      try {
+        const owner = await debugger_.sendCommand("DOM.getFrameOwner", { frameId }) as {
+          backendNodeId?: number
+          nodeId?: number
+        }
+        const describeParams = typeof owner.nodeId === "number"
+          ? { nodeId: owner.nodeId }
+          : typeof owner.backendNodeId === "number"
+            ? { backendNodeId: owner.backendNodeId }
+            : null
+        if (!describeParams) continue
+
+        const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
+          node: { contentDocument?: { nodeId: number } }
+        }
+        const contentDocNodeId = described.node?.contentDocument?.nodeId
+        if (typeof contentDocNodeId !== "number") continue
+
+        const result = await debugger_.sendCommand("DOM.querySelector", {
+          nodeId: contentDocNodeId,
+          selector,
+        }) as { nodeId: number }
+        if (result.nodeId) {
+          logger.info(`[Upload] Found "${selector}" in iframe (frameId=${frameId}) via frame-walk fallback`)
+          return result.nodeId
+        }
+      } catch {
+        // Frame may not be accessible (cross-origin, detached) — skip
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.warn(`[Upload] Frame-walk fallback failed: ${message}`)
+  }
+  return 0
+}
+
 // Helper function to set files on a file input using Electron's debugger API.
 // Supports file inputs within cross-origin iframes by targeting the correct subframe document.
 async function setFileInputFiles(
@@ -830,10 +887,15 @@ async function setFileInputFiles(
     }
 
     // Find the file input element (within chosen document root)
-    const { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
+    let { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
       nodeId: queryRootNodeId,
       selector,
     }) as { nodeId: number }
+
+    if (!nodeId) {
+      // Fallback: walk all CDP frames and try querySelector in each
+      nodeId = await querySelectorInAllFrames(debugger_, queryRootNodeId, selector)
+    }
 
     if (!nodeId) {
       throw new Error(`File input not found: ${selector}`)
@@ -989,28 +1051,29 @@ ipcMain.handle(
     try {
       if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
-      // Find file input selector based on document type (search iframes too)
       const targetType = options?.type || "resume"
-      const found = await findFileInputAcrossFrames<string>(
-        browserView!.webContents,
-        buildFileInputDetectionScript(targetType)
-      )
+
+      // Launch detection and download in parallel to shrink the timing window
+      // between detection and the CDP querySelector call
+      const [found, downloadedPath] = await Promise.all([
+        findFileInputAcrossFrames<string>(
+          browserView!.webContents,
+          buildFileInputDetectionScript(targetType)
+        ),
+        options?.documentUrl ? downloadDocument(options.documentUrl) : Promise.resolve(null),
+      ])
 
       if (!found?.result) {
         return { success: false, message: "No file input found on page" }
       }
-
-      const fileInputSelector = found.result
-      const frameUrl = found.frameUrl
-      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
-
-      // Download document from API
-      if (!options?.documentUrl) {
+      if (!downloadedPath) {
         return { success: false, message: "No document URL provided" }
       }
 
-      logger.info(`[Upload] Downloading document from API: ${options.documentUrl}`)
-      resolvedPath = await downloadDocument(options.documentUrl)
+      resolvedPath = downloadedPath
+      const fileInputSelector = found.result
+      const frameUrl = found.frameUrl
+      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
