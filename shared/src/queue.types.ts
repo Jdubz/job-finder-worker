@@ -67,7 +67,8 @@ export const QUEUE_SOURCES = [
   "webhook",
   "email",
   "manual_submission",
-  "user_request"
+  "user_request",
+  "auto_recovery"
 ] as const
 
 /**

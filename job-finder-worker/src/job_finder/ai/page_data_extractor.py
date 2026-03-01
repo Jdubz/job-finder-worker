@@ -293,10 +293,24 @@ class PageDataExtractor:
 
         return result
 
+    # SPA-heavy domains that need networkidle wait strategy instead of domcontentloaded.
+    # These sites load job content dynamically via JS after initial page load.
+    _SPA_DOMAINS = ("oraclecloud.com",)
+
     def _render_page(self, url: str) -> str:
         """Render a URL with Playwright and return HTML content."""
         renderer = get_renderer()
-        req = RenderRequest(url=url, wait_timeout_ms=30_000)
+
+        # Detect SPA-heavy sites that need networkidle wait strategy
+        parsed_host = urlparse(url).hostname or ""
+        is_spa = any(parsed_host.endswith(d) for d in self._SPA_DOMAINS)
+
+        req = RenderRequest(
+            url=url,
+            wait_timeout_ms=30_000,
+            wait_until="networkidle" if is_spa else "domcontentloaded",
+            block_resources=not is_spa,  # SPAs need all resources to render content
+        )
         result = renderer.render(req)
         return result.html
 

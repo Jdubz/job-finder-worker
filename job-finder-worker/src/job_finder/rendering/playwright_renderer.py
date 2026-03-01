@@ -16,7 +16,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Literal, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from playwright.sync_api import Playwright, Browser
@@ -52,6 +52,7 @@ class RenderRequest:
     wait_timeout_ms: int = 20_000
     block_resources: bool = True
     headers: Dict[str, str] = field(default_factory=dict)
+    wait_until: Literal["domcontentloaded", "networkidle", "load"] = "domcontentloaded"
 
 
 @dataclass
@@ -324,7 +325,7 @@ class PlaywrightRenderer:
             final_url = req.url
 
             try:
-                page.goto(req.url, wait_until="domcontentloaded", timeout=timeout)
+                page.goto(req.url, wait_until=req.wait_until, timeout=timeout)
                 if req.wait_for_selector:
                     try:
                         page.wait_for_selector(req.wait_for_selector, timeout=timeout)
