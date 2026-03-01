@@ -7,6 +7,10 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 logger = logging.getLogger(__name__)
 
+# Job-board aggregator host substrings used to filter self-referencing links
+# when extracting company URLs from descriptions and gating apply_url fallbacks.
+AGGREGATOR_HOST_SUBSTRINGS = ("weworkremotely", "remotive", "remoteok", "jobicy")
+
 # Optional import: more accurate public-suffix parsing if available
 try:  # pragma: no cover - optional dependency
     import tldextract

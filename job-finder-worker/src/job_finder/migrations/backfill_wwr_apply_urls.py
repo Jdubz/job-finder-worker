@@ -16,24 +16,23 @@ import logging
 import re
 import sqlite3
 import sys
+from typing import Optional
 from urllib.parse import urlparse
+
+from job_finder.utils.url_utils import AGGREGATOR_HOST_SUBSTRINGS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Aggregator domains whose listings should never be used as apply URLs
-_AGGREGATOR_HOSTS = ("weworkremotely", "remotive", "remoteok", "jobicy")
 
-
-def _extract_company_url(description: str) -> str | None:
+def _extract_company_url(description: str) -> Optional[str]:
     """Extract company website from a plain-text WWR description.
 
-    WWR descriptions contain lines like:
-        URL: https://company.com
-        URL: http://bit.ly/abc123
+    Checks two patterns in order:
+        1. ``URL: https://company.com`` (most common in WWR descriptions)
+        2. ``To apply: https://company.com/careers``
 
-    Falls back to the first https:// URL on a line by itself if the
-    explicit URL: pattern isn't found.
+    Returns None if neither pattern matches or the URL is an aggregator link.
     """
     if not description:
         return None
@@ -45,7 +44,7 @@ def _extract_company_url(description: str) -> str | None:
         try:
             parsed = urlparse(url)
             host = (parsed.hostname or "").lower()
-            if any(agg in host for agg in _AGGREGATOR_HOSTS):
+            if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
                 return None
             if parsed.scheme in ("http", "https") and parsed.netloc:
                 return url
@@ -59,7 +58,7 @@ def _extract_company_url(description: str) -> str | None:
         try:
             parsed = urlparse(url)
             host = (parsed.hostname or "").lower()
-            if any(agg in host for agg in _AGGREGATOR_HOSTS):
+            if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
                 return None
             if parsed.scheme in ("http", "https") and parsed.netloc:
                 return url

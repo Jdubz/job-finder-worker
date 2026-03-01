@@ -429,6 +429,16 @@ async function createWindow(): Promise<void> {
   // We only need special handling for OAuth/SSO popups to protect the opener
   // page from being navigated away by the auth provider's redirect chain.
   browserView.webContents.setWindowOpenHandler(({ url }) => {
+    // Only allow safe schemes to prevent local-file exposure or script injection
+    try {
+      const scheme = new URL(url).protocol
+      if (!["http:", "https:", "about:"].includes(scheme)) {
+        logger.warn(`Blocking popup with unsafe scheme: ${url}`)
+        return { action: "deny" }
+      }
+    } catch {
+      // about:blank and empty URLs don't parse — allow them (common OAuth pattern)
+    }
     logger.info(`Allowing popup: ${url}`)
     return { action: "allow" }
   })

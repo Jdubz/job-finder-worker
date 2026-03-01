@@ -29,7 +29,12 @@ from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
 from job_finder.utils.company_name_utils import clean_company_name
-from job_finder.utils.url_utils import compute_content_fingerprint, derive_apply_url, normalize_url
+from job_finder.utils.url_utils import (
+    AGGREGATOR_HOST_SUBSTRINGS,
+    compute_content_fingerprint,
+    derive_apply_url,
+    normalize_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -158,8 +163,7 @@ class ScraperIntake:
                 from urllib.parse import urlparse
 
                 host = (urlparse(normalized_url).hostname or "").lower()
-                _AGGREGATOR_HOSTS = ("weworkremotely", "remotive", "remoteok", "jobicy")
-                if any(agg in host for agg in _AGGREGATOR_HOSTS):
+                if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
                     apply_url = job["company_website"]
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,

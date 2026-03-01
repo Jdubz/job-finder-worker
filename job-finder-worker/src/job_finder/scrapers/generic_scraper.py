@@ -33,6 +33,7 @@ from job_finder.scrapers.text_sanitizer import (
 )
 from job_finder.settings import get_fetch_delay_seconds
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.utils.url_utils import AGGREGATOR_HOST_SUBSTRINGS
 
 logger = logging.getLogger(__name__)
 
@@ -1791,9 +1792,7 @@ class GenericScraper:
                     parsed = urlparse(url)
                     host = (parsed.hostname or "").lower()
                     # Skip self-referencing aggregator links
-                    if any(
-                        agg in host for agg in ("weworkremotely", "remotive", "remoteok", "jobicy")
-                    ):
+                    if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
                         continue
                     if parsed.scheme in ("http", "https") and parsed.netloc:
                         return url
