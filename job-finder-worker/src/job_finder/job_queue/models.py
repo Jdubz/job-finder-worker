@@ -142,7 +142,7 @@ class QueueStatus(str, Enum):
 
 
 # QueueSource type - matches TypeScript literal type
-# TypeScript: "user_submission" | "automated_scan" | "scraper" | "webhook" | "email" | "manual_submission" | "user_request"
+# TypeScript: "user_submission" | "automated_scan" | "scraper" | "webhook" | "email" | "manual_submission" | "user_request" | "auto_recovery"
 QueueSource = Literal[
     "user_submission",
     "automated_scan",
