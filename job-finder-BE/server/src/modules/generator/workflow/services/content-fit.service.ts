@@ -8,8 +8,8 @@ import type { ResumeContent } from '@shared/types'
  *   skills, projects, education — top to bottom.
  *
  * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable (940.8px)
- * Dominant line height: bullet text 10.5px × 1.45 = 15.225px → 940.8 / 15.225 ≈ 62 raw lines.
- * With safety margin → 60 max.
+ * Dominant line height: bullet text 10.5px × 1.35 = 14.175px → 940.8 / 14.175 ≈ 66 raw lines.
+ * With safety margin → 64 max.
  *
  * Margin value (0.6in top/bottom, 0.75in left/right) must stay in sync
  * with @page margin in html-ats-style.ts.
@@ -52,7 +52,7 @@ const LAYOUT = {
   SKILL_CATEGORY_LINES: 1.5,   // "Category: item, item, item" on one line
   EDUCATION_ENTRY_LINES: 2,    // Degree + school
 
-  MAX_LINES: 60,
+  MAX_LINES: 64,
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
@@ -165,7 +165,7 @@ export function getContentBudget(): {
   return {
     maxExperiences: 4,
     maxBulletsPerExperience: 6,
-    maxSummaryWords: 50,
+    maxSummaryWords: 70,
     maxSkillCategories: 5,
     maxProjects: 2,
     maxBulletsPerProject: 2
@@ -232,14 +232,30 @@ export function getRecommendedSkillCategories(experienceCount: number, avgBullet
 }
 
 /**
+ * Get tiered bullet allocation guidance based on experience count.
+ * More recent roles get more bullets; older roles get fewer.
+ */
+export function getTieredBulletGuidance(experienceCount: number): string {
+  const tiers = [
+    'Most recent role: 5-6 bullets',
+    'Second role: 4-5 bullets',
+    'Third role: 3-4 bullets',
+    'Fourth+ role: 2-3 bullets'
+  ]
+  return tiers.slice(0, Math.min(experienceCount, tiers.length)).join('\n  - ')
+}
+
+/**
  * Get content guidance for AI prompt.
  */
 export function getBalancedContentGuidance(experienceCount: number = 4): string {
   const recommendedSkillCats = getRecommendedSkillCategories(experienceCount, 3)
 
   return `CONTENT BUDGET GUIDANCE:
-- Include ${experienceCount} experience entries (use all available if you have ${experienceCount} or fewer). Aim for 4-5 bullets per entry to fill the page; use up to 6 when fewer entries are available.
+- Include ${experienceCount} experience entries (use all available if you have ${experienceCount} or fewer). Allocate bullets by recency:
+  - ${getTieredBulletGuidance(experienceCount)}
 - Use ${recommendedSkillCats} skill categories with 3-5 items each
+- Summary: 2-4 sentences (50-70 words)
 - Include 2-3 education entries
 - Only include projects if they fill genuine skill gaps not covered by work experience. Prefer an empty projects section over irrelevant projects.
 - All content is single-column — skills and education are in the main flow, not a sidebar.`

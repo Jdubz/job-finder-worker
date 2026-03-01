@@ -16,6 +16,12 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   if (info?.email) {
     contactParts.push(`Email: <a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
   }
+  if (info?.linkedin) {
+    contactParts.push(`LinkedIn: <a href="${escapeAttr(normalizeUrl(info.linkedin))}">LinkedIn</a>`)
+  }
+  if (info?.github) {
+    contactParts.push(`GitHub: <a href="${escapeAttr(normalizeUrl(info.github))}">GitHub</a>`)
+  }
   if (info?.phone) {
     contactParts.push(`Phone: ${safeText(info.phone)}`)
   }
@@ -25,12 +31,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   if (info?.website) {
     contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.website))}">${safeText(info.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`)
   }
-  if (info?.linkedin) {
-    contactParts.push(`LinkedIn: <a href="${escapeAttr(normalizeUrl(info.linkedin))}">LinkedIn</a>`)
-  }
-  if (info?.github) {
-    contactParts.push(`GitHub: <a href="${escapeAttr(normalizeUrl(info.github))}">GitHub</a>`)
-  }
   const contactRow = contactParts.length
     ? `<div class="contact-row">${contactParts.join('<span class="sep">|</span>')}</div>`
     : ''
@@ -38,21 +38,21 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   // Experience
   const experiences = (content.experience || [])
     .map((exp) => {
-      const dates = `${formatDate(exp.startDate)} - ${formatDate(exp.endDate) || 'Present'}`
+      const dates = `${safeText(formatDate(exp.startDate))} - ${safeText(formatDate(exp.endDate)) || 'Present'}`
       const bullets = (exp.highlights || [])
         .map((b) => `<li>${safeText(b)}</li>`)
         .join('')
       const tech = Array.isArray(exp.technologies) && exp.technologies.length
-        ? `<div class="exp-tech">${safeText(exp.technologies.join(', '))}</div>`
+        ? `<p class="exp-tech">${safeText(exp.technologies.join(', '))}</p>`
         : ''
 
       return `
         <div class="exp-entry">
-          <div class="exp-header">
+          <h3 class="exp-header">
             <span class="exp-role">${safeText(exp.role)}</span>
             <span class="exp-dates">${dates}</span>
-          </div>
-          <div class="exp-company">${safeText(exp.company)}${exp.location ? ' - ' + safeText(exp.location) : ''}</div>
+          </h3>
+          <p class="exp-company">${safeText(exp.company)}${exp.location ? ' - ' + safeText(exp.location) : ''}</p>
           ${bullets ? `<ul class="exp-bullets">${bullets}</ul>` : ''}
           ${tech}
         </div>
@@ -76,7 +76,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       const desc = !bullets && proj.description ? `<li>${safeText(proj.description)}</li>` : ''
       const allBullets = bullets || desc
       const tech = proj.technologies?.length
-        ? `<div class="exp-tech">${safeText(proj.technologies.join(', '))}</div>`
+        ? `<p class="exp-tech">${safeText(proj.technologies.join(', '))}</p>`
         : ''
       const link = proj.link
         ? ` <span class="project-link">(<a href="${escapeAttr(normalizeUrl(proj.link))}">${safeText(proj.link.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>)</span>`
@@ -84,7 +84,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
 
       return `
         <div class="project-entry">
-          <span class="project-name">${safeText(proj.name)}</span>${link}
+          <h3 class="project-name">${safeText(proj.name)}${link}</h3>
           ${allBullets ? `<ul class="exp-bullets">${allBullets}</ul>` : ''}
           ${tech}
         </div>
@@ -99,11 +99,11 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       const degreeField = [e.degree, e.field].filter(Boolean).join(' in ')
       return `
         <div class="edu-entry">
-          <div class="edu-header">
+          <h3 class="edu-header">
             <span class="edu-degree">${safeText(degreeField)}</span>
-            ${gradDate ? `<span class="edu-date">${formatDate(gradDate)}</span>` : ''}
-          </div>
-          <div class="edu-school">${safeText(e.institution)}</div>
+            ${gradDate ? `<span class="edu-date">${safeText(formatDate(gradDate))}</span>` : ''}
+          </h3>
+          <p class="edu-school">${safeText(e.institution)}</p>
         </div>
       `
     })
@@ -125,37 +125,33 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   </head>
   <body>
     <div class="page">
-      <div class="header">
-        <div class="header-content">
-          ${avatarHtml}
-          <div class="header-text">
-            <div class="name">${safeText(info?.name || '')}</div>
-            <div class="title">${safeText(info?.title || content.personalInfo?.title || '')}</div>
-          </div>
-          ${logoHtml}
-        </div>
-      </div>
+      <header class="header">
+        <h1 class="name">${safeText(info?.name || '')}</h1>
+        <div class="title">${safeText(info?.title || content.personalInfo?.title || '')}</div>
+        ${avatarHtml}
+        ${logoHtml}
+      </header>
       <hr class="header-rule" />
       ${contactRow}
 
-      <div class="section-heading">Professional Summary</div>
-      <div class="summary">${safeText(content.professionalSummary || content.personalInfo?.summary || '')}</div>
+      <h2 class="section-heading">Professional Summary</h2>
+      <p class="summary">${safeText(content.professionalSummary || content.personalInfo?.summary || '')}</p>
 
-      <div class="section-heading">Work Experience</div>
+      <h2 class="section-heading">Work Experience</h2>
       ${experiences}
 
       ${skillsHtml ? `
-      <div class="section-heading">Technical Skills</div>
+      <h2 class="section-heading">Technical Skills</h2>
       <div class="skills-list">${skillsHtml}</div>
       ` : ''}
 
       ${projectsHtml ? `
-      <div class="section-heading">Projects</div>
+      <h2 class="section-heading">Projects</h2>
       ${projectsHtml}
       ` : ''}
 
       ${educationHtml ? `
-      <div class="section-heading">Education</div>
+      <h2 class="section-heading">Education</h2>
       ${educationHtml}
       ` : ''}
     </div>
