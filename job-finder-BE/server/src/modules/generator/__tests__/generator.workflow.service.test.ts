@@ -870,7 +870,7 @@ const mockCoverLetterContent = {
       }
 
       const result = callGround(parsed, items)
-      expect(result.skills[0].items).toEqual(['javascript', 'TYPESCRIPT', 'node.js'])
+      expect(result.skills[0].items).toEqual(['JavaScript', 'TypeScript', 'Node.js'])
     })
 
     it('includes skills from description of skills-context items', () => {

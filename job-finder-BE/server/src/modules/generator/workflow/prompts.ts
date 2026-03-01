@@ -359,6 +359,10 @@ Content rules:
 - Every technology, tool, and skill you mention MUST appear in the CANDIDATE DATA above. If a technology is not listed in the candidate's work experience, projects, or skills, do NOT include it.
 - Do NOT add technologies the candidate does not have (e.g., do not add AWS, Kafka, Kubernetes, etc. unless they appear in the source data).
 - Rephrase and tailor the candidate's EXISTING achievements for this role — do not fabricate new ones.
+- Write achievement-based bullet points following: [Action verb] [what] [using what], resulting in [quantified outcome]
+- Every bullet should contain at least one measurable outcome. If exact numbers aren't available, omit rather than fabricate.
+- Mirror exact phrases from the job description when they match candidate's actual experience.
+- Use standard ATS section headings: "Professional Summary", "Work Experience", "Technical Skills", "Projects", "Education"
 
 Return the result as a JSON object with this exact structure:
 {
@@ -414,6 +418,7 @@ export function buildResumeJobPrompt(
   }
   if (resumeIntakeData?.atsKeywords?.length) {
     parts.push(`ATS Keywords: ${resumeIntakeData.atsKeywords.join(', ')}`)
+    parts.push(`KEYWORD MIRRORING: Use EXACT phrasing from the job description when the candidate has genuine matching experience.`)
   }
 
   // Project guidance

@@ -3,18 +3,16 @@ import type { ResumeContent } from '@shared/types'
 /**
  * Content fitting service for single-page resume optimization.
  *
- * Two-column layout (updated):
- * - Left sidebar (2in / ~25%): Avatar, Contact, Skills, Education
- * - Right main area (~5.5in / 75%): Name/Title header, Summary, Experience
+ * Single-column ATS layout:
+ *   All content flows in one column — header, summary, experience,
+ *   skills, projects, education — top to bottom.
  *
- * Letter page: 11in height - 1.0in total margins (0.5in × 2) = 10.0in usable
- * Main column at 10px font with 1.45 line-height ≈ 66 lines raw,
- * minus padding (20px top + 20px bottom ≈ 3 lines) = ~63 lines.
- * Use 60 as max to allow ~3 lines for section spacing drift and footer overlay.
+ * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable (940.8px)
+ * Dominant line height: bullet text 10.5px × 1.45 = 15.225px → 940.8 / 15.225 ≈ 62 raw lines.
+ * With safety margin → 60 max.
  *
- * Margin value (0.5in) must stay in sync with:
- *   - DEFAULT_MARGIN in html-pdf.service.ts
- *   - @page margin and .page height in html-style.ts
+ * Margin value (0.6in top/bottom, 0.75in left/right) must stay in sync
+ * with @page margin in html-ats-style.ts.
  */
 
 export interface FitEstimate {
@@ -25,16 +23,10 @@ export interface FitEstimate {
   suggestions: string[]
 }
 
-// Approximate characters per line at 10px sans-serif in each column area.
-// Main text area: ~5in effective width after padding/indent ≈ 80 chars.
-// Bullet text: indented by <li> + <ul> padding ≈ 75 chars.
-// Tech text: slightly indented ≈ 78 chars.
-// Sidebar text: ~1.5in effective ≈ 25 chars.
-const CHARS_PER_LINE = {
-  MAIN: 80,
-  BULLET: 75,
-  TECH: 78,
-}
+// Characters per line at 11px Calibri in single-column layout (~7in / 672px content width)
+// Body: 672px / 5.8px avg char width ≈ 116; bullets at 10.5px: (672-16) / 5.5 ≈ 119
+const CHARS_PER_LINE = 110
+const BULLET_CHARS_PER_LINE = 105
 
 // Heuristic averages for functions that don't have actual text to measure
 const AVG_LINES_PER_BULLET = 2
@@ -46,62 +38,59 @@ function textToLines(text: string, charsPerLine: number): number {
   return Math.max(1, Math.ceil(text.length / charsPerLine))
 }
 
-// Structure constants (in approximate line units at 10px font)
 const LAYOUT = {
-  // Main column
-  HEADER_LINES: 4,            // Name + title + border spacing
+  HEADER_LINES: 4,             // Name + title + rule + contact row
   SUMMARY_MIN_LINES: 2,
-  SECTION_TITLE_LINES: 2,     // Section title + spacing
+  SECTION_TITLE_LINES: 2,      // Heading + bottom border + spacing
 
-  // Experience structure (bullet/tech lines are now character-aware)
-  EXP_HEADER_LINES: 2,        // Role title + company line
-  EXP_SPACING: 1.5,           // Space between entries
+  EXP_HEADER_LINES: 2,         // Role title + company line
+  EXP_SPACING: 1.5,            // Space between entries
 
-  // Projects structure
-  PROJECT_HEADER_LINES: 2,    // Project name + link line
-  PROJECT_SPACING: 1.5,       // Space between entries
+  PROJECT_HEADER_LINES: 2,     // Project name + link line
+  PROJECT_SPACING: 1.5,
 
-  // Sidebar
-  SIDEBAR_HEADER_LINES: 8,    // Avatar + spacing
-  CONTACT_ITEM_LINES: 1.5,    // Each contact item
-  SKILL_CATEGORY_LINES: 3,    // Label + tags (more wrapped in narrow sidebar)
-  EDUCATION_ENTRY_LINES: 2.5, // Degree + school + date
-  SIDEBAR_SECTION_SPACING: 2, // Space between sidebar sections
+  SKILL_CATEGORY_LINES: 1.5,   // "Category: item, item, item" on one line
+  EDUCATION_ENTRY_LINES: 2,    // Degree + school
 
-  // Page limits (~3 lines margin for section spacing drift and footer overlay)
-  MAIN_COLUMN_MAX_LINES: 60,
-  SIDEBAR_MAX_LINES: 60,
+  MAX_LINES: 60,
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
   const suggestions: string[] = []
 
-  // Main column: Header + Summary + Experience + Projects
+  // All content in one column
   let mainLines = LAYOUT.HEADER_LINES
 
-  // Summary section (character-aware)
+  // Summary
   const summaryText = content.professionalSummary || ''
   const summaryLines = Math.max(
     LAYOUT.SUMMARY_MIN_LINES,
-    textToLines(summaryText, CHARS_PER_LINE.MAIN)
+    textToLines(summaryText, CHARS_PER_LINE)
   )
   mainLines += LAYOUT.SECTION_TITLE_LINES + summaryLines
 
-  // Experience section (character-aware for bullets and tech)
+  // Experience
   mainLines += LAYOUT.SECTION_TITLE_LINES
   for (const exp of content.experience || []) {
     mainLines += LAYOUT.EXP_HEADER_LINES
     for (const bullet of exp.highlights || []) {
-      mainLines += textToLines(bullet, CHARS_PER_LINE.BULLET)
+      mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE)
     }
-    const techText = ((exp as any).technologies || []).join(' \u2022 ')
+    const techText = (exp.technologies || []).join(', ')
     if (techText) {
-      mainLines += textToLines(techText, CHARS_PER_LINE.TECH)
+      mainLines += textToLines(techText, CHARS_PER_LINE)
     }
     mainLines += LAYOUT.EXP_SPACING
   }
 
-  // Projects section (character-aware)
+  // Skills (in main column for single-column layout)
+  const skillCategories = content.skills?.length || 0
+  if (skillCategories > 0) {
+    mainLines += LAYOUT.SECTION_TITLE_LINES
+    mainLines += skillCategories * LAYOUT.SKILL_CATEGORY_LINES
+  }
+
+  // Projects
   const projectCount = content.projects?.length || 0
   if (projectCount > 0) {
     mainLines += LAYOUT.SECTION_TITLE_LINES
@@ -110,46 +99,31 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       const highlights = proj.highlights || []
       if (highlights.length > 0) {
         for (const h of highlights) {
-          mainLines += textToLines(h, CHARS_PER_LINE.BULLET)
+          mainLines += textToLines(h, BULLET_CHARS_PER_LINE)
         }
       } else if (proj.description) {
-        mainLines += textToLines(proj.description, CHARS_PER_LINE.BULLET)
+        mainLines += textToLines(proj.description, BULLET_CHARS_PER_LINE)
       }
-      const techText = (proj.technologies || []).join(' \u2022 ')
+      const techText = (proj.technologies || []).join(', ')
       if (techText) {
-        mainLines += textToLines(techText, CHARS_PER_LINE.TECH)
+        mainLines += textToLines(techText, CHARS_PER_LINE)
       }
       mainLines += LAYOUT.PROJECT_SPACING
     }
   }
 
-  // Sidebar: Avatar + Contact + Skills + Education
-  let sidebarLines = LAYOUT.SIDEBAR_HEADER_LINES
-
-  // Contact section (estimate 5-6 items typically)
-  sidebarLines += LAYOUT.SIDEBAR_SECTION_SPACING + 6 * LAYOUT.CONTACT_ITEM_LINES
-
-  // Skills section
-  const skillCategories = content.skills?.length || 0
-  if (skillCategories > 0) {
-    sidebarLines += LAYOUT.SIDEBAR_SECTION_SPACING
-    sidebarLines += skillCategories * LAYOUT.SKILL_CATEGORY_LINES
-  }
-
-  // Education section
+  // Education
   const eduCount = content.education?.length || 0
   if (eduCount > 0) {
-    sidebarLines += LAYOUT.SIDEBAR_SECTION_SPACING
-    sidebarLines += eduCount * LAYOUT.EDUCATION_ENTRY_LINES
+    mainLines += LAYOUT.SECTION_TITLE_LINES
+    mainLines += eduCount * LAYOUT.EDUCATION_ENTRY_LINES
   }
 
   // Calculate overflow
-  const mainOverflow = mainLines - LAYOUT.MAIN_COLUMN_MAX_LINES
-  const sidebarOverflow = sidebarLines - LAYOUT.SIDEBAR_MAX_LINES
-  const overflow = Math.max(mainOverflow, sidebarOverflow)
+  const overflow = mainLines - LAYOUT.MAX_LINES
 
-  // Generate suggestions if overflow
-  if (mainOverflow > 0) {
+  // Suggestions
+  if (overflow > 0) {
     const expCount = content.experience?.length || 0
     const totalBullets = content.experience?.reduce((sum, e) => sum + (e.highlights?.length || 0), 0) || 0
     const avgBullets = expCount > 0 ? totalBullets / expCount : 0
@@ -160,24 +134,16 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       suggestions.push(`Reduce bullets per experience from ~${avgBullets.toFixed(1)} to 3`)
     }
     if (summaryLines > 3) {
-      suggestions.push(`Shorten summary to ~${CHARS_PER_LINE.MAIN * 2} chars`)
+      suggestions.push(`Shorten summary to ~${CHARS_PER_LINE * 2} chars`)
     }
-  }
-
-  if (sidebarOverflow > 0) {
-    if (skillCategories > 4) {
-      suggestions.push(`Consolidate skill categories from ${skillCategories} to 4`)
-    }
-    // Suggest combining small skill items
-    const totalSkillItems = content.skills?.reduce((sum, s) => sum + s.items.length, 0) || 0
-    if (totalSkillItems > 20) {
-      suggestions.push(`Reduce total skills from ${totalSkillItems} to ~15-20`)
+    if (skillCategories > 5) {
+      suggestions.push(`Consolidate skill categories from ${skillCategories} to 4-5`)
     }
   }
 
   return {
     mainColumnLines: Math.round(mainLines),
-    sidebarLines: Math.round(sidebarLines),
+    sidebarLines: 0,
     fits: overflow <= 0,
     overflow: Math.round(overflow),
     suggestions
@@ -198,9 +164,9 @@ export function getContentBudget(): {
 } {
   return {
     maxExperiences: 4,
-    maxBulletsPerExperience: 6, // AI should use more bullets when fewer experiences
+    maxBulletsPerExperience: 6,
     maxSummaryWords: 50,
-    maxSkillCategories: 5, // 4-6 range, balanced with sidebar
+    maxSkillCategories: 5,
     maxProjects: 2,
     maxBulletsPerProject: 2
   }
@@ -214,82 +180,67 @@ export function willFitOnePage(content: ResumeContent): boolean {
   const totalBullets = content.experience?.reduce((sum, e) => sum + (e.highlights?.length || 0), 0) || 0
   const summaryWords = (content.professionalSummary || '').split(/\s+/).length
 
-  // Quick heuristic
   return expCount <= 5 && totalBullets <= 20 && summaryWords <= 75
 }
 
 /**
- * Column balance analysis for two-column layout.
- * Returns guidance for balancing sidebar and main content heights.
+ * Column balance analysis — kept for backward compatibility.
+ * In single-column layout, balance is about total content vs page height.
  */
 export interface ColumnBalance {
   sidebarLines: number
   mainLines: number
-  difference: number // positive = main taller, negative = sidebar taller
+  difference: number
   balanced: boolean
   suggestion: string
 }
 
 export function analyzeColumnBalance(content: ResumeContent): ColumnBalance {
   const estimate = estimateContentFit(content)
-  const difference = estimate.mainColumnLines - estimate.sidebarLines
-  const threshold = 8 // Allow ~8 lines difference before suggesting changes
 
   let suggestion = ''
-  if (difference > threshold) {
-    // Main column is too tall - suggest more sidebar content
-    const skillsNeeded = Math.ceil(difference / LAYOUT.SKILL_CATEGORY_LINES)
-    suggestion = `Main column is ${difference} lines taller. Add ${skillsNeeded} more skill categories or expand education.`
-  } else if (difference < -threshold) {
-    // Sidebar is too tall - suggest more main content
-    const absD = Math.abs(difference)
+  if (estimate.overflow > 0) {
+    suggestion = `Content overflows by ~${estimate.overflow} lines. Reduce bullets or experience entries.`
+  } else if (estimate.overflow < -15) {
+    const absD = Math.abs(estimate.overflow)
     const bulletsNeeded = Math.ceil(absD / AVG_LINES_PER_BULLET)
-    suggestion = `Sidebar is ${absD} lines taller. Add ${bulletsNeeded} more bullet points to experiences.`
+    suggestion = `Page has ~${absD} lines of empty space. Add ${bulletsNeeded} more bullet points.`
   }
 
   return {
-    sidebarLines: estimate.sidebarLines,
+    sidebarLines: 0,
     mainLines: estimate.mainColumnLines,
-    difference,
-    balanced: Math.abs(difference) <= threshold,
+    difference: estimate.overflow,
+    balanced: Math.abs(estimate.overflow) <= 10,
     suggestion
   }
 }
 
 /**
  * Get recommended skill category count based on main column content.
- * Helps balance columns by suggesting appropriate sidebar content.
  */
 export function getRecommendedSkillCategories(experienceCount: number, avgBulletsPerExp: number): number {
-  // Estimate main column usage (use ~2 lines/bullet and ~1.5 lines/tech as heuristic)
   const mainLines = LAYOUT.HEADER_LINES +
     LAYOUT.SECTION_TITLE_LINES + 3 + // Summary ~3 lines
     LAYOUT.SECTION_TITLE_LINES +
     experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * AVG_LINES_PER_BULLET + AVG_LINES_PER_TECH + LAYOUT.EXP_SPACING)
 
-  // Target sidebar to match
-  const targetSidebarLines = mainLines
-  const baseLines = LAYOUT.SIDEBAR_HEADER_LINES +
-    LAYOUT.SIDEBAR_SECTION_SPACING + 6 * LAYOUT.CONTACT_ITEM_LINES + // Contact
-    LAYOUT.SIDEBAR_SECTION_SPACING + 3 * LAYOUT.EDUCATION_ENTRY_LINES // Education (~3 entries)
-
-  const availableForSkills = targetSidebarLines - baseLines - LAYOUT.SIDEBAR_SECTION_SPACING
-  const recommendedCategories = Math.max(3, Math.min(6, Math.floor(availableForSkills / LAYOUT.SKILL_CATEGORY_LINES)))
-
-  return recommendedCategories
+  const remainingLines = LAYOUT.MAX_LINES - mainLines
+  // Reserve ~6 lines for education, rest for skills
+  const availableForSkills = Math.max(0, remainingLines - 6 - LAYOUT.SECTION_TITLE_LINES)
+  return Math.max(3, Math.min(6, Math.floor(availableForSkills / LAYOUT.SKILL_CATEGORY_LINES)))
 }
 
 /**
- * Get content guidance for balanced columns.
- * Used in AI prompt to guide content generation.
+ * Get content guidance for AI prompt.
  */
 export function getBalancedContentGuidance(experienceCount: number = 4): string {
   const recommendedSkillCats = getRecommendedSkillCategories(experienceCount, 3)
 
-  return `COLUMN BALANCE GUIDANCE:
+  return `CONTENT BUDGET GUIDANCE:
 - Include ${experienceCount} experience entries (use all available if you have ${experienceCount} or fewer). Aim for 4-5 bullets per entry to fill the page; use up to 6 when fewer entries are available.
 - Use ${recommendedSkillCats} skill categories with 3-5 items each
 - Include 2-3 education entries
 - Only include projects if they fill genuine skill gaps not covered by work experience. Prefer an empty projects section over irrelevant projects.
-- Aim for similar visual weight in both columns`
+- All content is single-column — skills and education are in the main flow, not a sidebar.`
 }

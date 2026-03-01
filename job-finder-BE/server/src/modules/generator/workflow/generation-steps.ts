@@ -26,7 +26,7 @@ const BASE_STEPS: Record<GenerationType, GenerationStepInit[]> = {
     {
       id: 'render-pdf',
       name: 'Render PDF',
-      description: 'Convert resume content into branded PDF'
+      description: 'Render resume into PDF and DOCX formats'
     }
   ],
   coverLetter: [
@@ -48,7 +48,7 @@ const BASE_STEPS: Record<GenerationType, GenerationStepInit[]> = {
     {
       id: 'render-pdf',
       name: 'Render PDF',
-      description: 'Convert cover letter into branded PDF'
+      description: 'Render cover letter into PDF and DOCX formats'
     }
   ],
   both: [
@@ -80,7 +80,7 @@ const BASE_STEPS: Record<GenerationType, GenerationStepInit[]> = {
     {
       id: 'render-pdf',
       name: 'Render PDF',
-      description: 'Render resume and cover letter PDFs'
+      description: 'Render resume and cover letter into PDF and DOCX formats'
     }
   ]
 }

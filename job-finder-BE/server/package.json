@@ -29,6 +29,7 @@
     "google-auth-library": "^10.5.0",
     "helmet": "^8.0.0",
     "mime-types": "^3.0.1",
+    "pdf-lib": "^1.17.1",
     "pdfmake": "^0.2.20",
     "pino": "^9.3.0",
     "pino-http": "^10.2.0",

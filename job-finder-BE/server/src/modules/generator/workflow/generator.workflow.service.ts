@@ -13,9 +13,10 @@ import { logger } from '../../../logger'
 import { PersonalInfoStore } from '../personal-info.store'
 import { ContentItemRepository } from '../../content-items/content-item.repository'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
-import { storageService, type ArtifactMetadata } from './services/storage.service'
+import { storageService, type ArtifactMetadata, type ArtifactType } from './services/storage.service'
 import { networkStorageService } from './services/network-storage.service'
 import { HtmlPdfService } from './services/html-pdf.service'
+
 import { generateRequestId } from './request-id'
 import { createInitialSteps, startStep, completeStep } from './generation-steps'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
@@ -27,6 +28,8 @@ import {
 import { InferenceClient, InferenceError } from '../ai/inference-client'
 import { validateResumeContent, validateCoverLetterContent, validateCoverLetterFraming } from './services/ai-output-schema'
 import { estimateContentFit, getContentBudget } from './services/content-fit.service'
+import { normalizeTechList } from './services/tech-taxonomy'
+import { scoreAtsKeywords } from './services/ats-keyword-scorer'
 import { SemanticDocumentCache, type CacheContext } from '../semantic-document-cache.service'
 
 export class UserFacingError extends Error {}
@@ -561,28 +564,7 @@ export class GeneratorWorkflowService {
     }
 
     const pdf = await this.htmlPdf.renderResume(resume, personalInfo)
-    const metadata: ArtifactMetadata = {
-      name: personalInfo.name,
-      company: payload.job.company,
-      role: payload.job.role,
-      type: 'resume'
-    }
-    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata, { runId: requestId })
-    this.workflowRepo.addArtifact({
-      id: randomUUID(),
-      requestId,
-      artifactType: 'resume',
-      filename: saved.filename,
-      storagePath: saved.storagePath,
-      sizeBytes: saved.size,
-      createdAt: new Date().toISOString()
-    })
-    
-    // Copy to network storage (non-blocking, errors logged internally)
-    const absolutePath = storageService.getAbsolutePath(saved.storagePath)
-    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'Resume')
-    
-    return storageService.createPublicUrl(saved.storagePath)
+    return this.saveArtifact(requestId, personalInfo, payload, pdf, 'resume', 'Resume')
   }
 
   /**
@@ -621,7 +603,7 @@ export class GeneratorWorkflowService {
     }
 
     const title = personalInfo.title || payload.job.role
-    const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, {
+    const clOpts = {
       name: personalInfo.name,
       email: personalInfo.email,
       location: personalInfo.location,
@@ -633,28 +615,39 @@ export class GeneratorWorkflowService {
       website: personalInfo.website,
       linkedin: personalInfo.linkedin,
       github: personalInfo.github
-    })
+    }
+
+    const pdf = await this.htmlPdf.renderCoverLetter(coverLetter, clOpts)
+    return this.saveArtifact(requestId, personalInfo, payload, pdf, 'cover-letter', 'CoverLetter')
+  }
+
+  private async saveArtifact(
+    requestId: string,
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload,
+    buffer: Buffer,
+    type: ArtifactType,
+    label: string,
+    extension?: string
+  ): Promise<string> {
     const metadata: ArtifactMetadata = {
       name: personalInfo.name,
       company: payload.job.company,
       role: payload.job.role,
-      type: 'cover-letter'
+      type
     }
-    const saved = await storageService.saveArtifactWithMetadata(pdf, metadata, { runId: requestId })
+    const saved = await storageService.saveArtifactWithMetadata(buffer, metadata, { runId: requestId, extension })
     this.workflowRepo.addArtifact({
       id: randomUUID(),
       requestId,
-      artifactType: 'cover-letter',
+      artifactType: type,
       filename: saved.filename,
       storagePath: saved.storagePath,
       sizeBytes: saved.size,
       createdAt: new Date().toISOString()
     })
-    
-    // Copy to network storage (non-blocking, errors logged internally)
     const absolutePath = storageService.getAbsolutePath(saved.storagePath)
-    networkStorageService.copyToNetwork(absolutePath, saved.filename, 'CoverLetter')
-    
+    networkStorageService.copyToNetwork(absolutePath, saved.filename, label)
     return storageService.createPublicUrl(saved.storagePath)
   }
 
@@ -880,6 +873,17 @@ export class GeneratorWorkflowService {
 
     parsed.professionalSummary = parsed.professionalSummary || personalInfo.summary || ''
 
+    // Normalize tech names: deduplicate and fix capitalization
+    parsed.experience.forEach(exp => {
+      if (exp.technologies?.length) exp.technologies = normalizeTechList(exp.technologies)
+    })
+    parsed.projects?.forEach(proj => {
+      if (proj.technologies?.length) proj.technologies = normalizeTechList(proj.technologies)
+    })
+    parsed.skills?.forEach(skill => {
+      if (skill.items?.length) skill.items = normalizeTechList(skill.items)
+    })
+
     return parsed
   }
 
@@ -1013,6 +1017,17 @@ export class GeneratorWorkflowService {
     try {
       let parsed = validation.data as ResumeContent
       parsed = this.groundResumeContent(parsed, contentItems, personalInfo, payload)
+
+      // ATS keyword coverage scoring
+      const jdText = payload.job.jobDescriptionText || ''
+      const atsKeywords = jobMatch?.resumeIntakeData?.atsKeywords
+      if (jdText || atsKeywords?.length) {
+        const atsScore = scoreAtsKeywords(parsed, jdText, atsKeywords)
+        this.log.info(
+          { atsScore: atsScore.score, matched: atsScore.matchedKeywords.length, missing: atsScore.missingKeywords.length },
+          'ATS keyword coverage score'
+        )
+      }
 
       // Post-generation single-page fit check with LLM-powered refit
       const fitCheck = estimateContentFit(parsed)
