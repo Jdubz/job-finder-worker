@@ -1792,8 +1792,7 @@ class GenericScraper:
                     host = (parsed.hostname or "").lower()
                     # Skip self-referencing aggregator links
                     if any(
-                        agg in host
-                        for agg in ("weworkremotely", "remotive", "remoteok", "jobicy")
+                        agg in host for agg in ("weworkremotely", "remotive", "remoteok", "jobicy")
                     ):
                         continue
                     if parsed.scheme in ("http", "https") and parsed.netloc:

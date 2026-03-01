@@ -439,9 +439,7 @@ def test_store_job_listing_uses_company_website_for_aggregator(
     assert call_kwargs["apply_url"] == "https://acme.com/careers"
 
 
-def test_store_job_listing_no_fallback_for_non_aggregator(
-    scraper_intake, mock_job_listing_storage
-):
+def test_store_job_listing_no_fallback_for_non_aggregator(scraper_intake, mock_job_listing_storage):
     """apply_url should NOT fall back to company_website for non-aggregator listings."""
     job = {
         "title": "Backend Engineer",

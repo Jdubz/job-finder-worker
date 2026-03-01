@@ -899,7 +899,7 @@ class TestExtractCompanyWebsiteFromDescription:
     def test_extracts_from_wwr_url_strong_pattern(self, scraper):
         """Should extract from WeWorkRemotely URL:</strong> format."""
         desc = (
-            '<p>Some job description</p>'
+            "<p>Some job description</p>"
             '<strong>URL:</strong> <a href="https://acme.com/careers">https://acme.com/careers</a>'
         )
         assert scraper._extract_company_website_from_description(desc) == "https://acme.com/careers"
@@ -907,7 +907,7 @@ class TestExtractCompanyWebsiteFromDescription:
     def test_fallback_extracts_first_external_href(self, scraper):
         """Should fall back to first external <a href> in RSS description."""
         desc = (
-            '<p>We are hiring!</p>'
+            "<p>We are hiring!</p>"
             '<a href="https://coolstartup.io/jobs">Apply here</a>'
             '<a href="https://other.com">Other link</a>'
         )
@@ -935,9 +935,7 @@ class TestExtractCompanyWebsiteFromDescription:
     def test_fallback_handles_single_quotes(self, scraper):
         """Should extract href with single-quoted attribute values."""
         desc = "<a href='https://example.com/jobs'>Jobs</a>"
-        assert (
-            scraper._extract_company_website_from_description(desc) == "https://example.com/jobs"
-        )
+        assert scraper._extract_company_website_from_description(desc) == "https://example.com/jobs"
 
     def test_returns_none_for_empty_description(self, scraper):
         assert scraper._extract_company_website_from_description("") is None
