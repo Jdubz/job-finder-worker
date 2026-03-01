@@ -1,7 +1,7 @@
 import type { GenerateDocumentPayload } from './generator.workflow.service'
 import type { PersonalInfo, ContentItem, JobMatchWithListing } from '@shared/types'
 import { PromptsRepository } from '../../prompts/prompts.repository'
-import { getBalancedContentGuidance } from './services/content-fit.service'
+import { getBalancedContentGuidance, LAYOUT } from './services/content-fit.service'
 import type { FitEstimate, getContentBudget } from './services/content-fit.service'
 import type { ResumeContent, CoverLetterContent } from '@shared/types'
 
@@ -711,7 +711,7 @@ FIRST ATTEMPT (the resume content that overflowed):
 ${JSON.stringify(firstAttempt, null, 2)}
 
 OVERFLOW DIAGNOSIS:
-- Main column lines: ${fitEstimate.mainColumnLines} (max: 64)
+- Main column lines: ${fitEstimate.mainColumnLines} (max: ${LAYOUT.MAX_LINES})
 - Overflow: ${fitEstimate.overflow} lines over limit
 - Suggestions: ${fitEstimate.suggestions.length ? fitEstimate.suggestions.join('; ') : 'none'}
 
@@ -823,7 +823,7 @@ CURRENT RESUME (has spare room):
 ${JSON.stringify(currentResume, null, 2)}
 
 PAGE CAPACITY:
-- Main column lines: ${fitEstimate.mainColumnLines} (max: 64)
+- Main column lines: ${fitEstimate.mainColumnLines} (max: ${LAYOUT.MAX_LINES})
 - Spare room: ${spareLines} lines available to fill
 
 CONTENT BUDGET (do NOT exceed):
