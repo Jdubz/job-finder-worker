@@ -3,7 +3,7 @@ import { logger } from '../../logger'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type DocumentType = 'resume' | 'cover_letter' | 'cover_letter_body'
+export type DocumentType = 'resume' | 'cover_letter' | 'cover_letter_body' | 'resume_body'
 
 export interface CacheStoreParams {
   embeddingVector: number[]

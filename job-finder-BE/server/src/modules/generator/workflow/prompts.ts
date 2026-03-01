@@ -961,6 +961,73 @@ OUTPUT FORMAT (STRICT):
 - Your very first character must be '{' and your very last character must be '}'.`
 }
 
+/**
+ * Build a lightweight framing prompt for resumes when body content is cached.
+ * Generates only: personalInfo.title + professionalSummary (~80 output tokens).
+ * The body (experience, projects, skills, education) is reused from cache.
+ */
+export function buildResumeFramingPrompt(
+  personalInfo: PersonalInfo,
+  payload: GenerateDocumentPayload,
+  cachedBody: { experience: Array<{ company: string; role: string }>; skills?: Array<{ category: string; items: string[] }> },
+  jobMatch: JobMatchWithListing | null
+): string {
+  const matchContext: string[] = []
+  if (jobMatch?.matchedSkills?.length) {
+    matchContext.push(`Matched Skills: ${jobMatch.matchedSkills.join(', ')}`)
+  }
+  if (jobMatch?.keyStrengths?.length) {
+    matchContext.push(`Key Strengths: ${jobMatch.keyStrengths.join(', ')}`)
+  }
+  if (jobMatch?.resumeIntakeData?.atsKeywords?.length) {
+    matchContext.push(`ATS Keywords: ${jobMatch.resumeIntakeData.atsKeywords.join(', ')}`)
+  }
+
+  // Summarize cached body so the model knows what it's framing
+  const expSummary = cachedBody.experience
+    .map((e) => `${e.role} at ${e.company}`)
+    .join(', ')
+  const skillsSummary = (cachedBody.skills ?? [])
+    .map((s) => `${s.category}: ${s.items.slice(0, 5).join(', ')}${s.items.length > 5 ? '...' : ''}`)
+    .join('; ')
+
+  return `You are generating ONLY the company-specific framing for a resume.
+The body content (experience, projects, skills, education) is already written and cached — you do NOT generate it.
+
+CANDIDATE: ${personalInfo.name ?? 'the candidate'}
+TARGET ROLE: ${payload.job.role}
+COMPANY: ${payload.job.company}
+${payload.job.companyWebsite ? `COMPANY WEBSITE: ${payload.job.companyWebsite}` : ''}
+${payload.job.location ? `JOB LOCATION: ${payload.job.location}` : ''}
+${jobMatch?.company?.about ? `COMPANY INFO: ${jobMatch.company.about}` : ''}
+${matchContext.length ? matchContext.join('\n') : ''}
+
+JOB DESCRIPTION:
+${payload.job.jobDescriptionText || 'No job description provided'}
+
+CACHED BODY CONTEXT (already written — reference for context but do NOT reproduce):
+Experience: ${expSummary || 'None'}
+Skills: ${skillsSummary || 'None'}
+
+Generate a JSON object with exactly these keys:
+{
+  "personalInfo": { "title": "Job Title matching the target role" },
+  "professionalSummary": "2-4 sentence summary (50-70 words)"
+}
+
+RULES:
+- The title should match the TARGET ROLE closely (use the exact role name or a close variant).
+- The summary must reference this SPECIFIC COMPANY and role — it should not be generic.
+- Mirror exact phrases from the job description when the candidate has matching experience.
+- NEVER use first-person pronouns (I, my, me, we, our) in the summary.
+- Keep it concise — the body content carries the substance.
+- Use strong, specific language that demonstrates domain expertise.
+
+OUTPUT FORMAT (STRICT):
+- Respond with the JSON object ONLY — no prose, no markdown, no explanations.
+- Your very first character must be '{' and your very last character must be '}'.`
+}
+
 export function buildAdaptPrompt(
   cachedContent: unknown,
   payload: GenerateDocumentPayload,

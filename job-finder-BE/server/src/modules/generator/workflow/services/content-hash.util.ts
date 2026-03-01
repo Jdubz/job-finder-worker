@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { PersonalInfo, ContentItem } from '@shared/types'
-import { canonicalizeTechStack, getTechCategory } from './tech-taxonomy'
+import { canonicalizeTechStack, canonicalizeTechStackBroad, getTechCategory } from './tech-taxonomy'
 import type { RoleArchetype } from './role-archetype'
 
 /**
@@ -110,6 +110,9 @@ export function computeJobFingerprint(
  * Compute a role-only fingerprint (no company).
  * Used for resume Tier 1.5 lookup — same role + tech stack at different companies
  * should reuse cached resumes because resumes are role/tech-driven, not company-specific.
+ *
+ * Uses broad category bucketing so that "React + Node + Postgres" and
+ * "Vue + Express + MongoDB" hash identically (both are frontend + backend + database).
  */
 export function computeRoleFingerprint(
   roleNormalized: string,
@@ -118,7 +121,7 @@ export function computeRoleFingerprint(
 ): string {
   const payload = JSON.stringify([
     roleNormalized,
-    canonicalizeTechStack(techStack),
+    canonicalizeTechStackBroad(techStack),
     contentItemsHash,
   ])
 
@@ -192,6 +195,8 @@ export function computeTechStackJaccard(a: string[], b: string[]): number {
  * Groups roles by broad archetype (e.g. "frontend") instead of exact title,
  * enabling Tier 1.75 cache hits across role title variations like
  * "React Developer" and "Frontend Engineer".
+ *
+ * Uses broad category bucketing for maximum reuse across similar stacks.
  */
 export function computeArchetypeFingerprint(
   archetype: RoleArchetype,
@@ -200,7 +205,7 @@ export function computeArchetypeFingerprint(
 ): string {
   const payload = JSON.stringify([
     archetype,
-    canonicalizeTechStack(techStack),
+    canonicalizeTechStackBroad(techStack),
     contentItemsHash,
   ])
 

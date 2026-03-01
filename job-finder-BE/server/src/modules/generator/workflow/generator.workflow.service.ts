@@ -23,14 +23,14 @@ import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
 import {
   buildCoverLetterPrompt, buildResumePrompt, buildRefitPrompt, buildExpandPrompt, buildResumeRetryPrompt,
   buildResumeStablePrefix, buildResumeJobPrompt, buildCoverLetterStablePrefix, buildCoverLetterJobPrompt,
-  buildAdaptPrompt, buildCoverLetterFramingPrompt
+  buildAdaptPrompt, buildCoverLetterFramingPrompt, buildResumeFramingPrompt
 } from './prompts'
 import { InferenceClient, InferenceError } from '../ai/inference-client'
-import { validateResumeContent, validateCoverLetterContent, validateCoverLetterFraming } from './services/ai-output-schema'
+import { validateResumeContent, validateCoverLetterContent, validateCoverLetterFraming, validateResumeFraming } from './services/ai-output-schema'
 import { estimateContentFit, getContentBudget } from './services/content-fit.service'
 import { normalizeTechList } from './services/tech-taxonomy'
 import { scoreAtsKeywords } from './services/ats-keyword-scorer'
-import { SemanticDocumentCache, type CacheContext } from '../semantic-document-cache.service'
+import { SemanticDocumentCache, type CacheContext, type ResumeBody } from '../semantic-document-cache.service'
 
 export class UserFacingError extends Error {}
 
@@ -991,6 +991,22 @@ export class GeneratorWorkflowService {
       }
     }
 
+    // Sectional cache: try reusing resume body with fresh framing (title + summary)
+    if (!payload.skipCache) {
+      const bodyHit = await this.documentCache.lookupResumeBody(cacheCtx)
+      if (bodyHit) {
+        this.log.info({ experiences: bodyHit.body.experience.length }, 'Resume body cache hit — generating framing only')
+        const composed = await this.tryComposeFromCachedResumeBody(bodyHit.body, personalInfo, payload, jobMatch, contentItems)
+        if (composed) {
+          this.documentCache.store(cacheCtx, composed, null, cachedEmbedding).catch((err) => {
+            this.log.warn({ err }, 'Failed to store composed resume in document cache')
+          })
+          return composed
+        }
+        // Framing generation failed — fall through to full generation
+      }
+    }
+
     const systemPrompt = buildResumeStablePrefix(personalInfo, contentItems)
     const userPrompt = buildResumeJobPrompt(payload, jobMatch)
     const agentResult = await this.agentManager.execute('document', userPrompt, undefined, { systemPrompt })
@@ -1055,6 +1071,17 @@ export class GeneratorWorkflowService {
       // Always store — skipCache only gates lookup, not store
       this.documentCache.store(cacheCtx, parsed, agentResult.model ?? null, cachedEmbedding).catch((err) => {
         this.log.warn({ err }, 'Failed to store resume in document cache')
+      })
+
+      // Also store resume body separately for future reuse (non-blocking, non-fatal)
+      const resumeBody: ResumeBody = {
+        experience: parsed.experience ?? [],
+        projects: parsed.projects ?? [],
+        skills: parsed.skills ?? [],
+        education: parsed.education ?? [],
+      }
+      this.documentCache.storeResumeBody(cacheCtx, resumeBody, agentResult.model ?? null, cachedEmbedding).catch((err) => {
+        this.log.warn({ err }, 'Failed to store resume body in document cache')
       })
 
       return parsed
@@ -1265,6 +1292,58 @@ export class GeneratorWorkflowService {
       return composed
     } catch (err) {
       this.log.warn({ err }, 'Cover letter framing generation failed — falling through to full generation')
+      return null
+    }
+  }
+
+  /**
+   * Compose a full resume from cached body + freshly generated framing (title + summary).
+   * Returns null on failure (caller falls through to full generation).
+   */
+  private async tryComposeFromCachedResumeBody(
+    cachedBody: ResumeBody,
+    personalInfo: PersonalInfo,
+    payload: GenerateDocumentPayload,
+    jobMatch: JobMatchWithListing | null,
+    contentItems: ContentItem[]
+  ): Promise<ResumeContent | null> {
+    try {
+      const framingPrompt = buildResumeFramingPrompt(personalInfo, payload, cachedBody, jobMatch)
+      const agentResult = await this.agentManager.execute('document', framingPrompt)
+
+      const validation = validateResumeFraming(agentResult.output, this.log)
+      if (!validation.success) {
+        this.log.warn({ errors: validation.errors }, 'Resume framing validation failed — falling through to full generation')
+        return null
+      }
+
+      const framing = validation.data!
+      const composed: ResumeContent = {
+        personalInfo: { title: framing.personalInfo.title },
+        professionalSummary: framing.professionalSummary,
+        experience: cachedBody.experience,
+        projects: cachedBody.projects,
+        skills: cachedBody.skills,
+        education: cachedBody.education,
+      } as ResumeContent
+
+      // Ground the composed result to ensure validity
+      const grounded = this.groundResumeContent(composed, contentItems, personalInfo, payload)
+
+      // Fit check — cached body should already fit, but framing length may vary
+      const fitCheck = estimateContentFit(grounded)
+      if (!fitCheck.fits) {
+        this.log.info(
+          { overflow: fitCheck.overflow },
+          'Composed resume (cached body + fresh framing) overflows — requesting refit'
+        )
+        const refitPrompt = buildRefitPrompt(grounded, fitCheck, getContentBudget(), payload, jobMatch)
+        return await this.tryAdjustResume('refit', grounded, refitPrompt, contentItems, personalInfo, payload)
+      }
+
+      return grounded
+    } catch (err) {
+      this.log.warn({ err }, 'Resume framing generation failed — falling through to full generation')
       return null
     }
   }

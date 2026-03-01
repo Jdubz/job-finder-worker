@@ -258,9 +258,17 @@ describe('computeRoleFingerprint', () => {
     expect(fp1).not.toBe(fp2)
   })
 
-  it('changes when tech stack changes', () => {
+  it('treats same-category techs as equivalent (broad bucketing)', () => {
+    // react and vue both map to "frontend" category — role fingerprint should match
     const fp1 = computeRoleFingerprint('engineer', ['react'], contentHash)
     const fp2 = computeRoleFingerprint('engineer', ['vue'], contentHash)
+    expect(fp1).toBe(fp2)
+  })
+
+  it('changes when tech stack categories differ', () => {
+    // react (frontend) vs python (language) — different broad buckets
+    const fp1 = computeRoleFingerprint('engineer', ['react'], contentHash)
+    const fp2 = computeRoleFingerprint('engineer', ['python'], contentHash)
     expect(fp1).not.toBe(fp2)
   })
 
@@ -355,9 +363,17 @@ describe('computeArchetypeFingerprint', () => {
     expect(fp1).not.toBe(fp2)
   })
 
-  it('changes when tech stack changes', () => {
+  it('treats same-category techs as equivalent (broad bucketing)', () => {
+    // react and vue both map to "frontend" category — archetype fingerprint should match
     const fp1 = computeArchetypeFingerprint('frontend', ['react'], 'hash-1')
     const fp2 = computeArchetypeFingerprint('frontend', ['vue'], 'hash-1')
+    expect(fp1).toBe(fp2)
+  })
+
+  it('changes when tech stack categories differ', () => {
+    // react (frontend) vs python (language) — different broad buckets
+    const fp1 = computeArchetypeFingerprint('frontend', ['react'], 'hash-1')
+    const fp2 = computeArchetypeFingerprint('frontend', ['python'], 'hash-1')
     expect(fp1).not.toBe(fp2)
   })
 
@@ -373,7 +389,8 @@ describe('computeArchetypeFingerprint', () => {
     expect(fp1).toBe(fp2)
   })
 
-  it('canonicalizes tech stack synonyms', () => {
+  it('canonicalizes tech stack synonyms via broad bucketing', () => {
+    // react/reactjs → frontend, typescript/ts → language — same broad buckets
     const fp1 = computeArchetypeFingerprint('frontend', ['react', 'typescript'], 'hash-1')
     const fp2 = computeArchetypeFingerprint('frontend', ['reactjs', 'ts'], 'hash-1')
     expect(fp1).toBe(fp2)

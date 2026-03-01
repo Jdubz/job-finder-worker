@@ -111,6 +111,18 @@ export const coverLetterFramingSchema = z.object({
   signature: z.string().default('Best,'),
 }).passthrough()
 
+/**
+ * Resume framing schema — only the company-specific parts.
+ * Used when resume body (experience, projects, skills, education) is reused from cache
+ * and only the title + summary need generation.
+ */
+export const resumeFramingSchema = z.object({
+  personalInfo: z.object({
+    title: z.string().default(''),
+  }).passthrough(),
+  professionalSummary: z.string().default(''),
+}).passthrough()
+
 // =============================================================================
 // Type exports
 // =============================================================================
@@ -118,6 +130,7 @@ export const coverLetterFramingSchema = z.object({
 export type ValidatedResumeContent = z.infer<typeof resumeContentSchema>
 export type ValidatedCoverLetterContent = z.infer<typeof coverLetterContentSchema>
 export type ValidatedCoverLetterFraming = z.infer<typeof coverLetterFramingSchema>
+export type ValidatedResumeFraming = z.infer<typeof resumeFramingSchema>
 
 // =============================================================================
 // Recovery Functions
@@ -638,6 +651,70 @@ export function validateCoverLetterFraming(
 
   if (recoveryActions.length > 0) {
     log?.info({ recoveryActions }, 'Cover letter framing recovered successfully')
+  }
+
+  return {
+    success: true,
+    data: result.data,
+    recovered: recoveryActions.length > 0,
+    recoveryActions: recoveryActions.length > 0 ? recoveryActions : undefined
+  }
+}
+
+/**
+ * Validates and recovers resume framing (company-specific parts only).
+ * Used when resume body is cached and only title + summary are generated.
+ */
+export function validateResumeFraming(
+  rawOutput: string,
+  log?: Logger
+): ValidationResult<ValidatedResumeFraming> {
+  const recoveryActions: string[] = []
+
+  let unwrapped = unwrapCliOutput(rawOutput)
+  if (unwrapped !== rawOutput) {
+    recoveryActions.push('Unwrapped CLI JSON output format')
+  }
+
+  let jsonStr = unwrapped
+  if (!unwrapped.trim().startsWith('{')) {
+    jsonStr = extractJsonFromText(unwrapped)
+    if (jsonStr !== unwrapped) {
+      recoveryActions.push('Extracted JSON from markdown code block or surrounding text')
+    }
+  }
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(jsonStr)
+  } catch (parseError) {
+    log?.warn({ rawOutput: rawOutput.slice(0, 500) }, 'Failed to parse resume framing JSON')
+    return {
+      success: false,
+      errors: [`JSON parse error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`]
+    }
+  }
+
+  // Handle alternative field names
+  if (!parsed.professionalSummary && parsed.summary) {
+    parsed.professionalSummary = parsed.summary
+    recoveryActions.push('Mapped "summary" to "professionalSummary"')
+  }
+
+  const result = resumeFramingSchema.safeParse(parsed)
+
+  if (!result.success) {
+    const errors = result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`)
+    log?.warn({ errors, parsed }, 'Resume framing validation failed after recovery')
+    return {
+      success: false,
+      errors,
+      recoveryActions: recoveryActions.length > 0 ? recoveryActions : undefined
+    }
+  }
+
+  if (recoveryActions.length > 0) {
+    log?.info({ recoveryActions }, 'Resume framing recovered successfully')
   }
 
   return {

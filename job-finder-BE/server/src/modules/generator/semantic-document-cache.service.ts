@@ -12,6 +12,37 @@ import { normalizeForEmbedding } from './workflow/services/normalize-embedding-i
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/** The role-specific body of a resume — everything except title and summary. */
+export interface ResumeBody {
+  experience: Array<{
+    company: string
+    role: string
+    location?: string
+    startDate: string
+    endDate: string | null
+    highlights: string[]
+    technologies?: string[]
+  }>
+  projects?: Array<{
+    name: string
+    description: string
+    highlights?: string[]
+    technologies?: string[]
+    link?: string
+  }>
+  skills?: Array<{
+    category: string
+    items: string[]
+  }>
+  education?: Array<{
+    institution: string
+    degree: string
+    field?: string
+    startDate?: string
+    endDate?: string
+  }>
+}
+
 export interface CacheContext {
   personalInfo: PersonalInfo
   contentItems: ContentItem[]
@@ -400,6 +431,105 @@ export class SemanticDocumentCache {
       )
     } catch (err) {
       this.log.warn({ err }, 'Document cache: body store failed (non-fatal)')
+    }
+  }
+
+  /**
+   * Look up cached resume body (experience, projects, skills, education) by role fingerprint.
+   * Body content is role-specific (not company-specific) and highly reusable.
+   * Only the framing (title + summary) needs regeneration per company.
+   */
+  async lookupResumeBody(ctx: CacheContext): Promise<{ body: ResumeBody; cacheId: number } | null> {
+    if (!CACHE_ENABLED || !isVecAvailable()) return null
+
+    try {
+      const prompts = this.promptsRepo.getPrompts()
+      const contentItemsHash = computeContentHash(ctx.personalInfo, ctx.contentItems, prompts)
+      const roleNormalized = normalizeRole(ctx.role)
+      const techStack = this.extractTechStack(ctx.jobMatch)
+      const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
+
+      const hit = this.repo.findByRoleFingerprint(roleFpHash, contentItemsHash, 'resume_body')
+      if (!hit) return null
+
+      const body = JSON.parse(hit.documentContentJson) as ResumeBody
+      if (!body || !Array.isArray(body.experience) || !Array.isArray(body.skills)) {
+        this.log.warn('Document cache: corrupt resume_body entry')
+        return null
+      }
+
+      this.log.info(
+        { role: ctx.role, cachedCompany: hit.companyName },
+        'Document cache: resume body hit (role-keyed)'
+      )
+
+      if (CACHE_DRY_RUN) {
+        this.log.info('Document cache: dry-run mode — returning null despite resume body hit')
+        return null
+      }
+
+      this.repo.recordHit(hit.id)
+      return { body, cacheId: hit.id }
+    } catch (err) {
+      this.log.warn({ err }, 'Document cache: resume body lookup failed (non-fatal)')
+      return null
+    }
+  }
+
+  /**
+   * Store resume body (experience, projects, skills, education) separately, keyed by role fingerprint.
+   * Non-fatal — failures are logged but don't block generation.
+   */
+  async storeResumeBody(ctx: CacheContext, body: ResumeBody, modelVersion: string | null, precomputedEmbedding?: number[]): Promise<void> {
+    if (!CACHE_ENABLED || !isVecAvailable()) return
+
+    try {
+      const prompts = this.promptsRepo.getPrompts()
+      const contentItemsHash = computeContentHash(ctx.personalInfo, ctx.contentItems, prompts)
+      const roleNormalized = normalizeRole(ctx.role)
+      const techStack = this.extractTechStack(ctx.jobMatch)
+      const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
+      // Body cache is role-keyed (company-independent) — use roleFpHash for dedup
+      const fingerprintHash = roleFpHash
+
+      let embedding: number[]
+      if (precomputedEmbedding) {
+        embedding = precomputedEmbedding
+      } else {
+        try {
+          embedding = await this.embed(normalizeForEmbedding(ctx.jobDescriptionText))
+        } catch (err) {
+          this.log.warn({ err }, 'Document cache: embedding failed during resume body store, skipping')
+          return
+        }
+      }
+
+      const archetype = getRoleArchetype(roleNormalized)
+      const archetypeFpHash = archetype
+        ? computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
+        : null
+
+      this.repo.store({
+        embeddingVector: embedding,
+        documentType: 'resume_body',
+        jobFingerprintHash: fingerprintHash,
+        contentItemsHash,
+        roleNormalized,
+        techStackJson: techStack.length > 0 ? JSON.stringify(techStack) : null,
+        documentContentJson: JSON.stringify(body),
+        jobDescriptionText: ctx.jobDescriptionText || null,
+        companyName: ctx.company || null,
+        modelVersion,
+        roleFingerprintHash: roleFpHash,
+        archetypeFingerprintHash: archetypeFpHash,
+      })
+
+      this.log.info(
+        { role: ctx.role, company: ctx.company, experiences: body.experience.length },
+        'Document cache: stored resume body'
+      )
+    } catch (err) {
+      this.log.warn({ err }, 'Document cache: resume body store failed (non-fatal)')
     }
   }
 
