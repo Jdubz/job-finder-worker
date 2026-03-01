@@ -677,6 +677,117 @@ class TestAPIProbe:
         mock_get.assert_not_called()
 
     @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_oracle_hcm_direct_url_skips_playwright(self, mock_get):
+        """Direct Oracle HCM Cloud URL fetches from CE API without rendering."""
+        extractor, _ = _make_extractor()
+        url = "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/328074"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "items": [
+                {
+                    "Title": "Software Developer 3",
+                    "ExternalDescriptionStr": "<p>Build cloud infrastructure</p>",
+                    "ExternalResponsibilitiesStr": "<p>Design distributed systems</p>",
+                    "ExternalQualificationsStr": "<p>4+ years experience</p>",
+                    "PrimaryLocation": "Santa Clara, CA, United States",
+                    "ExternalPostedStartDate": "2026-03-01T02:27:05+00:00",
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Software Developer 3"
+        assert "cloud infrastructure" in result["description"]
+        assert "distributed systems" in result["description"]
+        assert "4+ years" in result["description"]
+        assert result["location"] == "Santa Clara, CA, United States"
+        assert result["posted_date"] == "2026-03-01"
+        assert result["url"] == url
+        mock_render.assert_not_called()
+        mock_get.assert_called_once()
+        call_url = mock_get.call_args[0][0]
+        assert "recruitingCEJobRequisitionDetails" in call_url
+        assert "Id=328074" in call_url
+        assert "siteNumber=CX_1001" in call_url
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_oracle_hcm_url_with_query_params(self, mock_get):
+        """Oracle URL with utm_* tracking params still matches."""
+        extractor, _ = _make_extractor()
+        url = "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/328074?utm_medium=jobboard&utm_source=LinkedIn"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "items": [
+                {
+                    "Title": "Engineer",
+                    "ExternalDescriptionStr": "A role",
+                    "PrimaryLocation": "Remote",
+                    "ExternalPostedStartDate": "2026-01-15T00:00:00+00:00",
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(extractor, "_render_page") as mock_render:
+                result = extractor.extract(url)
+
+        assert result is not None
+        assert result["title"] == "Engineer"
+        mock_render.assert_not_called()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_oracle_hcm_empty_items_falls_through(self, mock_get):
+        """Oracle API returning empty items list falls through to Playwright."""
+        extractor, agent = _make_extractor()
+        url = "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/999999"
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"items": []}
+        mock_get.return_value = mock_resp
+        agent.execute.side_effect = Exception("AI also failed")
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(
+                extractor,
+                "_render_page",
+                return_value="<html><body><p>Fallback</p></body></html>",
+            ) as mock_render:
+                result = extractor.extract(url)
+
+        assert result is None
+        mock_render.assert_called_once()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
+    def test_oracle_hcm_api_failure_falls_through(self, mock_get):
+        """Oracle API failure falls through to Playwright rendering."""
+        from requests.exceptions import ConnectionError as ReqConnectionError
+
+        extractor, agent = _make_extractor()
+        url = "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/123"
+
+        mock_get.side_effect = ReqConnectionError("Connection refused")
+        agent.execute.side_effect = Exception("AI also failed")
+
+        with patch.object(extractor, "_validate_url"):
+            with patch.object(
+                extractor,
+                "_render_page",
+                return_value="<html><body><p>Fallback</p></body></html>",
+            ) as mock_render:
+                result = extractor.extract(url)
+
+        assert result is None
+        mock_render.assert_called_once()
+
+    @patch("job_finder.ai.page_data_extractor.requests.get")
     def test_api_probe_partial_data_falls_through(self, mock_get):
         """API probe returning title but no description falls through to rendering."""
         extractor, agent = _make_extractor()
