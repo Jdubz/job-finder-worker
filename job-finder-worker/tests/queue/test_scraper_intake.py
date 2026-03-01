@@ -415,3 +415,48 @@ def test_submit_company_blocks_when_active_task_exists(mock_sources_manager):
 
     assert result is None
     queue_manager.add_item.assert_not_called()
+
+
+def test_store_job_listing_uses_company_website_for_aggregator(
+    scraper_intake, mock_job_listing_storage
+):
+    """apply_url should fall back to company_website for aggregator listings."""
+    job = {
+        "title": "Backend Engineer",
+        "company": "Acme",
+        "description": "Great job",
+        "company_website": "https://acme.com/careers",
+    }
+
+    scraper_intake._store_job_listing(
+        job=job,
+        normalized_url="https://weworkremotely.com/remote-jobs/acme-backend-engineer",
+        source_id="src-1",
+        company_id=None,
+    )
+
+    call_kwargs = mock_job_listing_storage.get_or_create_listing.call_args[1]
+    assert call_kwargs["apply_url"] == "https://acme.com/careers"
+
+
+def test_store_job_listing_no_fallback_for_non_aggregator(
+    scraper_intake, mock_job_listing_storage
+):
+    """apply_url should NOT fall back to company_website for non-aggregator listings."""
+    job = {
+        "title": "Backend Engineer",
+        "company": "Acme",
+        "description": "Great job",
+        "company_website": "https://acme.com",
+    }
+
+    scraper_intake._store_job_listing(
+        job=job,
+        normalized_url="https://acme.com/careers/backend-engineer",
+        source_id="src-1",
+        company_id=None,
+    )
+
+    call_kwargs = mock_job_listing_storage.get_or_create_listing.call_args[1]
+    # Non-aggregator: derive_apply_url returns None and company_website is NOT used
+    assert call_kwargs["apply_url"] is None

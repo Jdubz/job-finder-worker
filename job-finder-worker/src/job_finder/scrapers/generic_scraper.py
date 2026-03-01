@@ -1065,9 +1065,9 @@ class GenericScraper:
         Only fills fields that are missing to avoid clobbering list-page data.
         Applies rate limiting delay after HTTP requests, even on failure.
 
-        404/410 errors are handled gracefully (stale job listings) - the job is
-        returned unmodified. Other HTTP errors propagate to allow source-level
-        error handling.
+        403/404/410 errors are handled gracefully (blocked or stale listings) -
+        the job is returned unmodified. Other HTTP errors propagate to allow
+        source-level error handling.
         """
         url = job.get("url")
         if not url:
@@ -1776,20 +1776,30 @@ class GenericScraper:
                 except Exception:
                     pass
 
-        # Fallback: first external <a href> URL in description
-        href_pattern = r'<a\s+href="(https?://[^"]+)"'
-        for match in re.finditer(href_pattern, description, re.IGNORECASE):
-            url = match.group(1)
-            try:
-                parsed = urlparse(url)
-                host = (parsed.hostname or "").lower()
-                # Skip self-referencing aggregator links
-                if any(agg in host for agg in ("weworkremotely", "remotive", "remoteok", "jobicy")):
+        # Fallback: first external <a href> URL in description (robust to attribute order/quotes)
+        try:
+            soup = BeautifulSoup(description, "html.parser")
+        except Exception:
+            soup = None
+
+        if soup is not None:
+            for a in soup.find_all("a", href=True):
+                url = a.get("href")
+                if not isinstance(url, str):
                     continue
-                if parsed.scheme in ("http", "https") and parsed.netloc:
-                    return url
-            except Exception:
-                pass
+                try:
+                    parsed = urlparse(url)
+                    host = (parsed.hostname or "").lower()
+                    # Skip self-referencing aggregator links
+                    if any(
+                        agg in host
+                        for agg in ("weworkremotely", "remotive", "remoteok", "jobicy")
+                    ):
+                        continue
+                    if parsed.scheme in ("http", "https") and parsed.netloc:
+                        return url
+                except Exception:
+                    continue
 
         return None
 

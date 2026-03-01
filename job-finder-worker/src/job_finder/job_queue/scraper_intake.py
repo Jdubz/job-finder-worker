@@ -153,7 +153,14 @@ class ScraperIntake:
         try:
             apply_url = derive_apply_url(normalized_url)
             if not apply_url and job.get("company_website"):
-                apply_url = job["company_website"]
+                # Only use company_website for aggregator listings where the
+                # listing URL points to the aggregator (not a direct apply page).
+                from urllib.parse import urlparse
+
+                host = (urlparse(normalized_url).hostname or "").lower()
+                _AGGREGATOR_HOSTS = ("weworkremotely", "remotive", "remoteok", "jobicy")
+                if any(agg in host for agg in _AGGREGATOR_HOSTS):
+                    apply_url = job["company_website"]
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),

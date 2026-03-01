@@ -104,8 +104,6 @@ import { initiateLogin, logout, restoreSession, getAuthHeaders } from "./auth-ma
 // Temp directory for downloaded documents
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
 
-// Timeout for closing orphaned popup windows (5 seconds)
-
 // Timeout for OAuth/SSO popups (default 2 min — configurable for enterprise SSO with 2FA)
 const OAUTH_POPUP_TIMEOUT_MS = (() => {
   const raw = process.env.OAUTH_POPUP_TIMEOUT_MS
@@ -356,6 +354,8 @@ const AUTH_PROVIDER_HOSTS = new Set([
   "auth0.com",
   "login.salesforce.com",
 ])
+// Note: isOAuthPopup() strips leading "www." before checking, so only
+// canonical (non-www) hostnames are needed in the set above.
 
 /** Detect OAuth/SSO popup URLs that must open as real windows. */
 function isOAuthPopup(url: string): boolean {
@@ -452,7 +452,13 @@ async function createWindow(): Promise<void> {
       openerProtected = true
       logger.info(`[OAuth] Protecting opener during auth popup: ${triggerUrl}`)
 
-      const preAuthOrigin = new URL(browserView!.webContents.getURL()).origin
+      let preAuthOrigin: string
+      try {
+        preAuthOrigin = new URL(browserView!.webContents.getURL()).origin
+      } catch {
+        logger.warn("[OAuth] BrowserView has no valid URL yet, skipping opener protection")
+        return
+      }
       blockOpenerRedirect = (event: Electron.Event, url: string) => {
         try {
           if (new URL(url).origin === preAuthOrigin) return
