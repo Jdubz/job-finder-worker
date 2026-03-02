@@ -186,9 +186,9 @@ def setup_logging(
 
     # Default to centralized log directory
     if log_file is None and "LOG_FILE" not in os.environ:
-        # Production logs go to /srv/job-finder/logs
+        # Production logs go to /app/logs (mounted volume)
         if os.getenv("ENVIRONMENT") == "production":
-            log_file = "/srv/job-finder/logs/worker.log"
+            log_file = "/app/logs/worker.log"
         else:
             # Development/staging logs go to local logs directory
             centralized_logs = Path(__file__).parent.parent.parent / "logs" / "worker.log"
@@ -201,8 +201,6 @@ def setup_logging(
     environment = os.getenv("ENVIRONMENT")
     if not environment:
         environment = "development"
-        import sys
-
         print("WARNING: ENVIRONMENT not set, defaulting to 'development'", file=sys.stderr)
 
     # Create logs directory if it doesn't exist
