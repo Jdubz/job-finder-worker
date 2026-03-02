@@ -19,17 +19,20 @@ async function createContext(): Promise<BrowserContext> {
 
 /** Page margins are controlled by @page in html-ats-style.ts (0.6in top/bottom, 0.75in left/right).
  *  Do NOT pass margin to Playwright's page.pdf() — it would override the CSS @page rule. */
+const RENDER_TIMEOUT_MS = 30_000
+
 async function renderHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
-  let pdf: Buffer
   try {
     const page = await context.newPage()
-    await page.setContent(html, { waitUntil: 'networkidle' })
-    pdf = await page.pdf({ format: 'Letter', printBackground: true })
+    // Use 'domcontentloaded' — ATS HTML is fully self-contained with no external resources,
+    // so 'networkidle' adds risk of hanging on unexpected Chromium network activity.
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+    const pdf = await page.pdf({ format: 'Letter', printBackground: true })
+    return pdf
   } finally {
     await context.browser()?.close()
   }
-  return pdf
 }
 
 export class HtmlPdfService {
