@@ -166,6 +166,7 @@ class SourceProcessor(BaseProcessor):
 
         self.sources_manager = ctx.sources_manager
         self.companies_manager = ctx.companies_manager
+        self.job_listing_storage = ctx.job_listing_storage
         self.inference_client = InferenceClient()
 
         # Create filters from prefilter-policy for early rejection
@@ -177,6 +178,8 @@ class SourceProcessor(BaseProcessor):
         # Initialize scraper intake with filters to pre-filter jobs at intake
         self.scraper_intake = ScraperIntake(
             queue_manager=ctx.queue_manager,
+            job_listing_storage=ctx.job_listing_storage,
+            companies_manager=ctx.companies_manager,
             title_filter=self.title_filter,
             prefilter=self.prefilter,
         )
@@ -198,6 +201,8 @@ class SourceProcessor(BaseProcessor):
         # Rebuild scraper intake with updated filters
         self.scraper_intake = ScraperIntake(
             queue_manager=self.queue_manager,
+            job_listing_storage=self.job_listing_storage,
+            companies_manager=self.companies_manager,
             title_filter=self.title_filter,
             prefilter=self.prefilter,
         )
@@ -974,20 +979,6 @@ class SourceProcessor(BaseProcessor):
 
         return None
 
-    def _is_protected_api_error(self, probe: ProbeResult, config: Dict[str, Any]) -> bool:
-        """Check if probe failure indicates a protected API endpoint.
-
-        Returns True if:
-        - Config is API type AND
-        - Probe returned 401 (Unauthorized), 403 (Forbidden), or 422 (Unprocessable)
-
-        These errors typically indicate the API requires authentication, cookies,
-        or has bot protection that we can't easily bypass.
-        """
-        if config.get("type") != "api":
-            return False
-        return probe.status_code in (401, 403, 422)
-
     def _is_protected_error(self, probe: ProbeResult, config: Dict[str, Any]) -> Optional[str]:
         """Check if probe failure indicates a protected endpoint.
 
@@ -1585,13 +1576,22 @@ class SourceProcessor(BaseProcessor):
     # ============================================================
 
     def _is_sparse_jobs(self, jobs: list) -> bool:
-        """Detect whether scrape results are empty or missing key fields."""
+        """Detect whether scrape results are empty or missing key fields.
+
+        Checks up to the first 3 jobs — if >50% are missing required fields,
+        the batch is considered sparse.
+        """
         if not jobs:
             return True
-        sample = jobs[0] or {}
         required_fields = ["title", "url", "description"]
-        missing = [f for f in required_fields if not sample.get(f)]
-        return bool(missing)
+        sample_size = min(3, len(jobs))
+        sparse_count = 0
+        for job in jobs[:sample_size]:
+            entry = job or {}
+            missing = [f for f in required_fields if not entry.get(f)]
+            if missing:
+                sparse_count += 1
+        return sparse_count > sample_size / 2
 
     def _self_heal_source_config(self, source: dict, url: str, company_name: str) -> Optional[dict]:
         """
@@ -1880,7 +1880,7 @@ class SourceProcessor(BaseProcessor):
                     del new_config["disabled_notes"]
 
                 # Update source and mark active
-                self.sources_manager.update_source_config(source_id, new_config)
+                self.sources_manager.update_config(source_id, new_config)
                 self.sources_manager.update_source_status(source_id, SourceStatus.ACTIVE)
 
                 # Spawn scrape task
@@ -2135,11 +2135,29 @@ class SourceProcessor(BaseProcessor):
                     return f"[Fetch failed: {fallback_error}]"
         elif source_type == "api":
             try:
-                resp = requests.get(
-                    url,
-                    headers={"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"},
-                    timeout=25,
-                )
+                api_headers = {"User-Agent": "JobFinderBot/1.0", "Accept": "application/json"}
+                if config.get("method", "").upper() == "POST":
+                    post_body = config.get("post_body")
+                    if isinstance(post_body, str):
+                        import json as _json
+
+                        try:
+                            post_body = _json.loads(post_body)
+                        except (ValueError, TypeError):
+                            post_body = {}
+                    api_headers["Content-Type"] = "application/json"
+                    resp = requests.post(
+                        url,
+                        headers=api_headers,
+                        json=post_body or {},
+                        timeout=25,
+                    )
+                else:
+                    resp = requests.get(
+                        url,
+                        headers=api_headers,
+                        timeout=25,
+                    )
                 # Leave room for status prefix in the sample
                 api_content_limit = CONTENT_SAMPLE_FETCH_LIMIT - 1000
                 return (

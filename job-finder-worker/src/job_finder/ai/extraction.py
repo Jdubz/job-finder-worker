@@ -174,38 +174,45 @@ class JobExtractionResult:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JobExtractionResult":
         """Create from dictionary (supports both snake_case and camelCase)."""
+
+        def _get(camel: str, snake: str, default=None):
+            """Get field preferring camelCase key, falling back to snake_case."""
+            v = data.get(camel)
+            if v is not None:
+                return v
+            v = data.get(snake)
+            if v is not None:
+                return v
+            return default
+
         result = cls(
-            seniority=_validate_seniority(data.get("seniority") or data.get("seniority_level")),
+            seniority=_validate_seniority(_get("seniority", "seniority_level")),
             work_arrangement=_validate_work_arrangement(
-                data.get("workArrangement") or data.get("work_arrangement")
+                _get("workArrangement", "work_arrangement")
             ),
             timezone=_safe_float(data.get("timezone")),
             city=data.get("city"),
-            salary_min=_safe_int(data.get("salaryMin") or data.get("salary_min")),
-            salary_max=_safe_int(data.get("salaryMax") or data.get("salary_max")),
-            experience_min=_safe_int(data.get("experienceMin") or data.get("experience_min")),
-            experience_max=_safe_int(data.get("experienceMax") or data.get("experience_max")),
+            salary_min=_safe_int(_get("salaryMin", "salary_min")),
+            salary_max=_safe_int(_get("salaryMax", "salary_max")),
+            experience_min=_safe_int(_get("experienceMin", "experience_min")),
+            experience_max=_safe_int(_get("experienceMax", "experience_max")),
             technologies=data.get("technologies") or [],
-            employment_type=_validate_employment_type(
-                data.get("employmentType") or data.get("employment_type")
-            ),
+            employment_type=_validate_employment_type(_get("employmentType", "employment_type")),
             # Freshness — clamp absurd values to None (epoch-zero, bad AI math, etc.)
-            days_old=_safe_days_old(data.get("daysOld") or data.get("days_old")),
-            is_repost=bool(data.get("isRepost") or data.get("is_repost")),
+            days_old=_safe_days_old(_get("daysOld", "days_old")),
+            is_repost=bool(_get("isRepost", "is_repost", False)),
             # Location
-            relocation_required=bool(
-                data.get("relocationRequired") or data.get("relocation_required")
-            ),
+            relocation_required=bool(_get("relocationRequired", "relocation_required", False)),
             # Compensation
-            includes_equity=bool(data.get("includesEquity") or data.get("includes_equity")),
-            is_contract=bool(data.get("isContract") or data.get("is_contract")),
+            includes_equity=bool(_get("includesEquity", "includes_equity", False)),
+            is_contract=bool(_get("isContract", "is_contract", False)),
             # Seniority
-            is_management=bool(data.get("isManagement") or data.get("is_management")),
-            is_lead=bool(data.get("isLead") or data.get("is_lead")),
+            is_management=bool(_get("isManagement", "is_management", False)),
+            is_lead=bool(_get("isLead", "is_lead", False)),
             # Role types
             role_types=_parse_role_types(data),
             # Timezone flexibility
-            timezone_flexible=bool(data.get("timezoneFlexible") or data.get("timezone_flexible")),
+            timezone_flexible=bool(_get("timezoneFlexible", "timezone_flexible", False)),
         )
         result.confidence = result.compute_confidence()
         return result
@@ -314,7 +321,7 @@ class JobExtractor:
     """
     Extract structured semantic data from job postings using AI.
 
-    The extractor uses an AgentManager to parse job descriptions and extract:
+    The extractor uses an InferenceClient to parse job descriptions and extract:
     - Seniority level
     - Work arrangement (remote/hybrid/onsite)
     - Location/timezone
@@ -329,7 +336,7 @@ class JobExtractor:
         Initialize the extractor.
 
         Args:
-            agent_manager: AgentManager for executing AI tasks
+            agent_manager: InferenceClient for executing AI tasks
         """
         self.agent_manager = agent_manager
 
@@ -403,7 +410,7 @@ class JobExtractor:
         # Sanitize JSON - fix common AI model formatting issues
         # Issue: Gemini returns "timezone": +1 which is invalid JSON (numbers can't start with +)
         # Fix: Replace "+<digit>" with quoted strings for timezone field only
-        json_str = re.sub(r'"timezone"\s*:\s*\+(\d+(?:\.\d+)?)', r'"timezone": "+\1"', json_str)
+        json_str = re.sub(r'"timezone"\s*:\s*\+(\d+(?:\.\d+)?)', r'"timezone": \1', json_str)
 
         try:
             data = json.loads(json_str)

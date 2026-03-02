@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from string import Template
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import urlparse
 
 from job_finder.ai.response_parser import extract_json_from_response
@@ -304,7 +304,7 @@ def _build_analysis_prompt(
     fetch_result: Optional[Dict[str, Any]] = None,
     search_results: Optional[List[Dict[str, str]]] = None,
     ats_probe_results: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> Tuple[str, str]:
     """Build the prompt for source analysis.
 
     Args:
@@ -316,7 +316,7 @@ def _build_analysis_prompt(
         ats_probe_results: Optional ATS probe results from probe_all_ats_providers_detailed
 
     Returns:
-        Formatted prompt string
+        Tuple of (system_prompt, user_prompt) for AI execution
     """
     # Format known aggregators for context
     aggregators_text = "\n".join(
@@ -328,10 +328,8 @@ def _build_analysis_prompt(
     # someone adds JSON examples like {"limit": 50} to SYSTEM_CONTEXT.
     context = Template(SYSTEM_CONTEXT).substitute(known_aggregators=aggregators_text)
 
-    # Build the specific analysis request
+    # Build the specific analysis request (user prompt only — system context separate)
     prompt_parts = [
-        context,
-        "\n---\n",
         "## URL to Analyze\n",
         f"URL: {url}\n",
     ]
@@ -461,7 +459,7 @@ CONFIG QUALITY CHECKLIST (follow this when proposing source_config):
 IMPORTANT: Your response must be valid JSON only. No additional text.
 """)
 
-    return "".join(prompt_parts)
+    return context, "".join(prompt_parts)
 
 
 def _parse_analysis_response(response: str) -> Optional[SourceAnalysisResult]:
@@ -529,7 +527,7 @@ class SourceAnalysisAgent:
         """Initialize the source analysis agent.
 
         Args:
-            agent_manager: AgentManager for executing AI tasks
+            agent_manager: InferenceClient for executing AI tasks
         """
         self.agent_manager = agent_manager
 
@@ -555,7 +553,7 @@ class SourceAnalysisAgent:
         Returns:
             SourceAnalysisResult with classification and recommendations
         """
-        prompt = _build_analysis_prompt(
+        system_prompt, user_prompt = _build_analysis_prompt(
             url=url,
             company_name=company_name,
             company_id=company_id,
@@ -567,7 +565,8 @@ class SourceAnalysisAgent:
         try:
             result = self.agent_manager.execute(
                 task_type="extraction",  # Reuse extraction fallback chain
-                prompt=prompt,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
                 max_tokens=2000,
                 temperature=0.1,  # Low temperature for consistent classification
             )
@@ -637,37 +636,3 @@ class SourceAnalysisAgent:
                 confidence=0.0,
                 reasoning="Fallback: URL parsing failed",
             )
-
-
-def analyze_source(
-    url: str,
-    agent_manager: "InferenceClient",
-    company_name: Optional[str] = None,
-    company_id: Optional[str] = None,
-    fetch_result: Optional[Dict[str, Any]] = None,
-    search_results: Optional[List[Dict[str, str]]] = None,
-    ats_probe_results: Optional[Dict[str, Any]] = None,
-) -> SourceAnalysisResult:
-    """Convenience function to analyze a source.
-
-    Args:
-        url: The URL to analyze
-        agent_manager: AgentManager for AI tasks
-        company_name: Optional company name
-        company_id: Optional company ID
-        fetch_result: Optional fetch result
-        search_results: Optional search results
-        ats_probe_results: Optional ATS probe results for agent verification
-
-    Returns:
-        SourceAnalysisResult with classification
-    """
-    agent = SourceAnalysisAgent(agent_manager)
-    return agent.analyze(
-        url=url,
-        company_name=company_name,
-        company_id=company_id,
-        fetch_result=fetch_result,
-        search_results=search_results,
-        ats_probe_results=ats_probe_results,
-    )

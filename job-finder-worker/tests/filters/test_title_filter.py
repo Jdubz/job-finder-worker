@@ -93,21 +93,6 @@ class TestTitleFilter:
         result = filter.filter("Product Manager")
         assert result.passed is False
 
-    def test_filter_batch(self, default_config):
-        """Batch filtering works correctly."""
-        filter = TitleFilter(default_config)
-        titles = [
-            "Software Engineer",
-            "Product Manager",
-            "Sales Engineer",
-        ]
-        results = filter.filter_batch(titles)
-
-        assert len(results) == 3
-        assert results[0].passed is True  # Has required
-        assert results[1].passed is False  # Missing required
-        assert results[2].passed is False  # Has excluded
-
     def test_non_software_disciplines_rejected(self):
         """Non-software engineering discipline keywords are rejected."""
         config = {

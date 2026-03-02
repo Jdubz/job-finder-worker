@@ -7,7 +7,7 @@ handling and better context than generic Python exceptions.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 
 class ErrorCategory(str, Enum):
@@ -97,12 +97,12 @@ class AIProviderError(JobFinderError):
 class QuotaExhaustedError(AIProviderError):
     """Raised when an AI provider's quota or rate limit is exhausted.
 
-    When this error is raised, the AgentManager will:
-    1. Disable the exhausted agent
-    2. Continue to the next agent in the fallback chain
+    When this error is raised, LiteLLM will:
+    1. Mark the exhausted model as unavailable
+    2. Continue to the next model in the fallback chain
 
     This allows graceful degradation when one provider hits limits while
-    others are still available. Only if ALL agents are exhausted will
+    others are still available. Only if ALL models are exhausted will
     NoAgentsAvailableError be raised.
 
     Examples:
@@ -118,7 +118,7 @@ class QuotaExhaustedError(AIProviderError):
 
     error_category = ErrorCategory.RESOURCE
 
-    def __init__(self, message: str, provider: str = "unknown", reset_info: str = None):
+    def __init__(self, message: str, provider: str = "unknown", reset_info: Optional[str] = None):
         self.provider = provider
         self.reset_info = reset_info
         super().__init__(message)
@@ -168,7 +168,9 @@ class NoAgentsAvailableError(AIProviderError):
 
     error_category = ErrorCategory.RESOURCE
 
-    def __init__(self, message: str, task_type: str = "unknown", tried_agents: list = None):
+    def __init__(
+        self, message: str, task_type: str = "unknown", tried_agents: Optional[List[str]] = None
+    ):
         self.task_type = task_type
         self.tried_agents = tried_agents or []
         super().__init__(message)
@@ -228,7 +230,7 @@ class DuplicateSourceError(StorageError):
         existing_id: The ID of the existing source with this name
     """
 
-    def __init__(self, name: str, existing_id: str, message: str = None):
+    def __init__(self, name: str, existing_id: str, message: Optional[str] = None):
         self.name = name
         self.existing_id = existing_id
         super().__init__(message or f"Source '{name}' already exists (id: {existing_id})")
@@ -276,7 +278,7 @@ class ScrapeBlockedError(ScraperError):
         status_code: HTTP status code if applicable
     """
 
-    def __init__(self, source_url: str, reason: str, status_code: int = None):
+    def __init__(self, source_url: str, reason: str, status_code: Optional[int] = None):
         self.source_url = source_url
         self.reason = reason
         self.status_code = status_code
@@ -414,7 +416,11 @@ class ScrapeTransientError(ScrapeBlockedError):
     error_category = ErrorCategory.TRANSIENT
 
     def __init__(
-        self, source_url: str, reason: str, status_code: int = None, retry_after: int = None
+        self,
+        source_url: str,
+        reason: str,
+        status_code: Optional[int] = None,
+        retry_after: Optional[int] = None,
     ):
         super().__init__(source_url, reason, status_code)
         self.retry_after = retry_after  # Seconds to wait before retry, if provided

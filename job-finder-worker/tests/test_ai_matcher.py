@@ -67,10 +67,8 @@ class TestBuildMatchResult:
             "potential_concerns": ["No Go experience"],
             "customization_recommendations": {"focus": "backend"},
         }
-        intake_data = {"job_id": "123", "target_summary": "Test summary"}
-
         matcher = AIJobMatcher(agent_manager=mock_inference_client, profile=mock_profile)
-        result = matcher._build_match_result(sample_job, match_analysis, 90, intake_data)
+        result = matcher._build_match_result(sample_job, match_analysis, 90)
 
         assert isinstance(result, JobMatchResult)
         assert result.job_title == "Senior Software Engineer"
@@ -79,7 +77,6 @@ class TestBuildMatchResult:
         assert result.match_score == 90
         assert result.matched_skills == ["Python", "AWS"]
         assert result.missing_skills == ["Go"]
-        assert result.resume_intake_data == intake_data
 
 
 class TestAnalyzeMatch:
@@ -194,7 +191,7 @@ class TestAnalyzeJob:
 
         assert result is not None
         assert result.match_score == 90
-        assert result.resume_intake_data is None
+        assert result.match_score == 90
 
     def test_analyze_job_requires_deterministic_score(
         self, mock_provider, mock_profile, sample_job

@@ -825,6 +825,12 @@ class PreFilter:
 
         # Check metadata for work arrangement (Greenhouse "Location Type" field)
         metadata = job_data.get("metadata", {})
+        if isinstance(metadata, list):
+            metadata = {
+                item.get("name", ""): item.get("value")
+                for item in metadata
+                if isinstance(item, dict)
+            }
         if isinstance(metadata, dict):
             location_type = metadata.get("Location Type", "")
             if isinstance(location_type, str) and location_type:
@@ -1183,7 +1189,7 @@ class PreFilter:
                     return True
                 if len(state_token) == 2 and loc_state.startswith(state_token):
                     return True
-            return bool(re.search(rf"\\b{re.escape(state_token)}\\b", loc_lower))
+            return bool(re.search(rf"\b{re.escape(state_token)}\b", loc_lower))
 
         for loc in location_candidates:
             loc_lower = loc.lower()
@@ -1193,7 +1199,7 @@ class PreFilter:
 
             loc_city, loc_state = self._split_user_location(loc)
 
-            if city_token and not re.search(rf"\\b{re.escape(city_token)}\\b", loc_lower):
+            if city_token and not re.search(rf"\b{re.escape(city_token)}\b", loc_lower):
                 continue
             if not _state_matches(loc_state, loc_lower):
                 continue
@@ -1231,7 +1237,11 @@ class PreFilter:
         # Try different field names
         emp_type = job_data.get("employment_type") or job_data.get("job_type") or ""
 
-        if not emp_type:
+        # Handle list values (e.g., Jobicy returns ["Full-Time"])
+        if isinstance(emp_type, list):
+            emp_type = emp_type[0] if emp_type else ""
+
+        if not emp_type or not isinstance(emp_type, str):
             return None
 
         emp_lower = emp_type.lower().replace("_", "-").replace(" ", "-")

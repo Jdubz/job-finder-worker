@@ -73,17 +73,3 @@ def sqlite_connection(db_path: Optional[str] = None) -> Iterator[sqlite3.Connect
         raise
     finally:
         conn.close()
-
-
-def fetch_one(query: str, params: tuple = (), db_path: Optional[str] = None):
-    """Fetch a single row helper."""
-    with sqlite_connection(db_path) as conn:
-        cursor = conn.execute(query, params)
-        return cursor.fetchone()
-
-
-def fetch_all(query: str, params: tuple = (), db_path: Optional[str] = None):
-    """Fetch all rows helper."""
-    with sqlite_connection(db_path) as conn:
-        cursor = conn.execute(query, params)
-        return cursor.fetchall()

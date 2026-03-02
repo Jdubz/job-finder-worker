@@ -195,7 +195,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="remotive_api",
-        url_pattern=r"remotive\.(?:com|io)",
+        url_pattern=r"(?:^|//)(?:[^/]*\.)?remotive\.(?:com|io)(?:/|$)",
         api_url_template="https://remotive.com/api/remote-jobs",
         response_path="jobs",
         fields={
@@ -217,7 +217,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="remoteok_api",
-        url_pattern=r"remoteok\.(?:io|com)",
+        url_pattern=r"(?:^|//)(?:[^/]*\.)?remoteok\.(?:io|com)(?:/|$)",
         api_url_template="https://remoteok.com/api",
         response_path="",  # array of jobs
         fields={
@@ -238,7 +238,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="jobicy_api",
-        url_pattern=r"jobicy\.com",
+        url_pattern=r"(?:^|//)(?:[^/]*\.)?jobicy\.com(?:/|$)",
         api_url_template="https://jobicy.com/api/v2/remote-jobs",
         response_path="jobs",
         fields={
@@ -313,7 +313,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         name="weworkremotely_rss",
         # Match weworkremotely.com - uses RSS feed for all jobs
         # Title format: "Company Name: Job Title" - extracted via company_extraction
-        url_pattern=r"weworkremotely\.com",
+        url_pattern=r"(?:^|//)(?:[^/]*\.)?weworkremotely\.com(?:/|$)",
         api_url_template="https://weworkremotely.com/remote-jobs.rss",
         response_path="items",
         fields={
@@ -368,7 +368,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="linkedin_stub",
-        url_pattern=r"linkedin\.com",
+        url_pattern=r"(?:^|//)(?:[^/]*\.)?linkedin\.com(?:/|$)",
         api_url_template="https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
         response_path="",  # returns HTML fragments; treat as auth/anti-Bot sensitive
         fields={
@@ -383,7 +383,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     PlatformPattern(
         name="builtin_html",
         # Match builtin.com/jobs or builtin.com/company/xxx/jobs
-        url_pattern=r"builtin\.com/(?:jobs|company/[^/]+/jobs)",
+        url_pattern=r"(?:^|//)(?:[^/]*\.)?builtin\.com/(?:jobs|company/[^/]+/jobs)",
         api_url_template="https://builtin.com/jobs",
         response_path="",
         fields={
@@ -542,70 +542,3 @@ def is_single_company_platform(url: str) -> bool:
         return False
     pattern, _ = result
     return not pattern.is_multi_company
-
-
-def build_config_from_pattern(
-    pattern: PlatformPattern,
-    groups: Dict[str, str],
-    original_url: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Build a source config from a matched platform pattern.
-
-    Args:
-        pattern: Matched platform pattern
-        groups: Extracted groups from URL regex
-
-    Returns:
-        Source config dictionary
-    """
-    template_kwargs = dict(groups)
-    if original_url:
-        template_kwargs.setdefault("original_url", original_url)
-
-    config: Dict[str, Any] = {
-        "type": pattern.config_type,
-        "url": pattern.api_url_template.format(**template_kwargs),
-        "fields": pattern.fields.copy(),
-    }
-
-    if pattern.job_selector:
-        config["job_selector"] = pattern.job_selector
-
-    if pattern.config_type != "rss":
-        config["response_path"] = pattern.response_path
-
-    if pattern.auth_required:
-        config["auth_required"] = True
-
-    if pattern.method != "GET" and pattern.config_type == "api":
-        config["method"] = pattern.method
-
-    if pattern.post_body_template and pattern.config_type == "api":
-        config["post_body"] = pattern.post_body_template.copy()
-
-    if pattern.salary_min_field:
-        config["salary_min_field"] = pattern.salary_min_field
-
-    if pattern.salary_max_field:
-        config["salary_max_field"] = pattern.salary_max_field
-
-    if pattern.base_url_template:
-        config["base_url"] = pattern.base_url_template.format(**groups)
-
-    if pattern.headers:
-        config["headers"] = pattern.headers.copy()
-
-    if pattern.follow_detail:
-        config["follow_detail"] = True
-
-    if pattern.is_remote_source:
-        config["is_remote_source"] = True
-
-    if pattern.company_extraction:
-        config["company_extraction"] = pattern.company_extraction
-
-    if pattern.company_filter_param:
-        config["company_filter_param"] = pattern.company_filter_param
-
-    return config

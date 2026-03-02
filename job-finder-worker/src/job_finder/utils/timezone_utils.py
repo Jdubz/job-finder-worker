@@ -7,12 +7,12 @@ IMPORTANT NOTES:
 
 Rate Limiting:
     Uses OpenStreetMap's Nominatim service which has a usage policy of max 1 request/second.
-    The LRU cache (maxsize=500) helps reduce requests, but under high load with many unique
+    The cache (maxsize=500) helps reduce requests, but under high load with many unique
     cities, rate limits may be hit. Consider adding explicit rate limiting if processing
     large batches of jobs with diverse locations.
 
 DST Cache Behavior:
-    The LRU cache does not have a TTL, so cached timezone offsets may become stale across
+    The cache does not have a TTL, so cached timezone offsets may become stale across
     DST transitions (e.g., a city cached in summer with PDT offset -7 will still return -7
     in winter when PST offset -8 is active). The impact is minimal (max 1 hour difference)
     and only affects cached entries during transition periods. Call clear_cache() if exact
@@ -28,8 +28,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from functools import lru_cache
-from typing import Optional
+from typing import Dict, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from geopy.geocoders import Nominatim
@@ -75,13 +74,19 @@ class TimezoneResult:
     error: Optional[str] = None
 
 
-@lru_cache(maxsize=500)
+# Manual cache that only caches successful results (no transient errors).
+# Keys are normalized (stripped) city names to avoid cache pollution.
+_timezone_cache: Dict[str, TimezoneResult] = {}
+_timezone_cache_lock = threading.Lock()
+_TIMEZONE_CACHE_MAXSIZE = 500
+
+
 def get_timezone_for_city(city: str) -> TimezoneResult:
     """
     Get timezone information for a city name.
 
     Uses OpenStreetMap's Nominatim for geocoding (free, no API key required).
-    Results are cached to minimize API calls.
+    Successful results are cached; transient errors (timeouts) are not cached.
 
     Args:
         city: City name, optionally with state/country (e.g., "Portland, OR" or "Hyderabad, India")
@@ -91,17 +96,35 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
     """
     if not city or not city.strip():
         return TimezoneResult(
-            city=city, timezone_name=None, utc_offset_hours=None, error="Empty city"
+            city=city or "", timezone_name=None, utc_offset_hours=None, error="Empty city"
         )
 
-    city = city.strip()
+    normalized = city.strip()
 
+    # Check cache with normalized key (lock-free read; dict.get is thread-safe in CPython)
+    cached = _timezone_cache.get(normalized)
+    if cached is not None:
+        return cached
+
+    result = _lookup_timezone(normalized)
+
+    # Only cache successful results (no transient errors like timeouts)
+    if result.error is None:
+        with _timezone_cache_lock:
+            if len(_timezone_cache) < _TIMEZONE_CACHE_MAXSIZE:
+                _timezone_cache[normalized] = result
+
+    return result
+
+
+def _lookup_timezone(city: str) -> TimezoneResult:
+    """Internal timezone lookup (not cached)."""
     try:
         geolocator = _get_geolocator()
         location = geolocator.geocode(city)
 
         if location is None:
-            logger.debug(f"Could not geocode city: {city}")
+            logger.debug("Could not geocode city: %s", city)
             return TimezoneResult(
                 city=city, timezone_name=None, utc_offset_hours=None, error="City not found"
             )
@@ -111,7 +134,9 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
 
         if tz_name is None:
             logger.debug(
-                f"Could not find timezone for coordinates: {location.latitude}, {location.longitude}"
+                "Could not find timezone for coordinates: %s, %s",
+                location.latitude,
+                location.longitude,
             )
             return TimezoneResult(
                 city=city,
@@ -124,7 +149,7 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
         try:
             tz = ZoneInfo(tz_name)
         except ZoneInfoNotFoundError:
-            logger.warning(f"Timezone '{tz_name}' not found in system database for city: {city}")
+            logger.warning("Timezone '%s' not found in system database for city: %s", tz_name, city)
             return TimezoneResult(
                 city=city,
                 timezone_name=tz_name,
@@ -145,21 +170,21 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
 
         offset_hours = offset.total_seconds() / 3600
 
-        logger.debug(f"Timezone for '{city}': {tz_name} (UTC{offset_hours:+.1f})")
+        logger.debug("Timezone for '%s': %s (UTC%+.1f)", city, tz_name, offset_hours)
         return TimezoneResult(city=city, timezone_name=tz_name, utc_offset_hours=offset_hours)
 
     except GeocoderTimedOut:
-        logger.warning(f"Geocoding timeout for city: {city}")
+        logger.warning("Geocoding timeout for city: %s", city)
         return TimezoneResult(
             city=city, timezone_name=None, utc_offset_hours=None, error="Geocoding timeout"
         )
     except GeocoderServiceError as e:
-        logger.warning(f"Geocoding service error for city '{city}': {e}")
+        logger.warning("Geocoding service error for city '%s': %s", city, e)
         return TimezoneResult(
             city=city, timezone_name=None, utc_offset_hours=None, error=f"Geocoding error: {e}"
         )
     except Exception as e:
-        logger.warning(f"Unexpected error getting timezone for city '{city}': {e}")
+        logger.warning("Unexpected error getting timezone for city '%s': %s", city, e)
         return TimezoneResult(city=city, timezone_name=None, utc_offset_hours=None, error=str(e))
 
 
@@ -185,4 +210,5 @@ def get_timezone_diff_hours(city1: str, city2: str) -> Optional[float]:
 
 def clear_cache() -> None:
     """Clear the timezone lookup cache. Useful for testing."""
-    get_timezone_for_city.cache_clear()
+    with _timezone_cache_lock:
+        _timezone_cache.clear()

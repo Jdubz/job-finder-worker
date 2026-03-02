@@ -142,8 +142,8 @@ def test_job_listing_fields_cover_shared_contract():
         "posted_date",
         "salary",
         "company_info",
-        "resume_intake_data",
         "company_id",
+        "resume_intake_data",
     }
     worker_norm = _normalize_names(worker_job_fields)
     missing = {f for f in ts_fields if f not in worker_norm}

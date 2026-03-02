@@ -7,8 +7,8 @@ import json
 import logging
 import re
 import sqlite3
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -247,8 +247,8 @@ class QueueManager:
         if item.type == QueueItemType.COMPANY:
             # Block if an active company task already exists by ID or name
             if self.has_company_task(
-                company_id=item.company_id or item.input.get("company_id", ""),
-                company_name=item.company_name or item.input.get("company_name", ""),
+                company_id=item.company_id or (item.input or {}).get("company_id", ""),
+                company_name=item.company_name or (item.input or {}).get("company_name", ""),
             ):
                 raise DuplicateQueueItemError(
                     f"Active company task already exists for {item.company_name or item.company_id}"
@@ -326,6 +326,10 @@ class QueueManager:
             record["updated_at"],
             record["processed_at"],
             record["completed_at"],
+            record.get("retry_count", 0),
+            record.get("max_retries", 3),
+            record.get("last_error_category"),
+            record.get("dedupe_key"),
             record["id"],
         )
 
@@ -335,7 +339,8 @@ class QueueManager:
                 UPDATE job_queue
                 SET type=?, status=?, url=?, tracking_id=?, parent_item_id=?,
                     input=?, output=?, result_message=?, error_details=?,
-                    created_at=?, updated_at=?, processed_at=?, completed_at=?
+                    created_at=?, updated_at=?, processed_at=?, completed_at=?,
+                    retry_count=?, max_retries=?, last_error_category=?, dedupe_key=?
                 WHERE id=?
                 """,
                 values,
@@ -723,7 +728,7 @@ class QueueManager:
             Number of items recovered (failed)
         """
         now = _utcnow()
-        cutoff = now - __import__("datetime").timedelta(minutes=timeout_minutes)
+        cutoff = now - timedelta(minutes=timeout_minutes)
         cutoff_iso = _iso(cutoff)
         now_iso = _iso(now)
 
@@ -810,33 +815,6 @@ class QueueManager:
         temp.dedupe_key = self._compute_dedupe_key(temp)
         return self._dedupe_exists(temp.dedupe_key)
 
-    def can_spawn_item(
-        self, current_item: JobQueueItem, target_url: str, target_type: QueueItemType
-    ) -> Tuple[bool, str]:
-        """Check if spawning a new item is allowed (prevents duplicates within same lineage)."""
-        if self.has_pending_work_for_url(target_url, target_type, current_item.tracking_id):
-            return False, f"Duplicate work already queued for {target_url}"
-
-        terminal_items = self._get_items_by_tracking_id(
-            current_item.tracking_id,
-            status_filter=[
-                QueueStatus.SKIPPED,
-                QueueStatus.FAILED,
-            ],
-        )
-        for item in terminal_items:
-            if item.url == target_url and item.type == target_type:
-                return False, f"Already in terminal state ({item.status.value})"
-
-        completed = self._get_items_by_tracking_id(
-            current_item.tracking_id, status_filter=[QueueStatus.SUCCESS]
-        )
-        for item in completed:
-            if item.url == target_url and item.type == target_type:
-                return False, "Already completed successfully"
-
-        return True, "OK"
-
     def spawn_item_safely(
         self, current_item: JobQueueItem, new_item_data: Dict[str, Any]
     ) -> Optional[str]:
@@ -882,5 +860,7 @@ class QueueManager:
         item.pipeline_state = pipeline_state
         item.status = QueueStatus.PENDING
         item.updated_at = _utcnow()
+        item.processed_at = None
+        item.completed_at = None
         self._persist_item(item)
         self._notify_item_updated(item_id)

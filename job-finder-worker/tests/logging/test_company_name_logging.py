@@ -177,17 +177,17 @@ class TestStructuredLoggerCompanyActivity:
         assert "..." in message
         assert len(message) < 150  # Much shorter than full 100-char name
 
-    def test_company_activity_logs_full_when_requested(self, caplog):
-        """company_activity should include full name in structured fields."""
+    def test_company_activity_always_preserves_full_name(self, caplog):
+        """company_activity should always include full name in structured fields."""
         logger = logging.getLogger("test_logger")
         structured_logger = StructuredLogger(logger)
 
         long_name = "A" * 100
 
         with caplog.at_level(logging.INFO):
-            structured_logger.company_activity(long_name, "FETCH", truncate=False)
+            structured_logger.company_activity(long_name, "FETCH")
 
-        # In structured JSON mode, full name is in details, message may be truncated
+        # Full name is always preserved in structured details
         assert len(caplog.records) == 1
         record = caplog.records[0]
         assert "Company fetch:" in record.message

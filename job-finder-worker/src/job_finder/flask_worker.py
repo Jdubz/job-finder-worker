@@ -9,7 +9,6 @@ This worker provides:
 - Same job processing logic as the daemon worker
 """
 
-import base64
 import json
 import os
 import signal
@@ -18,7 +17,6 @@ import threading
 import concurrent.futures
 import time
 import traceback
-import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -134,26 +132,6 @@ def _get_state_snapshot() -> Dict[str, Any]:
         return dict(worker_state)
 
 
-def _extract_email_from_jwt(id_token: str) -> Optional[str]:
-    """Extract email from JWT id_token payload."""
-    try:
-        # JWT format: header.payload.signature - we need the payload
-        parts = id_token.split(".")
-        if len(parts) != 3:
-            return None
-
-        # Add padding if needed for base64 decoding
-        payload_b64 = parts[1]
-        padding = 4 - len(payload_b64) % 4
-        if padding != 4:
-            payload_b64 += "=" * padding
-
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
-        return payload.get("email")
-    except Exception:
-        return None
-
-
 def check_litellm_health() -> Dict[str, Any]:
     """Check LiteLLM proxy health.
 
@@ -185,6 +163,7 @@ def reset_stuck_processing_items(
     grace = max(processing_timeout, poll_interval * 2)
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=grace)
     cutoff_iso = cutoff.isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
 
     try:
         with sqlite_connection(queue_manager.db_path) as conn:
@@ -196,7 +175,7 @@ def reset_stuck_processing_items(
                 """,
                 (
                     QueueStatus.PENDING.value,
-                    cutoff_iso,
+                    now_iso,
                     QueueStatus.PROCESSING.value,
                     cutoff_iso,
                 ),
@@ -532,8 +511,6 @@ def _process_batch(
 
 def worker_loop():
     """Main worker loop - single thread drains the queue before sleeping."""
-    global queue_manager, processor  # noqa: F824
-
     slogger.worker_status("started")
     _update_state(running=True, iteration=0)
 
@@ -808,7 +785,7 @@ def main():
     try:
         # Load config and initialize components
         config = load_config()
-        global queue_manager, processor, config_loader, ai_matcher, scrape_report_storage
+        global queue_manager, processor, config_loader, ai_matcher, scrape_report_storage, worker_thread
         queue_manager, processor, config_loader, ai_matcher, config, scrape_report_storage = (
             initialize_components(config)
         )

@@ -1,16 +1,15 @@
 """Generic scraper for all job source types."""
 
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from functools import lru_cache
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import feedparser
-import json
 import requests
 from requests.exceptions import InvalidSchema, InvalidURL, MissingSchema, URLRequired
 from bs4 import BeautifulSoup
@@ -256,7 +255,6 @@ class GenericScraper:
         self.config = config
         self.request_timeout = max(request_timeout, 1)
 
-    @lru_cache(maxsize=1)
     def _get_effective_url(self) -> str:
         """
         Get the effective URL with any server-side filters applied.
@@ -1094,7 +1092,16 @@ class GenericScraper:
                 )
                 return job
 
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as exc:
+                logger.warning(
+                    "Detail page HTTP %d for %s, skipping enrichment: %s",
+                    response.status_code,
+                    url,
+                    exc,
+                )
+                return job
             soup = BeautifulSoup(response.text, "html.parser")
 
             # Strategy 1: JSON-LD JobPosting schema (most reliable)

@@ -860,8 +860,8 @@ class TestEnrichStaleListings:
         # Rate limit delay should still be applied
         assert sleep_calls == [0.5]
 
-    def test_enrich_still_raises_on_other_errors(self, monkeypatch, scraper):
-        """Other HTTP errors (e.g., 500) should still propagate."""
+    def test_enrich_gracefully_handles_server_errors(self, monkeypatch, scraper):
+        """Other HTTP errors (e.g., 500) should be handled gracefully, returning job unmodified."""
         import requests
 
         def fake_get(url, headers=None, timeout=None):
@@ -876,10 +876,11 @@ class TestEnrichStaleListings:
             "job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0
         )
 
-        job = {"title": "Engineer", "url": "https://example.com/job/456"}
+        original_job = {"title": "Engineer", "url": "https://example.com/job/456"}
+        job = original_job.copy()
 
-        with pytest.raises(requests.HTTPError):
-            scraper._enrich_from_detail(job)
+        result = scraper._enrich_from_detail(job)
+        assert result == original_job
 
 
 class TestExtractCompanyWebsiteFromDescription:

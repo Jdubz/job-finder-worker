@@ -83,37 +83,19 @@ ATS_PROVIDERS = {
         "api_url": "https://api.smartrecruiters.com/v1/companies/{slug}/postings",
         "response_path": "content",
         "aggregator_domain": "smartrecruiters.com",
-        "fields": {
-            "title": "name",
-            "url": "ref",
-            "location": "location.city",
-            "description": "jobAd.sections.companyDescription.text",
-            "posted_date": "releasedDate",
-        },
+        "fields": _PLATFORM_PATTERNS_BY_NAME["smartrecruiters_api"].fields,
     },
     "recruitee": {
         "api_url": "https://{slug}.recruitee.com/api/offers",
         "response_path": "offers",
         "aggregator_domain": "recruitee.com",
-        "fields": {
-            "title": "title",
-            "url": "careers_url",
-            "location": "location",
-            "description": "description",
-            "posted_date": "published_at",
-        },
+        "fields": _PLATFORM_PATTERNS_BY_NAME["recruitee_api"].fields,
     },
     "breezy": {
         "api_url": "https://{slug}.breezy.hr/json",
         "response_path": "",  # Root is array
         "aggregator_domain": "breezy.hr",
-        "fields": {
-            "title": "name",
-            "url": "url",
-            "location": "location.name",
-            "description": "description",
-            "posted_date": "published_date",
-        },
+        "fields": _PLATFORM_PATTERNS_BY_NAME["breezy_api"].fields,
     },
     "workable": {
         "api_url": "https://apply.workable.com/api/v1/widget/accounts/{slug}",

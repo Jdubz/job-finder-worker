@@ -17,7 +17,7 @@ import json
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 import sqlite3
 
@@ -72,20 +72,6 @@ def _round_up_years(months: int) -> float:
     if months <= 0:
         return 0.0
     return float(math.ceil(months / 12))
-
-
-def build_analog_map(analog_groups: Iterable[Iterable[str]]) -> Dict[str, Set[str]]:
-    """Build lookup of skill -> equivalent skills from grouped lists."""
-    analog_map: Dict[str, Set[str]] = {}
-    for group in analog_groups or []:
-        if isinstance(group, str):
-            entries = [p.strip() for p in group.split(",") if p.strip()]
-        else:
-            entries = list(group)
-        group_set = {_normalize_skill(s) for s in entries if s}
-        for skill in group_set:
-            analog_map[skill] = group_set - {skill}
-    return analog_map
 
 
 def reduce_content_items(

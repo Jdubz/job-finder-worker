@@ -105,8 +105,8 @@ class PageDataExtractor:
         if not hostname:
             raise ValueError("URL has no hostname")
 
-        blocked_hostnames = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
-        if hostname.lower() in blocked_hostnames:
+        _BLOCKED_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+        if hostname.lower() in _BLOCKED_HOSTNAMES:
             raise ValueError(f"Blocked hostname: {hostname}")
 
         # Resolve DNS and reject private/internal IPs
@@ -114,10 +114,16 @@ class PageDataExtractor:
             addrinfo = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
             for _family, _type, _proto, _canonname, sockaddr in addrinfo:
                 ip = ipaddress.ip_address(sockaddr[0])
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_unspecified
+                ):
                     raise ValueError(f"URL resolves to blocked IP range: {hostname} -> {ip}")
         except socket.gaierror:
-            pass  # DNS resolution failed; let Playwright handle the error
+            raise ValueError(f"DNS resolution failed for hostname: {hostname}")
 
     def _try_api_probe(self, url: str) -> Optional[Dict[str, Any]]:
         """Try to fetch job data directly from ATS APIs before rendering.
@@ -527,12 +533,11 @@ class PageDataExtractor:
         Raises:
             NoAgentsAvailableError: Propagated to stop queue when all agents are down.
         """
-        prompt = EXTRACTION_PROMPT + page_text
-
         try:
             result = self.agent_manager.execute(
                 task_type="extraction",
-                prompt=prompt,
+                prompt=page_text,
+                system_prompt=EXTRACTION_PROMPT,
                 max_tokens=4096,
                 temperature=0.3,
             )

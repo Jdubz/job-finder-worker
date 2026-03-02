@@ -93,7 +93,7 @@ class CompanyInfoFetcher:
         Initialize company info fetcher.
 
         Args:
-            agent_manager: AgentManager for AI-powered extraction
+            agent_manager: InferenceClient for AI-powered extraction
             db_path: Database path (deprecated, use sources_manager instead)
             sources_manager: JobSourcesManager for aggregator domain lookup
         """
@@ -151,8 +151,6 @@ class CompanyInfoFetcher:
     ) -> Dict[str, Any]:
         _, company_display = format_company_name(company_name)
         logger.info("Enriching %s (%s pass)", company_display, mode.upper())
-        _, company_display = format_company_name(company_name)
-        logger.info(f"Fetching company info for {company_display}")
 
         # Check if we can extract better company name from Workday URL
         if source_context:
@@ -1086,8 +1084,6 @@ Be factual. Return ONLY valid JSON."""
 
         return wiki_normalized or ""
 
-        return ""
-
     def _normalize_url(self, url: Optional[str]) -> str:
         """Normalize URL by ensuring scheme and trimming whitespace."""
         if not url:
@@ -1135,21 +1131,24 @@ Be factual. Return ONLY valid JSON."""
 
         try:
             response = self.session.get(url, timeout=timeout, allow_redirects=True, stream=True)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
 
-            # Read only the first ~16KB to avoid large downloads
-            chunks = []
-            total = 0
-            for chunk in response.iter_content(chunk_size=4096, decode_unicode=True):
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                total += len(chunk)
-                if total >= 16384:
-                    break
+                # Read only the first ~16KB to avoid large downloads
+                chunks = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=4096, decode_unicode=True):
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total >= 16384:
+                        break
 
-            text = "".join(chunks).lower()
-            return any(tok in text for tok in tokens)
+                text = "".join(chunks).lower()
+                return any(tok in text for tok in tokens)
+            finally:
+                response.close()
         except requests.RequestException as e:
             logger.debug("Homepage probe for %s failed: %s", url, e)
             return False

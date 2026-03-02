@@ -149,23 +149,37 @@ class JobListingStorage:
                 logger.debug("Found existing job listing: %s", row["id"])
                 return row["id"], False
 
-        # Create new (outside transaction to avoid nested connection issues)
-        listing_id = self.create_listing(
-            url=url,
-            title=title,
-            company_name=company_name,
-            description=description,
-            source_id=source_id,
-            company_id=company_id,
-            location=location,
-            salary_range=salary_range,
-            posted_date=posted_date,
-            status=status,
-            filter_result=filter_result,
-            content_fingerprint=content_fingerprint,
-            apply_url=apply_url,
-        )
-        return listing_id, True
+        # Create new — outside the read connection to avoid nesting.
+        # create_listing handles IntegrityError for concurrent inserts.
+        try:
+            listing_id = self.create_listing(
+                url=url,
+                title=title,
+                company_name=company_name,
+                description=description,
+                source_id=source_id,
+                company_id=company_id,
+                location=location,
+                salary_range=salary_range,
+                posted_date=posted_date,
+                status=status,
+                filter_result=filter_result,
+                content_fingerprint=content_fingerprint,
+                apply_url=apply_url,
+            )
+            return listing_id, True
+        except StorageError as exc:
+            # Only handle uniqueness violations (IntegrityError cause), not other StorageErrors
+            if isinstance(exc.__cause__, sqlite3.IntegrityError):
+                # Concurrent insert won the race — fetch the existing row
+                with sqlite_connection(self.db_path) as conn:
+                    row = conn.execute(
+                        "SELECT id FROM job_listings WHERE url = ? LIMIT 1",
+                        (normalized_url,),
+                    ).fetchone()
+                    if row:
+                        return row["id"], False
+            raise
 
     def get_by_id(self, listing_id: str) -> Optional[Dict[str, Any]]:
         """Get a job listing by ID."""
@@ -233,15 +247,27 @@ class JobListingStorage:
         """
         Batch existence check for URLs.
 
-        Returns dict mapping normalized URL -> exists boolean.
+        Returns dict mapping original URL -> exists boolean.
         Checks both active listings and archived listings to prevent
         re-queuing old job postings that have been archived.
         """
-        normalized_urls = [normalize_url(url) for url in urls if url]
+        if not urls:
+            return {}
+
+        # Map normalized -> list of original URLs for reverse lookup
+        norm_to_originals: Dict[str, List[str]] = {}
+        normalized_urls = []
+        for url in urls:
+            if not url:
+                continue
+            normed = normalize_url(url)
+            normalized_urls.append(normed)
+            norm_to_originals.setdefault(normed, []).append(url)
+
         if not normalized_urls:
             return {}
 
-        results = {url: False for url in normalized_urls}
+        results = {url: False for url in urls if url}
 
         with sqlite_connection(self.db_path) as conn:
             chunk_size = 50
@@ -263,7 +289,9 @@ class JobListingStorage:
                         tuple(chunk),
                     ).fetchall()
                 for row in rows:
-                    results[row["url"]] = True
+                    # Map back from normalized URL to all original URLs
+                    for orig_url in norm_to_originals.get(row["url"], []):
+                        results[orig_url] = True
 
         return results
 
@@ -295,19 +323,19 @@ class JobListingStorage:
                 params.insert(1, _serialize_json(filter_result))
 
             set_clause = ", ".join(sets)
-            conn.execute(
+            cursor = conn.execute(
                 f"UPDATE job_listings SET {set_clause} WHERE id = ?",
                 (*params, listing_id),
             )
 
-            return conn.total_changes > 0
+            return cursor.rowcount > 0
 
     def update_match_score(self, listing_id: str, score: float) -> bool:
         """Update the match_score for a job listing (deterministic score for sorting/filtering)."""
         now = utcnow_iso()
 
         with sqlite_connection(self.db_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE job_listings
                 SET match_score = ?, updated_at = ?
@@ -315,14 +343,14 @@ class JobListingStorage:
                 """,
                 (score, now, listing_id),
             )
-            return conn.total_changes > 0
+            return cursor.rowcount > 0
 
     def update_company_id(self, listing_id: str, company_id: str) -> bool:
         """Update the company_id for a job listing."""
         now = utcnow_iso()
 
         with sqlite_connection(self.db_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE job_listings
                 SET company_id = ?, updated_at = ?
@@ -330,10 +358,10 @@ class JobListingStorage:
                 """,
                 (company_id, now, listing_id),
             )
-            return conn.total_changes > 0
+            return cursor.rowcount > 0
 
     def delete(self, listing_id: str) -> bool:
         """Delete a job listing by ID."""
         with sqlite_connection(self.db_path) as conn:
-            conn.execute("DELETE FROM job_listings WHERE id = ?", (listing_id,))
-            return conn.total_changes > 0
+            cursor = conn.execute("DELETE FROM job_listings WHERE id = ?", (listing_id,))
+            return cursor.rowcount > 0

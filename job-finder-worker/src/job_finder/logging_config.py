@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import yaml
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -135,7 +135,7 @@ class JSONFormatter(logging.Formatter):
         # Build structured log entry
         log_entry: Dict[str, Any] = {
             "severity": severity,
-            "timestamp": datetime.utcfromtimestamp(record.created).isoformat() + "Z",
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "environment": self.environment,
             "service": "worker",
         }
@@ -196,10 +196,14 @@ def setup_logging(
     else:
         log_file = os.getenv("LOG_FILE", log_file)
 
-    # REQUIRED: Environment must be explicitly set (staging, production, development)
+    # Environment must be explicitly set (staging, production, development)
+    # Default to "development" to avoid crashing at module load time
     environment = os.getenv("ENVIRONMENT")
     if not environment:
-        raise ValueError(ENVIRONMENT_REQUIRED_ERROR)
+        environment = "development"
+        import sys
+
+        print("WARNING: ENVIRONMENT not set, defaulting to 'development'", file=sys.stderr)
 
     # Create logs directory if it doesn't exist
     log_path = Path(log_file)
@@ -372,7 +376,6 @@ class StructuredLogger:
         company_name: str,
         action: str,
         details: Optional[Dict] = None,
-        truncate: bool = True,
     ) -> None:
         """
         Log company-related activity.
@@ -381,7 +384,6 @@ class StructuredLogger:
             company_name: Company name
             action: Action being performed
             details: Optional additional details
-            truncate: Whether to truncate for display (unused in JSON mode)
         """
         full_name, display_name = format_company_name(company_name)
 
