@@ -511,8 +511,6 @@ def _process_batch(
 
 def worker_loop():
     """Main worker loop - single thread drains the queue before sleeping."""
-    global queue_manager, processor
-
     slogger.worker_status("started")
     _update_state(running=True, iteration=0)
 

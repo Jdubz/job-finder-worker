@@ -6,7 +6,7 @@ import pytest
 
 from job_finder.exceptions import ProfileError
 from job_finder.profile.loader import ProfileLoader
-from job_finder.profile.schema import Experience, Profile, Skill
+from job_finder.profile.schema import Profile
 
 
 class TestLoadFromJson:

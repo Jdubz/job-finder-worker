@@ -1,6 +1,6 @@
 """Tests for date parsing and scoring utilities."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 
 from job_finder.utils.date_utils import (
     parse_job_date,
