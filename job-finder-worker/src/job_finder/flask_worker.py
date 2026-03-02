@@ -164,9 +164,7 @@ def wait_for_litellm(max_wait: int = 30, interval: int = 2) -> bool:
             return True
         time.sleep(interval)
         elapsed += interval
-    logger.warning(
-        "LiteLLM proxy not ready after %ds — starting worker anyway", max_wait
-    )
+    logger.warning("LiteLLM proxy not ready after %ds — starting worker anyway", max_wait)
     return False
 
 

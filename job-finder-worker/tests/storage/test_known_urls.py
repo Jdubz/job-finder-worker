@@ -11,6 +11,7 @@ from job_finder.storage.seen_urls_storage import SeenUrlsStorage, _url_hash
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+
 def _create_tables(db_path: str) -> None:
     """Create the minimal schema needed for these tests."""
     conn = sqlite3.connect(db_path)
@@ -76,6 +77,7 @@ def tmp_db(tmp_path):
 
 
 # ── JobListingStorage.get_urls_for_source ────────────────────────────
+
 
 class TestGetUrlsForSource:
     def test_returns_urls_from_job_listings(self, tmp_db):
@@ -143,6 +145,7 @@ class TestGetUrlsForSource:
 
 
 # ── SeenUrlsStorage ─────────────────────────────────────────────────
+
 
 class TestSeenUrlsStorage:
     def test_record_and_retrieve(self, tmp_db):

@@ -123,12 +123,16 @@ class TestPaginationEarlyStop:
         scraper = _make_scraper(config)
 
         page_items = [
-            [{"title": "J1", "url": "https://example.com/1"},
-             {"title": "J2", "url": "https://example.com/2"},
-             {"title": "J3", "url": "https://example.com/3"}],
-            [{"title": "J4", "url": "https://example.com/4"},
-             {"title": "J5", "url": "https://example.com/5"},
-             {"title": "J6", "url": "https://example.com/6"}],
+            [
+                {"title": "J1", "url": "https://example.com/1"},
+                {"title": "J2", "url": "https://example.com/2"},
+                {"title": "J3", "url": "https://example.com/3"},
+            ],
+            [
+                {"title": "J4", "url": "https://example.com/4"},
+                {"title": "J5", "url": "https://example.com/5"},
+                {"title": "J6", "url": "https://example.com/6"},
+            ],
         ]
         call_count = [0]
 
@@ -173,9 +177,12 @@ class TestPaginationEarlyStop:
         scraper._fetch_single_page = mock_fetch_single_page
 
         known_urls = {
-            "https://example.com/old/1", "https://example.com/old/2",
-            "https://example.com/old/3", "https://example.com/old/4",
-            "https://example.com/old/5", "https://example.com/old/6",
+            "https://example.com/old/1",
+            "https://example.com/old/2",
+            "https://example.com/old/3",
+            "https://example.com/old/4",
+            "https://example.com/old/5",
+            "https://example.com/old/6",
         }
 
         results = scraper._fetch_paginated(known_urls=known_urls)
