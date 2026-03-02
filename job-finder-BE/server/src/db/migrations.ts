@@ -28,6 +28,27 @@ function loadApplied(db: Database.Database): Set<string> {
   return new Set(rows.map((row) => row.name))
 }
 
+/**
+ * Detect errors from migrations whose effect is already present in the DB.
+ *
+ * The worker (Python) and API (Node) share one SQLite file but maintain
+ * independent migration tracking.  When the worker applies a schema change
+ * outside the API's schema_migrations table (e.g. ALTER TABLE ADD COLUMN),
+ * the API's runner sees the migration as "pending" but the DDL fails because
+ * the change already exists.
+ *
+ * These errors are safe to absorb: the migration's intent is fulfilled and
+ * we just need to record it so it isn't retried.
+ */
+function isAlreadyAppliedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return (
+    /duplicate column name:/i.test(msg) ||
+    /table .+ already exists/i.test(msg) ||
+    /index .+ already exists/i.test(msg)
+  )
+}
+
 export function runMigrations(db: Database.Database, migrationsDir: string = getDefaultMigrationsDir()): string[] {
   logger.info({ migrationsDir }, '[migrations] checking for pending migrations')
 
@@ -70,7 +91,15 @@ export function runMigrations(db: Database.Database, migrationsDir: string = get
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
 
     if (hasExplicitTransaction(sql)) {
-      db.exec(sql)
+      try {
+        db.exec(sql)
+      } catch (err) {
+        if (isAlreadyAppliedError(err)) {
+          logger.warn({ migration: file, error: err }, '[migrations] schema already matches — recording as applied')
+        } else {
+          throw err
+        }
+      }
     } else {
       try {
         db.exec('BEGIN')
@@ -78,8 +107,12 @@ export function runMigrations(db: Database.Database, migrationsDir: string = get
         db.exec('COMMIT')
       } catch (err) {
         db.exec('ROLLBACK')
-        logger.error({ migration: file, error: err }, '[migrations] migration failed and was rolled back')
-        throw err
+        if (isAlreadyAppliedError(err)) {
+          logger.warn({ migration: file, error: err }, '[migrations] schema already matches — recording as applied')
+        } else {
+          logger.error({ migration: file, error: err }, '[migrations] migration failed and was rolled back')
+          throw err
+        }
       }
     }
 

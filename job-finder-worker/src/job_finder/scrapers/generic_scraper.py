@@ -6,7 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import feedparser
@@ -282,9 +282,14 @@ class GenericScraper:
 
         return url
 
-    def scrape(self) -> List[Dict[str, Any]]:
+    def scrape(self, known_urls: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
         """
         Scrape jobs from the configured source.
+
+        Args:
+            known_urls: Optional set of normalized URLs already known.
+                        When provided, paginated sources stop early once a page
+                        is dominated (≥80%) by known URLs.
 
         Returns:
             List of standardized job dictionaries
@@ -300,7 +305,7 @@ class GenericScraper:
 
             # Fetch data based on source type
             if self.config.pagination_type:
-                data = self._fetch_paginated()
+                data = self._fetch_paginated(known_urls=known_urls)
             elif self.config.type == "api":
                 data = self._fetch_json()
             elif self.config.type == "rss":
@@ -669,18 +674,22 @@ class GenericScraper:
 
     # ── Generic pagination engine ──────────────────────────────────────
 
-    def _fetch_paginated(self) -> List[Any]:
+    def _fetch_paginated(self, known_urls: Optional[Set[str]] = None) -> List[Any]:
         """
         Fetch multiple pages from a paginated source.
 
         Dispatches to the appropriate per-page fetcher based on config.type
         and assembles results across pages. Stops on: empty page, items <
-        page_size (when page_size > 0), no cursor token, or max_pages reached.
+        page_size (when page_size > 0), no cursor token, max_pages reached,
+        or early-stop when ≥80% of a page's URLs are already known.
         """
+        from job_finder.utils.url_utils import normalize_url
+
         results: List[Any] = []
         cursor: Optional[str] = None
         delay = get_fetch_delay_seconds()
         hit_max_pages = True
+        early_stopped = False
 
         for page_num in range(self.config.max_pages):
             # Build URL for this page
@@ -697,6 +706,32 @@ class GenericScraper:
                 break
 
             results.extend(items)
+
+            # Early-stop: if most URLs on this page are already known,
+            # we've reached "old" territory — no need to keep paginating.
+            if known_urls and page_num > 0:
+                page_urls = []
+                for item in items:
+                    job = self._extract_fields(item)
+                    raw_url = job.get("url", "")
+                    if raw_url:
+                        page_urls.append(normalize_url(raw_url))
+                if page_urls:
+                    known_count = sum(1 for u in page_urls if u in known_urls)
+                    known_ratio = known_count / len(page_urls)
+                    if known_ratio >= 0.8:
+                        logger.info(
+                            "early_stop: page %d has %.0f%% known URLs (%d/%d); "
+                            "stopping pagination for %s",
+                            page_num + 1,
+                            known_ratio * 100,
+                            known_count,
+                            len(page_urls),
+                            self.config.url,
+                        )
+                        early_stopped = True
+                        hit_max_pages = False
+                        break
 
             # Stop if fewer items than page_size (last page)
             if self.config.page_size and len(items) < self.config.page_size:
@@ -718,6 +753,12 @@ class GenericScraper:
             logger.warning(
                 "Pagination hit max_pages=%s for %s; results may be truncated",
                 self.config.max_pages,
+                self.config.url,
+            )
+        if early_stopped:
+            logger.info(
+                "Pagination early-stopped after %d items for %s",
+                len(results),
                 self.config.url,
             )
         return results
