@@ -36,11 +36,14 @@ def mock_job_listing_storage():
 @pytest.fixture
 def scraper_intake(mock_queue_manager, mock_sources_manager, mock_job_listing_storage):
     """Create scraper intake with mock manager."""
-    return ScraperIntake(
+    intake = ScraperIntake(
         queue_manager=mock_queue_manager,
         sources_manager=mock_sources_manager,
         job_listing_storage=mock_job_listing_storage,
     )
+    # Pre-set to avoid lazy import of search_client in tests
+    intake._search_client = None
+    return intake
 
 
 def test_submit_jobs_success(scraper_intake, mock_queue_manager):
@@ -477,6 +480,7 @@ def test_store_job_listing_falls_back_to_companies_table(
         job_listing_storage=mock_job_listing_storage,
         companies_manager=mock_companies_manager,
     )
+    intake._search_client = None  # avoid lazy import in tests
 
     job = {
         "title": "RTL Design Engineer",

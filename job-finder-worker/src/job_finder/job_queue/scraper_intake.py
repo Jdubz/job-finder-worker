@@ -29,10 +29,10 @@ from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
 from job_finder.utils.company_name_utils import clean_company_name
+from job_finder.utils.apply_url_resolver import resolve_apply_url
 from job_finder.utils.url_utils import (
     AGGREGATOR_HOST_SUBSTRINGS,
     compute_content_fingerprint,
-    derive_apply_url,
     normalize_url,
 )
 
@@ -92,6 +92,15 @@ class ScraperIntake:
         # LinkedIn control tags (e.g., #LI-DNI / #LI-DNP) appear inside descriptions
         # for wrapped jobs; use them to avoid ingesting posts that should be skipped.
         self._li_suppression_pattern = re.compile(r"#\s*li[-_ ]?(dni|dnp)\b", re.IGNORECASE)
+
+    @property
+    def search_client(self):
+        """Lazy-initialized search client for apply URL resolution."""
+        if not hasattr(self, "_search_client"):
+            from job_finder.ai.search_client import get_search_client
+
+            self._search_client = get_search_client()
+        return self._search_client
 
     def _is_aggregator_domain(self, url: str) -> bool:
         if not self.sources_manager:
@@ -156,42 +165,22 @@ class ScraperIntake:
             return None
 
         try:
-            apply_url = derive_apply_url(normalized_url)
-            if not apply_url:
-                from urllib.parse import urlparse
+            from urllib.parse import urlparse
 
-                host = (urlparse(normalized_url).hostname or "").lower()
-                is_aggregator = any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS)
+            host = (urlparse(normalized_url).hostname or "").lower()
+            is_aggregator = any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS)
 
-                def _is_valid_apply_url(url: str) -> bool:
-                    """Validate a candidate apply_url has an HTTP(S) scheme and isn't an aggregator."""
-                    parsed = urlparse(url)
-                    if parsed.scheme not in ("http", "https"):
-                        return False
-                    url_host = (parsed.hostname or "").lower()
-                    if any(agg in url_host for agg in AGGREGATOR_HOST_SUBSTRINGS):
-                        return False
-                    return bool(url_host)
+            search_client = self.search_client if is_aggregator else None
 
-                if is_aggregator and job.get("company_website"):
-                    candidate = job["company_website"]
-                    if _is_valid_apply_url(candidate):
-                        apply_url = candidate
+            result = resolve_apply_url(
+                job_url=normalized_url,
+                job=job,
+                search_client=search_client,
+                companies_manager=self.companies_manager,
+                is_aggregator=is_aggregator,
+            )
+            apply_url = result.url
 
-                if is_aggregator and not apply_url and self.companies_manager:
-                    # Fallback: look up the company's website from the DB.
-                    company_name = job.get("company", "").strip()
-                    if company_name:
-                        company = self.companies_manager.get_company(company_name)
-                        if company and company.get("website"):
-                            candidate = company["website"]
-                            if _is_valid_apply_url(candidate):
-                                apply_url = candidate
-                                logger.debug(
-                                    "Resolved apply_url from companies table for %s: %s",
-                                    company_name,
-                                    apply_url,
-                                )
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),
