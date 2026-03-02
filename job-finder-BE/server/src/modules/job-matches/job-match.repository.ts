@@ -137,10 +137,10 @@ function buildListingFromRow(row: JoinedRow): JobListingRecord {
 }
 
 function buildCompanyFromRow(row: JoinedRow): Company | null {
-  if (!row.c_id) return null
+  if (!row.c_id || !row.c_name) return null
   return {
     id: row.c_id,
-    name: row.c_name!,
+    name: row.c_name,
     website: row.c_website ?? '',
     about: row.c_about ?? null,
     culture: row.c_culture ?? null,
