@@ -1849,14 +1849,18 @@ function renderTabs(tabs: TabInfo[]) {
       closeBtn.title = "Close tab"
       closeBtn.addEventListener("click", (e) => {
         e.stopPropagation()
-        api.tabs.close(tab.id)
+        void api.tabs.close(tab.id).catch((err) => {
+          log.warn("Failed to close tab", tab.id, err)
+        })
       })
       el.appendChild(closeBtn)
     }
 
     el.addEventListener("click", () => {
       if (!tab.active) {
-        api.tabs.switch(tab.id)
+        void api.tabs.switch(tab.id).catch((err) => {
+          log.warn("Failed to switch tab", tab.id, err)
+        })
       }
     })
 
@@ -1881,7 +1885,11 @@ function initializeApp() {
   submitJobBtn.addEventListener("click", submitJob)
 
   // Event listeners - Tab Bar
-  newTabBtn.addEventListener("click", () => api.tabs.create())
+  newTabBtn.addEventListener("click", () => {
+    void api.tabs.create().catch((err) => {
+      log.warn("Failed to create tab", err)
+    })
+  })
   api.onTabsChanged(renderTabs)
   api.tabs.getAll().then(renderTabs)
 

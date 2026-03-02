@@ -197,9 +197,8 @@ def setup_logging(
     else:
         log_file = os.getenv("LOG_FILE", log_file)
 
-    # Environment must be explicitly set (staging, production, development)
-    # Default to "development" to avoid crashing at module load time.
-    # Also set os.environ so StructuredLogger (which reads the env var) stays consistent.
+    # Environment defaults to "development" if not set, with a stderr warning.
+    # Also written to os.environ so StructuredLogger (which reads the env var) stays consistent.
     environment = os.getenv("ENVIRONMENT")
     if not environment:
         environment = "development"

@@ -511,20 +511,20 @@ async function createWindow(): Promise<void> {
   logger.info(`[TabManager] Initialized with first tab`)
 
   // Capture renderer console messages and errors BEFORE loading HTML
-mainWindow.webContents.on("console-message", (_event: unknown, level: number, message: string, line: number, sourceId: string) => {
+  mainWindow.webContents.on("console-message", (_event: unknown, level: number, message: string, line: number, sourceId: string) => {
     const levelName = ["verbose", "info", "warning", "error"][level] || "unknown"
     logger.info(`[RENDERER:${levelName}] ${message} (${sourceId}:${line})`)
   })
 
-mainWindow.webContents.on("did-fail-load", (_event: unknown, errorCode: number, errorDescription: string) => {
+  mainWindow.webContents.on("did-fail-load", (_event: unknown, errorCode: number, errorDescription: string) => {
     logger.error(`[RENDERER] Failed to load: ${errorCode} - ${errorDescription}`)
   })
 
-mainWindow.webContents.on("preload-error", (_event: unknown, preloadPath: string, error: Error) => {
+  mainWindow.webContents.on("preload-error", (_event: unknown, preloadPath: string, error: Error) => {
     logger.error(`[PRELOAD ERROR] ${preloadPath}: ${error}`)
   })
 
-mainWindow.webContents.on("render-process-gone", (_event: unknown, details: RenderProcessGoneDetails) => {
+  mainWindow.webContents.on("render-process-gone", (_event: unknown, details: RenderProcessGoneDetails) => {
     logger.error(`[RENDERER] Process gone:`, details)
   })
 
