@@ -175,7 +175,8 @@ def setup_logging(
 
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
-        log_file: Path to log file. If None, uses centralized /logs/worker.log.
+        log_file: Path to log file. If None, defaults to /app/logs/worker.log
+            in production or a repo-local logs/worker.log otherwise.
 
     Environment Variables:
         LOG_LEVEL: Override log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -197,10 +198,12 @@ def setup_logging(
         log_file = os.getenv("LOG_FILE", log_file)
 
     # Environment must be explicitly set (staging, production, development)
-    # Default to "development" to avoid crashing at module load time
+    # Default to "development" to avoid crashing at module load time.
+    # Also set os.environ so StructuredLogger (which reads the env var) stays consistent.
     environment = os.getenv("ENVIRONMENT")
     if not environment:
         environment = "development"
+        os.environ["ENVIRONMENT"] = environment
         print("WARNING: ENVIRONMENT not set, defaulting to 'development'", file=sys.stderr)
 
     # Create logs directory if it doesn't exist
