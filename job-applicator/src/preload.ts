@@ -60,10 +60,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // Browser URL change listener
-  onBrowserUrlChanged: (callback: (data: { url: string }) => void) => {
-    const handler = (_event: IpcRendererEvent, data: { url: string }) => callback(data)
+  onBrowserUrlChanged: (callback: (data: { url: string; tabId?: string }) => void) => {
+    const handler = (_event: IpcRendererEvent, data: { url: string; tabId?: string }) => callback(data)
     ipcRenderer.on("browser-url-changed", handler)
     return () => ipcRenderer.removeListener("browser-url-changed", handler)
+  },
+
+  // Tab management
+  tabs: {
+    create: (url?: string) => ipcRenderer.invoke("create-tab", url),
+    close: (id: string) => ipcRenderer.invoke("close-tab", id),
+    switch: (id: string) => ipcRenderer.invoke("switch-tab", id),
+    getAll: () => ipcRenderer.invoke("get-tabs"),
+  },
+
+  // Tab change listener
+  onTabsChanged: (callback: (tabs: { id: string; title: string; url: string; active: boolean }[]) => void) => {
+    const handler = (_event: IpcRendererEvent, tabs: { id: string; title: string; url: string; active: boolean }[]) => callback(tabs)
+    ipcRenderer.on("tabs-changed", handler)
+    return () => ipcRenderer.removeListener("tabs-changed", handler)
   },
 
   // File upload

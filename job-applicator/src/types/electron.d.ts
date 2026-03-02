@@ -20,7 +20,8 @@ declare module "electron" {
 
   export interface BrowserWindow {
     getBounds(): Bounds
-    setBrowserView(view: BrowserView): void
+    setBrowserView(view: BrowserView | null): void
+    removeBrowserView(view: BrowserView): void
     setAutoResize(options: { width?: boolean; height?: boolean }): void
     setBounds(bounds: Bounds): void
     loadFile(path: string): Promise<void>
@@ -36,6 +37,7 @@ declare module "electron" {
     webContents: WebContents
     setAutoResize(options: { width?: boolean; height?: boolean }): void
     setBounds(bounds: Bounds): void
+    getBounds(): Bounds
   }
 
   export interface BrowserViewConstructor {
@@ -91,6 +93,10 @@ declare module "electron" {
     openDevTools(options?: unknown): void
     isDevToolsOpened(): boolean
     closeDevTools(): void
+    canGoBack(): boolean
+    goBack(): Promise<void>
+    isDestroyed(): boolean
+    close(): void
     setAutoResize(options: { width?: boolean; height?: boolean }): void
     setBounds(bounds: Bounds): void
   }
