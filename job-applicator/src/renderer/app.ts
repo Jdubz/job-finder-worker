@@ -245,6 +245,13 @@ class StreamingParser {
 // End Agent Output Parser
 // ============================================================================
 
+interface TabInfo {
+  id: string
+  title: string
+  url: string
+  active: boolean
+}
+
 interface ElectronAPI {
   // Logging - forwards to main process (logs to both console and file)
   log: {
@@ -277,7 +284,16 @@ interface ElectronAPI {
   pauseAgent: () => Promise<{ success: boolean; message?: string }>
   onAgentOutput: (callback: (data: AgentOutputData) => void) => () => void
   onAgentStatus: (callback: (data: AgentStatusData) => void) => () => void
-  onBrowserUrlChanged: (callback: (data: { url: string }) => void) => () => void
+  onBrowserUrlChanged: (callback: (data: { url: string; tabId?: string }) => void) => () => void
+
+  // Tab management
+  tabs: {
+    create: (url?: string) => Promise<TabInfo[]>
+    close: (id: string) => Promise<TabInfo[]>
+    switch: (id: string) => Promise<TabInfo[]>
+    getAll: () => Promise<TabInfo[]>
+  }
+  onTabsChanged: (callback: (tabs: TabInfo[]) => void) => () => void
 
   // File upload
   uploadResume: (options?: {
@@ -430,6 +446,10 @@ const urlInput = getElement<HTMLInputElement>("urlInput")
 const goBtn = getElement<HTMLButtonElement>("goBtn")
 const submitJobBtn = getElement<HTMLButtonElement>("submitJobBtn")
 const statusEl = getElement<HTMLSpanElement>("status")
+
+// DOM elements - Tab Bar
+const tabList = getElement<HTMLDivElement>("tabList")
+const newTabBtn = getElement<HTMLButtonElement>("newTabBtn")
 
 // DOM elements - Sidebar
 const jobSelect = getElement<HTMLSelectElement>("jobSelect")
@@ -1795,6 +1815,55 @@ function escapeAttr(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
+// ============================================================================
+// Tab Bar
+// ============================================================================
+
+function getDomainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url || "New Tab"
+  }
+}
+
+function renderTabs(tabs: TabInfo[]) {
+  tabList.innerHTML = ""
+  const singleTab = tabs.length <= 1
+
+  for (const tab of tabs) {
+    const el = document.createElement("div")
+    el.className = `tab-item${tab.active ? " active" : ""}`
+    el.dataset.tabId = tab.id
+
+    const titleSpan = document.createElement("span")
+    titleSpan.className = "tab-title"
+    titleSpan.textContent = tab.title || getDomainFromUrl(tab.url)
+    titleSpan.title = tab.url || tab.title
+    el.appendChild(titleSpan)
+
+    if (!singleTab) {
+      const closeBtn = document.createElement("button")
+      closeBtn.className = "tab-close"
+      closeBtn.textContent = "\u00d7"
+      closeBtn.title = "Close tab"
+      closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation()
+        api.tabs.close(tab.id)
+      })
+      el.appendChild(closeBtn)
+    }
+
+    el.addEventListener("click", () => {
+      if (!tab.active) {
+        api.tabs.switch(tab.id)
+      }
+    })
+
+    tabList.appendChild(el)
+  }
+}
+
 // Initialize application when DOM is ready
 function initializeApp() {
   // Event listeners - Auth
@@ -1810,6 +1879,11 @@ function initializeApp() {
     }
   })
   submitJobBtn.addEventListener("click", submitJob)
+
+  // Event listeners - Tab Bar
+  newTabBtn.addEventListener("click", () => api.tabs.create())
+  api.onTabsChanged(renderTabs)
+  api.tabs.getAll().then(renderTabs)
 
   // Event listeners - Agent Session
   startSessionBtn.addEventListener("click", startAgentSession)

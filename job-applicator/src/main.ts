@@ -1,5 +1,5 @@
-import { app, BrowserWindow, BrowserView, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
-import type { WebContents, RenderProcessGoneDetails } from "electron"
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, globalShortcut, Menu, shell } from "electron"
+import type { BrowserView, WebContents, RenderProcessGoneDetails } from "electron"
 import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
@@ -79,7 +79,7 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
-import { executeTool, setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
+import { executeTool, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
 import { getFormFillPrompt, parseFormScanResult } from "./form-fill-safety.js"
 import type { FormScanResult } from "./form-fill-safety.js"
 // Typed API client
@@ -101,6 +101,10 @@ import {
 
 // Auth manager
 import { initiateLogin, logout, restoreSession, getAuthHeaders } from "./auth-manager.js"
+
+// Tab manager
+import { TabManager } from "./tab-manager.js"
+import type { TabInfo } from "./tab-manager.js"
 
 // Temp directory for downloaded documents
 const TEMP_DOC_DIR = path.join(os.tmpdir(), "job-applicator-docs")
@@ -174,6 +178,8 @@ async function downloadDocument(documentUrl: string): Promise<string> {
 
 // Layout constants
 const TOOLBAR_HEIGHT = 60
+const TAB_BAR_HEIGHT = 32
+const HEADER_HEIGHT = TOOLBAR_HEIGHT + TAB_BAR_HEIGHT // 92
 const SIDEBAR_WIDTH = 300
 const CUSTOM_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -333,11 +339,17 @@ async function executeRemainingSteps(
 
 // Global state
 let mainWindow: BrowserWindow | null = null
-let browserView: BrowserView | null = null
+let tabManager: TabManager | null = null
 
-/** Check if the BrowserView's webContents are alive and usable. */
+/** Check if the active BrowserView's webContents are alive and usable. */
 function isBrowserViewAlive(): boolean {
-  return !!browserView?.webContents && !browserView.webContents.isDestroyed()
+  const view = tabManager?.getActiveView()
+  return !!view?.webContents && !view.webContents.isDestroyed()
+}
+
+/** Get the active BrowserView (shorthand for tabManager?.getActiveView()). */
+function getActiveView(): BrowserView | null {
+  return tabManager?.getActiveView() ?? null
 }
 
 /**
@@ -378,16 +390,21 @@ function isOAuthPopup(url: string): boolean {
   }
 }
 
-// Update BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH)
-function updateBrowserViewBounds(): void {
-  if (!browserView || !mainWindow) return
+/** Calculate BrowserView bounds (sidebar is always visible, offset by SIDEBAR_WIDTH). */
+function calculateBrowserViewBounds(): { x: number; y: number; width: number; height: number } {
+  if (!mainWindow) return { x: 0, y: 0, width: 0, height: 0 }
   const bounds = mainWindow.getBounds()
-  browserView.setBounds({
+  return {
     x: SIDEBAR_WIDTH,
-    y: TOOLBAR_HEIGHT,
+    y: HEADER_HEIGHT,
     width: bounds.width - SIDEBAR_WIDTH,
-    height: bounds.height - TOOLBAR_HEIGHT,
-  })
+    height: bounds.height - HEADER_HEIGHT,
+  }
+}
+
+// Update BrowserView bounds — delegates to TabManager
+function updateBrowserViewBounds(): void {
+  tabManager?.updateActiveBounds()
 }
 
 async function createWindow(): Promise<void> {
@@ -407,134 +424,91 @@ async function createWindow(): Promise<void> {
   })
   logger.info("Main window created")
 
-  // Create BrowserView for job application pages
-  browserView = new BrowserView({
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
+  // Create TabManager for multi-tab BrowserView management
+  tabManager = new TabManager({
+    mainWindow,
+    boundsCalculator: calculateBrowserViewBounds,
+    isOAuthPopup,
+    userAgent: CUSTOM_USER_AGENT,
+    onTabsChanged: (tabs: TabInfo[]) => {
+      mainWindow?.webContents.send("tabs-changed", tabs)
+    },
+    onUrlChange: (data: { url: string; tabId: string }) => {
+      mainWindow?.webContents.send("browser-url-changed", { url: data.url, tabId: data.tabId })
+    },
+    setupOAuthProtection: (childWindow, details, parentView) => {
+      logger.info(`Child window created: ${details.url}`)
+
+      // Protect the opener page from cross-origin redirects during OAuth.
+      let openerProtected = false
+      let blockOpenerRedirect: ((event: Electron.Event, url: string) => void) | null = null
+      let oauthTimeout: ReturnType<typeof setTimeout> | null = null
+
+      const isParentAlive = () => !!parentView?.webContents && !parentView.webContents.isDestroyed()
+
+      const enableOpenerProtection = (triggerUrl: string) => {
+        if (openerProtected || !isParentAlive()) return
+        openerProtected = true
+        logger.info(`[OAuth] Protecting opener during auth popup: ${triggerUrl}`)
+
+        let preAuthOrigin: string
+        try {
+          preAuthOrigin = new URL(parentView.webContents.getURL()).origin
+        } catch {
+          logger.warn("[OAuth] BrowserView has no valid URL yet, skipping opener protection")
+          return
+        }
+        blockOpenerRedirect = (event: Electron.Event, url: string) => {
+          try {
+            if (new URL(url).origin === preAuthOrigin) return
+          } catch { /* malformed URL — block it */ }
+          logger.info(`[OAuth] Blocking cross-origin opener navigation during active popup: ${url}`)
+          event.preventDefault()
+        }
+        parentView.webContents.on("will-navigate", blockOpenerRedirect)
+
+        oauthTimeout = setTimeout(() => {
+          if (!childWindow.isDestroyed()) {
+            logger.info("Closing stale OAuth popup after timeout")
+            childWindow.close()
+          }
+        }, OAUTH_POPUP_TIMEOUT_MS)
+      }
+
+      const cleanupOAuth = () => {
+        if (oauthTimeout) clearTimeout(oauthTimeout)
+        if (blockOpenerRedirect && isParentAlive()) {
+          parentView.webContents.removeListener("will-navigate", blockOpenerRedirect)
+        }
+      }
+
+      if (isOAuthPopup(details.url)) {
+        enableOpenerProtection(details.url)
+      } else {
+        const onChildNavigate = (_event: Electron.Event, url: string) => {
+          if (isOAuthPopup(url)) {
+            enableOpenerProtection(url)
+            childWindow.webContents.removeListener("did-navigate", onChildNavigate)
+          }
+        }
+        childWindow.webContents.on("did-navigate", onChildNavigate)
+        childWindow.on("closed", () => {
+          childWindow.webContents.removeListener("did-navigate", onChildNavigate)
+        })
+      }
+
+      childWindow.on("closed", () => {
+        cleanupOAuth()
+        if (openerProtected) {
+          logger.info("[OAuth] Popup closed, opener navigation unblocked")
+        }
+      })
     },
   })
 
-  mainWindow.setBrowserView(browserView)
-  browserView.webContents.session.setUserAgent(CUSTOM_USER_AGENT)
-  logger.info(`[BrowserView] User agent set to Chrome UA to avoid bot/WAF blocks`)
-
-  // Set BrowserView reference for agent tools
-  setBrowserView(browserView)
-
-  // Position BrowserView below toolbar, accounting for sidebar state
-  updateBrowserViewBounds()
-  browserView.setAutoResize({ width: true, height: true })
-
-  // Allow all popups — the BrowserView should behave like a normal browser.
-  // We only need special handling for OAuth/SSO popups to protect the opener
-  // page from being navigated away by the auth provider's redirect chain.
-  browserView.webContents.setWindowOpenHandler(({ url }) => {
-    // Only allow safe schemes to prevent local-file exposure or script injection
-    try {
-      const scheme = new URL(url).protocol
-      if (!["http:", "https:", "about:"].includes(scheme)) {
-        logger.warn(`Blocking popup with unsafe scheme: ${url}`)
-        return { action: "deny" }
-      }
-    } catch {
-      // about:blank and empty URLs don't parse — allow them (common OAuth pattern)
-    }
-    logger.info(`Allowing popup: ${url}`)
-    return { action: "allow" }
-  })
-
-  browserView.webContents.on("did-create-window", (childWindow, details) => {
-    logger.info(`Child window created: ${details.url}`)
-
-    // Protect the opener page from cross-origin redirects during OAuth.
-    // Some ATS providers (e.g. eightfold.ai) let the auth provider redirect
-    // window.opener.location, which navigates the application form away.
-    //
-    // We set up protection in a helper so it can be activated either
-    // immediately (URL is already an auth provider) or lazily (popup opens
-    // as about:blank and later navigates to an auth provider via JS).
-    let openerProtected = false
-    let blockOpenerRedirect: ((event: Electron.Event, url: string) => void) | null = null
-    let oauthTimeout: ReturnType<typeof setTimeout> | null = null
-
-    const enableOpenerProtection = (triggerUrl: string) => {
-      if (openerProtected || !isBrowserViewAlive()) return
-      openerProtected = true
-      logger.info(`[OAuth] Protecting opener during auth popup: ${triggerUrl}`)
-
-      let preAuthOrigin: string
-      try {
-        preAuthOrigin = new URL(browserView!.webContents.getURL()).origin
-      } catch {
-        logger.warn("[OAuth] BrowserView has no valid URL yet, skipping opener protection")
-        return
-      }
-      blockOpenerRedirect = (event: Electron.Event, url: string) => {
-        try {
-          if (new URL(url).origin === preAuthOrigin) return
-        } catch { /* malformed URL — block it */ }
-        logger.info(`[OAuth] Blocking cross-origin opener navigation during active popup: ${url}`)
-        event.preventDefault()
-      }
-      browserView!.webContents.on("will-navigate", blockOpenerRedirect)
-
-      oauthTimeout = setTimeout(() => {
-        if (!childWindow.isDestroyed()) {
-          logger.info("Closing stale OAuth popup after timeout")
-          childWindow.close()
-        }
-      }, OAUTH_POPUP_TIMEOUT_MS)
-    }
-
-    const cleanupOAuth = () => {
-      if (oauthTimeout) clearTimeout(oauthTimeout)
-      if (blockOpenerRedirect && isBrowserViewAlive()) {
-        browserView!.webContents.removeListener("will-navigate", blockOpenerRedirect)
-      }
-    }
-
-    // If the popup URL is already a known auth provider, protect immediately
-    if (isOAuthPopup(details.url)) {
-      enableOpenerProtection(details.url)
-    } else {
-      // For about:blank or other popups that may redirect to an auth provider
-      // via JS, monitor navigations and enable protection lazily.
-      const onChildNavigate = (_event: Electron.Event, url: string) => {
-        if (isOAuthPopup(url)) {
-          enableOpenerProtection(url)
-          // Stop listening — protection is active, no need to keep checking
-          childWindow.webContents.removeListener("did-navigate", onChildNavigate)
-        }
-      }
-      childWindow.webContents.on("did-navigate", onChildNavigate)
-
-      // Clean up the listener when the popup closes, in case it never
-      // navigated to an auth provider
-      childWindow.on("closed", () => {
-        childWindow.webContents.removeListener("did-navigate", onChildNavigate)
-      })
-    }
-
-    childWindow.on("closed", () => {
-      cleanupOAuth()
-      if (openerProtected) {
-        logger.info("[OAuth] Popup closed, opener navigation unblocked")
-      }
-    })
-  })
-
-  // Notify renderer when URL changes
-  browserView.webContents.on("did-navigate", (_event, url) => {
-    logger.info(`[BrowserView] Navigated to: ${url}`)
-    mainWindow?.webContents.send("browser-url-changed", { url })
-  })
-
-  // Also handle in-page navigation (SPA apps)
-  browserView.webContents.on("did-navigate-in-page", (_event, url) => {
-    logger.info(`[BrowserView] In-page navigation to: ${url}`)
-    mainWindow?.webContents.send("browser-url-changed", { url })
-  })
+  // Create the first tab
+  tabManager.createTab()
+  logger.info(`[TabManager] Initialized with first tab`)
 
   // Capture renderer console messages and errors BEFORE loading HTML
 mainWindow.webContents.on("console-message", (_event: unknown, level: number, message: string, line: number, sourceId: string) => {
@@ -582,9 +556,9 @@ mainWindow.webContents.on("render-process-gone", (_event: unknown, details: Rend
   }
 
   mainWindow.on("closed", () => {
+    tabManager?.destroyAll()
+    tabManager = null
     mainWindow = null
-    browserView = null
-    setBrowserView(null)
   })
 
   mainWindow.on("resize", () => {
@@ -607,6 +581,9 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
     return { success: false, message: "Invalid URL format" }
   }
 
+  // Capture the view at handler start so retries always target the same tab
+  const view = getActiveView()!
+
   // Retry once on ERR_FAILED — Cloudflare challenges and transient network errors
   // often resolve on the second attempt after the challenge cookie is set.
   // MAX_RETRIES = 1 means 2 total attempts (initial + 1 retry).
@@ -618,7 +595,7 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
         logger.info(`Retrying navigation (retry ${attempt} of ${MAX_RETRIES}): ${url}`)
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
-      await browserView!.webContents.loadURL(url)
+      await view.webContents.loadURL(url)
       return { success: true }
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
@@ -659,15 +636,15 @@ ipcMain.handle("navigate", async (_event: IpcMainInvokeEvent, url: string): Prom
 // Get current URL
 ipcMain.handle("get-url", async (): Promise<string> => {
   if (!isBrowserViewAlive()) return ""
-  return browserView!.webContents.getURL()
+  return getActiveView()!.webContents.getURL()
 })
 
 // Get navigation state (URL + back availability)
 ipcMain.handle("get-navigation-state", async (): Promise<{ url: string; canGoBack: boolean }> => {
   if (!isBrowserViewAlive()) return { url: "", canGoBack: false }
   return {
-    url: browserView!.webContents.getURL(),
-    canGoBack: browserView!.webContents.canGoBack(),
+    url: getActiveView()!.webContents.getURL(),
+    canGoBack: getActiveView()!.webContents.canGoBack(),
   }
 })
 
@@ -676,9 +653,9 @@ ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boole
   if (!isBrowserViewAlive()) {
     return { success: false, canGoBack: false, message: "Browser not initialized" }
   }
-  if (browserView!.webContents.canGoBack()) {
-    await browserView!.webContents.goBack()
-    return { success: true, canGoBack: browserView!.webContents.canGoBack() }
+  if (getActiveView()!.webContents.canGoBack()) {
+    await getActiveView()!.webContents.goBack()
+    return { success: true, canGoBack: getActiveView()!.webContents.canGoBack() }
   }
   return { success: false, canGoBack: false, message: "No page to go back to" }
 })
@@ -686,11 +663,12 @@ ipcMain.handle("go-back", async (): Promise<{ success: boolean; canGoBack: boole
 // Hide BrowserView (for showing modals that need to overlay the entire window)
 ipcMain.handle("hide-browser-view", async (): Promise<{ success: boolean }> => {
   logger.info("hide-browser-view called")
-  if (!browserView) {
-    logger.warn("hide-browser-view: No browserView")
+  const view = getActiveView()
+  if (!view) {
+    logger.warn("hide-browser-view: No active view")
     return { success: false }
   }
-  browserView.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+  view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
   logger.info("hide-browser-view: BrowserView hidden")
   return { success: true }
 })
@@ -698,13 +676,37 @@ ipcMain.handle("hide-browser-view", async (): Promise<{ success: boolean }> => {
 // Show BrowserView (restore after modal is closed)
 ipcMain.handle("show-browser-view", async (): Promise<{ success: boolean }> => {
   logger.info("show-browser-view called")
-  if (!browserView || !mainWindow) {
-    logger.warn("show-browser-view: No browserView or mainWindow")
+  if (!tabManager || !mainWindow) {
+    logger.warn("show-browser-view: No tabManager or mainWindow")
     return { success: false }
   }
   updateBrowserViewBounds()
   logger.info("show-browser-view: BrowserView restored")
   return { success: true }
+})
+
+// Tab management IPC handlers
+ipcMain.handle("create-tab", async (_event: IpcMainInvokeEvent, url?: string): Promise<TabInfo[]> => {
+  if (!tabManager) return []
+  tabManager.createTab(url)
+  return tabManager.getTabInfos()
+})
+
+ipcMain.handle("close-tab", async (_event: IpcMainInvokeEvent, id: string): Promise<TabInfo[]> => {
+  if (!tabManager) return []
+  tabManager.closeTab(id)
+  return tabManager.getTabInfos()
+})
+
+ipcMain.handle("switch-tab", async (_event: IpcMainInvokeEvent, id: string): Promise<TabInfo[]> => {
+  if (!tabManager) return []
+  tabManager.switchTab(id)
+  return tabManager.getTabInfos()
+})
+
+ipcMain.handle("get-tabs", async (): Promise<TabInfo[]> => {
+  if (!tabManager) return []
+  return tabManager.getTabInfos()
 })
 
 
@@ -1050,12 +1052,13 @@ ipcMain.handle(
 
     try {
       if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
+      const uploadView = getActiveView()!
 
       const targetType = options?.type || "resume"
 
       // Detect file input first — only download the document if we find one
       const found = await findFileInputAcrossFrames<string>(
-        browserView!.webContents,
+        uploadView.webContents,
         buildFileInputDetectionScript(targetType)
       )
 
@@ -1073,7 +1076,7 @@ ipcMain.handle(
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
-      await setFileInputFiles(browserView!.webContents, fileInputSelector, [resolvedPath], frameUrl)
+      await setFileInputFiles(uploadView.webContents, fileInputSelector, [resolvedPath], frameUrl)
 
       const docTypeLabel = options?.type === "coverLetter" ? "Cover letter" : "Resume"
       return { success: true, message: `${docTypeLabel} uploaded successfully`, filePath: resolvedPath }
@@ -1095,9 +1098,10 @@ ipcMain.handle(
   async (_event: IpcMainInvokeEvent, _provider: CliProvider): Promise<{ success: boolean; message: string }> => {
     try {
       if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
+      const submitView = getActiveView()!
 
       // 1. Get current URL
-      const url = browserView!.webContents.getURL()
+      const url = submitView.webContents.getURL()
       if (!url || url === "about:blank") {
         return { success: false, message: "No page loaded - navigate to a job listing first" }
       }
@@ -1105,7 +1109,7 @@ ipcMain.handle(
       logger.info(`Extracting job details from: ${url}`)
 
       // 2. Extract page content (text only, limited to 10k chars)
-      const pageContent: string = await browserView!.webContents.executeJavaScript(`
+      const pageContent: string = await submitView.webContents.executeJavaScript(`
         document.body.innerText.slice(0, 10000)
       `)
 
@@ -1203,8 +1207,9 @@ async function findFileInputAcrossFrames<T>(
 
 // Check if a file input exists on the current page (including iframes)
 ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; selector?: string }> => {
-  if (!browserView) {
-    logger.info("[check-file-input] No browserView")
+  const view = getActiveView()
+  if (!view) {
+    logger.info("[check-file-input] No active view")
     return { hasFileInput: false }
   }
 
@@ -1222,7 +1227,7 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   `
 
   type CheckResult = { hasFileInput: boolean; selector?: string }
-  const found = await findFileInputAcrossFrames<CheckResult>(browserView.webContents, script)
+  const found = await findFileInputAcrossFrames<CheckResult>(view.webContents, script)
   if (found) {
     logger.info(`[check-file-input] Found file input in frame: ${sanitizeFrameUrl(found.frameUrl)}`)
     return found.result
@@ -1733,6 +1738,7 @@ ipcMain.handle(
       return { success: false, message: "Form fill already in progress" }
     }
     fillFormInProgress = true
+    tabManager?.lockToolExecutor()
 
     try {
       // Fast preflight: make sure the tool server is reachable before starting the agent
@@ -1744,6 +1750,7 @@ ipcMain.handle(
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] Tool server health check failed: ${message}`)
         fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
         return { success: false, message: `Tool server not ready: ${message}. Try restarting the app.` }
       }
 
@@ -1755,6 +1762,7 @@ ipcMain.handle(
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] MCP server not found: ${message}`)
         fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
         return { success: false, message: `MCP server not found: ${message}. Run 'npm run build'.` }
       }
 
@@ -1772,6 +1780,8 @@ ipcMain.handle(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] Failed to fetch profile: ${message}`)
+        fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
         return { success: false, message: `Failed to fetch profile: ${message}` }
       }
 
@@ -1782,6 +1792,8 @@ ipcMain.handle(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error(`[FillForm] Failed to create MCP config: ${message}`)
+        fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
         return { success: false, message }
       }
 
@@ -1796,14 +1808,19 @@ ipcMain.handle(
         coverLetterUrl: options.coverLetterUrl,
       })
 
+      // Capture the BrowserView at fill-form start so the upload callback
+      // always targets the correct tab even if the user switches tabs.
+      const fillFormView = getActiveView()
+
       // Set upload callback - this allows the tool executor to trigger uploads
       setUploadCallback(async (selector: string, type: "resume" | "coverLetter", documentUrl: string, frameUrl?: string | null) => {
         const docTypeLabel = type === "coverLetter" ? "Cover letter" : "Resume"
 
         try {
-          if (!browserView) {
+          if (!fillFormView || fillFormView.webContents.isDestroyed()) {
             return { success: false, message: "BrowserView not initialized" }
           }
+          const view = fillFormView
 
           logger.info(`[Upload] Agent uploading ${type}: ${documentUrl} to ${selector}`)
 
@@ -1811,7 +1828,7 @@ ipcMain.handle(
           const resolvedPath = await downloadDocument(documentUrl)
 
           // Use Electron's debugger API to set the file
-          await setFileInputFiles(browserView.webContents, selector, [resolvedPath], frameUrl)
+          await setFileInputFiles(view.webContents, selector, [resolvedPath], frameUrl)
 
           return { success: true, message: `${docTypeLabel} uploaded successfully to ${selector}` }
         } catch (err) {
@@ -1942,6 +1959,7 @@ ipcMain.handle(
         logger.info(`[FillForm] Claude CLI exited with code ${code}`)
         activeClaudeProcess = null
         fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
         clearJobContext()
         setCompletionCallback(null)
         setToolStatusCallback(null)
@@ -1954,6 +1972,7 @@ ipcMain.handle(
         logger.error(`[FillForm] Claude CLI error: ${err.message}`)
         activeClaudeProcess = null
         fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
         clearJobContext()
         setCompletionCallback(null)
         setToolStatusCallback(null)
@@ -1966,6 +1985,8 @@ ipcMain.handle(
 
       return { success: true }
     } catch (err) {
+      fillFormInProgress = false
+      tabManager?.unlockToolExecutor()
       const message = err instanceof Error ? err.message : String(err)
       logger.error(`[FillForm] Error: ${message}`)
       return { success: false, message }
@@ -1979,6 +2000,8 @@ ipcMain.handle(
 ipcMain.handle("stop-fill-form", async (): Promise<{ success: boolean }> => {
   logger.info(`[FillForm] stop-fill-form called`)
   killActiveClaudeProcess("user stopped")
+  fillFormInProgress = false
+  tabManager?.unlockToolExecutor()
   clearJobContext()
   setCompletionCallback(null)
   setToolStatusCallback(null)
@@ -2116,10 +2139,11 @@ app.whenReady().then(async () => {
   })
   globalShortcut.register("CommandOrControl+Shift+J", () => {
     logger.info("Opening page DevTools...")
-    if (browserView?.webContents.isDevToolsOpened()) {
-      browserView.webContents.closeDevTools()
+    const view = tabManager?.getActiveView()
+    if (view?.webContents.isDevToolsOpened()) {
+      view.webContents.closeDevTools()
     } else {
-      browserView?.webContents.openDevTools({ mode: "detach" })
+      view?.webContents.openDevTools({ mode: "detach" })
     }
   })
 
@@ -2127,6 +2151,21 @@ app.whenReady().then(async () => {
   globalShortcut.register("CommandOrControl+R", () => {
     logger.info("Refreshing job matches via global shortcut...")
     mainWindow?.webContents.send("refresh-job-matches")
+  })
+
+  // Tab shortcuts
+  globalShortcut.register("CommandOrControl+T", () => {
+    tabManager?.createTab()
+  })
+  globalShortcut.register("CommandOrControl+W", () => {
+    const activeTab = tabManager?.getActiveTab()
+    if (activeTab) tabManager?.closeTab(activeTab.id)
+  })
+  globalShortcut.register("CommandOrControl+Tab", () => {
+    tabManager?.nextTab()
+  })
+  globalShortcut.register("CommandOrControl+Shift+Tab", () => {
+    tabManager?.previousTab()
   })
 
   // Create application menu with DevTools options
@@ -2151,10 +2190,11 @@ app.whenReady().then(async () => {
           accelerator: "CommandOrControl+Shift+J",
           click: () => {
             logger.info("Menu: Opening page DevTools...")
-            if (browserView?.webContents.isDevToolsOpened()) {
-              browserView.webContents.closeDevTools()
+            const view = tabManager?.getActiveView()
+            if (view?.webContents.isDevToolsOpened()) {
+              view.webContents.closeDevTools()
             } else {
-              browserView?.webContents.openDevTools({ mode: "detach" })
+              view?.webContents.openDevTools({ mode: "detach" })
             }
           },
         },
