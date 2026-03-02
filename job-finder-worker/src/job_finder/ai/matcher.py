@@ -207,8 +207,9 @@ class AIJobMatcher:
             missing_skills=missing_skills,
             experience_match=match_analysis.get("experience_match", ""),
             key_strengths=match_analysis.get("key_strengths", []),
-            match_reasons=match_analysis.get("match_reasons")
-            or match_analysis.get("key_strengths", []),
+            match_reasons=self._normalize_string_list(
+                match_analysis.get("match_reasons") or match_analysis.get("key_strengths", [])
+            ),
             potential_concerns=match_analysis.get("potential_concerns", []),
             score_breakdown=score_breakdown,
             customization_recommendations=match_analysis.get("customization_recommendations", {}),
@@ -241,6 +242,21 @@ class AIJobMatcher:
                 if skill_name and isinstance(skill_name, str):
                     result.append(skill_name)
         return result
+
+    @staticmethod
+    def _normalize_string_list(value: Any) -> List[str]:
+        """Coerce an AI response value to List[str].
+
+        Handles cases where the LLM returns a string instead of a list,
+        or includes non-string items in the list.
+        """
+        if not value:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [str(item) for item in value if item]
+        return []
 
     def analyze_jobs(self, jobs: List[Dict[str, Any]]) -> List[JobMatchResult]:
         """

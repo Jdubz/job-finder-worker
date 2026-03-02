@@ -77,6 +77,7 @@ class TimezoneResult:
 # Manual cache that only caches successful results (no transient errors).
 # Keys are normalized (stripped) city names to avoid cache pollution.
 _timezone_cache: Dict[str, TimezoneResult] = {}
+_timezone_cache_lock = threading.Lock()
 _TIMEZONE_CACHE_MAXSIZE = 500
 
 
@@ -100,7 +101,7 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
 
     normalized = city.strip()
 
-    # Check cache with normalized key
+    # Check cache with normalized key (lock-free read; dict.get is thread-safe in CPython)
     cached = _timezone_cache.get(normalized)
     if cached is not None:
         return cached
@@ -109,8 +110,9 @@ def get_timezone_for_city(city: str) -> TimezoneResult:
 
     # Only cache successful results (no transient errors like timeouts)
     if result.error is None:
-        if len(_timezone_cache) < _TIMEZONE_CACHE_MAXSIZE:
-            _timezone_cache[normalized] = result
+        with _timezone_cache_lock:
+            if len(_timezone_cache) < _TIMEZONE_CACHE_MAXSIZE:
+                _timezone_cache[normalized] = result
 
     return result
 
@@ -208,4 +210,5 @@ def get_timezone_diff_hours(city1: str, city2: str) -> Optional[float]:
 
 def clear_cache() -> None:
     """Clear the timezone lookup cache. Useful for testing."""
-    _timezone_cache.clear()
+    with _timezone_cache_lock:
+        _timezone_cache.clear()

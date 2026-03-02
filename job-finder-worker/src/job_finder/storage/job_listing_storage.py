@@ -169,7 +169,8 @@ class JobListingStorage:
             )
             return listing_id, True
         except StorageError as exc:
-            if "already exists" in str(exc):
+            # Only handle uniqueness violations (IntegrityError cause), not other StorageErrors
+            if isinstance(exc.__cause__, sqlite3.IntegrityError):
                 # Concurrent insert won the race — fetch the existing row
                 with sqlite_connection(self.db_path) as conn:
                     row = conn.execute(

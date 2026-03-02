@@ -1144,7 +1144,7 @@ class JobProcessor(BaseProcessor):
         if ctx.listing_id:
             self._update_listing_status(
                 ctx.listing_id,
-                "failed",
+                "skipped",
                 filter_result=filter_data,
             )
 

@@ -410,12 +410,13 @@ class JobSourcesManager:
             # Validate state transition
             self._validate_transition(current_status, normalized_status)
 
-            sets = ["last_scraped_at = ?", "status = ?", "updated_at = ?"]
-            params: list = [now, normalized_status.value, now]
-
-            if error is not None:
-                sets.append("last_error = ?")
-                params.append(error)
+            sets = [
+                "last_scraped_at = ?",
+                "status = ?",
+                "updated_at = ?",
+                "last_error = ?",
+            ]
+            params: list = [now, normalized_status.value, now, error]
 
             set_clause = ", ".join(sets)
             conn.execute(
