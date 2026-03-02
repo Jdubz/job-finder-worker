@@ -32,6 +32,9 @@ const EnvSchema = z.object({
   // Cron scheduler
   CRON_ENABLED: z.string().optional(),
 
+  // Cookie domain for session cookies (e.g., '.example.com')
+  COOKIE_DOMAIN: z.string().optional(),
+
   // Semantic document cache
   CACHE_ENABLED: z.string().optional(),
   CACHE_DRY_RUN: z.string().optional(),

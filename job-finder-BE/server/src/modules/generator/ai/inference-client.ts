@@ -201,7 +201,8 @@ export class InferenceClient {
       })
 
       if (!response.ok || !response.body) {
-        throw new Error(`LiteLLM stream failed: HTTP ${response.status}`)
+        const body = await response.text().catch(() => '')
+        throw new InferenceError(`LiteLLM stream failed: HTTP ${response.status}: ${body.slice(0, 200)}`)
       }
 
       const reader = response.body.getReader()
@@ -227,14 +228,15 @@ export class InferenceClient {
             }
             const content = parsed.choices?.[0]?.delta?.content
             if (content) yield content
-          } catch {
-            // Skip malformed SSE chunks
+          } catch (parseErr) {
+            this.log.debug({ chunk: data.slice(0, 200), err: parseErr }, 'Skipping malformed SSE chunk')
           }
         }
       }
     } catch (err) {
+      if (err instanceof InferenceError) throw err
       if (err instanceof DOMException && err.name === 'AbortError') {
-        throw new Error('Chat stream timed out')
+        throw new InferenceError(`Chat stream timed out after ${this.timeoutMs / 1000} seconds`)
       }
       throw err
     } finally {

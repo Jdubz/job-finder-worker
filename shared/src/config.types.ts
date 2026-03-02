@@ -539,8 +539,9 @@ export interface CronConfig {
     scrape: CronJobSchedule
     maintenance: CronJobSchedule
     logrotate: CronJobSchedule
-    /** Reset agent daily budgets and re-enable quota-exhausted agents at midnight */
-    agentReset: CronJobSchedule
+    sessionCleanup: CronJobSchedule
+    /** @deprecated LiteLLM handles budgets; kept optional for existing DB rows */
+    agentReset?: CronJobSchedule
   }
 }
 

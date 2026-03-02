@@ -6,6 +6,7 @@ import { UserRepository, type UserRole } from '../modules/users/user.repository'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from './api-error'
 import { SESSION_COOKIE } from '../routes/auth.routes'
+import { logger } from '../logger'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
 
@@ -63,10 +64,8 @@ export interface AuthenticatedRequest extends Request {
 const userRepository = new UserRepository()
 
 function getCookieDomain(): string | undefined {
-  if (IS_DEVELOPMENT || isTestEnv()) {
-    return undefined
-  }
-  return '.joshwentworth.com'
+  if (IS_DEVELOPMENT || isTestEnv()) return undefined
+  return env.COOKIE_DOMAIN || '.joshwentworth.com'
 }
 
 function clearSessionCookie(res: Response) {
@@ -155,6 +154,10 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
 
   const bypassUser = tryLocalhostBypass(req)
   if (bypassUser) {
+    logger.info(
+      { ip: req.socket?.remoteAddress, method: req.method, path: req.path },
+      'Localhost auth bypass granted'
+    )
     ;(req as AuthenticatedRequest).user = bypassUser
     return next()
   }

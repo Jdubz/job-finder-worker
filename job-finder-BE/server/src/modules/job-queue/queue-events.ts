@@ -6,10 +6,13 @@ import type {
   QueueSsePayload,
   QueueEventDataMap,
   CancelCommand,
+  SnapshotEventData,
+  ItemCreatedEventData,
+  ItemUpdatedEventData,
 } from '@shared/types'
 import { logger } from '../../logger'
 import type { WebSocket } from 'ws'
-import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
+import { HEARTBEAT_INTERVAL_MS, initSseStream, safeBroadcast, type SseClient } from '../shared/sse'
 
 const clients = new Set<SseClient>()
 const commandQueue = new Map<string, CancelCommand[]>()
@@ -59,10 +62,10 @@ function sanitizeQueueItem(item: QueueItem): QueueItem {
     return value
   }
 
-  if (clone.pipeline_state) clone.pipeline_state = sanitizeUnknown(clone.pipeline_state) as any
-  if (clone.scraped_data) clone.scraped_data = sanitizeUnknown(clone.scraped_data) as any
-  if ((clone as any).input) (clone as any).input = sanitizeUnknown((clone as any).input) as any
-  if (clone.metadata) clone.metadata = sanitizeUnknown(clone.metadata) as any
+  if (clone.pipeline_state) clone.pipeline_state = sanitizeUnknown(clone.pipeline_state) as typeof clone.pipeline_state
+  if (clone.scraped_data) clone.scraped_data = sanitizeUnknown(clone.scraped_data) as typeof clone.scraped_data
+  if (clone.input) clone.input = sanitizeUnknown(clone.input) as typeof clone.input
+  if (clone.metadata) clone.metadata = sanitizeUnknown(clone.metadata) as typeof clone.metadata
 
   const afterSize = byteLengthSafe(clone)
   if (afterSize < beforeSize) {
@@ -83,18 +86,23 @@ function sanitizeEventData<E extends QueueSseEventName>(
   event: E,
   data: E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown>
 ): E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown> {
-  if (event === 'snapshot' && 'items' in (data as any)) {
+  type DataType = typeof data
+  const d = data as unknown as Record<string, unknown>
+
+  if (event === 'snapshot' && Array.isArray(d.items)) {
+    const snapshot = data as unknown as SnapshotEventData
     return {
-      ...(data as any),
-      items: (data as any).items.map((item: QueueItem) => sanitizeQueueItem(item)),
-    } as any
+      ...snapshot,
+      items: snapshot.items.map(sanitizeQueueItem),
+    } as unknown as DataType
   }
 
-  if (event === 'item.created' || event === 'item.updated') {
+  if ((event === 'item.created' || event === 'item.updated') && d.queueItem) {
+    const itemData = data as unknown as ItemCreatedEventData | ItemUpdatedEventData
     return {
-      ...(data as any),
-      queueItem: sanitizeQueueItem((data as any).queueItem),
-    }
+      ...itemData,
+      queueItem: sanitizeQueueItem(itemData.queueItem),
+    } as unknown as DataType
   }
 
   return data
@@ -121,9 +129,7 @@ export function broadcastQueueEvent<E extends QueueSseEventName>(
     ts: new Date().toISOString()
   }
   const serialized = toEventString(payload)
-  for (const client of clients) {
-    client.res.write(serialized)
-  }
+  safeBroadcast(clients, serialized)
 }
 
 export function handleQueueEventsSse(req: Request, res: Response, items: QueueItem[]) {

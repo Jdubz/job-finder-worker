@@ -19,7 +19,7 @@ vi.mock("@/api/queue-client", () => ({
         scrape: { enabled: true, hours: [8, 12, 16], lastRun: new Date().toISOString() },
         maintenance: { enabled: true, hours: [0], lastRun: new Date().toISOString() },
         logrotate: { enabled: false, hours: [4], lastRun: null },
-        agentReset: { enabled: true, hours: [6], lastRun: null },
+        sessionCleanup: { enabled: true, hours: [3], lastRun: null },
       },
     }),
     getWorkerHealth: vi.fn().mockResolvedValue({

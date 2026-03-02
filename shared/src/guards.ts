@@ -405,12 +405,16 @@ export function isCronConfig(value: unknown): value is CronConfig {
   if (!isObject(value)) return false
   const jobs = (value as any).jobs
   if (!isObject(jobs)) return false
-  return (
+  const coreValid =
     isCronJobSchedule((jobs as any).scrape) &&
     isCronJobSchedule((jobs as any).maintenance) &&
-    isCronJobSchedule((jobs as any).logrotate) &&
-    isCronJobSchedule((jobs as any).agentReset)
-  )
+    isCronJobSchedule((jobs as any).logrotate)
+  if (!coreValid) return false
+  // sessionCleanup may be absent in legacy DB rows — treat as valid
+  if ((jobs as any).sessionCleanup && !isCronJobSchedule((jobs as any).sessionCleanup)) return false
+  // agentReset is deprecated/optional — accept if present and valid, or absent
+  if ((jobs as any).agentReset && !isCronJobSchedule((jobs as any).agentReset)) return false
+  return true
 }
 
 export function isPersonalInfo(value: unknown): value is PersonalInfo {

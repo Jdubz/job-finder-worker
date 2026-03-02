@@ -5,7 +5,7 @@ import { getDb } from './db/sqlite'
 import { initWorkerSocket } from './modules/job-queue/worker-socket'
 import { setLifecyclePhase, broadcastLifecycleEvent, setReady } from './modules/lifecycle/lifecycle.stream'
 import { createDrainManager } from './modules/lifecycle/drain-manager'
-import { startCronScheduler } from './scheduler/cron'
+import { startCronScheduler, stopCronScheduler } from './scheduler/cron'
 
 async function main() {
   // Touch DB early to surface migration issues fast
@@ -26,6 +26,7 @@ async function main() {
 
   const shutdown = async (reason: string) => {
     logger.info({ reason }, 'Shutting down Job Finder API')
+    stopCronScheduler()
     // Mark unready before we stop accepting new connections so healthchecks fail fast
     setReady(false, { reason })
     setLifecyclePhase('draining', { reason })
