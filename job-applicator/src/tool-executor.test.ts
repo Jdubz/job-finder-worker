@@ -361,7 +361,6 @@ describe("Tool Executor", () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toContain("already has a value")
-      expect(result.currentValue).toBe("existing text")
       // Should NOT have called Input.insertText
       expect(mockDebugger.sendCommand).not.toHaveBeenCalled()
     })

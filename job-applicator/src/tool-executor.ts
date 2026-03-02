@@ -18,7 +18,6 @@ export interface ToolResult {
   data?: unknown
   error?: string
   skipped?: boolean
-  currentValue?: string
 }
 
 // ============================================================================
@@ -788,7 +787,7 @@ async function handleFillField(params: { selector: string; value: string }): Pro
         // Skip fields that already have a value — filled fields are permanently protected
         const currentValue = el.value || '';
         if (currentValue !== '') {
-          return { success: true, skipped: true, currentValue };
+          return { success: true, skipped: true };
         }
 
         // Determine element type for proper native setter
@@ -974,8 +973,7 @@ async function handleSelectOption(params: { selector: string; value: string }): 
           const selectedOpt = el.options[el.selectedIndex];
           // Also skip only if the selected option isn't a disabled placeholder
           if (!selectedOpt.disabled && !selectedOpt.hidden) {
-            const currentValue = el.value || '';
-            return { success: true, skipped: true, currentValue };
+            return { success: true, skipped: true };
           }
         }
 
@@ -1314,7 +1312,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
         // Skip fields that already have a value — filled fields are permanently protected
         const currentValue = el.value || '';
         if (currentValue !== '') {
-          return { success: true, skipped: true, currentValue };
+          return { success: true, skipped: true };
         }
 
         el.focus();
@@ -1331,7 +1329,7 @@ async function handleSelectCombobox(params: { selector: string; value: string })
     }
 
     if (openResult.skipped) {
-      return { success: true, skipped: true, currentValue: openResult.currentValue }
+      return { success: true, skipped: true }
     }
 
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
@@ -1853,7 +1851,6 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
     return {
       success: false,
       error: "Focused element already has a value. Use fill_field(selector, value) instead, which will skip already-filled fields automatically.",
-      currentValue: result.currentValue,
     }
   }
 
