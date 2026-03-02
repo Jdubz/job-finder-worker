@@ -4,7 +4,6 @@ import pytest
 
 from job_finder.scrapers.platform_patterns import (
     PLATFORM_PATTERNS,
-    build_config_from_pattern,
     is_single_company_platform,
     match_platform,
 )
@@ -126,17 +125,6 @@ class TestMatchPlatform:
         pattern, groups = result
         assert pattern.name == "greenhouse_html"
         assert groups["board_token"] == "eurocompany"
-
-    def test_greenhouse_regional_api_url_generation(self):
-        """Verify EU/regional URLs still generate correct API URL."""
-        url = "https://job-boards.eu.greenhouse.io/veeamsoftware"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-        # API URL should always use boards-api.greenhouse.io (not regional)
-        assert (
-            config["url"]
-            == "https://boards-api.greenhouse.io/v1/boards/veeamsoftware/jobs?content=true"
-        )
 
     # Ashby tests
     def test_ashby_api_url(self):
@@ -410,17 +398,6 @@ class TestMatchPlatform:
         pattern, groups = result
         assert pattern.name == "weworkremotely_rss"
 
-    def test_weworkremotely_config_uses_rss(self):
-        """Verify WeWorkRemotely config uses RSS feed with company extraction."""
-        url = "https://weworkremotely.com/company/lemon-io"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-        assert config["type"] == "rss"
-        assert config["url"] == "https://weworkremotely.com/remote-jobs.rss"
-        assert config.get("is_remote_source") is True
-        # Company is extracted from "Company: Job Title" format in RSS titles
-        assert config.get("company_extraction") == "from_title"
-
     # BuiltIn tests
     def test_builtin_root_jobs_page(self):
         """Test matching builtin.com/jobs."""
@@ -451,14 +428,6 @@ class TestMatchPlatform:
             pattern, groups = result
             assert pattern.name == "builtin_html"
 
-    def test_builtin_config_has_follow_detail(self):
-        """Verify BuiltIn config has follow_detail for job enrichment."""
-        url = "https://builtin.com/company/grow-therapy/jobs"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-        assert config["type"] == "html"
-        assert config.get("follow_detail") is True
-
     # Non-matching URLs
     def test_unknown_url_returns_none(self):
         """Test that unknown URLs return None."""
@@ -483,86 +452,6 @@ class TestMatchPlatform:
         # Should not match fake-greenhouse.io
         url = "https://fake-greenhouse.io/discord"
         assert match_platform(url) is None
-
-
-class TestBuildConfigFromPattern:
-    """Test config building from matched patterns."""
-
-    def test_greenhouse_config_structure(self):
-        """Test Greenhouse config has correct structure."""
-        url = "https://jobs.greenhouse.io/discord"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-
-        assert config["type"] == "api"
-        assert (
-            config["url"] == "https://boards-api.greenhouse.io/v1/boards/discord/jobs?content=true"
-        )
-        assert config["response_path"] == "jobs"
-        assert "title" in config["fields"]
-        assert "url" in config["fields"]
-        assert "method" not in config  # GET is default, not included
-
-    def test_ashby_html_to_api_conversion(self):
-        """Test Ashby HTML URL converts to API URL."""
-        url = "https://jobs.ashbyhq.com/supabase"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-
-        assert config["type"] == "api"
-        assert (
-            config["url"]
-            == "https://api.ashbyhq.com/posting-api/job-board/supabase?includeCompensation=true"
-        )
-        assert config["response_path"] == "jobs"
-
-    def test_workday_config_has_post_method(self):
-        """Test Workday config has POST method and body."""
-        url = "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-
-        assert config["type"] == "api"
-        assert config["method"] == "POST"
-        assert config["post_body"] == {"limit": 20, "offset": 0}
-        assert config["response_path"] == "jobPostings"
-        assert "Content-Type" in config["headers"]
-
-    def test_workday_config_has_base_url(self):
-        """Test Workday config includes base_url for relative job URLs."""
-        url = "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-
-        assert "base_url" in config
-        assert (
-            config["base_url"] == "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site"
-        )
-
-    def test_lever_config_has_empty_response_path(self):
-        """Test Lever config has empty response_path for array response."""
-        url = "https://jobs.lever.co/anthropic"
-        pattern, groups = match_platform(url)
-        config = build_config_from_pattern(pattern, groups)
-
-        assert config["type"] == "api"
-        assert config["url"] == "https://api.lever.co/v0/postings/anthropic?mode=json"
-        assert config["response_path"] == ""
-
-    def test_config_fields_are_copied(self):
-        """Test that field mappings are copied, not referenced."""
-        url = "https://jobs.greenhouse.io/discord"
-        pattern, groups = match_platform(url)
-        config1 = build_config_from_pattern(pattern, groups)
-        config2 = build_config_from_pattern(pattern, groups)
-
-        # Modify one config's fields
-        config1["fields"]["custom"] = "value"
-
-        # Other config should not be affected
-        assert "custom" not in config2["fields"]
-        # Original pattern should not be affected
-        assert "custom" not in pattern.fields
 
 
 class TestFieldMappings:

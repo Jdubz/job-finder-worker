@@ -18,6 +18,7 @@ def _bootstrap_db(path: Path):
               company_id TEXT,
               company_name TEXT,
               last_scraped_at TEXT,
+              last_error TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );

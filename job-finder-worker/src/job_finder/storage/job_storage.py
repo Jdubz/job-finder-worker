@@ -168,7 +168,7 @@ class JobStorage:
                         _serialize_list(match_result.potential_concerns),
                         experience_match,
                         _serialize_list(customization),
-                        _serialize_json(match_result.resume_intake_data),
+                        None,  # resume_intake_data (deprecated)
                         now,
                         user_id,
                         queue_item_id,

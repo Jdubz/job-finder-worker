@@ -331,10 +331,6 @@ class JobQueueItem(BaseModel):
     def to_record(self) -> Dict[str, Any]:
         input_payload = self._build_input()
         output_payload = self._build_output()
-        if input_payload is None:
-            input_payload = {}
-        if output_payload is None:
-            output_payload = {}
 
         return {
             "id": self.id,

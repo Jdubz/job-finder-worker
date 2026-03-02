@@ -28,12 +28,11 @@ def _get_db_path() -> Optional[str]:
     return os.environ.get("SQLITE_DB_PATH")
 
 
-@lru_cache(maxsize=1)
 def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Get worker settings from database with fallback to defaults.
 
-    Results are cached for the lifetime of the process.
+    Results are cached for the lifetime of the process (keyed by resolved db_path).
 
     Args:
         db_path: Optional database path (uses env var if not provided)
@@ -45,6 +44,12 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
     if not db:
         raise InitializationError("SQLITE_DB_PATH not set; cannot load worker-settings")
 
+    return _get_worker_settings_cached(db)
+
+
+@lru_cache(maxsize=4)
+def _get_worker_settings_cached(db: str) -> Dict[str, Any]:
+    """Internal cached loader keyed by resolved db_path."""
     try:
         from job_finder.job_queue.config_loader import ConfigLoader
 
@@ -53,7 +58,7 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
         logger.debug("Loaded worker settings from database")
         return settings
     except InitializationError as e:
-        logger.error(f"Failed to load worker settings from DB: {e}")
+        logger.error("Failed to load worker settings from DB: %s", e)
         raise
     except Exception:
         logger.exception("Unexpected error loading worker settings from DB")
@@ -62,7 +67,7 @@ def get_worker_settings(db_path: Optional[str] = None) -> Dict[str, Any]:
 
 def clear_settings_cache() -> None:
     """Clear cached settings (useful for testing or config reload)."""
-    get_worker_settings.cache_clear()
+    _get_worker_settings_cached.cache_clear()
 
 
 # Convenience accessors for common settings
@@ -82,8 +87,8 @@ def get_fetch_delay_seconds(db_path: Optional[str] = None) -> float:
         scraping = get_scraping_settings(db_path)
         return float(scraping.get("fetchDelaySeconds", 1))
     except Exception:
-        logger.debug("Using default fetch delay (0s) due to missing settings")
-        return 0.0
+        logger.debug("Using default fetch delay (1s) due to missing settings")
+        return 1.0
 
 
 def get_request_timeout(db_path: Optional[str] = None) -> int:

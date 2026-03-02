@@ -62,9 +62,6 @@ class JobMatchResult(BaseModel):
     # Customization Guidance
     customization_recommendations: Dict[str, Any] = Field(default_factory=dict)
 
-    # Resume Intake Data (for resume generator)
-    resume_intake_data: Optional[Dict[str, Any]] = None
-
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return self.model_dump()
@@ -73,30 +70,11 @@ class JobMatchResult(BaseModel):
 class AIJobMatcher:
     """AI-powered job matcher that analyzes jobs."""
 
-    DEFAULT_COMPANY_WEIGHTS: Dict[str, Any] = {
-        "bonuses": {"remoteFirst": 15, "aiMlFocus": 10},
-        "sizeAdjustments": {
-            "largeCompanyBonus": 10,
-            "smallCompanyPenalty": -5,
-            "largeCompanyThreshold": 10000,
-            "smallCompanyThreshold": 100,
-        },
-        "timezoneAdjustments": {
-            "sameTimezone": 5,
-            "diff1to2hr": -2,
-            "diff3to4hr": -5,
-            "diff5to8hr": -10,
-            "diff9plusHr": -15,
-        },
-        "priorityThresholds": {"high": 85, "medium": 70},
-    }
-
     def __init__(
         self,
         agent_manager: "InferenceClient",
         profile: Profile,
         min_match_score: int = 50,
-        company_weights: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize AI job matcher.
@@ -105,10 +83,9 @@ class AIJobMatcher:
         Scoring is handled by the deterministic ScoringEngine (see scoring/engine.py).
 
         Args:
-            agent_manager: AgentManager for executing AI tasks.
+            agent_manager: InferenceClient for executing AI tasks.
             profile: User profile for matching context.
             min_match_score: Minimum score threshold (from deterministic scoring).
-            company_weights: Weights for priority thresholds only.
 
         Note:
             This matcher performs a single AI call per job; resume/cover letter guidance
@@ -117,7 +94,6 @@ class AIJobMatcher:
         self.agent_manager = agent_manager
         self.profile = profile
         self.min_match_score = min_match_score
-        self.company_weights = company_weights or self.DEFAULT_COMPANY_WEIGHTS
         self.prompts = JobMatchPrompts()
 
     def analyze_job(
@@ -188,7 +164,7 @@ class AIJobMatcher:
 
             # Build and return result
             result = self._build_match_result(
-                job, match_analysis, match_score, None, score_breakdown
+                job, match_analysis, match_score, score_breakdown
             )
 
             logger.info(f"Successfully analyzed {job.get('title')} - Score: {match_score}")
@@ -203,7 +179,6 @@ class AIJobMatcher:
         job: Dict[str, Any],
         match_analysis: Dict[str, Any],
         match_score: int,
-        intake_data: Optional[Dict[str, Any]],
         score_breakdown: Optional[ScoreBreakdown] = None,
     ) -> JobMatchResult:
         """
@@ -213,7 +188,6 @@ class AIJobMatcher:
             job: Job posting dictionary
             match_analysis: Match analysis from AI
             match_score: Adjusted match score
-            intake_data: Resume intake data (optional)
             score_breakdown: Breakdown of score calculation (optional)
 
         Returns:
@@ -235,11 +209,10 @@ class AIJobMatcher:
             missing_skills=missing_skills,
             experience_match=match_analysis.get("experience_match", ""),
             key_strengths=match_analysis.get("key_strengths", []),
-            match_reasons=match_analysis.get("match_reasons", []),
+            match_reasons=match_analysis.get("match_reasons") or match_analysis.get("key_strengths", []),
             potential_concerns=match_analysis.get("potential_concerns", []),
             score_breakdown=score_breakdown,
             customization_recommendations=match_analysis.get("customization_recommendations", {}),
-            resume_intake_data=intake_data,
         )
 
     @staticmethod
@@ -308,7 +281,7 @@ class AIJobMatcher:
         try:
             system_prompt, user_prompt = self.prompts.analyze_job_match(self.profile, job)
 
-            # Use AgentManager for AI execution (analysis task type)
+            # Use InferenceClient for AI execution (analysis task type)
             result = self.agent_manager.execute(
                 task_type="analysis",
                 prompt=user_prompt,

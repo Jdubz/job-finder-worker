@@ -397,8 +397,8 @@ class JobSourcesManager:
         else:
             normalized_status = SourceStatus(status_lower)
 
-        # Read current status for transition validation
         with sqlite_connection(self.db_path) as conn:
+            # Read current status and validate transition in a single connection
             row = conn.execute(
                 "SELECT status FROM job_sources WHERE id = ?",
                 (source_id,),
@@ -407,24 +407,20 @@ class JobSourcesManager:
                 raise StorageError(f"Source {source_id} not found")
             current_status = SourceStatus(row["status"])
 
-        # Validate state transition
-        self._validate_transition(current_status, normalized_status)
+            # Validate state transition
+            self._validate_transition(current_status, normalized_status)
 
-        with sqlite_connection(self.db_path) as conn:
+            sets = ["last_scraped_at = ?", "status = ?", "updated_at = ?"]
+            params: list = [now, normalized_status.value, now]
+
+            if error is not None:
+                sets.append("last_error = ?")
+                params.append(error)
+
+            set_clause = ", ".join(sets)
             conn.execute(
-                """
-                UPDATE job_sources
-                SET last_scraped_at = ?,
-                    status = ?,
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    now,
-                    normalized_status.value,
-                    now,
-                    source_id,
-                ),
+                f"UPDATE job_sources SET {set_clause} WHERE id = ?",
+                (*params, source_id),
             )
 
     def record_scraping_failure(
@@ -659,7 +655,7 @@ class JobSourcesManager:
                 """,
                 (company_id, utcnow_iso(), source_id),
             )
-        updated = result.rowcount > 0
+            updated = result.rowcount > 0
         if updated:
             logger.info("Linked source %s to company %s", source_id, company_id)
         return updated

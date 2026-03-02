@@ -1,7 +1,7 @@
 """Company name normalization and cleaning utilities."""
 
 import re
-from typing import List, Pattern
+from typing import List
 
 # NOTE: Order matters – handle separator variants before plain suffixes
 _JOB_BOARD_SUFFIX_PATTERN_STRINGS: List[str] = [
@@ -45,15 +45,15 @@ _DOMAIN_SUFFIX_PATTERN_STRINGS: List[str] = [
 ]
 
 # Pre-compile regex patterns for performance
-JOB_BOARD_SUFFIX_PATTERNS: List[Pattern] = [
+JOB_BOARD_SUFFIX_PATTERNS: List[re.Pattern] = [
     re.compile(pattern, re.IGNORECASE) for pattern in _JOB_BOARD_SUFFIX_PATTERN_STRINGS
 ]
 
-LEGAL_SUFFIX_PATTERNS: List[Pattern] = [
+LEGAL_SUFFIX_PATTERNS: List[re.Pattern] = [
     re.compile(pattern, re.IGNORECASE) for pattern in _LEGAL_SUFFIX_PATTERN_STRINGS
 ]
 
-DOMAIN_SUFFIX_PATTERNS: List[Pattern] = [
+DOMAIN_SUFFIX_PATTERNS: List[re.Pattern] = [
     re.compile(pattern, re.IGNORECASE) for pattern in _DOMAIN_SUFFIX_PATTERN_STRINGS
 ]
 
@@ -80,12 +80,12 @@ _SOURCE_PATTERN_STRINGS: List[str] = [
     r"^(remoteok|remote ok|we work remotely|himalayas|jobicy|remotive)\s+-\s+",
 ]
 
-SOURCE_NAME_PATTERNS: List[Pattern] = [
+SOURCE_NAME_PATTERNS: List[re.Pattern] = [
     re.compile(pattern, re.IGNORECASE) for pattern in _SOURCE_PATTERN_STRINGS
 ]
 
 
-def _remove_suffix_patterns(value: str, patterns: List[Pattern]) -> str:
+def _remove_suffix_patterns(value: str, patterns: List[re.Pattern]) -> str:
     """Strip regex suffix patterns from the end of a string."""
     stripped = value
     for pattern in patterns:

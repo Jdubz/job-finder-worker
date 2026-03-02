@@ -5,12 +5,14 @@ import pytest
 from job_finder.scrapers.config_expander import (
     ASHBY_FIELDS,
     GREENHOUSE_FIELDS,
-    LEVER_FIELDS,
     WORKDAY_FIELDS,
     expand_config,
     normalize_source_type,
     parse_workday_url,
 )
+from job_finder.scrapers.platform_patterns import PLATFORM_PATTERNS
+
+LEVER_FIELDS = next(p for p in PLATFORM_PATTERNS if p.name == "lever").fields
 
 
 class TestExpandGreenhouse:

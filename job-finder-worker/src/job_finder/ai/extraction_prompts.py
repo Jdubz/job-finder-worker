@@ -37,6 +37,7 @@ Extract and return this exact JSON structure (use null for unknown values, false
   "relocationRequired": <true if explicitly requires relocation, false otherwise>,
   "includesEquity": <true if compensation includes equity/stock, false otherwise>,
   "isContract": <true if contract/temporary/freelance/hourly position, false otherwise>,
+  "employmentType": "<full-time|part-time|contract|unknown>",
   "isManagement": <true if people management responsibilities, false otherwise>,
   "isLead": <true if technical lead role, false otherwise>,
   "roleTypes": ["<role-type-1>", "<role-type-2>", ...],
@@ -168,48 +169,6 @@ Job Description:
 {description[:4000]}"""
 
     return (system, user)
-
-
-def build_simple_extraction_prompt(
-    title: str,
-    description: str,
-    salary_range: Optional[str] = None,
-    url: Optional[str] = None,
-) -> str:
-    """
-    Build a simpler extraction prompt for faster/cheaper models.
-
-    Args:
-        title: Job title
-        description: Job description (will be truncated)
-        salary_range: Optional pre-extracted salary range from ATS API
-        url: Optional job listing URL (may contain metadata like employmentType)
-
-    Returns:
-        Shorter prompt for quick extraction
-    """
-    # Truncate description more aggressively for simple extraction
-    desc_truncated = description[:2000] if len(description) > 2000 else description
-    today_str = date.today().isoformat()
-
-    structured_section = ""
-    structured_lines = []
-    if salary_range:
-        structured_lines.append(f"Salary: {salary_range}")
-    if url:
-        structured_lines.append(f"URL: {url}")
-    if structured_lines:
-        structured_section = "\nStructured data (authoritative): " + " | ".join(structured_lines)
-
-    return f"""Extract from this job posting. Today is {today_str}. Return JSON only.
-
-Title: {title}{structured_section}
-Description: {desc_truncated}
-
-If salary is in structured data above, parse into salaryMin/salaryMax. If location contains "Remote", set workArrangement to "remote".
-
-Return:
-{{"seniority":"<junior|mid|senior|staff|lead|principal|unknown>","workArrangement":"<remote|hybrid|onsite|unknown>","timezone":<float or null>,"city":"<string or null>","salaryMin":<int or null>,"salaryMax":<int or null>,"experienceMin":<int or null>,"experienceMax":<int or null>,"technologies":["<tech>"],"daysOld":<int or null>,"isRepost":false,"relocationRequired":false,"includesEquity":false,"isContract":false,"isManagement":false,"isLead":false,"roleTypes":["backend","frontend","fullstack","devops","ml-ai","data","security","mobile","embedded","qa","consulting","clearance-required","non-software"],"timezoneFlexible":false}}"""
 
 
 def build_repair_prompt(

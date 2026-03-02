@@ -203,7 +203,7 @@ class JobProcessor(BaseProcessor):
 
         # Work arrangement booleans
         mp_location = match_policy.get("location", {})
-        wa = prefilter.get("workArrangement", {})
+        wa = prefilter.setdefault("workArrangement", {})
         for key in ("allowRemote", "allowHybrid", "allowOnsite"):
             if key in mp_location:
                 wa[key] = mp_location[key]
@@ -997,10 +997,10 @@ class JobProcessor(BaseProcessor):
                 parsed = json.loads(extract_json_from_response(result.text))
                 payload = parsed.get("result", parsed) if isinstance(parsed, dict) else parsed
                 if isinstance(payload, list):
-                    for item in payload:
-                        term = str(item.get("term", "")).strip().lower()
-                        canonical = str(item.get("canonical", term)).strip().lower()
-                        category = item.get("category")
+                    for entry in payload:
+                        term = str(entry.get("term", "")).strip().lower()
+                        canonical = str(entry.get("canonical", term)).strip().lower()
+                        category = entry.get("category")
                         if not term or not canonical:
                             continue
                         existing = lookup.get(canonical)
@@ -1144,7 +1144,7 @@ class JobProcessor(BaseProcessor):
         if ctx.listing_id:
             self._update_listing_status(
                 ctx.listing_id,
-                "skipped",
+                "failed",
                 filter_result=filter_data,
             )
 

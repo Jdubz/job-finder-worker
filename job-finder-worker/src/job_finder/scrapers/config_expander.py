@@ -30,20 +30,9 @@ _logger = logging.getLogger(__name__)
 _GREENHOUSE_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "greenhouse_api")
 _ASHBY_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "ashby_api")
 _WORKDAY_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "workday")
-_LEVER_PATTERN = next(p for p in PLATFORM_PATTERNS if p.name == "lever")
-
 GREENHOUSE_FIELDS = _GREENHOUSE_PATTERN.fields
 ASHBY_FIELDS = _ASHBY_PATTERN.fields
 WORKDAY_FIELDS = _WORKDAY_PATTERN.fields
-LEVER_FIELDS = _LEVER_PATTERN.fields
-
-# Standard RSS field mappings (not in platform_patterns since RSS is format-based, not platform-based)
-RSS_FIELDS = {
-    "title": "title",
-    "description": "summary",
-    "url": "link",
-    "posted_date": "published",
-}
 
 
 def parse_workday_url(url: str) -> Optional[Tuple[str, str, str]]:
@@ -189,16 +178,6 @@ def normalize_source_type(source_type: str) -> str:
 
 def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand greenhouse config from board_token to full API config."""
-    # If already has full config (type, url, fields), enrich with standard fields
-    if "url" in config and "fields" in config:
-        expanded = {**config}
-        expanded["type"] = "api"
-        # Merge standard Greenhouse fields into existing fields (don't overwrite)
-        for key, value in GREENHOUSE_FIELDS.items():
-            if key not in expanded["fields"]:
-                expanded["fields"][key] = value
-        return expanded
-
     # Simple config with just board_token
     board_token = config.get("board_token", "")
     if not board_token:
@@ -214,16 +193,6 @@ def _expand_greenhouse(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def _expand_ashby(config: Dict[str, Any]) -> Dict[str, Any]:
     """Expand ashby config from board_name to full API config."""
-    # If already has full config (type, url, fields), enrich with standard fields
-    if "url" in config and "fields" in config:
-        expanded = {**config}
-        expanded["type"] = "api"
-        # Merge standard Ashby fields into existing fields (don't overwrite)
-        for key, value in ASHBY_FIELDS.items():
-            if key not in expanded["fields"]:
-                expanded["fields"][key] = value
-        return expanded
-
     # Simple config with just board_name
     board_name = config.get("board_name", "")
     if not board_name:
@@ -257,17 +226,6 @@ def _expand_workday(config: Dict[str, Any]) -> Dict[str, Any]:
     The API returns job listings with relative URLs that need to be combined with
     the base careers URL to form full job URLs.
     """
-    # If already has full config (type, url, fields), enrich with standard fields
-    if "url" in config and "fields" in config:
-        expanded = {**config}
-        expanded["type"] = "api"
-        # Merge standard Workday fields into existing fields (don't overwrite)
-        for key, value in WORKDAY_FIELDS.items():
-            if key not in expanded["fields"]:
-                expanded["fields"][key] = value
-        expanded["follow_detail"] = True
-        return expanded
-
     # Extract careers URL
     careers_url = config.get("careers_url", "")
     if not careers_url:
@@ -352,7 +310,9 @@ def _expand_api(config: Dict[str, Any]) -> Dict[str, Any]:
     if "url" not in config:
         # Check for legacy base_url
         if "base_url" in config:
-            config = {**config, "url": config.pop("base_url")}
+            base_url = config["base_url"]
+            config = {k: v for k, v in config.items() if k != "base_url"}
+            config["url"] = base_url
         else:
             raise ValueError(
                 "API source config must have one of: board_token (Greenhouse), "

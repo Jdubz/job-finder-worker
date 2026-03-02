@@ -117,29 +117,3 @@ class TitleFilter:
 
         return TitleFilterResult(passed=True)
 
-    def filter_batch(self, titles: List[str]) -> List[TitleFilterResult]:
-        """
-        Filter multiple titles efficiently.
-
-        Args:
-            titles: List of job titles to check
-
-        Returns:
-            List of TitleFilterResult in same order as input
-        """
-        return [self.filter(title) for title in titles]
-
-
-# Convenience function for one-off filtering
-def filter_title(title: str, config: Dict[str, Any]) -> TitleFilterResult:
-    """
-    Quick title filter without instantiating TitleFilter.
-
-    Args:
-        title: Job title to check
-        config: TitleFilterConfig dictionary
-
-    Returns:
-        TitleFilterResult
-    """
-    return TitleFilter(config).filter(title)

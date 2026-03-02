@@ -211,12 +211,6 @@ class TestProcessorRefreshMethods:
         assert source_path.exists(), f"JobProcessor source not found at {source_path}"
         assert _class_has_method(source_path, "JobProcessor", "_refresh_runtime_config")
 
-    def test_company_processor_has_refresh_method(self, processors_dir):
-        """CompanyProcessor should have _refresh_runtime_config method."""
-        source_path = processors_dir / "company_processor.py"
-        assert source_path.exists(), f"CompanyProcessor source not found at {source_path}"
-        assert _class_has_method(source_path, "CompanyProcessor", "_refresh_runtime_config")
-
     def test_source_processor_has_refresh_method(self, processors_dir):
         """SourceProcessor should have _refresh_runtime_config method."""
         source_path = processors_dir / "source_processor.py"

@@ -134,13 +134,15 @@ class SkillTaxonomyRepository:
         """Return all rows for prompting/inspection."""
         with sqlite_connection(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT canonical, category, synonyms_csv FROM skill_taxonomy"
+                "SELECT canonical, category, synonyms_csv, implies_csv, parallels_csv FROM skill_taxonomy"
             ).fetchall()
         return [
             {
                 "canonical": row["canonical"],
                 "category": row["category"],
                 "synonyms": row["synonyms_csv"],
+                "implies": row["implies_csv"],
+                "parallels": row["parallels_csv"],
             }
             for row in rows
         ]
