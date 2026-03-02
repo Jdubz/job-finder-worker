@@ -29,9 +29,17 @@ export interface FitEstimate {
 const CHARS_PER_LINE = 110
 const BULLET_CHARS_PER_LINE = 105
 
+// Skill rows: 10.5px base but category label is bold (~10-15% wider).
+// Effective chars ≈ 95 to account for bold label + comma-separated items.
+const SKILL_CHARS_PER_LINE = 95
+
 // Heuristic averages for functions that don't have actual text to measure
 const AVG_LINES_PER_BULLET = 1.5
 const AVG_LINES_PER_TECH = 1.5
+
+// Summary CSS uses line-height: 1.4 but the line unit is based on 1.35.
+// Each summary line costs 15.4px / 14.175px ≈ 1.09 line-units.
+const SUMMARY_LINE_SCALE = 1.09
 
 /** Estimate how many rendered lines a text string occupies. */
 function textToLines(text: string, charsPerLine: number): number {
@@ -40,11 +48,12 @@ function textToLines(text: string, charsPerLine: number): number {
 }
 
 export const LAYOUT = {
-  // Header: name(22px×1.35) + 2mb + title(13px×1.35) + 6mb + rule(2+5mb) + contact(10px×1.6 + 10mb) ≈ 88px
-  HEADER_LINES: 6,
+  // Header: name(22px×1.35 + 2mb) + title(13px×1.35 + 6mb) + header(4mb collapses)
+  //         + rule(2px + 5mb) + contact(10px×1.6 + 10mb) ≈ 92px → 6.5 lines
+  HEADER_LINES: 6.5,
   SUMMARY_MIN_LINES: 2,
-  // Section heading: 10mt + text(13px×1.35) + 2pb + 1.5border + 6mb ≈ 37px
-  SECTION_TITLE_LINES: 2.5,
+  // Section heading: 10mt + text(13px×1.35) + 2pb + 1.5border + 6mb ≈ 37px → 2.6 lines
+  SECTION_TITLE_LINES: 2.6,
 
   // Experience: role(11.5px×1.35) + company(10.5px×1.35 + 2mb) + UL 2mt ≈ 34px
   EXP_HEADER_LINES: 2.5,
@@ -54,9 +63,10 @@ export const LAYOUT = {
   PROJECT_HEADER_LINES: 2,     // Project name + link line
   PROJECT_SPACING: 0.5,        // project-entry margin-bottom 6px ≈ 0.42 lines
 
-  SKILL_CATEGORY_LINES: 1.2,   // 10.5px text + 2px margin ≈ 16px
-  // Education: degree(11px×1.35) + school(10.5px×1.35) + 4mb ≈ 33px
-  EDUCATION_ENTRY_LINES: 2.5,
+  SKILL_CATEGORY_OVERHEAD: 0.15, // 2px margin-bottom per skill-row ≈ 0.14 lines
+  // Education: degree(11px×1.35) + school(10.5px×1.35) + 4mb ≈ 33px → 2.3 lines
+  EDUCATION_ENTRY_LINES: 2.3,
+  EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
 
   MAX_LINES: 63,               // 66 raw - 3 safety for rounding / browser variance
 }
@@ -67,12 +77,13 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   // All content in one column
   let mainLines = LAYOUT.HEADER_LINES
 
-  // Summary
+  // Summary — uses line-height 1.4 in CSS vs 1.35 base, so scale up
   const summaryText = content.professionalSummary || ''
-  const summaryLines = Math.max(
+  const rawSummaryLines = Math.max(
     LAYOUT.SUMMARY_MIN_LINES,
     textToLines(summaryText, CHARS_PER_LINE)
   )
+  const summaryLines = rawSummaryLines * SUMMARY_LINE_SCALE
   mainLines += LAYOUT.SECTION_TITLE_LINES + summaryLines
 
   // Experience
@@ -93,7 +104,10 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   const skillCategories = content.skills?.length || 0
   if (skillCategories > 0) {
     mainLines += LAYOUT.SECTION_TITLE_LINES
-    mainLines += skillCategories * LAYOUT.SKILL_CATEGORY_LINES
+    for (const skill of content.skills!) {
+      const rowText = `${skill.category}: ${skill.items.join(', ')}`
+      mainLines += textToLines(rowText, SKILL_CHARS_PER_LINE) + LAYOUT.SKILL_CATEGORY_OVERHEAD
+    }
   }
 
   // Projects
@@ -122,7 +136,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   const eduCount = content.education?.length || 0
   if (eduCount > 0) {
     mainLines += LAYOUT.SECTION_TITLE_LINES
-    mainLines += eduCount * LAYOUT.EDUCATION_ENTRY_LINES
+    mainLines += eduCount * (LAYOUT.EDUCATION_ENTRY_LINES + LAYOUT.EDUCATION_SPACING)
   }
 
   // Round up fractional lines conservatively before computing overflow
@@ -183,16 +197,19 @@ export function getContentBudget(): {
  * Get recommended skill category count based on main column content.
  */
 export function getRecommendedSkillCategories(experienceCount: number, avgBulletsPerExp: number): number {
+  // Average skill row: ~1.15 lines text + 0.15 overhead = ~1.3 lines
+  const AVG_SKILL_CATEGORY_LINES = 1.3
+
   const mainLines = LAYOUT.HEADER_LINES +
-    LAYOUT.SECTION_TITLE_LINES + 3 + // Summary ~3 lines
+    LAYOUT.SECTION_TITLE_LINES + 3 * SUMMARY_LINE_SCALE + // Summary ~3 lines (scaled)
     LAYOUT.SECTION_TITLE_LINES +
     experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * AVG_LINES_PER_BULLET + AVG_LINES_PER_TECH + LAYOUT.EXP_SPACING)
 
   const remainingLines = LAYOUT.MAX_LINES - mainLines
   // Reserve education section: title + ~2 entries
-  const eduReserve = LAYOUT.SECTION_TITLE_LINES + 2 * LAYOUT.EDUCATION_ENTRY_LINES
+  const eduReserve = LAYOUT.SECTION_TITLE_LINES + 2 * (LAYOUT.EDUCATION_ENTRY_LINES + LAYOUT.EDUCATION_SPACING)
   const availableForSkills = Math.max(0, remainingLines - eduReserve - LAYOUT.SECTION_TITLE_LINES)
-  return Math.max(3, Math.min(6, Math.floor(availableForSkills / LAYOUT.SKILL_CATEGORY_LINES)))
+  return Math.max(3, Math.min(6, Math.floor(availableForSkills / AVG_SKILL_CATEGORY_LINES)))
 }
 
 /**

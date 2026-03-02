@@ -77,6 +77,20 @@ describe('estimateContentFit', () => {
     expect(result.suggestions.some((s) => s.includes('experience'))).toBe(true)
   })
 
+  it('accounts for long skill rows that wrap to multiple lines', () => {
+    const shortSkills = [{ category: 'Languages', items: ['TypeScript'] }]
+    const longSkills = [
+      { category: 'Cloud & Infrastructure', items: ['AWS', 'GCP', 'Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'GitHub Actions', 'CloudFormation', 'Ansible'] },
+      { category: 'Languages & Frameworks', items: ['TypeScript', 'Python', 'Go', 'Rust', 'React', 'Next.js', 'Node.js', 'FastAPI', 'Django'] }
+    ]
+
+    const shortResult = estimateContentFit(makeResume({ skills: shortSkills }))
+    const longResult = estimateContentFit(makeResume({ skills: longSkills }))
+
+    // Long skill rows that wrap should consume more lines than short ones
+    expect(longResult.mainColumnLines).toBeGreaterThan(shortResult.mainColumnLines)
+  })
+
   it('detects underflow with a minimal resume (negative overflow = spare room)', () => {
     const result = estimateContentFit(makeResume())
     // A minimal resume (1 experience, 2 bullets) should have lots of spare room
