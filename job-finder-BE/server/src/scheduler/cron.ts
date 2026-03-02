@@ -220,17 +220,20 @@ function normalizeHours(hours: number[]): number[] {
 
 function loadCronConfig(): CronConfig {
   const entry = getConfigRepo().get<CronConfig>('cron-config')
-  const payload = entry?.payload
+  const payload = entry?.payload as Record<string, any> | undefined
+
+  // Normalize legacy rows that may lack sessionCleanup before the type guard
+  if (payload?.jobs && !payload.jobs.sessionCleanup) {
+    payload.jobs.sessionCleanup = { ...DEFAULT_CRON_CONFIG.jobs.sessionCleanup }
+  }
 
   if (payload && isCronConfig(payload)) {
-    // Merge sessionCleanup from saved config or fill with default
-    const sessionCleanup = payload.jobs.sessionCleanup ?? DEFAULT_CRON_CONFIG.jobs.sessionCleanup
     return {
       jobs: {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
         maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
         logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) },
-        sessionCleanup: { ...sessionCleanup, hours: normalizeHours(sessionCleanup.hours) }
+        sessionCleanup: { ...payload.jobs.sessionCleanup, hours: normalizeHours(payload.jobs.sessionCleanup.hours) }
       }
     }
   }
@@ -322,9 +325,11 @@ async function schedulerTick() {
 }
 
 function scheduleNextTick() {
+  if (!schedulerStarted) return
   const now = Date.now()
   const delay = TICK_INTERVAL_MS - (now % TICK_INTERVAL_MS)
   tickTimer = setTimeout(() => {
+    if (!schedulerStarted) return
     void schedulerTick().catch((error) => {
       logger.error({ error }, 'Cron scheduler tick failed')
     })

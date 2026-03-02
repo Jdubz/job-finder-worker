@@ -124,6 +124,7 @@ export function SystemHealthPage() {
       let result: CronTriggerResult
       if (type === "scrape") result = await queueClient.triggerCronScrape()
       else if (type === "maintenance") result = await queueClient.triggerCronMaintenance()
+      else if (type === "sessionCleanup") result = await queueClient.triggerCronSessionCleanup()
       else result = await queueClient.triggerCronLogrotate()
 
       if (result.success) {

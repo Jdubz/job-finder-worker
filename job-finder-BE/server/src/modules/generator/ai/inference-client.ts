@@ -217,7 +217,7 @@ export class InferenceClient {
             const content = parsed.choices?.[0]?.delta?.content
             if (content) yield content
           } catch (parseErr) {
-            this.log.debug({ chunk: data.slice(0, 200), err: parseErr }, 'Skipping malformed SSE chunk')
+            this.log.debug({ chunkLength: data.length, err: parseErr }, 'Skipping malformed SSE chunk')
           }
         }
       }
