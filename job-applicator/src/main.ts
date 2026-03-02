@@ -79,8 +79,9 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
-import { setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
-import { getFormFillPrompt } from "./form-fill-safety.js"
+import { executeTool, setBrowserView, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
+import { getFormFillPrompt, parseFormScanResult } from "./form-fill-safety.js"
+import type { FormScanResult } from "./form-fill-safety.js"
 // Typed API client
 import {
   fetchApplicatorProfile,
@@ -767,6 +768,62 @@ async function findCdpFrameIdForUrl(debugger_: Electron.Debugger, frameUrl: stri
   return { mainFrameId, frameId }
 }
 
+// Fallback: walk every CDP frame and try querySelector in each frame's content document.
+// Used when URL-based frame matching fails to locate the file input.
+async function querySelectorInAllFrames(
+  debugger_: Electron.Debugger,
+  selector: string
+): Promise<number> {
+  try {
+    const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as { frameTree: PageFrameTreeNode }
+    const mainFrameId = frameTree?.frame?.id
+
+    // Collect all non-main frame IDs
+    const frameIds: string[] = []
+    const walk = (node: PageFrameTreeNode) => {
+      if (node.frame.id !== mainFrameId) frameIds.push(node.frame.id)
+      for (const child of node.childFrames || []) walk(child)
+    }
+    if (frameTree) walk(frameTree)
+
+    for (const frameId of frameIds) {
+      try {
+        const owner = await debugger_.sendCommand("DOM.getFrameOwner", { frameId }) as {
+          backendNodeId?: number
+          nodeId?: number
+        }
+        const describeParams = typeof owner.nodeId === "number"
+          ? { nodeId: owner.nodeId }
+          : typeof owner.backendNodeId === "number"
+            ? { backendNodeId: owner.backendNodeId }
+            : null
+        if (!describeParams) continue
+
+        const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
+          node: { contentDocument?: { nodeId: number } }
+        }
+        const contentDocNodeId = described.node?.contentDocument?.nodeId
+        if (typeof contentDocNodeId !== "number") continue
+
+        const result = await debugger_.sendCommand("DOM.querySelector", {
+          nodeId: contentDocNodeId,
+          selector,
+        }) as { nodeId: number }
+        if (result.nodeId) {
+          logger.info(`[Upload] Found "${selector}" in iframe (frameId=${frameId}) via frame-walk fallback`)
+          return result.nodeId
+        }
+      } catch {
+        // Frame may not be accessible (cross-origin, detached) — skip
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.warn(`[Upload] Frame-walk fallback failed: ${message}`)
+  }
+  return 0
+}
+
 // Helper function to set files on a file input using Electron's debugger API.
 // Supports file inputs within cross-origin iframes by targeting the correct subframe document.
 async function setFileInputFiles(
@@ -830,10 +887,15 @@ async function setFileInputFiles(
     }
 
     // Find the file input element (within chosen document root)
-    const { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
+    let { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
       nodeId: queryRootNodeId,
       selector,
     }) as { nodeId: number }
+
+    if (!nodeId) {
+      // Fallback: walk all CDP frames and try querySelector in each
+      nodeId = await querySelectorInAllFrames(debugger_, selector)
+    }
 
     if (!nodeId) {
       throw new Error(`File input not found: ${selector}`)
@@ -989,8 +1051,9 @@ ipcMain.handle(
     try {
       if (!isBrowserViewAlive()) throw new Error("BrowserView not initialized")
 
-      // Find file input selector based on document type (search iframes too)
       const targetType = options?.type || "resume"
+
+      // Detect file input first — only download the document if we find one
       const found = await findFileInputAcrossFrames<string>(
         browserView!.webContents,
         buildFileInputDetectionScript(targetType)
@@ -999,18 +1062,14 @@ ipcMain.handle(
       if (!found?.result) {
         return { success: false, message: "No file input found on page" }
       }
-
-      const fileInputSelector = found.result
-      const frameUrl = found.frameUrl
-      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
-
-      // Download document from API
       if (!options?.documentUrl) {
         return { success: false, message: "No document URL provided" }
       }
 
-      logger.info(`[Upload] Downloading document from API: ${options.documentUrl}`)
       resolvedPath = await downloadDocument(options.documentUrl)
+      const fileInputSelector = found.result
+      const frameUrl = found.frameUrl
+      logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
 
       // Use Electron's debugger API to set the file
       logger.info(`[Upload] Uploading file: ${resolvedPath} to ${fileInputSelector}`)
@@ -1763,6 +1822,36 @@ ipcMain.handle(
         }
       })
 
+      // Pre-scan form state to detect mostly-filled forms.
+      // If most fields are already filled, we activate TARGETED MODE in the prompt
+      // which gives the agent a shorter workflow focused only on empty fields.
+      let formScan: FormScanResult | null = null
+      try {
+        logger.info(`[FillForm] Pre-scanning form fields...`)
+        const scanResult = await executeTool("get_form_fields", {})
+        if (scanResult.success && scanResult.data) {
+          const data = scanResult.data as { fields?: Array<Record<string, unknown>> }
+          if (data.fields && Array.isArray(data.fields) && data.fields.length > 0) {
+            const parsed = parseFormScanResult(data.fields)
+            logger.info(
+              `[FillForm] Pre-scan: ${parsed.totalFields} fields (${parsed.filledFields.length} filled, ${parsed.emptyFields.length} empty, ratio=${(parsed.filledRatio * 100).toFixed(0)}%, targeted=${parsed.isTargetedMode})`
+            )
+            // Only pass formScan to the prompt when targeted mode is active
+            // to avoid inflating prompt size with large field lists
+            if (parsed.isTargetedMode) {
+              formScan = parsed
+            }
+          } else {
+            logger.info(`[FillForm] Pre-scan: no countable fields found (embedded form or empty page)`)
+          }
+        } else {
+          logger.warn(`[FillForm] Pre-scan failed: ${scanResult.error || "unknown error"}`)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[FillForm] Pre-scan error (non-fatal): ${message}`)
+      }
+
       // Set completion callback to kill CLI when done is called
       logger.info(`[FillForm] Setting completion callback`)
       setCompletionCallback((summary: string) => {
@@ -1781,7 +1870,7 @@ ipcMain.handle(
       // Get complete form fill prompt with user profile and job context inlined.
       // Embedding context in the prompt avoids parallel tool calls on the first turn,
       // which triggers a Claude CLI bug ("tool_use ids must be unique").
-      const prompt = getFormFillPrompt(profileText, options.jobContext)
+      const prompt = getFormFillPrompt(profileText, options.jobContext, formScan)
       logger.info(`[FillForm] Loaded prompt (${prompt.length} chars total)`)
 
       logger.info(`[FillForm] Starting Claude CLI for job ${options.jobMatchId}`)

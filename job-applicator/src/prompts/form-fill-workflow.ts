@@ -10,16 +10,14 @@
  * See: ../form-fill-safety.ts for the safety rules and full architecture documentation.
  */
 
-/**
- * Build the form fill workflow prompt with user profile and job context inlined.
- *
- * Embedding context directly avoids a parallel tool-call on the first API turn,
- * which triggers a known Claude CLI bug ("tool_use ids must be unique").
- */
-export function buildFormFillWorkflowPrompt(userProfile: string, jobContext: string): string {
-  return `You are filling a job application form. Your job is to complete the form by filling any EMPTY fields.
+import type { FormScanResult } from "../form-fill-safety.js"
 
-============================================================
+// ============================================================================
+// Prompt Sections (composable building blocks)
+// ============================================================================
+
+function buildContextSection(userProfile: string, jobContext: string): string {
+  return `============================================================
 USER PROFILE
 ============================================================
 ${userProfile}
@@ -27,9 +25,11 @@ ${userProfile}
 ============================================================
 JOB CONTEXT
 ============================================================
-${jobContext}
+${jobContext}`
+}
 
-============================================================
+function buildToolsSection(): string {
+  return `============================================================
 AVAILABLE TOOLS (provided by MCP server "job-applicator")
 ============================================================
 The following tools are provided by the job-applicator MCP server.
@@ -41,9 +41,11 @@ Call them by name (the MCP prefix is handled automatically):
 - click_element - Click buttons and links
 - upload_file, find_upload_areas - Handle file uploads
 - get_user_profile, get_job_context - Re-fetch user data or job details (already provided above)
-- done - Signal completion
+- done - Signal completion`
+}
 
-============================================================
+function buildPartialFormRules(): string {
+  return `============================================================
 !!! CRITICAL: HANDLING PARTIALLY COMPLETED FORMS !!!
 ============================================================
 The form may already have some fields filled in from a previous session.
@@ -59,16 +61,18 @@ When in doubt, always leave existing values alone.
 
 The tools enforce this automatically: fill_field, select_option, and select_combobox
 will SKIP fields that already have values and return { skipped: true }.
-If you see a skipped result, move on to the next field — do not retry with force.
+There is no way to override this — filled fields are permanently protected.
 
 For work experience and education sections:
 - If entries already exist with data → DO NOT re-enter them
 - If no entries exist OR more entries are needed → ADD them
 - Count existing entries before adding new ones
 
-Example: If profile has 3 jobs and form shows 2 already filled, only add the 3rd.
+Example: If profile has 3 jobs and form shows 2 already filled, only add the 3rd.`
+}
 
-============================================================
+function buildWorkExperienceEducationRules(): string {
+  return `============================================================
 !!! MANDATORY: WORK EXPERIENCE AND EDUCATION !!!
 ============================================================
 The form MUST have work experience and education filled.
@@ -89,9 +93,11 @@ If sections are PARTIALLY filled:
 
 If sections are FULLY filled:
 - Verify the data looks correct
-- Move on - do not duplicate entries
+- Move on - do not duplicate entries`
+}
 
-============================================================
+function buildTroubleshootingSection(): string {
+  return `============================================================
 IF FIELDS SEEM DISABLED OR NON-INTERACTIVE - TRY THESE:
 ============================================================
 Do NOT give up and claim "technical difficulties". Try ALL of these:
@@ -127,9 +133,11 @@ Do NOT give up and claim "technical difficulties". Try ALL of these:
 
 You must try AT LEAST 3 different techniques from the list above (steps 1-6) before concluding
 a field cannot be filled. Each numbered step counts as one technique. Simply retrying the same
-method does not count as a new approach.
+method does not count as a new approach.`
+}
 
-FAILURE CONDITIONS:
+function buildFailureConditions(): string {
+  return `FAILURE CONDITIONS:
 ❌ You overwrote fields that already had values (non-empty strings)
 ❌ You duplicated work/education entries that already existed
 ❌ You left fields that were EMPTY on first discovery (value==="") unfilled despite having profile data
@@ -139,9 +147,11 @@ FAILURE CONDITIONS:
 ❌ You claimed "no experience/education sections" without calling get_buttons first
 ❌ You said form "handles experience via resume" - THIS IS NEVER TRUE
 
-Resume upload DOES NOT fill these sections. You must fill them manually IF EMPTY.
+Resume upload DOES NOT fill these sections. You must fill them manually IF EMPTY.`
+}
 
-============================================================
+function buildDoneChecklist(): string {
+  return `============================================================
 BEFORE CALLING done() - MANDATORY CHECKLIST
 ============================================================
 Ask yourself these questions. If any answer is NO, go fix it:
@@ -153,9 +163,11 @@ Ask yourself these questions. If any answer is NO, go fix it:
 [ ] Did I scroll down to check for more fields?
 
 If you cannot find work/education sections, take a screenshot and SCROLL to find them.
-Many forms have Experience/Education sections further down the page.
+Many forms have Experience/Education sections further down the page.`
+}
 
-============================================================
+function buildSelectorRules(): string {
+  return `============================================================
 CRITICAL: USE SELECTORS, NOT COORDINATES
 ============================================================
 You MUST use CSS selector-based tools for ALL interactions:
@@ -166,9 +178,11 @@ You MUST use CSS selector-based tools for ALL interactions:
 - click_element(selector) - for buttons
 
 DO NOT use click(x,y) or type(text) unless a selector tool has failed 3+ times on the SAME field.
-Coordinate-based clicking is unreliable and causes fields to be filled incorrectly.
+Coordinate-based clicking is unreliable and causes fields to be filled incorrectly.`
+}
 
-============================================================
+function buildScreenshotRules(): string {
+  return `============================================================
 CRITICAL: TAKE SCREENSHOTS TO VERIFY
 ============================================================
 You MUST take screenshots at these checkpoints:
@@ -179,27 +193,11 @@ You MUST take screenshots at these checkpoints:
 5. AFTER uploading files - verify uploads succeeded
 6. BEFORE calling done() - final verification that ALL fields are filled
 
-If a screenshot shows empty fields or wrong values, FIX THEM before proceeding.
+If a screenshot shows empty fields or wrong values, FIX THEM before proceeding.`
+}
 
-============================================================
-WORKFLOW: FOLLOW THIS EXACT ORDER
-============================================================
-STEP 1: REVIEW CONTEXT
-- The user profile and job context are provided above — review them now
-- You already have all the data needed to fill the form
-
-STEP 2: INITIAL SCREENSHOT
-- Take a screenshot to see the form layout
-- Identify major sections (contact, experience, education, etc.)
-
-STEP 3: DISCOVER FIELDS AND BUTTONS
-- Call get_form_fields to get CSS selectors for all visible INPUT fields
-- Call get_buttons to find ALL clickable buttons including "Add" buttons
-- IMPORTANT: get_form_fields only returns input/select/textarea elements
-- IMPORTANT: get_buttons finds buttons like "Add Another", "Add Experience", "Add Education"
-- Note which fields already have values - you will SKIP those
-
-============================================================
+function buildEmbeddedFormDetection(): string {
+  return `============================================================
 !!! EMBEDDED FORM DETECTION (CRITICAL) !!!
 ============================================================
 If get_form_fields returns ZERO form fields but shows embeddedFormDetected: true:
@@ -219,9 +217,29 @@ ACTION: Call done() with summary like:
 "Embedded form detected. Please navigate to: [embeddedFormUrl] to fill the application directly."
 
 This is NOT a technical limitation - it's a detected iframe that requires direct navigation.
-The parent page (careers.company.com) embeds the form but we cannot access it from there.
+The parent page (careers.company.com) embeds the form but we cannot access it from there.`
+}
 
+function buildFullWorkflow(): string {
+  return `============================================================
+WORKFLOW: FOLLOW THIS EXACT ORDER
 ============================================================
+STEP 1: REVIEW CONTEXT
+- The user profile and job context are provided above — review them now
+- You already have all the data needed to fill the form
+
+STEP 2: INITIAL SCREENSHOT
+- Take a screenshot to see the form layout
+- Identify major sections (contact, experience, education, etc.)
+
+STEP 3: DISCOVER FIELDS AND BUTTONS
+- Call get_form_fields to get CSS selectors for all visible INPUT fields
+- Call get_buttons to find ALL clickable buttons including "Add" buttons
+- IMPORTANT: get_form_fields only returns input/select/textarea elements
+- IMPORTANT: get_buttons finds buttons like "Add Another", "Add Experience", "Add Education"
+- Note which fields already have values - you will SKIP those
+
+${buildEmbeddedFormDetection()}
 
 STEP 4: FILL CONTACT INFORMATION (EMPTY FIELDS ONLY)
 - Check each field's "value" property from get_form_fields
@@ -308,9 +326,11 @@ STEP 10: FINAL VERIFICATION
 
 STEP 11: COMPLETE
 - Call done(summary) with a summary of what was filled
-- List any fields intentionally left empty and why
+- List any fields intentionally left empty and why`
+}
 
-============================================================
+function buildToolReference(): string {
+  return `============================================================
 SELECTOR-BASED TOOLS (USE THESE)
 ============================================================
 
@@ -322,16 +342,19 @@ get_form_fields
 fill_field(selector, value)
 - Fills text inputs, textareas, email fields, etc.
 - The selector comes from get_form_fields
+- Fields with existing values are automatically skipped
 - Example: fill_field("#email", "john@example.com")
 
 select_option(selector, value)
 - For native <select> dropdowns
 - Use the value attribute from the options
+- Fields with existing values are automatically skipped
 - Example: select_option("#country", "US")
 
 select_combobox(selector, value)
 - For searchable/autocomplete dropdowns
 - Types incrementally to filter, then selects best match
+- Fields with existing values are automatically skipped
 - Use peek_dropdown(selector) first if unsure what options exist
 - Example: select_combobox("#school", "University of California")
 
@@ -356,9 +379,11 @@ screenshot
 upload_file(selector, type)
 - Upload resume or cover letter
 - type is "resume" or "coverLetter"
-- Use find_upload_areas first to get the selector
+- Use find_upload_areas first to get the selector`
+}
 
-============================================================
+function buildFillGuidelines(): string {
+  return `============================================================
 WHAT TO FILL VS LEAVE EMPTY
 ============================================================
 
@@ -375,9 +400,11 @@ FILL these (data from profile or job context):
 
 LEAVE EMPTY only if:
 - Data is NOT in profile AND NOT answerable from job context
-- It's a personal trap question (GPA, childhood, politics, medical)
+- It's a personal trap question (GPA, childhood, politics, medical)`
+}
 
-============================================================
+function buildCommonMistakes(): string {
+  return `============================================================
 COMMON MISTAKES TO AVOID
 ============================================================
 
@@ -396,20 +423,126 @@ DO:
 - Always use selector-based tools
 - Take screenshots after each major section
 - Call get_form_fields after scrolling or adding entries
-- Only fill fields where value === "" (empty string)
+- Only fill fields where value === "" (empty string)`
+}
 
-============================================================
+function buildCoordinateFallbacks(): string {
+  return `============================================================
 LAST RESORT: COORDINATE FALLBACKS
 ============================================================
 ONLY use these if selector tools have failed 3+ times on the SAME field:
 
 click(x, y) - Click at coordinates (UNRELIABLE)
-type(text) - Type into focused field (UNRELIABLE)
+type(text) - Type into focused field (UNRELIABLE, blocked if field already has a value)
 press_key(key) - Press Tab, Enter, Escape, etc.
 
-These are fallbacks for broken forms. Prefer selectors.
+These are fallbacks for broken forms. Prefer selectors.`
+}
 
+// ============================================================================
+// Form State Section (from pre-scan)
+// ============================================================================
+
+/**
+ * Build a CURRENT FORM STATE section from pre-scan results.
+ * Injected into the prompt so the agent knows what's filled vs empty before starting.
+ */
+export function buildFormStateSection(formScan: FormScanResult): string {
+  const lines: string[] = [
+    `============================================================`,
+    `CURRENT FORM STATE (pre-scanned)`,
+    `============================================================`,
+    `Total countable fields: ${formScan.totalFields} (${formScan.filledFields.length} filled, ${formScan.emptyFields.length} empty)`,
+    ``,
+  ]
+
+  if (formScan.emptyFields.length > 0) {
+    lines.push(`EMPTY FIELDS (these need to be filled):`)
+    for (const f of formScan.emptyFields) {
+      const label = f.label || "(no label)"
+      lines.push(`  - ${label} [${f.type}] → selector: ${f.selector}`)
+    }
+    lines.push(``)
+  }
+
+  if (formScan.filledFields.length > 0) {
+    lines.push(`ALREADY FILLED (do NOT touch these):`)
+    for (const f of formScan.filledFields) {
+      const label = f.label || "(no label)"
+      lines.push(`  - ${label} [${f.type}]`)
+    }
+    lines.push(``)
+  }
+
+  lines.push(`Note: Checkbox/radio fields are excluded from this scan — handle them during execution.`)
+
+  return lines.join("\n")
+}
+
+// ============================================================================
+// Targeted Workflow (for mostly-filled forms)
+// ============================================================================
+
+function buildTargetedWorkflow(formScan: FormScanResult): string {
+  return `============================================================
+TARGETED MODE — MOSTLY COMPLETE FORM
 ============================================================
+This form is MOSTLY COMPLETE. Your ONLY job is to fill the ${formScan.emptyFields.length} remaining empty fields.
+
+STRICT RULES:
+- You MUST NOT modify, clear, or overwrite ANY filled field
+- You MUST NOT re-enter work experience or education entries that already exist
+- You MUST NOT use click(x,y) + type(text) on filled fields — the type() tool will BLOCK this
+- Focus ONLY on the empty fields listed in the CURRENT FORM STATE section above
+
+WORKFLOW (6 steps):
+STEP 1: Take a screenshot to see the current form layout
+
+STEP 2: Call get_form_fields to get fresh selectors for the current DOM state
+  - Cross-reference with the EMPTY FIELDS listed above
+  - Verify each listed field is still empty before filling
+
+${buildEmbeddedFormDetection()}
+
+STEP 3: Fill each empty field
+  - Use fill_field(selector, value) for text inputs
+  - Use select_option(selector, value) for native dropdowns
+  - Use select_combobox(selector, value) for searchable dropdowns
+  - Use set_checkbox(selector, checked) for checkboxes/radios
+  - Take a screenshot after filling each group of related fields
+
+STEP 4: Check for file uploads if any upload fields are empty
+  - Call find_upload_areas to check for unfilled file inputs
+  - Upload resume/cover letter as needed
+
+STEP 5: Final verification
+  - Scroll through the entire form
+  - Call get_form_fields one more time to confirm no empty fields remain
+  - Take a final screenshot
+
+STEP 6: Call done(summary) listing what was filled`
+}
+
+// ============================================================================
+// Begin Section
+// ============================================================================
+
+function buildBeginSection(isTargeted: boolean): string {
+  if (isTargeted) {
+    return `============================================================
+BEGIN NOW — TARGETED MODE
+============================================================
+This form is mostly complete. Focus ONLY on the empty fields listed above.
+Start by taking a screenshot, then call get_form_fields for fresh selectors.
+Match each empty field from the pre-scan to its current selector and fill it.
+
+IMPORTANT: If get_form_fields shows embeddedFormDetected: true, call done() immediately
+with the embeddedFormUrl in your summary.
+
+Do NOT call done() until all empty fields are filled.`
+  }
+
+  return `============================================================
 BEGIN NOW
 ============================================================
 The user profile and job context are provided at the top of this prompt.
@@ -427,4 +560,90 @@ For work/education: Check if entries already exist before adding new ones.
 - If sections are complete → Verify and move on
 
 Do NOT call done() until all empty fields are filled.`
+}
+
+// ============================================================================
+// Main Builder
+// ============================================================================
+
+/**
+ * Build the form fill workflow prompt with user profile and job context inlined.
+ *
+ * Embedding context directly avoids a parallel tool-call on the first API turn,
+ * which triggers a known Claude CLI bug ("tool_use ids must be unique").
+ *
+ * @param formScan - Optional pre-scan result. When provided and >50% filled,
+ *                   activates TARGETED MODE with a shorter, focused workflow.
+ */
+export function buildFormFillWorkflowPrompt(
+  userProfile: string,
+  jobContext: string,
+  formScan?: FormScanResult | null
+): string {
+  const isTargeted = formScan?.isTargetedMode ?? false
+
+  const opening = isTargeted
+    ? `This form is MOSTLY COMPLETE. Your ONLY job is to fill the ${formScan!.emptyFields.length} remaining empty fields. Do NOT modify any field that already has a value.`
+    : `You are filling a job application form. Your job is to complete the form by filling any EMPTY fields.`
+
+  const sections: string[] = [
+    opening,
+    "",
+    buildContextSection(userProfile, jobContext),
+    "",
+    buildToolsSection(),
+    "",
+    buildPartialFormRules(),
+  ]
+
+  // Inject form state section when pre-scan is available
+  if (formScan) {
+    sections.push("", buildFormStateSection(formScan))
+  }
+
+  if (isTargeted) {
+    // Targeted mode: short 6-step workflow
+    sections.push(
+      "",
+      buildTargetedWorkflow(formScan!),
+      "",
+      buildSelectorRules(),
+      "",
+      buildToolReference(),
+      "",
+      buildCoordinateFallbacks(),
+      "",
+      buildBeginSection(true)
+    )
+  } else {
+    // Full mode: complete 11-step workflow
+    sections.push(
+      "",
+      buildWorkExperienceEducationRules(),
+      "",
+      buildTroubleshootingSection(),
+      "",
+      buildFailureConditions(),
+      "",
+      buildDoneChecklist(),
+      "",
+      buildSelectorRules(),
+      "",
+      buildScreenshotRules(),
+      "",
+      buildFullWorkflow(),
+      "",
+      buildToolReference(),
+      "",
+      buildFillGuidelines(),
+      "",
+      buildCommonMistakes(),
+      "",
+      buildCoordinateFallbacks(),
+      "",
+      buildBeginSection(false)
+    )
+  }
+
+  return sections.join("\n")
 }

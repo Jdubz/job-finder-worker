@@ -216,6 +216,32 @@ export function displayTech(tech: string): string {
 }
 
 /**
+ * Canonicalize a tech stack into broad category buckets for fingerprinting.
+ * Instead of tracking individual techs (react, vue, angular), groups them by
+ * category (frontend, backend, cloud, etc.). This dramatically increases
+ * cache hit rates for Tier 1.5/1.75 because "React + Node + Postgres" and
+ * "Vue + Express + MongoDB" both become ["backend", "database", "frontend"].
+ *
+ * Used for role and archetype fingerprints only — exact fingerprints (Tier 1)
+ * still use the granular canonicalizeTechStack().
+ */
+export function canonicalizeTechStackBroad(techs: string[]): string[] {
+  const categories = new Set<string>()
+  for (const t of techs) {
+    const canonical = canonicalizeTech(t)
+    const cat = getTechCategory(canonical)
+    if (cat) {
+      categories.add(cat)
+    } else {
+      // Unknown techs still contribute — hash them as-is so truly novel
+      // stacks don't all collapse to the same fingerprint
+      categories.add(canonical)
+    }
+  }
+  return [...categories].sort()
+}
+
+/**
  * Deduplicate and normalize capitalization of a tech list.
  * Preserves order of first occurrence.
  */

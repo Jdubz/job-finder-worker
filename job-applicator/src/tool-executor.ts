@@ -18,7 +18,6 @@ export interface ToolResult {
   data?: unknown
   error?: string
   skipped?: boolean
-  currentValue?: string
 }
 
 // ============================================================================
@@ -461,13 +460,13 @@ async function executeToolInternal(
       return await handleGetFormFields()
 
     case "fill_field":
-      return await handleFillField(params as { selector: string; value: string; force?: boolean })
+      return await handleFillField(params as { selector: string; value: string })
 
     case "select_option":
-      return await handleSelectOption(params as { selector: string; value: string; force?: boolean })
+      return await handleSelectOption(params as { selector: string; value: string })
 
     case "select_combobox":
-      return await handleSelectCombobox(params as { selector: string; value: string; force?: boolean })
+      return await handleSelectCombobox(params as { selector: string; value: string })
 
     case "peek_dropdown":
       return await handlePeekDropdown(params as { selector: string })
@@ -752,12 +751,12 @@ async function handleGetPageInfo(): Promise<ToolResult> {
  * Fill a form field by CSS selector
  * Uses native value setter to work with React/Vue/Angular controlled inputs
  */
-async function handleFillField(params: { selector: string; value: string; force?: boolean }): Promise<ToolResult> {
+async function handleFillField(params: { selector: string; value: string }): Promise<ToolResult> {
   if (!browserView) {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const { selector, value, force } = params
+  const { selector, value } = params
 
   if (!selector || typeof value !== "string") {
     return { success: false, error: "fill_field requires selector and value" }
@@ -774,23 +773,21 @@ async function handleFillField(params: { selector: string; value: string; force?
 
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
-    const forceJson = JSON.stringify(!!force)
 
     // Strategy 1: Enhanced DOM-based filling with InputEvent
     const result = await ctx.exec<FillFieldResult>(`
       (() => {
         const selector = ${selectorJson};
         const value = ${valueJson};
-        const force = ${forceJson};
         const el = document.querySelector(selector);
         if (!el) return { success: false, error: 'Element not found: ' + selector };
         if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
         if (el.readOnly) return { success: false, error: 'Element is read-only: ' + selector, needsKeyboard: true };
 
-        // If field already has a value and force is not set, skip it
+        // Skip fields that already have a value — filled fields are permanently protected
         const currentValue = el.value || '';
-        if (!force && currentValue !== '') {
-          return { success: true, skipped: true, currentValue };
+        if (currentValue !== '') {
+          return { success: true, skipped: true };
         }
 
         // Determine element type for proper native setter
@@ -938,12 +935,12 @@ async function handleFillField(params: { selector: string; value: string; force?
  * Select an option in a dropdown by CSS selector
  * Uses native value setter for React/Vue/Angular compatibility
  */
-async function handleSelectOption(params: { selector: string; value: string; force?: boolean }): Promise<ToolResult> {
+async function handleSelectOption(params: { selector: string; value: string }): Promise<ToolResult> {
   if (!browserView) {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const { selector, value, force } = params
+  const { selector, value } = params
 
   if (!selector || typeof value !== "string") {
     return { success: false, error: "select_option requires selector and value" }
@@ -962,24 +959,21 @@ async function handleSelectOption(params: { selector: string; value: string; for
 
     const selectorJson = JSON.stringify(selector)
     const valueJson = JSON.stringify(value)
-    const forceJson = JSON.stringify(!!force)
     const result = await ctx.exec<SelectOptionResult>(`
       (() => {
         const selector = ${selectorJson};
         const targetValue = ${valueJson};
-        const force = ${forceJson};
         const el = document.querySelector(selector);
         if (!el) return { success: false, error: 'Element not found: ' + selector };
         if (el.tagName !== 'SELECT') return { success: false, error: 'Element is not a select: ' + el.tagName };
         if (el.disabled) return { success: false, error: 'Element is disabled: ' + selector };
 
-        // Skip if a user-set (non-placeholder) option is already selected
-        if (!force && el.selectedIndex > 0) {
+        // Skip if a user-set (non-placeholder) option is already selected — filled fields are permanently protected
+        if (el.selectedIndex > 0) {
           const selectedOpt = el.options[el.selectedIndex];
           // Also skip only if the selected option isn't a disabled placeholder
           if (!selectedOpt.disabled && !selectedOpt.hidden) {
-            const currentValue = el.value || '';
-            return { success: true, skipped: true, currentValue };
+            return { success: true, skipped: true };
           }
         }
 
@@ -1189,12 +1183,12 @@ async function handlePeekDropdown(params: { selector: string }): Promise<ToolRes
  * 3. Select the BEST available match, even if not exact
  * 4. For confirmation fields, match semantic intent (e.g., "yes" -> "I confirm...")
  */
-async function handleSelectCombobox(params: { selector: string; value: string; force?: boolean }): Promise<ToolResult> {
+async function handleSelectCombobox(params: { selector: string; value: string }): Promise<ToolResult> {
   if (!browserView) {
     return { success: false, error: "BrowserView not initialized" }
   }
 
-  const { selector, value, force } = params
+  const { selector, value } = params
 
   if (!selector || typeof value !== "string") {
     return { success: false, error: "select_combobox requires selector and value" }
@@ -1310,17 +1304,15 @@ async function handleSelectCombobox(params: { selector: string; value: string; f
     }
 
     // Step 1: Check for existing value (skip if filled) and open dropdown — atomic
-    const forceJson = JSON.stringify(!!force)
     const openResult = await ctx.exec<{ success: boolean; skipped?: boolean; currentValue?: string }>(`
       (() => {
         const el = document.querySelector(${selectorJson});
         if (!el) return { success: false };
 
-        // Atomic skip check: if already filled and force is not set, bail out
-        const force = ${forceJson};
+        // Skip fields that already have a value — filled fields are permanently protected
         const currentValue = el.value || '';
-        if (!force && currentValue !== '') {
-          return { success: true, skipped: true, currentValue };
+        if (currentValue !== '') {
+          return { success: true, skipped: true };
         }
 
         el.focus();
@@ -1337,7 +1329,7 @@ async function handleSelectCombobox(params: { selector: string; value: string; f
     }
 
     if (openResult.skipped) {
-      return { success: true, skipped: true, currentValue: openResult.currentValue }
+      return { success: true, skipped: true }
     }
 
     await new Promise(resolve => setTimeout(resolve, COMBOBOX_DROPDOWN_DELAY_MS))
@@ -1792,28 +1784,50 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
     return { success: false, error: "Type requires text parameter" }
   }
 
-  // Check if focused element can receive text
+  // Check if focused element can receive text AND retrieve its current value.
+  // Returns { canType: true, currentValue: string } or { canType: false }.
+  // Only allows text-like inputs, textareas, and contentEditable elements.
   const canTypeScript = `
     (() => {
       const el = document.activeElement;
-      if (!el) return false;
+      if (!el) return { canType: false };
       const tag = el.tagName.toLowerCase();
-      return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+      const isTextarea = tag === 'textarea';
+      const isContentEditable = el.isContentEditable === true;
+
+      let isTextLikeInput = false;
+      if (tag === 'input') {
+        const type = (el.type || '').toLowerCase();
+        const nonTextTypes = ['checkbox','radio','button','submit','reset','file','image','range','color','hidden'];
+        isTextLikeInput = !type || nonTextTypes.indexOf(type) === -1;
+      }
+
+      if (!isTextLikeInput && !isTextarea && !isContentEditable) return { canType: false };
+
+      let currentValue = '';
+      if (isTextLikeInput || isTextarea) {
+        currentValue = el.value !== undefined ? el.value : '';
+      } else if (isContentEditable) {
+        currentValue = el.textContent || '';
+      }
+      return { canType: true, currentValue: currentValue ? String(currentValue) : '' };
     })()
   `
 
-  let canType = await browserView.webContents.executeJavaScript(canTypeScript)
+  type CanTypeResult = { canType: boolean; currentValue?: string }
+
+  let result: CanTypeResult = await browserView.webContents.executeJavaScript(canTypeScript)
 
   // If focus is inside an iframe, document.activeElement in the main frame is the <iframe> itself.
   // Probe subframes to see if an input/textarea is actually focused.
-  if (!canType) {
+  if (!result?.canType) {
     const frames = getAllFramesFromWebContents()
     if (frames && frames.length > 0) {
       for (const frame of frames) {
         try {
-          const frameCanType = await frame.executeJavaScript!(canTypeScript)
-          if (frameCanType) {
-            canType = true
+          const frameResult = await frame.executeJavaScript!(canTypeScript) as CanTypeResult
+          if (frameResult?.canType) {
+            result = frameResult
             break
           }
         } catch {
@@ -1823,8 +1837,21 @@ async function handleType(params: { text: string }): Promise<ToolResult> {
     }
   }
 
-  if (!canType) {
+  if (!result?.canType) {
     return { success: false, error: "Focused element cannot receive text input" }
+  }
+
+  // Guard: block typing into elements that already have a value.
+  // Internal callers (e.g. handleFillField strategy 2) clear the field via
+  // SelectAll+Backspace before calling handleType, so the field is empty by
+  // the time we get here. This guard only blocks the agent's direct use of
+  // the coordinate-based type() tool on already-filled fields.
+  if (result.currentValue && result.currentValue.trim() !== "") {
+    logger.warn(`[ToolExecutor] Blocked type() — focused element already has value (${result.currentValue.length} chars)`)
+    return {
+      success: false,
+      error: "Focused element already has a value. Use fill_field(selector, value) instead, which will skip already-filled fields automatically.",
+    }
   }
 
   const debugger_ = browserView.webContents.debugger

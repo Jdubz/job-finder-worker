@@ -458,3 +458,40 @@ def test_store_job_listing_no_fallback_for_non_aggregator(scraper_intake, mock_j
     call_kwargs = mock_job_listing_storage.get_or_create_listing.call_args[1]
     # Non-aggregator: derive_apply_url returns None and company_website is NOT used
     assert call_kwargs["apply_url"] is None
+
+
+def test_store_job_listing_falls_back_to_companies_table(
+    mock_queue_manager, mock_sources_manager, mock_job_listing_storage
+):
+    """apply_url should fall back to the companies table when company_website is empty."""
+    mock_companies_manager = MagicMock()
+    mock_companies_manager.get_company.return_value = {
+        "id": "company-1",
+        "name": "Renesas Electronics",
+        "website": "https://www.renesas.com/",
+    }
+
+    intake = ScraperIntake(
+        queue_manager=mock_queue_manager,
+        sources_manager=mock_sources_manager,
+        job_listing_storage=mock_job_listing_storage,
+        companies_manager=mock_companies_manager,
+    )
+
+    job = {
+        "title": "RTL Design Engineer",
+        "company": "Renesas Electronics",
+        "description": "To apply: https://weworkremotely.com/remote-jobs/renesas-rtl",
+        "company_website": "",
+    }
+
+    intake._store_job_listing(
+        job=job,
+        normalized_url="https://weworkremotely.com/remote-jobs/renesas-rtl-design",
+        source_id="src-1",
+        company_id=None,
+    )
+
+    mock_companies_manager.get_company.assert_called_once_with("Renesas Electronics")
+    call_kwargs = mock_job_listing_storage.get_or_create_listing.call_args[1]
+    assert call_kwargs["apply_url"] == "https://www.renesas.com/"

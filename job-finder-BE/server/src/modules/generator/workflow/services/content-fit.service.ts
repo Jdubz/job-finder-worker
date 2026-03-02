@@ -8,11 +8,12 @@ import type { ResumeContent } from '@shared/types'
  *   skills, projects, education — top to bottom.
  *
  * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable (940.8px)
- * Dominant line height: bullet text 10.5px × 1.35 = 14.175px → 940.8 / 14.175 ≈ 66 raw lines.
- * With safety margin → 64 max.
+ * Line unit: bullet text 10.5px × 1.35 line-height = 14.175px → 940.8 / 14.175 ≈ 66 raw lines.
+ * Safety margin of 3 lines → 63 max.
  *
- * Margin value (0.6in top/bottom, 0.75in left/right) must stay in sync
- * with @page margin in html-ats-style.ts.
+ * Constants are derived from actual CSS pixel heights in html-ats-style.ts,
+ * converted to the 14.175px line unit. Keep in sync with @page margin and
+ * element spacing there.
  */
 
 export interface FitEstimate {
@@ -29,7 +30,7 @@ const CHARS_PER_LINE = 110
 const BULLET_CHARS_PER_LINE = 105
 
 // Heuristic averages for functions that don't have actual text to measure
-const AVG_LINES_PER_BULLET = 2
+const AVG_LINES_PER_BULLET = 1.5
 const AVG_LINES_PER_TECH = 1.5
 
 /** Estimate how many rendered lines a text string occupies. */
@@ -38,21 +39,26 @@ function textToLines(text: string, charsPerLine: number): number {
   return Math.max(1, Math.ceil(text.length / charsPerLine))
 }
 
-const LAYOUT = {
-  HEADER_LINES: 4,             // Name + title + rule + contact row
+export const LAYOUT = {
+  // Header: name(22px×1.35) + 2mb + title(13px×1.35) + 6mb + rule(2+5mb) + contact(10px×1.6 + 10mb) ≈ 88px
+  HEADER_LINES: 6,
   SUMMARY_MIN_LINES: 2,
-  SECTION_TITLE_LINES: 2,      // Heading + bottom border + spacing
+  // Section heading: 10mt + text(13px×1.35) + 2pb + 1.5border + 6mb ≈ 37px
+  SECTION_TITLE_LINES: 2.5,
 
-  EXP_HEADER_LINES: 2,         // Role title + company line
-  EXP_SPACING: 1.5,            // Space between entries
+  // Experience: role(11.5px×1.35) + company(10.5px×1.35 + 2mb) + UL 2mt ≈ 34px
+  EXP_HEADER_LINES: 2.5,
+  EXP_SPACING: 1,              // exp-entry margin-bottom 12px ≈ 0.85 lines
+  BULLET_OVERHEAD: 0.1,        // li margin-bottom 1px per bullet ≈ 0.07 lines
 
   PROJECT_HEADER_LINES: 2,     // Project name + link line
-  PROJECT_SPACING: 1.5,
+  PROJECT_SPACING: 0.5,        // project-entry margin-bottom 6px ≈ 0.42 lines
 
-  SKILL_CATEGORY_LINES: 1.5,   // "Category: item, item, item" on one line
-  EDUCATION_ENTRY_LINES: 2,    // Degree + school
+  SKILL_CATEGORY_LINES: 1.2,   // 10.5px text + 2px margin ≈ 16px
+  // Education: degree(11px×1.35) + school(10.5px×1.35) + 4mb ≈ 33px
+  EDUCATION_ENTRY_LINES: 2.5,
 
-  MAX_LINES: 64,
+  MAX_LINES: 63,               // 66 raw - 3 safety for rounding / browser variance
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
@@ -74,7 +80,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   for (const exp of content.experience || []) {
     mainLines += LAYOUT.EXP_HEADER_LINES
     for (const bullet of exp.highlights || []) {
-      mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE)
+      mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE) + LAYOUT.BULLET_OVERHEAD
     }
     const techText = (exp.technologies || []).join(', ')
     if (techText) {
@@ -99,7 +105,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       const highlights = proj.highlights || []
       if (highlights.length > 0) {
         for (const h of highlights) {
-          mainLines += textToLines(h, BULLET_CHARS_PER_LINE)
+          mainLines += textToLines(h, BULLET_CHARS_PER_LINE) + LAYOUT.BULLET_OVERHEAD
         }
       } else if (proj.description) {
         mainLines += textToLines(proj.description, BULLET_CHARS_PER_LINE)
@@ -119,8 +125,9 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     mainLines += eduCount * LAYOUT.EDUCATION_ENTRY_LINES
   }
 
-  // Calculate overflow
-  const overflow = mainLines - LAYOUT.MAX_LINES
+  // Round up fractional lines conservatively before computing overflow
+  const roundedMainLines = Math.ceil(mainLines)
+  const overflow = roundedMainLines - LAYOUT.MAX_LINES
 
   // Suggestions
   if (overflow > 0) {
@@ -142,10 +149,10 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   }
 
   return {
-    mainColumnLines: Math.round(mainLines),
+    mainColumnLines: roundedMainLines,
     sidebarLines: 0,
     fits: overflow <= 0,
-    overflow: Math.round(overflow),
+    overflow,
     suggestions
   }
 }
@@ -164,7 +171,7 @@ export function getContentBudget(): {
 } {
   return {
     maxExperiences: 4,
-    maxBulletsPerExperience: 6,
+    maxBulletsPerExperience: 5,
     maxSummaryWords: 70,
     maxSkillCategories: 5,
     maxProjects: 2,
@@ -226,8 +233,9 @@ export function getRecommendedSkillCategories(experienceCount: number, avgBullet
     experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * AVG_LINES_PER_BULLET + AVG_LINES_PER_TECH + LAYOUT.EXP_SPACING)
 
   const remainingLines = LAYOUT.MAX_LINES - mainLines
-  // Reserve ~6 lines for education, rest for skills
-  const availableForSkills = Math.max(0, remainingLines - 6 - LAYOUT.SECTION_TITLE_LINES)
+  // Reserve education section: title + ~2 entries
+  const eduReserve = LAYOUT.SECTION_TITLE_LINES + 2 * LAYOUT.EDUCATION_ENTRY_LINES
+  const availableForSkills = Math.max(0, remainingLines - eduReserve - LAYOUT.SECTION_TITLE_LINES)
   return Math.max(3, Math.min(6, Math.floor(availableForSkills / LAYOUT.SKILL_CATEGORY_LINES)))
 }
 
@@ -237,10 +245,10 @@ export function getRecommendedSkillCategories(experienceCount: number, avgBullet
  */
 export function getTieredBulletGuidance(experienceCount: number): string {
   const tiers = [
-    'Most recent role: 5-6 bullets',
-    'Second role: 4-5 bullets',
-    'Third role: 3-4 bullets',
-    'Fourth+ role: 2-3 bullets'
+    'Most recent role: 4-5 bullets',
+    'Second role: 3-4 bullets',
+    'Third role: 2-3 bullets',
+    'Fourth+ role: 2 bullets'
   ]
   return tiers.slice(0, Math.min(experienceCount, tiers.length)).join('\n  - ')
 }

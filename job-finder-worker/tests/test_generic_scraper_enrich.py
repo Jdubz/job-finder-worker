@@ -948,3 +948,25 @@ class TestExtractCompanyWebsiteFromDescription:
             '<a href="https://remotive.com/bar">Remotive</a>'
         )
         assert scraper._extract_company_website_from_description(desc) is None
+
+    def test_plain_text_url_pattern(self, scraper):
+        """Should extract from plain-text 'URL: https://...' (sanitized description)."""
+        desc = "URL: https://ridr.bike/\n\nWe are a founder-driven company."
+        assert scraper._extract_company_website_from_description(desc) == "https://ridr.bike/"
+
+    def test_plain_text_to_apply_pattern(self, scraper):
+        """Should extract from plain-text 'To apply: https://...' (non-aggregator)."""
+        desc = "Great job!\nTo apply: https://company.com/careers\nMore info here."
+        assert (
+            scraper._extract_company_website_from_description(desc) == "https://company.com/careers"
+        )
+
+    def test_plain_text_to_apply_skips_aggregator(self, scraper):
+        """'To apply:' pointing to aggregator should be skipped."""
+        desc = "To apply: https://weworkremotely.com/remote-jobs/some-company-job"
+        assert scraper._extract_company_website_from_description(desc) is None
+
+    def test_plain_text_url_preferred_over_html_fallback(self, scraper):
+        """Plain-text URL: pattern should be found before HTML fallback parsing."""
+        desc = 'URL: https://primary.com\n<a href="https://secondary.com">link</a>'
+        assert scraper._extract_company_website_from_description(desc) == "https://primary.com"

@@ -3,7 +3,7 @@
  *
  * Handles:
  * 1. Copies static assets (HTML, CSS) to dist/renderer/
- * 2. Strips TypeScript's "export {}" from app.js (causes ES module issues in renderer)
+ * 2. Strips TypeScript's trailing "export {}" from renderer JS (cosmetic; loaded as ES modules)
  * 3. Renames preload.js to preload.cjs (Electron requires CommonJS for preload)
  * 4. Strips "export {}" from preload.cjs
  */

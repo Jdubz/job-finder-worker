@@ -52,6 +52,14 @@ _LEVER_POSTING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Oracle HCM Cloud Candidate Experience URL pattern:
+#   {instance}.fa.{region}.oraclecloud.com/hcmUI/CandidateExperience/{lang}/sites/{site}/job/{id}
+_ORACLE_HCM_RE = re.compile(
+    r"https?://(?P<host>[^/]+\.oraclecloud\.com)"
+    r"/hcmUI/CandidateExperience/\w+/sites/[^/?#]+/job/(?P<job_id>\d+)",
+    re.IGNORECASE,
+)
+
 EXTRACTION_PROMPT = """\
 You are a job posting data extractor. Given the text content of a web page,
 extract the job posting details if present.
@@ -131,6 +139,13 @@ class PageDataExtractor:
             logger.debug("Lever direct URL detected: company=%s posting=%s", company, posting_id)
             return self._fetch_lever_posting(company, posting_id)
 
+        oracle_match = _ORACLE_HCM_RE.match(url)
+        if oracle_match:
+            host = oracle_match.group("host")
+            job_id = oracle_match.group("job_id")
+            logger.debug("Oracle HCM direct URL detected: host=%s job=%s", host, job_id)
+            return self._fetch_oracle_job(host, job_id)
+
         return None
 
     _API_HEADERS = {
@@ -199,6 +214,61 @@ class PageDataExtractor:
             "description": data.get("descriptionPlain", ""),
             "company": "",  # Lever API doesn't include company name
             "location": location,
+            "posted_date": posted_date,
+        }
+
+    # Default Oracle HCM site number — CX_1001 is the standard external career site.
+    _ORACLE_DEFAULT_SITE_NUMBER = "CX_1001"
+
+    def _fetch_oracle_job(self, host: str, job_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single job from the Oracle HCM Candidate Experience API."""
+        api_url = (
+            f"https://{host}/hcmRestApi/resources/latest/"
+            f"recruitingCEJobRequisitionDetails"
+            f"?expand=all&onlyData=true"
+            f"&finder=ById;Id={job_id},siteNumber={self._ORACLE_DEFAULT_SITE_NUMBER}"
+        )
+        try:
+            resp = requests.get(api_url, headers=self._API_HEADERS, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("Oracle HCM API request failed for %s: %s", api_url, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning("Oracle HCM API returned invalid JSON for %s: %s", api_url, e)
+            return None
+
+        items = data.get("items", [])
+        if not items:
+            logger.warning("Oracle HCM API returned no items for job %s on %s", job_id, host)
+            return None
+
+        job = items[0]
+
+        # Build description from available fields
+        desc_parts = []
+        for field_name in (
+            "ExternalDescriptionStr",
+            "ExternalResponsibilitiesStr",
+            "ExternalQualificationsStr",
+        ):
+            val = job.get(field_name)
+            if val and val.strip():
+                desc_parts.append(val.strip())
+        description = "\n\n".join(desc_parts)
+
+        # Extract posted date (ISO format → YYYY-MM-DD)
+        posted_date = ""
+        posted_raw = job.get("ExternalPostedStartDate", "")
+        if posted_raw and len(posted_raw) >= 10:
+            posted_date = posted_raw[:10]
+
+        return {
+            "title": job.get("Title", ""),
+            "description": description,
+            "company": "",  # Oracle HCM API doesn't include company name directly
+            "location": job.get("PrimaryLocation", ""),
             "posted_date": posted_date,
         }
 

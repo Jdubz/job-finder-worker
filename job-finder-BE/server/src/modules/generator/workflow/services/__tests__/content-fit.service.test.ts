@@ -89,7 +89,7 @@ describe('getContentBudget', () => {
   it('returns sensible budget constraints', () => {
     const budget = getContentBudget()
     expect(budget.maxExperiences).toBeGreaterThanOrEqual(3)
-    expect(budget.maxBulletsPerExperience).toBe(6)
+    expect(budget.maxBulletsPerExperience).toBe(5)
     expect(budget.maxSummaryWords).toBeGreaterThan(20)
     expect(budget.maxSkillCategories).toBeGreaterThanOrEqual(4)
   })

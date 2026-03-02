@@ -311,7 +311,7 @@ describe("Tool Executor", () => {
     it("should return error when focused element cannot receive text", async () => {
       const mockView = createMockBrowserView({
         webContents: {
-          executeJavaScript: vi.fn().mockResolvedValue(false), // Cannot type
+          executeJavaScript: vi.fn().mockResolvedValue({ canType: false }), // Cannot type
         },
       })
       setBrowserView(mockView)
@@ -321,7 +321,7 @@ describe("Tool Executor", () => {
       expect(result.error).toContain("cannot receive text input")
     })
 
-    it("should insert text when focused element can receive input", async () => {
+    it("should insert text when focused element can receive input and is empty", async () => {
       const mockDebugger = {
         attach: vi.fn(),
         detach: vi.fn(),
@@ -330,7 +330,7 @@ describe("Tool Executor", () => {
 
       const mockView = createMockBrowserView({
         webContents: {
-          executeJavaScript: vi.fn().mockResolvedValue(true), // Can type
+          executeJavaScript: vi.fn().mockResolvedValue({ canType: true, currentValue: "" }),
           debugger: mockDebugger,
         },
       })
@@ -340,6 +340,50 @@ describe("Tool Executor", () => {
 
       expect(result.success).toBe(true)
       expect(mockDebugger.sendCommand).toHaveBeenCalledWith("Input.insertText", { text: "hello world" })
+    })
+
+    it("should block typing into a focused element that already has a value", async () => {
+      const mockDebugger = {
+        attach: vi.fn(),
+        detach: vi.fn(),
+        sendCommand: vi.fn().mockResolvedValue({}),
+      }
+
+      const mockView = createMockBrowserView({
+        webContents: {
+          executeJavaScript: vi.fn().mockResolvedValue({ canType: true, currentValue: "existing text" }),
+          debugger: mockDebugger,
+        },
+      })
+      setBrowserView(mockView)
+
+      const result = await executeTool("type", { text: "overwrite attempt" })
+
+      expect(result.success).toBe(false)
+      expect(result.error).toContain("already has a value")
+      // Should NOT have called Input.insertText
+      expect(mockDebugger.sendCommand).not.toHaveBeenCalled()
+    })
+
+    it("should allow typing into a focused element with whitespace-only value", async () => {
+      const mockDebugger = {
+        attach: vi.fn(),
+        detach: vi.fn(),
+        sendCommand: vi.fn().mockResolvedValue({}),
+      }
+
+      const mockView = createMockBrowserView({
+        webContents: {
+          executeJavaScript: vi.fn().mockResolvedValue({ canType: true, currentValue: "   " }),
+          debugger: mockDebugger,
+        },
+      })
+      setBrowserView(mockView)
+
+      const result = await executeTool("type", { text: "new value" })
+
+      expect(result.success).toBe(true)
+      expect(mockDebugger.sendCommand).toHaveBeenCalledWith("Input.insertText", { text: "new value" })
     })
   })
 

@@ -944,6 +944,10 @@ const mockCoverLetterContent = {
     let mockDocumentCache: {
       lookup: ReturnType<typeof vi.fn>
       store: ReturnType<typeof vi.fn>
+      lookupResumeBody: ReturnType<typeof vi.fn>
+      storeResumeBody: ReturnType<typeof vi.fn>
+      lookupCoverLetterBody: ReturnType<typeof vi.fn>
+      storeCoverLetterBody: ReturnType<typeof vi.fn>
     }
 
     const createServiceWithCache = () =>
@@ -966,6 +970,10 @@ const mockCoverLetterContent = {
       mockDocumentCache = {
         lookup: vi.fn().mockResolvedValue({ tier: 'miss' }),
         store: vi.fn().mockResolvedValue(undefined),
+        lookupResumeBody: vi.fn().mockResolvedValue(null),
+        storeResumeBody: vi.fn().mockResolvedValue(undefined),
+        lookupCoverLetterBody: vi.fn().mockResolvedValue(null),
+        storeCoverLetterBody: vi.fn().mockResolvedValue(undefined),
       }
     })
 
@@ -1014,8 +1022,10 @@ const mockCoverLetterContent = {
       await (service as any).buildResumeContent({ ...payload, skipCache: true }, personalInfo)
 
       expect(mockDocumentCache.lookup).not.toHaveBeenCalled()
-      // store is called as fire-and-forget (returns promise)
+      expect(mockDocumentCache.lookupResumeBody).not.toHaveBeenCalled()
+      // store + storeResumeBody are called as fire-and-forget
       expect(mockDocumentCache.store).toHaveBeenCalledOnce()
+      expect(mockDocumentCache.storeResumeBody).toHaveBeenCalledOnce()
     })
 
     it('passes embedding from lookup miss to store', async () => {
@@ -1029,6 +1039,11 @@ const mockCoverLetterContent = {
       const storeArgs = mockDocumentCache.store.mock.calls[0]
       // store(cacheCtx, document, modelVersion, precomputedEmbedding)
       expect(storeArgs[3]).toBe(fakeEmbedding)
+
+      // storeResumeBody also receives the embedding
+      expect(mockDocumentCache.storeResumeBody).toHaveBeenCalledOnce()
+      const bodyStoreArgs = mockDocumentCache.storeResumeBody.mock.calls[0]
+      expect(bodyStoreArgs[3]).toBe(fakeEmbedding)
     })
 
     it('calls store without embedding when skipCache is true (no lookup)', async () => {
@@ -1039,6 +1054,8 @@ const mockCoverLetterContent = {
       const storeArgs = mockDocumentCache.store.mock.calls[0]
       // No embedding available since lookup was skipped
       expect(storeArgs[3]).toBeUndefined()
+
+      expect(mockDocumentCache.storeResumeBody).toHaveBeenCalledOnce()
     })
   })
 })
