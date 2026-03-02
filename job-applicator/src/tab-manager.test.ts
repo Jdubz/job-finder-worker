@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import type { BrowserView, BrowserWindow, Bounds } from "electron"
+import type { BrowserWindow, Bounds } from "electron"
 import type { TabManagerOptions, TabInfo } from "./tab-manager.js"
 
 // Mock logger
@@ -41,19 +41,8 @@ function createMockWebContents() {
   }
 }
 
-function createMockBrowserView() {
-  const wc = createMockWebContents()
-  return {
-    webContents: wc,
-    setAutoResize: vi.fn(),
-    setBounds: vi.fn(),
-    getBounds: vi.fn(() => ({ x: 0, y: 0, width: 800, height: 600 })),
-    _webContents: wc,
-  } as unknown as BrowserView & { _webContents: ReturnType<typeof createMockWebContents> }
-}
-
 // Override BrowserView constructor — must be a class/function for `new`
-const mockViews: (BrowserView & { _webContents: ReturnType<typeof createMockWebContents> })[] = []
+const mockViews: unknown[] = []
 vi.mock("electron", () => ({
   BrowserView: class MockBrowserView {
     webContents: ReturnType<typeof createMockWebContents>
