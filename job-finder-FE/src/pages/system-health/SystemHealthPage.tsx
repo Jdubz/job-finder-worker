@@ -29,7 +29,7 @@ import {
 } from "lucide-react"
 
 const REFRESH_INTERVAL_MS = 30000 // 30 seconds
-type CronJobKey = keyof CronConfig["jobs"]
+type CronJobKey = Exclude<keyof CronConfig["jobs"], "agentReset">
 
 const CRON_JOB_LABELS: Record<CronJobKey, string> = {
   scrape: "Scrape Jobs",
@@ -305,8 +305,8 @@ export function SystemHealthPage() {
                 <div className="border-t pt-4 space-y-4">
                   {cronConfig && (
                     <div className="grid gap-4">
-                      {(Object.keys(cronConfig.jobs) as CronJobKey[]).map((key) => {
-                        const job = cronConfig.jobs[key]
+                      {(Object.keys(cronConfig.jobs) as CronJobKey[]).filter((k) => k in CRON_JOB_LABELS).map((key) => {
+                        const job = cronConfig.jobs[key]!
                         return (
                           <div key={key} className="border rounded-lg p-4 space-y-3">
                             <div className="flex items-center justify-between">
