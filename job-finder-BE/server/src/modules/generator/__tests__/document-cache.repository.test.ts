@@ -141,32 +141,6 @@ describe('DocumentCacheRepository', () => {
     }
   })
 
-  // ── invalidateByContentHash ───────────────────────────────────────────
-
-  it('invalidateByContentHash removes matching entries', () => {
-    repo.store(makeStoreParams({ contentItemsHash: 'hash-to-remove', documentType: 'resume' }))
-    repo.store(makeStoreParams({
-      contentItemsHash: 'hash-to-remove',
-      documentType: 'cover_letter',
-      jobFingerprintHash: 'fp-cl',
-      embeddingVector: makeEmbedding(20),
-    }))
-    repo.store(makeStoreParams({
-      contentItemsHash: 'hash-to-keep',
-      jobFingerprintHash: 'fp-keep',
-      embeddingVector: makeEmbedding(21),
-    }))
-
-    repo.invalidateByContentHash('hash-to-remove', 'resume')
-
-    // Only the resume with hash-to-remove should be gone
-    expect(repo.findExact('fp-hash-1', 'hash-to-remove', 'resume')).toBeNull()
-    // Cover letter with same hash should still exist (different doc type)
-    expect(repo.findExact('fp-cl', 'hash-to-remove', 'cover_letter')).not.toBeNull()
-    // Different hash entry should still exist
-    expect(repo.findExact('fp-keep', 'hash-to-keep', 'resume')).not.toBeNull()
-  })
-
   // ── removeStaleEntries ────────────────────────────────────────────────
 
   it('removeStaleEntries removes entries with non-matching hash', () => {

@@ -44,30 +44,6 @@ type UserRow = {
   session_expires_at_ms: number | null
 }
 
-type SessionRow = {
-  id: string
-  user_id: string
-  token_hash: string
-  expires_at_ms: number
-  created_at: string
-  last_used_at: string
-  user_agent: string | null
-  ip_address: string | null
-}
-
-function mapSessionRow(row: SessionRow): SessionRecord {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    tokenHash: row.token_hash,
-    expiresAtMs: row.expires_at_ms,
-    createdAt: row.created_at,
-    lastUsedAt: row.last_used_at,
-    userAgent: row.user_agent ?? undefined,
-    ipAddress: row.ip_address ?? undefined,
-  }
-}
-
 function parseRoles(value: string | null): UserRole[] {
   if (!value) {
     return []
@@ -115,26 +91,6 @@ export class UserRepository {
         ].join(" ")
       )
       .get(email) as UserRow | undefined
-
-    if (!row) {
-      return null
-    }
-
-    return mapRow(row)
-  }
-
-  findFirstAdmin(): UserRecord | null {
-    const row = this.db
-      .prepare(
-        [
-          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms",
-          "FROM users",
-          "WHERE instr(lower(ifnull(roles, '')), 'admin') > 0",
-          "ORDER BY created_at ASC",
-          "LIMIT 1"
-        ].join(" ")
-      )
-      .get() as UserRow | undefined
 
     if (!row) {
       return null
@@ -282,29 +238,6 @@ export class UserRepository {
   }
 
   /**
-   * Delete all sessions for a user
-   */
-  deleteAllUserSessions(userId: string): void {
-    this.db.prepare("DELETE FROM user_sessions WHERE user_id = ?").run(userId)
-  }
-
-  /**
-   * Get all active sessions for a user
-   */
-  getUserSessions(userId: string): SessionRecord[] {
-    const rows = this.db
-      .prepare(
-        `SELECT id, user_id, token_hash, expires_at_ms, created_at, last_used_at, user_agent, ip_address
-         FROM user_sessions
-         WHERE user_id = ? AND expires_at_ms > ?
-         ORDER BY last_used_at DESC`
-      )
-      .all(userId, Date.now()) as SessionRow[]
-
-    return rows.map(mapSessionRow)
-  }
-
-  /**
    * Clean up expired sessions (can be called periodically)
    */
   cleanupExpiredSessions(): number {
@@ -314,21 +247,7 @@ export class UserRepository {
     return result.changes
   }
 
-  // ============================================================================
-  // Legacy session methods (kept for backward compatibility)
-  // ============================================================================
-
-  /** @deprecated Use createSession instead */
-  saveSession(userId: string, token: string, expiresAt: string): void {
-    const hashed = this.hashToken(token)
-    this.db
-      .prepare(
-        "UPDATE users SET session_token = ?, session_expires_at = ?, session_expires_at_ms = ?, updated_at = datetime('now') WHERE id = ?"
-      )
-      .run(hashed, expiresAt, Date.parse(expiresAt), userId)
-  }
-
-  /** @deprecated Use deleteSessionByToken or deleteAllUserSessions instead */
+  /** @deprecated Use deleteSessionByToken instead */
   clearSession(userId: string): void {
     this.db
       .prepare(

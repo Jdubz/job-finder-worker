@@ -71,10 +71,6 @@ export function handleLifecycleEventsSse(req: Request, res: Response) {
   res.write(serializeEvent(snapshot))
 }
 
-export function getLifecyclePhase(): ServerPhase {
-  return phase
-}
-
 export function setReady(isReady: boolean, data: Record<string, unknown> = {}) {
   ready = isReady
   broadcastLifecycleEvent('status', { ...baseStatus(), ...data })

@@ -9,7 +9,6 @@ import * as InferenceClientModule from '../ai/inference-client'
 
 function makeAgentManager() {
   return {
-    ensureAvailable: vi.fn(),
     execute: vi.fn().mockImplementation((_: string, prompt: string) => {
       const isCover = /greeting|cover\s*letter|cover_letter|cover-letter/i.test(prompt)
       if (isCover) {

@@ -161,11 +161,6 @@ export class JobListingRepository {
     return row ? buildJobListing(row) : null
   }
 
-  exists(url: string): boolean {
-    const row = this.db.prepare('SELECT 1 FROM job_listings WHERE url = ? LIMIT 1').get(url)
-    return row !== undefined
-  }
-
   create(input: CreateJobListingInput): JobListingRecord {
     const id = input.id ?? randomUUID()
     const now = new Date().toISOString()
@@ -227,10 +222,6 @@ export class JobListingRepository {
     return this.getById(id)
   }
 
-  updateStatus(id: string, status: JobListingStatus): JobListingRecord | null {
-    return this.update(id, { status })
-  }
-
   delete(id: string): void {
     this.db.prepare('DELETE FROM job_listings WHERE id = ?').run(id)
   }
@@ -268,28 +259,4 @@ export class JobListingRepository {
     return stats
   }
 
-  /**
-   * Batch check if URLs exist in job_listings.
-   * Returns a map of URL -> exists boolean.
-   */
-  batchCheckExists(urls: string[]): Map<string, boolean> {
-    if (urls.length === 0) return new Map()
-
-    const results = new Map<string, boolean>()
-    urls.forEach((url) => results.set(url, false))
-
-    // Process in chunks to avoid SQLite parameter limits
-    const chunkSize = 50
-    for (let i = 0; i < urls.length; i += chunkSize) {
-      const chunk = urls.slice(i, i + chunkSize)
-      const placeholders = chunk.map(() => '?').join(',')
-      const rows = this.db
-        .prepare(`SELECT url FROM job_listings WHERE url IN (${placeholders})`)
-        .all(...chunk) as { url: string }[]
-
-      rows.forEach((row) => results.set(row.url, true))
-    }
-
-    return results
-  }
 }

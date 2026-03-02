@@ -101,17 +101,6 @@ export class MaintenanceRepository {
   }
 
   /**
-   * Check if URL exists in job_listings_archive.
-   * Used for deduplication during scraping.
-   */
-  urlExistsInArchive(url: string): boolean {
-    const row = this.db.prepare(`
-      SELECT 1 FROM job_listings_archive WHERE url = ? LIMIT 1
-    `).get(url)
-    return !!row
-  }
-
-  /**
    * Get maintenance statistics.
    */
   getStats(): MaintenanceStats {

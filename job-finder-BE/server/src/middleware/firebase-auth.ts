@@ -6,6 +6,7 @@ import { UserRepository, type UserRole } from '../modules/users/user.repository'
 import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from './api-error'
 import { SESSION_COOKIE } from '../routes/auth.routes'
+import { clearSessionCookie } from '../utils/cookie'
 import { logger } from '../logger'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development'
@@ -63,21 +64,6 @@ export interface AuthenticatedRequest extends Request {
 
 const userRepository = new UserRepository()
 
-function getCookieDomain(): string | undefined {
-  if (IS_DEVELOPMENT || isTestEnv()) return undefined
-  return env.COOKIE_DOMAIN || '.joshwentworth.com'
-}
-
-function clearSessionCookie(res: Response) {
-  res.clearCookie(SESSION_COOKIE, {
-    httpOnly: true,
-    secure: !IS_DEVELOPMENT && !isTestEnv(),
-    sameSite: IS_DEVELOPMENT || isTestEnv() ? 'lax' : 'none',
-    domain: getCookieDomain(),
-    path: '/',
-  })
-}
-
 /**
  * Extract Bearer token from Authorization header
  */
@@ -106,7 +92,7 @@ function extractBearerToken(req: Request): string | null {
  * 172.17.x.x), so we allow the full 172.16.0.0/12 private range. Our production
  * network uses 172.22.x.x and gateway is 172.23.0.1.
  */
-export function isLocalhostRequest(req: Request): boolean {
+function isLocalhostRequest(req: Request): boolean {
   // Prefer raw socket address which is not affected by trust proxy
   const ip = req.socket?.remoteAddress || req.ip || ''
 

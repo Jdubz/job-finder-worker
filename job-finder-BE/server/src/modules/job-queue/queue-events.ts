@@ -146,17 +146,6 @@ export function handleQueueEventsSse(req: Request, res: Response, items: QueueIt
   res.write(toEventString(snapshot))
 }
 
-export function enqueueCancelCommand(itemId: string, workerId = 'default') {
-  const commands = commandQueue.get(workerId) ?? []
-  commands.push({
-    workerId,
-    command: 'cancel',
-    itemId,
-    ts: new Date().toISOString()
-  })
-  commandQueue.set(workerId, commands)
-}
-
 export function takePendingCommands(workerId = 'default'): CancelCommand[] {
   const commands = commandQueue.get(workerId) ?? []
   commandQueue.set(workerId, [])

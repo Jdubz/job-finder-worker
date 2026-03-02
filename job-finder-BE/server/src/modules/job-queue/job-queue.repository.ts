@@ -182,13 +182,6 @@ export class JobQueueRepository {
     return row ? buildQueueItem(row) : null
   }
 
-  listByStatus(status: QueueStatus, limit = 50): QueueItem[] {
-    const rows = this.db
-      .prepare('SELECT * FROM job_queue WHERE status = ? ORDER BY created_at ASC LIMIT ?')
-      .all(status, limit) as QueueItemRow[]
-    return rows.map(buildQueueItem)
-  }
-
   list(options: {
     status?: QueueStatus | QueueStatus[]
     type?: QueueItem['type']

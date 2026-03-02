@@ -180,50 +180,6 @@ export function getContentBudget(): {
 }
 
 /**
- * Quick check if content is likely to fit.
- */
-export function willFitOnePage(content: ResumeContent): boolean {
-  const expCount = content.experience?.length || 0
-  const totalBullets = content.experience?.reduce((sum, e) => sum + (e.highlights?.length || 0), 0) || 0
-  const summaryWords = (content.professionalSummary || '').split(/\s+/).length
-
-  return expCount <= 5 && totalBullets <= 20 && summaryWords <= 75
-}
-
-/**
- * Column balance analysis — kept for backward compatibility.
- * In single-column layout, balance is about total content vs page height.
- */
-export interface ColumnBalance {
-  sidebarLines: number
-  mainLines: number
-  difference: number
-  balanced: boolean
-  suggestion: string
-}
-
-export function analyzeColumnBalance(content: ResumeContent): ColumnBalance {
-  const estimate = estimateContentFit(content)
-
-  let suggestion = ''
-  if (estimate.overflow > 0) {
-    suggestion = `Content overflows by ~${estimate.overflow} lines. Reduce bullets or experience entries.`
-  } else if (estimate.overflow < -15) {
-    const absD = Math.abs(estimate.overflow)
-    const bulletsNeeded = Math.ceil(absD / AVG_LINES_PER_BULLET)
-    suggestion = `Page has ~${absD} lines of empty space. Add ${bulletsNeeded} more bullet points.`
-  }
-
-  return {
-    sidebarLines: 0,
-    mainLines: estimate.mainColumnLines,
-    difference: estimate.overflow,
-    balanced: Math.abs(estimate.overflow) <= 10,
-    suggestion
-  }
-}
-
-/**
  * Get recommended skill category count based on main column content.
  */
 export function getRecommendedSkillCategories(experienceCount: number, avgBulletsPerExp: number): number {

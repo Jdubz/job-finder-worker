@@ -12,6 +12,7 @@ import { ApiErrorCode } from '@shared/types'
 import { ApiHttpError } from '../middleware/api-error'
 import { rateLimit } from '../middleware/rate-limit'
 import { asyncHandler } from '../utils/async-handler'
+import { getCookieDomain, clearSessionCookie } from '../utils/cookie'
 
 const IS_DEVELOPMENT = env.NODE_ENV === 'development' || env.NODE_ENV === 'test'
 const SESSION_TTL_DAYS = env.SESSION_TTL_DAYS
@@ -23,11 +24,6 @@ const LoginSchema = z.object({
   credential: z.string().min(1, 'credential is required'),
 })
 
-function getCookieDomain(): string | undefined {
-  if (IS_DEVELOPMENT) return undefined
-  return env.COOKIE_DOMAIN || '.joshwentworth.com'
-}
-
 function setSessionCookie(res: Response, token: string) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -36,16 +32,6 @@ function setSessionCookie(res: Response, token: string) {
     domain: getCookieDomain(),
     path: '/',
     maxAge: SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
-  })
-}
-
-function clearSessionCookie(res: Response) {
-  res.clearCookie(SESSION_COOKIE, {
-    httpOnly: true,
-    secure: !IS_DEVELOPMENT,
-    sameSite: IS_DEVELOPMENT ? 'lax' : 'none',
-    domain: getCookieDomain(),
-    path: '/',
   })
 }
 
