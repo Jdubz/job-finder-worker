@@ -170,10 +170,12 @@ class ScraperIntake:
             host = (urlparse(normalized_url).hostname or "").lower()
             is_aggregator = any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS)
 
+            search_client = self.search_client if is_aggregator else None
+
             result = resolve_apply_url(
                 job_url=normalized_url,
                 job=job,
-                search_client=self.search_client,
+                search_client=search_client,
                 companies_manager=self.companies_manager,
                 is_aggregator=is_aggregator,
             )

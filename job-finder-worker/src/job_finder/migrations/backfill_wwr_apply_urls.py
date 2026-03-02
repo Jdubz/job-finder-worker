@@ -17,28 +17,11 @@ import logging
 import sqlite3
 import sys
 from typing import Dict, Optional
-from urllib.parse import urlparse
 
 from job_finder.utils.apply_url_resolver import resolve_apply_url
-from job_finder.utils.url_utils import AGGREGATOR_HOST_SUBSTRINGS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def _validate_non_aggregator(url: str) -> Optional[str]:
-    """Return *url* if it's a valid, non-aggregator HTTP(S) URL."""
-    try:
-        url = url.rstrip(".,;)")
-        parsed = urlparse(url)
-        host = (parsed.hostname or "").lower()
-        if any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS):
-            return None
-        if parsed.scheme in ("http", "https") and parsed.netloc:
-            return url
-    except Exception:
-        pass
-    return None
 
 
 def _load_company_websites(conn: sqlite3.Connection) -> Dict[str, str]:

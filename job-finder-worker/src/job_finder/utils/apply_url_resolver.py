@@ -97,7 +97,7 @@ def _strip_trailing_punctuation(url: str) -> str:
     return url.rstrip(".,;)>]}")
 
 
-def _extract_apply_url_from_description(description: str) -> Optional[str]:
+def _extract_apply_url_from_description(description: Optional[str]) -> Optional[str]:
     """Extract an apply URL from job description text using known patterns."""
     if not description:
         return None
@@ -192,9 +192,9 @@ def _search_for_apply_url(
 
     scored: List[tuple] = []
     for result in results:
-        url = result.url if hasattr(result, "url") else result.get("url", "")
-        title = result.title if hasattr(result, "title") else result.get("title", "")
-        snippet = result.snippet if hasattr(result, "snippet") else result.get("snippet", "")
+        url = result.url
+        title = result.title
+        snippet = result.snippet
 
         if not url or not _is_valid_apply_url(url):
             continue
