@@ -274,10 +274,6 @@ export class GeneratorWorkflowService {
     }
   }
 
-  private async ensureProviderAvailable(): Promise<void> {
-    this.agentManager.ensureAvailable('document')
-  }
-
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
     const steps = createInitialSteps(payload.generateType)
@@ -345,10 +341,8 @@ export class GeneratorWorkflowService {
         requestId,
         request.status,
         steps,
-        async () => {
-          await this.ensureProviderAvailable()
-        },
-        'AI provider health check'
+        async () => {},
+        'Collecting data'
       )
     }
 

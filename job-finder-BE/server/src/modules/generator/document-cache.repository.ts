@@ -328,30 +328,6 @@ export class DocumentCacheRepository {
   }
 
   /**
-   * Invalidate cache entries by content items hash and document type.
-   * Used when the user's profile content changes.
-   */
-  invalidateByContentHash(contentItemsHash: string, documentType: DocumentType): void {
-    this.db.transaction(() => {
-      const rows = this.db.prepare(`
-        SELECT embedding_rowid FROM document_cache
-        WHERE content_items_hash = ? AND document_type = ?
-      `).all(contentItemsHash, documentType) as Array<{ embedding_rowid: number }>
-
-      if (!rows.length) return
-
-      const rowids = rows.map((r) => r.embedding_rowid)
-      const placeholders = rowids.map(() => '?').join(',')
-      this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
-
-      this.db.prepare(`
-        DELETE FROM document_cache
-        WHERE content_items_hash = ? AND document_type = ?
-      `).run(contentItemsHash, documentType)
-    })()
-  }
-
-  /**
    * Prune entries older than the specified number of days.
    */
   pruneOlderThan(days: number): number {

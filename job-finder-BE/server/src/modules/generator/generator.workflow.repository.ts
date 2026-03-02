@@ -171,18 +171,6 @@ export class GeneratorWorkflowRepository {
     return row ? this.mapRequest(row) : null
   }
 
-  listByStatus(status: GeneratorRequestRecord['status']): GeneratorRequestRecord[] {
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM generator_requests
-         WHERE status = ?
-         ORDER BY created_at ASC`
-      )
-      .all(status) as GeneratorRequestRow[]
-
-    return rows.map((row) => this.mapRequest(row))
-  }
-
   addArtifact(record: GeneratorArtifactRecord): GeneratorArtifactRecord {
     this.db
       .prepare(

@@ -8,9 +8,6 @@ export function cleanText(value?: string | null): string {
   return text
 }
 
-export const cleanArray = (items?: string[] | null): string[] =>
-  (items ?? []).map((item) => cleanText(item)).filter((item) => item !== '')
-
 /** Escape HTML special characters to prevent injection in text content. */
 export function escapeHtml(value: string): string {
   return value

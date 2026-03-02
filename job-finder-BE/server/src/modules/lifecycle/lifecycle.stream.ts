@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
 import { logger } from '../../logger'
-import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
+import { HEARTBEAT_INTERVAL_MS, initSseStream, safeBroadcast, type SseClient } from '../shared/sse'
 
 type LifecycleEventName = 'restarting' | 'ready' | 'draining.start' | 'draining.complete' | 'status'
 
@@ -40,9 +40,7 @@ export function broadcastLifecycleEvent(event: LifecycleEventName, data: Record<
   }
 
   const serialized = serializeEvent(payload)
-  for (const client of clients) {
-    client.res.write(serialized)
-  }
+  safeBroadcast(clients, serialized)
 }
 
 export function setLifecyclePhase(next: ServerPhase, data: Record<string, unknown> = {}) {
@@ -71,10 +69,6 @@ export function handleLifecycleEventsSse(req: Request, res: Response) {
     ts: new Date().toISOString(),
   }
   res.write(serializeEvent(snapshot))
-}
-
-export function getLifecyclePhase(): ServerPhase {
-  return phase
 }
 
 export function setReady(isReady: boolean, data: Record<string, unknown> = {}) {

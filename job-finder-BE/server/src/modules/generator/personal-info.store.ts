@@ -11,12 +11,6 @@ function isPersonalInfo(payload: unknown): payload is PersonalInfo {
   return typeof candidate.name === 'string' && typeof candidate.email === 'string'
 }
 
-function assertPersonalInfo(payload: Partial<PersonalInfo>): asserts payload is PersonalInfo {
-  if (!payload.name || !payload.email) {
-    throw new Error('Personal info must include name and email')
-  }
-}
-
 export class PersonalInfoStore {
   private repo = new ConfigRepository()
 
@@ -26,12 +20,5 @@ export class PersonalInfoStore {
       return null
     }
     return isPersonalInfo(record.payload) ? record.payload : null
-  }
-
-  async update(updates: Partial<PersonalInfo>): Promise<PersonalInfo> {
-    const existing = (await this.get()) ?? {}
-    const merged = { ...existing, ...updates }
-    assertPersonalInfo(merged)
-    return this.repo.upsert<PersonalInfo>(PERSONAL_INFO_ID, merged).payload
   }
 }

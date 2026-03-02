@@ -204,7 +204,7 @@ export function getTechCategory(canonical: string): string | null {
  * Resolves synonyms first, then looks up display name.
  * Unknown terms are title-cased as a best guess.
  */
-export function displayTech(tech: string): string {
+function displayTech(tech: string): string {
   const canonical = canonicalizeTech(tech)
   if (DISPLAY_NAMES[canonical]) return DISPLAY_NAMES[canonical]
   // Preserve original casing for unknown terms if it contains any uppercase letters

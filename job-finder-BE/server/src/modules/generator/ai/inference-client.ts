@@ -28,7 +28,7 @@ function getModelForTask(taskType: string): string {
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-export type AgentExecutionResult = {
+type AgentExecutionResult = {
   output: string
   agentId: string
   model: string | undefined
@@ -36,7 +36,7 @@ export type AgentExecutionResult = {
 
 export class InferenceError extends Error {}
 
-export class NoAgentsAvailableError extends Error {
+class NoAgentsAvailableError extends Error {
   constructor(
     message: string,
     readonly taskType: string,
@@ -58,18 +58,6 @@ export class InferenceClient {
     this.apiKey = process.env.LITELLM_MASTER_KEY || ''
     // LITELLM_TIMEOUT is in seconds (matching Python client); convert to ms
     this.timeoutMs = Number(process.env.LITELLM_TIMEOUT || '120') * 1000
-  }
-
-  /**
-   * Pre-check that LiteLLM proxy is reachable.
-   * Drop-in replacement for AgentManager.ensureAvailable().
-   */
-  ensureAvailable(_taskType: string): void {
-    // LiteLLM handles provider availability — if it's configured and running,
-    // we trust it to route requests. No pre-flight check needed at the proxy
-    // level (the actual call will surface errors).
-    //
-    // This is a no-op to maintain API compatibility.
   }
 
   /**
@@ -201,7 +189,8 @@ export class InferenceClient {
       })
 
       if (!response.ok || !response.body) {
-        throw new Error(`LiteLLM stream failed: HTTP ${response.status}`)
+        const body = await response.text().catch(() => '')
+        throw new InferenceError(`LiteLLM stream failed: HTTP ${response.status}: ${body.slice(0, 200)}`)
       }
 
       const reader = response.body.getReader()
@@ -227,14 +216,15 @@ export class InferenceClient {
             }
             const content = parsed.choices?.[0]?.delta?.content
             if (content) yield content
-          } catch {
-            // Skip malformed SSE chunks
+          } catch (parseErr) {
+            this.log.debug({ chunkLength: data.length, err: parseErr }, 'Skipping malformed SSE chunk')
           }
         }
       }
     } catch (err) {
+      if (err instanceof InferenceError) throw err
       if (err instanceof DOMException && err.name === 'AbortError') {
-        throw new Error('Chat stream timed out')
+        throw new InferenceError(`Chat stream timed out after ${this.timeoutMs / 1000} seconds`)
       }
       throw err
     } finally {

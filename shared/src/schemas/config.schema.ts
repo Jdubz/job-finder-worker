@@ -219,7 +219,8 @@ export const cronConfigSchema = z.object({
     scrape: cronJobScheduleSchema,
     maintenance: cronJobScheduleSchema,
     logrotate: cronJobScheduleSchema,
-    agentReset: cronJobScheduleSchema,
+    sessionCleanup: cronJobScheduleSchema,
+    agentReset: cronJobScheduleSchema.optional(),
   }),
 })
 

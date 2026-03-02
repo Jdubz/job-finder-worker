@@ -9,15 +9,16 @@ import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
 import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig } from '@shared/types'
 import { MaintenanceService } from '../modules/maintenance'
+import { UserRepository } from '../modules/users/user.repository'
 
-type CronJobKey = keyof CronConfig['jobs']
+type CronJobKey = keyof CronConfig['jobs'] & ('scrape' | 'maintenance' | 'logrotate' | 'sessionCleanup')
 
 const DEFAULT_CRON_CONFIG: CronConfig = {
   jobs: {
     scrape: { enabled: true, hours: [0, 6, 12, 18], lastRun: null },
     maintenance: { enabled: true, hours: [0], lastRun: null },
     logrotate: { enabled: true, hours: [0], lastRun: null },
-    agentReset: { enabled: true, hours: [0], lastRun: null }
+    sessionCleanup: { enabled: true, hours: [3], lastRun: null }
   }
 }
 
@@ -44,6 +45,14 @@ const getMaintenanceService = (() => {
   return () => {
     if (!svc) svc = new MaintenanceService()
     return svc
+  }
+})()
+
+const getUserRepo = (() => {
+  let repo: UserRepository | null = null
+  return () => {
+    if (!repo) repo = new UserRepository()
+    return repo
   }
 })()
 
@@ -179,17 +188,25 @@ export async function triggerLogRotation() {
   }
 }
 
-export async function triggerAgentReset(): Promise<{ success: boolean; message: string; error?: string }> {
-  logger.info({ at: utcNowIso() }, 'agentReset is deprecated (LiteLLM handles budgets); skipping')
-  return { success: true, message: 'deprecated' }
+export async function triggerSessionCleanup() {
+  try {
+    logger.info({ at: utcNowIso() }, 'Cron session cleanup starting')
+    const deleted = getUserRepo().cleanupExpiredSessions()
+    logger.info({ deleted, at: utcNowIso() }, 'Cron session cleanup completed')
+    return { success: true, deleted }
+  } catch (error) {
+    logger.error({ error, at: utcNowIso() }, 'Cron session cleanup failed')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 let schedulerStarted = false
+let tickTimer: ReturnType<typeof setTimeout> | null = null
 const lastRunHourKey: Record<CronJobKey, string | null> = {
   scrape: null,
   maintenance: null,
   logrotate: null,
-  agentReset: null
+  sessionCleanup: null
 }
 
 function getContainerTimezone(): string {
@@ -203,7 +220,12 @@ function normalizeHours(hours: number[]): number[] {
 
 function loadCronConfig(): CronConfig {
   const entry = getConfigRepo().get<CronConfig>('cron-config')
-  const payload = entry?.payload
+  const payload = entry?.payload as Record<string, any> | undefined
+
+  // Normalize legacy rows that may lack sessionCleanup before the type guard
+  if (payload?.jobs && !payload.jobs.sessionCleanup) {
+    payload.jobs.sessionCleanup = { ...DEFAULT_CRON_CONFIG.jobs.sessionCleanup }
+  }
 
   if (payload && isCronConfig(payload)) {
     return {
@@ -211,18 +233,18 @@ function loadCronConfig(): CronConfig {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
         maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
         logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) },
-        agentReset: { ...payload.jobs.agentReset, hours: normalizeHours(payload.jobs.agentReset.hours) }
+        sessionCleanup: { ...payload.jobs.sessionCleanup, hours: normalizeHours(payload.jobs.sessionCleanup.hours) }
       }
     }
   }
 
   // Seed defaults if missing or invalid
-  const defaults = {
+  const defaults: CronConfig = {
     jobs: {
       scrape: { ...DEFAULT_CRON_CONFIG.jobs.scrape, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.scrape.hours) },
       maintenance: { ...DEFAULT_CRON_CONFIG.jobs.maintenance, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.maintenance.hours) },
       logrotate: { ...DEFAULT_CRON_CONFIG.jobs.logrotate, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.logrotate.hours) },
-      agentReset: { ...DEFAULT_CRON_CONFIG.jobs.agentReset, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.agentReset.hours) }
+      sessionCleanup: { ...DEFAULT_CRON_CONFIG.jobs.sessionCleanup, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.sessionCleanup.hours) }
     }
   }
   persistCronConfig(defaults, 'system-bootstrap')
@@ -249,7 +271,7 @@ async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
     scrape: enqueueScrapeJob,
     maintenance: triggerMaintenance,
     logrotate: rotateLogs,
-    agentReset: triggerAgentReset
+    sessionCleanup: triggerSessionCleanup
   })
 }
 
@@ -303,20 +325,23 @@ async function schedulerTick() {
 }
 
 function scheduleNextTick() {
+  if (!schedulerStarted) return
   const now = Date.now()
   const delay = TICK_INTERVAL_MS - (now % TICK_INTERVAL_MS)
-  setTimeout(() => {
+  tickTimer = setTimeout(() => {
+    if (!schedulerStarted) return
     void schedulerTick().catch((error) => {
       logger.error({ error }, 'Cron scheduler tick failed')
     })
     scheduleNextTick()
   }, delay)
+  tickTimer.unref()
 }
 
 export function startCronScheduler() {
   // CRON_ENABLED controls whether the scheduler runs. Defaults to true in
   // production, false otherwise. Set CRON_ENABLED=true in dev/staging to
-  // enable cron jobs (e.g. agentReset) without changing NODE_ENV.
+  // enable cron jobs without changing NODE_ENV.
   const cronEnabled = env.CRON_ENABLED != null
     ? env.CRON_ENABLED === 'true'
     : env.NODE_ENV === 'production'
@@ -335,6 +360,14 @@ export function startCronScheduler() {
   scheduleNextTick()
 
   logger.info({ defaults: DEFAULT_CRON_CONFIG, timezone: getContainerTimezone() }, 'Cron scheduler started')
+}
+
+export function stopCronScheduler() {
+  if (tickTimer) {
+    clearTimeout(tickTimer)
+    tickTimer = null
+  }
+  schedulerStarted = false
 }
 
 // Test-only utilities (not used by runtime code)

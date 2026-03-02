@@ -29,13 +29,13 @@ import {
 } from "lucide-react"
 
 const REFRESH_INTERVAL_MS = 30000 // 30 seconds
-type CronJobKey = keyof CronConfig["jobs"]
+type CronJobKey = Exclude<keyof CronConfig["jobs"], "agentReset">
 
 const CRON_JOB_LABELS: Record<CronJobKey, string> = {
   scrape: "Scrape Jobs",
   maintenance: "Maintenance",
   logrotate: "Log Rotation",
-  agentReset: "Agent Reset",
+  sessionCleanup: "Session Cleanup",
 }
 
 function formatHoursInput(hours: number[]): string {
@@ -95,7 +95,7 @@ export function SystemHealthPage() {
               scrape: formatHoursInput(derivedConfig.jobs.scrape.hours),
               maintenance: formatHoursInput(derivedConfig.jobs.maintenance.hours),
               logrotate: formatHoursInput(derivedConfig.jobs.logrotate.hours),
-              agentReset: formatHoursInput(derivedConfig.jobs.agentReset.hours),
+              sessionCleanup: formatHoursInput(derivedConfig.jobs.sessionCleanup.hours),
             }
           : {}
       )
@@ -124,6 +124,7 @@ export function SystemHealthPage() {
       let result: CronTriggerResult
       if (type === "scrape") result = await queueClient.triggerCronScrape()
       else if (type === "maintenance") result = await queueClient.triggerCronMaintenance()
+      else if (type === "sessionCleanup") result = await queueClient.triggerCronSessionCleanup()
       else result = await queueClient.triggerCronLogrotate()
 
       if (result.success) {
@@ -305,8 +306,8 @@ export function SystemHealthPage() {
                 <div className="border-t pt-4 space-y-4">
                   {cronConfig && (
                     <div className="grid gap-4">
-                      {(Object.keys(cronConfig.jobs) as CronJobKey[]).map((key) => {
-                        const job = cronConfig.jobs[key]
+                      {(Object.keys(cronConfig.jobs) as CronJobKey[]).filter((k) => k in CRON_JOB_LABELS).map((key) => {
+                        const job = cronConfig.jobs[key]!
                         return (
                           <div key={key} className="border rounded-lg p-4 space-y-3">
                             <div className="flex items-center justify-between">

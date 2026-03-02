@@ -94,15 +94,14 @@ export const apiErrorHandler = (err: unknown, req: Request, res: Response, _next
   const status = normalized.status || definition.httpStatus
 
   const response = failure(normalized.code ?? ApiErrorCode.INTERNAL_ERROR, normalized.message ?? definition.defaultMessage, {
-    ...(normalized.details ?? {}),
-    path: req.path
+    ...(normalized.details ?? {})
   })
 
   if (process.env.NODE_ENV !== 'production' && err instanceof Error && err.stack) {
     response.error.stack = err.stack
   }
 
-  const logLevel = status >= 500 ? 'error' : 'warn'
+  const logLevel = status >= 500 ? 'error' : status === 404 ? 'info' : 'warn'
   logger[logLevel]({ err, code: normalized.code, status, path: req.path }, 'API error response')
 
   if (res.headersSent) return

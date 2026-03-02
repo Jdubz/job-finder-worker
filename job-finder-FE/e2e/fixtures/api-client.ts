@@ -312,7 +312,7 @@ export async function seedBaseConfigs(request: APIRequestContext) {
       scrape: { enabled: true, hours: [0], lastRun: null },
       maintenance: { enabled: true, hours: [0], lastRun: null },
       logrotate: { enabled: true, hours: [0], lastRun: null },
-      agentReset: { enabled: true, hours: [0], lastRun: null },
+      sessionCleanup: { enabled: true, hours: [3], lastRun: null },
     },
   })
 

@@ -44,3 +44,19 @@ export function initSseStream(
 
   return client
 }
+
+/**
+ * Broadcast a serialized SSE payload to all connected clients.
+ * Wraps each write in try/catch — dead clients are pruned from the Set.
+ */
+export function safeBroadcast(clients: Set<SseClient>, serialized: string): void {
+  for (const client of clients) {
+    try {
+      client.res.write(serialized)
+    } catch {
+      // Client disconnected — clean up
+      if (client.heartbeat) clearInterval(client.heartbeat)
+      clients.delete(client)
+    }
+  }
+}

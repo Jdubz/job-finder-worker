@@ -131,13 +131,6 @@ export class CompanyRepository {
     return row ? buildCompany(row) : null
   }
 
-  getByName(name: string): Company | null {
-    const row = this.db.prepare('SELECT * FROM companies WHERE name_lower = ?').get(name.toLowerCase()) as
-      | CompanyRow
-      | undefined
-    return row ? buildCompany(row) : null
-  }
-
   create(input: CreateCompanyInput): Company {
     const id = input.id ?? randomUUID()
     const now = new Date().toISOString()

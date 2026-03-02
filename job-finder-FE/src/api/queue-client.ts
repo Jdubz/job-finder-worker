@@ -175,6 +175,11 @@ export class QueueClient extends BaseApiClient {
     return response.data
   }
 
+  async triggerCronSessionCleanup(): Promise<CronTriggerResult> {
+    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(`/queue/cron/trigger/session-cleanup`)
+    return response.data
+  }
+
   async getWorkerHealth(): Promise<WorkerHealth> {
     const response = await this.get<ApiSuccessResponse<WorkerHealth>>(`/queue/worker/health`)
     return response.data
@@ -201,7 +206,7 @@ export interface CronStatus {
     scrape: CronJobStatus
     maintenance: CronJobStatus
     logrotate: CronJobStatus
-    agentReset: CronJobStatus
+    sessionCleanup: CronJobStatus
   }
   workerMaintenanceUrl: string
   logDir: string

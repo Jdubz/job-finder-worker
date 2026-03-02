@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobMatch, JobMatchWithListing, TimestampLike, JobMatchStats } from '@shared/types'
+import type { JobMatch, JobMatchWithListing, JobListingRecord, JobListingStatus, Company, TimestampLike, JobMatchStats } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 import { JobListingRepository } from '../job-listings/job-listing.repository'
 import { CompanyRepository } from '../companies/company.repository'
@@ -62,6 +62,97 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   status: (row.status as JobMatch['status']) ?? 'active',
   ignoredAt: row.ignored_at ? parseTimestamp(row.ignored_at) : undefined
 })
+
+/** Raw row shape returned by the JOIN query in listWithListings */
+type JoinedRow = JobMatchRow & {
+  // job_listings columns (prefixed l_)
+  l_id: string
+  l_url: string
+  l_source_id: string | null
+  l_company_id: string | null
+  l_title: string
+  l_company_name: string
+  l_location: string | null
+  l_salary_range: string | null
+  l_description: string
+  l_posted_date: string | null
+  l_status: string
+  l_filter_result: string | null
+  l_match_score: number | null
+  l_apply_url: string | null
+  l_content_fingerprint: string | null
+  l_created_at: string
+  l_updated_at: string
+  // companies columns (prefixed c_) — all nullable due to LEFT JOIN
+  c_id: string | null
+  c_name: string | null
+  c_website: string | null
+  c_about: string | null
+  c_culture: string | null
+  c_mission: string | null
+  c_company_size_category: string | null
+  c_industry: string | null
+  c_headquarters_location: string | null
+  c_has_portland_office: number | null
+  c_tech_stack: string | null
+  c_created_at: string | null
+  c_updated_at: string | null
+}
+
+const parseJsonSafe = <T = Record<string, unknown>>(value: string | null): T | null => {
+  if (!value) return null
+  try { return JSON.parse(value) as T } catch { return null }
+}
+
+const parseJsonArraySafe = (value: string | null): string[] => {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? (parsed as string[]) : []
+  } catch {
+    return value.split(',').map((s) => s.trim()).filter(Boolean)
+  }
+}
+
+function buildListingFromRow(row: JoinedRow): JobListingRecord {
+  return {
+    id: row.l_id,
+    url: row.l_url,
+    sourceId: row.l_source_id,
+    companyId: row.l_company_id,
+    title: row.l_title,
+    companyName: row.l_company_name,
+    location: row.l_location,
+    salaryRange: row.l_salary_range,
+    description: row.l_description,
+    postedDate: row.l_posted_date,
+    status: row.l_status as JobListingStatus,
+    filterResult: parseJsonSafe(row.l_filter_result),
+    matchScore: row.l_match_score,
+    applyUrl: row.l_apply_url,
+    contentFingerprint: row.l_content_fingerprint,
+    createdAt: parseTimestamp(row.l_created_at),
+    updatedAt: parseTimestamp(row.l_updated_at)
+  }
+}
+
+function buildCompanyFromRow(row: JoinedRow): Company | null {
+  if (!row.c_id || !row.c_name) return null
+  return {
+    id: row.c_id,
+    name: row.c_name,
+    website: row.c_website ?? '',
+    about: row.c_about ?? null,
+    culture: row.c_culture ?? null,
+    mission: row.c_mission ?? null,
+    industry: row.c_industry ?? null,
+    headquartersLocation: row.c_headquarters_location ?? null,
+    companySizeCategory: (row.c_company_size_category as Company['companySizeCategory']) ?? null,
+    techStack: parseJsonArraySafe(row.c_tech_stack),
+    createdAt: parseTimestamp(row.c_created_at),
+    updatedAt: parseTimestamp(row.c_updated_at)
+  }
+}
 
 export type CreateJobMatchInput = Omit<JobMatch, 'id'> & { id?: string }
 
@@ -156,22 +247,97 @@ export class JobMatchRepository {
 
   /**
    * List job matches with their associated listing and company data.
-   * This is the preferred method for API responses.
+   * Uses a single JOIN query instead of N+1 individual lookups.
    */
   listWithListings(options: JobMatchListOptions = {}): JobMatchWithListing[] {
-    const matches = this.list(options)
-    return matches.map((match) => {
-      const listing = this.listingRepo.getById(match.jobListingId)
-      if (!listing) {
-        throw new Error(`Job listing ${match.jobListingId} not found for match ${match.id}`)
-      }
-      const company = listing.companyId ? this.companyRepo.getById(listing.companyId) : null
-      return {
-        ...match,
-        listing,
-        company
-      }
-    })
+    const {
+      limit = 50,
+      offset = 0,
+      minScore,
+      maxScore,
+      jobListingId,
+      sortBy = 'updated',
+      sortOrder = 'desc',
+      status
+    } = options
+
+    const conditions: string[] = []
+    const params: unknown[] = []
+
+    if (typeof minScore === 'number') {
+      conditions.push('m.match_score >= ?')
+      params.push(minScore)
+    }
+    if (typeof maxScore === 'number') {
+      conditions.push('m.match_score <= ?')
+      params.push(maxScore)
+    }
+    if (jobListingId) {
+      conditions.push('m.job_listing_id = ?')
+      params.push(jobListingId)
+    }
+    if (status && status !== 'all') {
+      conditions.push('m.status = ?')
+      params.push(status)
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const sortColumnMap: Record<string, string> = {
+      score: 'm.match_score',
+      date: 'm.created_at',
+      updated: 'm.updated_at'
+    }
+    const orderColumn = sortColumnMap[sortBy] ?? 'm.updated_at'
+    const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+
+    const sql = `
+      SELECT
+        m.*,
+        l.id          AS l_id,
+        l.url         AS l_url,
+        l.source_id   AS l_source_id,
+        l.company_id  AS l_company_id,
+        l.title       AS l_title,
+        l.company_name AS l_company_name,
+        l.location    AS l_location,
+        l.salary_range AS l_salary_range,
+        l.description AS l_description,
+        l.posted_date AS l_posted_date,
+        l.status      AS l_status,
+        l.filter_result AS l_filter_result,
+        l.match_score AS l_match_score,
+        l.apply_url   AS l_apply_url,
+        l.content_fingerprint AS l_content_fingerprint,
+        l.created_at  AS l_created_at,
+        l.updated_at  AS l_updated_at,
+        c.id          AS c_id,
+        c.name        AS c_name,
+        c.website     AS c_website,
+        c.about       AS c_about,
+        c.culture     AS c_culture,
+        c.mission     AS c_mission,
+        c.company_size_category AS c_company_size_category,
+        c.industry    AS c_industry,
+        c.headquarters_location AS c_headquarters_location,
+        c.has_portland_office AS c_has_portland_office,
+        c.tech_stack  AS c_tech_stack,
+        c.created_at  AS c_created_at,
+        c.updated_at  AS c_updated_at
+      FROM job_matches m
+      INNER JOIN job_listings l ON l.id = m.job_listing_id
+      LEFT JOIN companies c ON c.id = l.company_id
+      ${whereClause}
+      ORDER BY ${orderColumn} ${orderDirection}
+      LIMIT ? OFFSET ?
+    `
+
+    const rows = this.db.prepare(sql).all(...params, limit, offset) as JoinedRow[]
+
+    return rows.map((row) => ({
+      ...buildJobMatch(row),
+      listing: buildListingFromRow(row),
+      company: buildCompanyFromRow(row)
+    }))
   }
 
   getById(id: string): JobMatch | null {

@@ -34,7 +34,7 @@ import {
   getWorkerHealth,
   getWorkerCliHealth,
   triggerLogRotation,
-  triggerAgentReset
+  triggerSessionCleanup
 } from '../../scheduler/cron'
 import { getLocalCliHealth } from '../../services/cli-health.service'
 
@@ -443,10 +443,10 @@ export function buildJobQueueRouter() {
   )
 
   router.post(
-    '/cron/trigger/agent-reset',
+    '/cron/trigger/session-cleanup',
     requireRole('admin'),
     asyncHandler(async (_req, res) => {
-      const result = await triggerAgentReset()
+      const result = await triggerSessionCleanup()
       if (result.success) {
         res.json(success(result))
       } else {
