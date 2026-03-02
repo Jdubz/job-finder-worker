@@ -64,13 +64,9 @@ _DESCRIPTION_URL_PATTERNS = [
     # "To apply: https://..."
     re.compile(r"(?:^|\n)\s*To\s+apply[:\s]+\s*(https?://\S+)", re.IGNORECASE),
     # "Apply at/here/now/via: https://..."
-    re.compile(
-        r"(?:^|\n)\s*Apply\s+(?:at|here|now|via)[:\s]+\s*(https?://\S+)", re.IGNORECASE
-    ),
+    re.compile(r"(?:^|\n)\s*Apply\s+(?:at|here|now|via)[:\s]+\s*(https?://\S+)", re.IGNORECASE),
     # "Application URL/link: https://..."
-    re.compile(
-        r"(?:^|\n)\s*Application\s+(?:URL|link)[:\s]+\s*(https?://\S+)", re.IGNORECASE
-    ),
+    re.compile(r"(?:^|\n)\s*Application\s+(?:URL|link)[:\s]+\s*(https?://\S+)", re.IGNORECASE),
 ]
 
 
@@ -292,9 +288,7 @@ def resolve_apply_url(
         description = job.get("description", "")
         desc_url = _extract_apply_url_from_description(description)
         if desc_url:
-            return ApplyUrlResult(
-                url=desc_url, method="description_extracted", confidence="high"
-            )
+            return ApplyUrlResult(url=desc_url, method="description_extracted", confidence="high")
 
     # Strategy 3: Web search + heuristic scoring (aggregator only, 1 API call)
     if is_aggregator and search_client:

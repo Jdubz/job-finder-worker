@@ -184,10 +184,12 @@ def run(db_path: str, dry_run: bool = True, use_search: bool = False) -> None:
     ]
     if use_search:
         parts.append(f"{updated_from_search} from search")
-    parts.extend([
-        f"{skipped_has_apply} already had apply_url",
-        f"{skipped_no_url} unresolved",
-    ])
+    parts.extend(
+        [
+            f"{skipped_has_apply} already had apply_url",
+            f"{skipped_no_url} unresolved",
+        ]
+    )
 
     logger.info("Results: %s", ", ".join(parts))
     conn.close()

@@ -16,7 +16,6 @@ from job_finder.utils.apply_url_resolver import (
     resolve_apply_url,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -105,10 +104,7 @@ class TestExtractApplyUrlFromDescription:
 
     def test_apply_at_pattern(self):
         desc = "Description\nApply at: https://jobs.lever.co/acme/abc-123"
-        assert (
-            _extract_apply_url_from_description(desc)
-            == "https://jobs.lever.co/acme/abc-123"
-        )
+        assert _extract_apply_url_from_description(desc) == "https://jobs.lever.co/acme/abc-123"
 
     def test_apply_here_pattern(self):
         desc = "Description\nApply here: https://acme.com/apply"
@@ -297,13 +293,15 @@ class TestResolveApplyUrl:
 
     def test_description_extraction_before_search(self):
         """Description extraction should be tried before search for aggregator jobs."""
-        search_client = _make_search_client([
-            FakeSearchResult(
-                url="https://boards.greenhouse.io/acme/jobs/999",
-                title="Engineer at Acme",
-                snippet="Apply",
-            ),
-        ])
+        search_client = _make_search_client(
+            [
+                FakeSearchResult(
+                    url="https://boards.greenhouse.io/acme/jobs/999",
+                    title="Engineer at Acme",
+                    snippet="Apply",
+                ),
+            ]
+        )
 
         result = resolve_apply_url(
             job_url="https://weworkremotely.com/remote-jobs/acme-eng",
@@ -322,13 +320,15 @@ class TestResolveApplyUrl:
 
     def test_search_resolution(self):
         """Search should be used when ATS and description fail."""
-        search_client = _make_search_client([
-            FakeSearchResult(
-                url="https://boards.greenhouse.io/acme/jobs/456",
-                title="Software Engineer at Acme - Apply",
-                snippet="Apply for this role at Acme",
-            ),
-        ])
+        search_client = _make_search_client(
+            [
+                FakeSearchResult(
+                    url="https://boards.greenhouse.io/acme/jobs/456",
+                    title="Software Engineer at Acme - Apply",
+                    snippet="Apply for this role at Acme",
+                ),
+            ]
+        )
 
         result = resolve_apply_url(
             job_url="https://weworkremotely.com/remote-jobs/acme-eng",
@@ -400,13 +400,15 @@ class TestResolveApplyUrl:
 
     def test_non_aggregator_skips_description_and_search(self):
         """Non-aggregator jobs should only try ATS derivation."""
-        search_client = _make_search_client([
-            FakeSearchResult(
-                url="https://boards.greenhouse.io/acme/jobs/456",
-                title="Engineer at Acme",
-                snippet="Apply",
-            ),
-        ])
+        search_client = _make_search_client(
+            [
+                FakeSearchResult(
+                    url="https://boards.greenhouse.io/acme/jobs/456",
+                    title="Engineer at Acme",
+                    snippet="Apply",
+                ),
+            ]
+        )
 
         result = resolve_apply_url(
             job_url="https://acme.com/careers/engineer",
@@ -446,23 +448,25 @@ class TestResolveApplyUrl:
 
     def test_search_picks_highest_scored_result(self):
         """Search should return the highest-scored result."""
-        search_client = _make_search_client([
-            FakeSearchResult(
-                url="https://acme.com/about",
-                title="About Acme",
-                snippet="Learn about us",
-            ),
-            FakeSearchResult(
-                url="https://boards.greenhouse.io/acme/jobs/789",
-                title="Software Engineer at Acme - Apply Now",
-                snippet="Apply for this role",
-            ),
-            FakeSearchResult(
-                url="https://acme.com/blog/hiring",
-                title="We're hiring",
-                snippet="Read about our team",
-            ),
-        ])
+        search_client = _make_search_client(
+            [
+                FakeSearchResult(
+                    url="https://acme.com/about",
+                    title="About Acme",
+                    snippet="Learn about us",
+                ),
+                FakeSearchResult(
+                    url="https://boards.greenhouse.io/acme/jobs/789",
+                    title="Software Engineer at Acme - Apply Now",
+                    snippet="Apply for this role",
+                ),
+                FakeSearchResult(
+                    url="https://acme.com/blog/hiring",
+                    title="We're hiring",
+                    snippet="Read about our team",
+                ),
+            ]
+        )
 
         result = resolve_apply_url(
             job_url="https://remotive.com/remote-jobs/acme-engineer",
@@ -479,18 +483,20 @@ class TestResolveApplyUrl:
 
     def test_search_excludes_aggregator_results(self):
         """Search results from aggregator domains should be excluded."""
-        search_client = _make_search_client([
-            FakeSearchResult(
-                url="https://weworkremotely.com/remote-jobs/acme-eng",
-                title="Engineer at Acme - Apply",
-                snippet="Apply now",
-            ),
-            FakeSearchResult(
-                url="https://acme.com/careers/apply",
-                title="Apply at Acme",
-                snippet="Submit your application",
-            ),
-        ])
+        search_client = _make_search_client(
+            [
+                FakeSearchResult(
+                    url="https://weworkremotely.com/remote-jobs/acme-eng",
+                    title="Engineer at Acme - Apply",
+                    snippet="Apply now",
+                ),
+                FakeSearchResult(
+                    url="https://acme.com/careers/apply",
+                    title="Apply at Acme",
+                    snippet="Submit your application",
+                ),
+            ]
+        )
 
         result = resolve_apply_url(
             job_url="https://weworkremotely.com/remote-jobs/acme-eng",
