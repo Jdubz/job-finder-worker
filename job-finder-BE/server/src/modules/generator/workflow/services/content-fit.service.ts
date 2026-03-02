@@ -125,8 +125,9 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     mainLines += eduCount * LAYOUT.EDUCATION_ENTRY_LINES
   }
 
-  // Calculate overflow
-  const overflow = mainLines - LAYOUT.MAX_LINES
+  // Round up fractional lines conservatively before computing overflow
+  const roundedMainLines = Math.ceil(mainLines)
+  const overflow = roundedMainLines - LAYOUT.MAX_LINES
 
   // Suggestions
   if (overflow > 0) {
@@ -148,10 +149,10 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   }
 
   return {
-    mainColumnLines: Math.round(mainLines),
+    mainColumnLines: roundedMainLines,
     sidebarLines: 0,
     fits: overflow <= 0,
-    overflow: Math.round(overflow),
+    overflow,
     suggestions
   }
 }

@@ -163,9 +163,20 @@ class ScraperIntake:
                 host = (urlparse(normalized_url).hostname or "").lower()
                 is_aggregator = any(agg in host for agg in AGGREGATOR_HOST_SUBSTRINGS)
 
+                def _is_valid_apply_url(url: str) -> bool:
+                    """Validate a candidate apply_url has an HTTP(S) scheme and isn't an aggregator."""
+                    parsed = urlparse(url)
+                    if parsed.scheme not in ("http", "https"):
+                        return False
+                    url_host = (parsed.hostname or "").lower()
+                    if any(agg in url_host for agg in AGGREGATOR_HOST_SUBSTRINGS):
+                        return False
+                    return bool(url_host)
+
                 if is_aggregator and job.get("company_website"):
-                    # Use company_website extracted by the scraper.
-                    apply_url = job["company_website"]
+                    candidate = job["company_website"]
+                    if _is_valid_apply_url(candidate):
+                        apply_url = candidate
 
                 if is_aggregator and not apply_url and self.companies_manager:
                     # Fallback: look up the company's website from the DB.
@@ -173,12 +184,14 @@ class ScraperIntake:
                     if company_name:
                         company = self.companies_manager.get_company(company_name)
                         if company and company.get("website"):
-                            apply_url = company["website"]
-                            logger.debug(
-                                "Resolved apply_url from companies table for %s: %s",
-                                company_name,
-                                apply_url,
-                            )
+                            candidate = company["website"]
+                            if _is_valid_apply_url(candidate):
+                                apply_url = candidate
+                                logger.debug(
+                                    "Resolved apply_url from companies table for %s: %s",
+                                    company_name,
+                                    apply_url,
+                                )
             listing_id, created = self.job_listing_storage.get_or_create_listing(
                 url=normalized_url,
                 title=job.get("title", ""),

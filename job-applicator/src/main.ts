@@ -772,7 +772,6 @@ async function findCdpFrameIdForUrl(debugger_: Electron.Debugger, frameUrl: stri
 // Used when URL-based frame matching fails to locate the file input.
 async function querySelectorInAllFrames(
   debugger_: Electron.Debugger,
-  mainDocNodeId: number,
   selector: string
 ): Promise<number> {
   try {
@@ -895,7 +894,7 @@ async function setFileInputFiles(
 
     if (!nodeId) {
       // Fallback: walk all CDP frames and try querySelector in each
-      nodeId = await querySelectorInAllFrames(debugger_, queryRootNodeId, selector)
+      nodeId = await querySelectorInAllFrames(debugger_, selector)
     }
 
     if (!nodeId) {
@@ -1054,24 +1053,20 @@ ipcMain.handle(
 
       const targetType = options?.type || "resume"
 
-      // Launch detection and download in parallel to shrink the timing window
-      // between detection and the CDP querySelector call
-      const [found, downloadedPath] = await Promise.all([
-        findFileInputAcrossFrames<string>(
-          browserView!.webContents,
-          buildFileInputDetectionScript(targetType)
-        ),
-        options?.documentUrl ? downloadDocument(options.documentUrl) : Promise.resolve(null),
-      ])
+      // Detect file input first — only download the document if we find one
+      const found = await findFileInputAcrossFrames<string>(
+        browserView!.webContents,
+        buildFileInputDetectionScript(targetType)
+      )
 
       if (!found?.result) {
         return { success: false, message: "No file input found on page" }
       }
-      if (!downloadedPath) {
+      if (!options?.documentUrl) {
         return { success: false, message: "No document URL provided" }
       }
 
-      resolvedPath = downloadedPath
+      resolvedPath = await downloadDocument(options.documentUrl)
       const fileInputSelector = found.result
       const frameUrl = found.frameUrl
       logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
@@ -1837,10 +1832,15 @@ ipcMain.handle(
         if (scanResult.success && scanResult.data) {
           const data = scanResult.data as { fields?: Array<Record<string, unknown>> }
           if (data.fields && Array.isArray(data.fields) && data.fields.length > 0) {
-            formScan = parseFormScanResult(data.fields)
+            const parsed = parseFormScanResult(data.fields)
             logger.info(
-              `[FillForm] Pre-scan: ${formScan.totalFields} fields (${formScan.filledFields.length} filled, ${formScan.emptyFields.length} empty, ratio=${(formScan.filledRatio * 100).toFixed(0)}%, targeted=${formScan.isTargetedMode})`
+              `[FillForm] Pre-scan: ${parsed.totalFields} fields (${parsed.filledFields.length} filled, ${parsed.emptyFields.length} empty, ratio=${(parsed.filledRatio * 100).toFixed(0)}%, targeted=${parsed.isTargetedMode})`
             )
+            // Only pass formScan to the prompt when targeted mode is active
+            // to avoid inflating prompt size with large field lists
+            if (parsed.isTargetedMode) {
+              formScan = parsed
+            }
           } else {
             logger.info(`[FillForm] Pre-scan: no countable fields found (embedded form or empty page)`)
           }
