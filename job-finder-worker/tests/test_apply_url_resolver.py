@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from job_finder.utils.apply_url_resolver import (
-    ApplyUrlResult,
     _company_name_slug,
     _extract_apply_url_from_description,
     _is_valid_apply_url,

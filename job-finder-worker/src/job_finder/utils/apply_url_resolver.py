@@ -19,7 +19,6 @@ from urllib.parse import urlparse
 from job_finder.utils.url_utils import (
     AGGREGATOR_HOST_SUBSTRINGS,
     derive_apply_url,
-    get_root_domain,
 )
 
 logger = logging.getLogger(__name__)
