@@ -1,24 +1,25 @@
 """
 Backfill apply_url for aggregator listings (WeWorkRemotely, Remotive, etc.).
 
-Two-stage resolution:
-    1. Extract company URL from the description text
-       (e.g. ``URL: https://company.com`` or ``To apply: https://…``)
-    2. Fall back to the company website stored in the ``companies`` table
-       (matched via ``company_id`` on the listing)
+Uses the multi-strategy apply URL resolver:
+    1. ATS derivation (Greenhouse, Lever, etc.)
+    2. Extract company URL from the description text
+    3. Web search + heuristic scoring (opt-in via ``--use-search``)
+    4. Fall back to the company website stored in the ``companies`` table
 
 Usage:
     python -m job_finder.migrations.backfill_wwr_apply_urls /path/to/database.db --dry-run
+    python -m job_finder.migrations.backfill_wwr_apply_urls /path/to/database.db --use-search
     python -m job_finder.migrations.backfill_wwr_apply_urls /path/to/database.db
 """
 
 import logging
-import re
 import sqlite3
 import sys
 from typing import Dict, Optional
 from urllib.parse import urlparse
 
+from job_finder.utils.apply_url_resolver import resolve_apply_url
 from job_finder.utils.url_utils import AGGREGATOR_HOST_SUBSTRINGS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -40,33 +41,6 @@ def _validate_non_aggregator(url: str) -> Optional[str]:
     return None
 
 
-def _extract_company_url(description: str) -> Optional[str]:
-    """Extract company website from a plain-text aggregator description.
-
-    Checks two patterns in order:
-        1. ``URL: https://company.com`` (most common in WWR descriptions)
-        2. ``To apply: https://company.com/careers``
-
-    Returns None if neither pattern matches or the URL is an aggregator link.
-    """
-    if not description:
-        return None
-
-    match = re.search(r"(?:^|\n)\s*URL:\s*(https?://\S+)", description, re.IGNORECASE)
-    if match:
-        result = _validate_non_aggregator(match.group(1))
-        if result:
-            return result
-
-    match = re.search(r"(?:^|\n)\s*To apply:\s*(https?://\S+)", description, re.IGNORECASE)
-    if match:
-        result = _validate_non_aggregator(match.group(1))
-        if result:
-            return result
-
-    return None
-
-
 def _load_company_websites(conn: sqlite3.Connection) -> Dict[str, str]:
     """Build a {company_id: website} map for companies with a non-empty website."""
     rows = conn.execute(
@@ -75,7 +49,22 @@ def _load_company_websites(conn: sqlite3.Connection) -> Dict[str, str]:
     return {r["id"]: r["website"] for r in rows}
 
 
-def run(db_path: str, dry_run: bool = True) -> None:
+class _BackfillCompaniesManager:
+    """Lightweight adapter to provide a companies_manager-like interface for the resolver."""
+
+    def __init__(self, company_websites: Dict[str, str], company_id: Optional[str]):
+        self._company_websites = company_websites
+        self._company_id = company_id
+
+    def get_company(self, name: str) -> Optional[Dict]:
+        if self._company_id:
+            website = self._company_websites.get(self._company_id)
+            if website:
+                return {"id": self._company_id, "website": website}
+        return None
+
+
+def run(db_path: str, dry_run: bool = True, use_search: bool = False) -> None:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -107,7 +96,7 @@ def run(db_path: str, dry_run: bool = True) -> None:
     placeholders = ",".join("?" * len(source_ids))
     rows = conn.execute(
         f"""
-        SELECT id, url, description, apply_url, company_id, company_name
+        SELECT id, url, title, description, apply_url, company_id, company_name
         FROM job_listings
         WHERE source_id IN ({placeholders})
         """,
@@ -119,8 +108,23 @@ def run(db_path: str, dry_run: bool = True) -> None:
     # Pre-load company websites for the DB-fallback stage
     company_websites = _load_company_websites(conn)
 
+    # Initialize search client only if requested
+    search_client = None
+    if use_search:
+        try:
+            from job_finder.ai.search_client import get_search_client
+
+            search_client = get_search_client()
+            if search_client:
+                logger.info("Search-based resolution enabled")
+            else:
+                logger.warning("--use-search requested but no search API keys configured")
+        except Exception as e:
+            logger.warning("Failed to initialize search client: %s", e)
+
     updated = 0
     updated_from_db = 0
+    updated_from_search = 0
     skipped_has_apply = 0
     skipped_no_url = 0
 
@@ -129,51 +133,74 @@ def run(db_path: str, dry_run: bool = True) -> None:
             skipped_has_apply += 1
             continue
 
-        # Stage 1: extract from description text
-        company_url = _extract_company_url(row["description"])
+        # Build a lightweight companies_manager for this row
+        cm = _BackfillCompaniesManager(company_websites, row["company_id"])
 
-        # Stage 2: fall back to company website from companies table
-        if not company_url and row["company_id"]:
-            website = company_websites.get(row["company_id"])
-            if website:
-                company_url = _validate_non_aggregator(website)
-                if company_url:
-                    updated_from_db += 1
+        result = resolve_apply_url(
+            job_url=row["url"],
+            job={
+                "title": row["title"] or "",
+                "company": row["company_name"] or "",
+                "description": row["description"] or "",
+                "company_website": "",  # Let the resolver use companies_manager
+            },
+            search_client=search_client,
+            companies_manager=cm,
+            is_aggregator=True,
+        )
 
-        if not company_url:
+        if not result.url:
             skipped_no_url += 1
-            logger.debug("No company URL found for %s", row["url"])
+            logger.debug("No apply URL found for %s", row["url"])
             continue
+
+        # Track resolution method for stats
+        if result.method == "company_fallback":
+            updated_from_db += 1
+        elif result.method == "search_resolved":
+            updated_from_search += 1
 
         updated += 1
         if dry_run:
-            logger.info("[DRY RUN] Would set apply_url=%s for %s", company_url, row["url"])
+            logger.info(
+                "[DRY RUN] Would set apply_url=%s (method=%s, confidence=%s) for %s",
+                result.url,
+                result.method,
+                result.confidence,
+                row["url"],
+            )
         else:
             conn.execute(
                 "UPDATE job_listings SET apply_url = ? WHERE id = ?",
-                (company_url, row["id"]),
+                (result.url, row["id"]),
             )
 
     if not dry_run and updated > 0:
         conn.commit()
 
-    logger.info(
-        "Results: %d updated (%d from companies table), %d already had apply_url, %d unresolved",
-        updated,
-        updated_from_db,
-        skipped_has_apply,
-        skipped_no_url,
-    )
+    parts = [
+        f"{updated} updated",
+        f"{updated_from_db} from companies table",
+    ]
+    if use_search:
+        parts.append(f"{updated_from_search} from search")
+    parts.extend([
+        f"{skipped_has_apply} already had apply_url",
+        f"{skipped_no_url} unresolved",
+    ])
+
+    logger.info("Results: %s", ", ".join(parts))
     conn.close()
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(
-            f"Usage: python -m job_finder.migrations.backfill_wwr_apply_urls <db_path> [--dry-run]"
+            "Usage: python -m job_finder.migrations.backfill_wwr_apply_urls <db_path> [--dry-run] [--use-search]"
         )
         sys.exit(1)
 
     db = sys.argv[1]
     dry = "--dry-run" in sys.argv
-    run(db, dry_run=dry)
+    search = "--use-search" in sys.argv
+    run(db, dry_run=dry, use_search=search)
