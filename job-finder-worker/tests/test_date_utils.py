@@ -74,5 +74,3 @@ class TestParseJobDate:
         result = parse_job_date("2000-01-01T00:00:00Z")
         assert result is not None
         assert result.year == 2000
-
-

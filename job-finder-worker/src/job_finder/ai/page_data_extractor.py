@@ -114,7 +114,13 @@ class PageDataExtractor:
             addrinfo = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
             for _family, _type, _proto, _canonname, sockaddr in addrinfo:
                 ip = ipaddress.ip_address(sockaddr[0])
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_unspecified
+                ):
                     raise ValueError(f"URL resolves to blocked IP range: {hostname} -> {ip}")
         except socket.gaierror:
             raise ValueError(f"DNS resolution failed for hostname: {hostname}")

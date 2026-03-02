@@ -72,7 +72,11 @@ class InferenceClient:
         """
         self._base_url = base_url or os.getenv("LITELLM_BASE_URL", _DEFAULT_BASE_URL)
         self._api_key = api_key or os.getenv("LITELLM_MASTER_KEY", "")
-        self._timeout = timeout if timeout is not None else int(os.getenv("LITELLM_TIMEOUT", str(_DEFAULT_TIMEOUT)))
+        self._timeout = (
+            timeout
+            if timeout is not None
+            else int(os.getenv("LITELLM_TIMEOUT", str(_DEFAULT_TIMEOUT)))
+        )
 
         self._client = OpenAI(
             base_url=f"{self._base_url.rstrip('/')}/v1",

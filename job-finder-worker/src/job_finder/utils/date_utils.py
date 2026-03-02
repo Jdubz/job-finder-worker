@@ -89,5 +89,3 @@ def parse_job_date(date_string: Optional[str]) -> Optional[datetime]:
     except (ValueError, TypeError) as e:
         logger.debug(f"Failed to parse date '{date_string}': {str(e)}")
         return None
-
-

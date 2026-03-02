@@ -166,5 +166,3 @@ class TestMatcherPromptPair:
         system, _ = JobMatchPrompts.analyze_job_match(self._make_profile(), self._make_job())
         assert "Acme Corp" not in system
         assert "Build scalable systems" not in system
-
-

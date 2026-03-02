@@ -116,4 +116,3 @@ class TitleFilter:
                 )
 
         return TitleFilterResult(passed=True)
-

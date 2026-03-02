@@ -168,7 +168,9 @@ class NoAgentsAvailableError(AIProviderError):
 
     error_category = ErrorCategory.RESOURCE
 
-    def __init__(self, message: str, task_type: str = "unknown", tried_agents: Optional[List[str]] = None):
+    def __init__(
+        self, message: str, task_type: str = "unknown", tried_agents: Optional[List[str]] = None
+    ):
         self.task_type = task_type
         self.tried_agents = tried_agents or []
         super().__init__(message)
@@ -414,7 +416,11 @@ class ScrapeTransientError(ScrapeBlockedError):
     error_category = ErrorCategory.TRANSIENT
 
     def __init__(
-        self, source_url: str, reason: str, status_code: Optional[int] = None, retry_after: Optional[int] = None
+        self,
+        source_url: str,
+        reason: str,
+        status_code: Optional[int] = None,
+        retry_after: Optional[int] = None,
     ):
         super().__init__(source_url, reason, status_code)
         self.retry_after = retry_after  # Seconds to wait before retry, if provided

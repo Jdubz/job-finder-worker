@@ -163,9 +163,7 @@ class AIJobMatcher:
                 return None
 
             # Build and return result
-            result = self._build_match_result(
-                job, match_analysis, match_score, score_breakdown
-            )
+            result = self._build_match_result(job, match_analysis, match_score, score_breakdown)
 
             logger.info(f"Successfully analyzed {job.get('title')} - Score: {match_score}")
             return result
@@ -209,7 +207,8 @@ class AIJobMatcher:
             missing_skills=missing_skills,
             experience_match=match_analysis.get("experience_match", ""),
             key_strengths=match_analysis.get("key_strengths", []),
-            match_reasons=match_analysis.get("match_reasons") or match_analysis.get("key_strengths", []),
+            match_reasons=match_analysis.get("match_reasons")
+            or match_analysis.get("key_strengths", []),
             potential_concerns=match_analysis.get("potential_concerns", []),
             score_breakdown=score_breakdown,
             customization_recommendations=match_analysis.get("customization_recommendations", {}),

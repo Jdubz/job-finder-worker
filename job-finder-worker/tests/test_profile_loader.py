@@ -197,5 +197,3 @@ class TestLoadFromDict:
             ProfileLoader.load_from_dict({})
 
         assert "Invalid profile data" in str(exc_info.value)
-
-

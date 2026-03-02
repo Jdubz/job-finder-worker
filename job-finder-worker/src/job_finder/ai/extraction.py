@@ -174,6 +174,7 @@ class JobExtractionResult:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JobExtractionResult":
         """Create from dictionary (supports both snake_case and camelCase)."""
+
         def _get(camel: str, snake: str, default=None):
             """Get field preferring camelCase key, falling back to snake_case."""
             v = data.get(camel)
@@ -196,16 +197,12 @@ class JobExtractionResult:
             experience_min=_safe_int(_get("experienceMin", "experience_min")),
             experience_max=_safe_int(_get("experienceMax", "experience_max")),
             technologies=data.get("technologies") or [],
-            employment_type=_validate_employment_type(
-                _get("employmentType", "employment_type")
-            ),
+            employment_type=_validate_employment_type(_get("employmentType", "employment_type")),
             # Freshness — clamp absurd values to None (epoch-zero, bad AI math, etc.)
             days_old=_safe_days_old(_get("daysOld", "days_old")),
             is_repost=bool(_get("isRepost", "is_repost", False)),
             # Location
-            relocation_required=bool(
-                _get("relocationRequired", "relocation_required", False)
-            ),
+            relocation_required=bool(_get("relocationRequired", "relocation_required", False)),
             # Compensation
             includes_equity=bool(_get("includesEquity", "includes_equity", False)),
             is_contract=bool(_get("isContract", "is_contract", False)),

@@ -57,4 +57,3 @@ class ProfileLoader:
             return Profile(**data)
         except Exception as e:
             raise ProfileError(f"Invalid profile data: {str(e)}") from e
-

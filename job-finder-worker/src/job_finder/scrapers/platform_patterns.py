@@ -542,5 +542,3 @@ def is_single_company_platform(url: str) -> bool:
         return False
     pattern, _ = result
     return not pattern.is_multi_company
-
-

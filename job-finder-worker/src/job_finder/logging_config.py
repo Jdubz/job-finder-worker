@@ -202,6 +202,7 @@ def setup_logging(
     if not environment:
         environment = "development"
         import sys
+
         print("WARNING: ENVIRONMENT not set, defaulting to 'development'", file=sys.stderr)
 
     # Create logs directory if it doesn't exist

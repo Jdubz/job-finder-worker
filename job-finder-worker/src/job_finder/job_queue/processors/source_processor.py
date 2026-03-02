@@ -2140,6 +2140,7 @@ class SourceProcessor(BaseProcessor):
                     post_body = config.get("post_body")
                     if isinstance(post_body, str):
                         import json as _json
+
                         try:
                             post_body = _json.loads(post_body)
                         except (ValueError, TypeError):

@@ -248,4 +248,3 @@ Return ONLY valid JSON in this shape (no prose, no markdown):
 ''' if job.get('company_info') else ''}"""
 
         return (system, user)
-
