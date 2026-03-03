@@ -25,6 +25,7 @@ from job_finder.exceptions import (
 )
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.storage.seen_urls_storage import SeenUrlsStorage
 from job_finder.utils.url_utils import normalize_url
 from job_finder.scrapers.text_sanitizer import (
     sanitize_company_name,
@@ -325,9 +326,9 @@ class GenericScraper:
             # Parse each item into standardized job format
             jobs = []
             skipped_no_title_url = 0
-            enrichment_skipped = 0
+            enrichment_skipped_known = 0
+            enrichment_skipped_cap = 0
             enrichment_count = 0
-            enrichment_capped = False
             has_known_set = known_urls or seen_hashes
             for idx, item in enumerate(data):
                 job = self._extract_fields(item)
@@ -343,17 +344,12 @@ class GenericScraper:
                         if known_urls and norm in known_urls:
                             skip_enrich = True
                         elif seen_hashes:
-                            from job_finder.storage.seen_urls_storage import (
-                                SeenUrlsStorage,
-                            )
-
                             if SeenUrlsStorage.hash_url(norm) in seen_hashes:
                                 skip_enrich = True
-                    if not skip_enrich and enrichment_count >= self._MAX_DETAIL_ENRICHMENTS:
-                        skip_enrich = True
-                        enrichment_capped = True
                     if skip_enrich:
-                        enrichment_skipped += 1
+                        enrichment_skipped_known += 1
+                    elif enrichment_count >= self._MAX_DETAIL_ENRICHMENTS:
+                        enrichment_skipped_cap += 1
                     else:
                         job = self._enrich_from_detail(job)
                         enrichment_count += 1
@@ -371,20 +367,21 @@ class GenericScraper:
                         len(data),
                     )
 
+            enrichment_skipped = enrichment_skipped_known + enrichment_skipped_cap
             if enrichment_skipped:
                 logger.info(
-                    "Skipped %d/%d detail enrichments (%d already known, %s)",
+                    "Skipped %d/%d detail enrichments (%d already known, %d cap)",
                     enrichment_skipped,
                     len(data),
-                    enrichment_skipped - (1 if enrichment_capped else 0),
-                    "cap reached" if enrichment_capped else "all matched",
+                    enrichment_skipped_known,
+                    enrichment_skipped_cap,
                 )
-            if enrichment_capped:
+            if enrichment_skipped_cap:
                 logger.warning(
                     "Detail enrichment cap (%d) reached; %d items unenriched. "
                     "They will be tracked in seen_urls and skipped on next run.",
                     self._MAX_DETAIL_ENRICHMENTS,
-                    enrichment_skipped,
+                    enrichment_skipped_cap,
                 )
 
             if skipped_no_title_url and not jobs:
