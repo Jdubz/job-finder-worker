@@ -25,6 +25,7 @@ from job_finder.exceptions import (
 )
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.storage.seen_urls_storage import SeenUrlsStorage
 from job_finder.utils.url_utils import normalize_url
 from job_finder.scrapers.text_sanitizer import (
     sanitize_company_name,
@@ -325,18 +326,69 @@ class GenericScraper:
             # Parse each item into standardized job format
             jobs = []
             skipped_no_title_url = 0
-            for item in data:
+            enrichment_skipped_known = 0
+            enrichment_skipped_cap = 0
+            enrichment_count = 0
+            has_known_set = known_urls or seen_hashes
+            for idx, item in enumerate(data):
                 job = self._extract_fields(item)
 
                 # Enrich from detail page/API when we lack description/posted_date,
                 # or when the platform is marked for detail following.
+                # Skip expensive detail fetches for URLs already known — they'll
+                # be discarded by submit_jobs anyway.
                 if job.get("url") and self._should_enrich(job):
-                    job = self._enrich_from_detail(job)
+                    skip_enrich = False
+                    if has_known_set:
+                        norm = normalize_url(job["url"])
+                        if known_urls and norm in known_urls:
+                            skip_enrich = True
+                        elif seen_hashes:
+                            if SeenUrlsStorage.hash_url(norm) in seen_hashes:
+                                skip_enrich = True
+                    if skip_enrich:
+                        enrichment_skipped_known += 1
+                    elif enrichment_count >= self._MAX_DETAIL_ENRICHMENTS:
+                        enrichment_skipped_cap += 1
+                        # Don't append cap-skipped jobs — they'd land in
+                        # seen_urls without descriptions and become
+                        # permanently skipped.  Omitting them lets the
+                        # enrichment budget advance on the next run once
+                        # earlier jobs are already in known_urls.
+                        continue
+                    else:
+                        job = self._enrich_from_detail(job)
+                        enrichment_count += 1
 
                 if job.get("title") and job.get("url"):
                     jobs.append(job)
                 else:
                     skipped_no_title_url += 1
+
+                # Progress logging for large batches
+                if (idx + 1) % 200 == 0:
+                    logger.info(
+                        "  Extraction progress: %d/%d items processed",
+                        idx + 1,
+                        len(data),
+                    )
+
+            enrichment_skipped = enrichment_skipped_known + enrichment_skipped_cap
+            if enrichment_skipped:
+                logger.info(
+                    "Skipped %d/%d detail enrichments (%d already known, %d cap)",
+                    enrichment_skipped,
+                    len(data),
+                    enrichment_skipped_known,
+                    enrichment_skipped_cap,
+                )
+            if enrichment_skipped_cap:
+                logger.warning(
+                    "Detail enrichment cap (%d) reached; %d items dropped from "
+                    "results so they can be retried on the next run.",
+                    self._MAX_DETAIL_ENRICHMENTS,
+                    enrichment_skipped_cap,
+                )
 
             if skipped_no_title_url and not jobs:
                 logger.warning(
@@ -453,6 +505,11 @@ class GenericScraper:
     # triggers detail-page enrichment for HTML/RSS sources (where the cost
     # of an extra request is acceptable).
     _MIN_DESCRIPTION_LENGTH = 200
+
+    # Hard cap on detail-page enrichments per scrape() call.
+    # Prevents runaway HTTP calls on first run of sources with thousands
+    # of items (e.g. Boeing with 1000+ listings, each costing ~2s).
+    _MAX_DETAIL_ENRICHMENTS = 200
 
     def _should_enrich(self, job: Dict[str, Any]) -> bool:
         """
@@ -727,8 +784,6 @@ class GenericScraper:
                     if raw_url:
                         page_urls.append(normalize_url(raw_url))
                 if page_urls:
-                    from job_finder.storage.seen_urls_storage import SeenUrlsStorage
-
                     known_count = 0
                     for u in page_urls:
                         if known_urls and u in known_urls:
