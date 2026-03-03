@@ -7,7 +7,6 @@ from job_finder.scrapers.ats_prober import (
     extract_workday_engineering_facets,
 )
 
-
 # ---------------------------------------------------------------------------
 # _is_engineering_category
 # ---------------------------------------------------------------------------
