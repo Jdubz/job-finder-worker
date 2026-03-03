@@ -338,7 +338,7 @@ class TestExecuteScrapeUsesJobListings:
         ctx.listing_id = None
 
         # Should raise ValueError
-        with pytest.raises(ValueError, match="No job data found"):
+        with pytest.raises(ValueError, match="Could not extract job data"):
             job_processor._execute_scrape(ctx)
 
     def test_execute_scrape_uses_manual_submission_first(self, job_processor):

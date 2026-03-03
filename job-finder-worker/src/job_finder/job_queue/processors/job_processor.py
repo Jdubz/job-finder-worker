@@ -657,6 +657,7 @@ class JobProcessor(BaseProcessor):
         # an opportunistic fallback. Failing one URL-only item should not stop the
         # queue. The critical NoAgentsAvailableError propagation happens in stage 3
         # (AI_EXTRACTION) where it applies to ALL items.
+        extraction_detail = "no URL provided"
         if item.url:
             try:
                 self._update_status(item, "Rendering page and extracting job data", "scrape")
@@ -678,14 +679,44 @@ class JobProcessor(BaseProcessor):
                             extracted.get("title", "")[:60],
                         )
                         return extracted
+                    has_title = bool(extracted.get("title"))
+                    has_desc = bool(extracted.get("description"))
+                    extraction_detail = (
+                        f"page rendered but incomplete data "
+                        f"(title={'found' if has_title else 'missing'}, "
+                        f"description={'found' if has_desc else 'missing'})"
+                    )
+                else:
+                    extraction_detail = (
+                        "page rendered but no job data found "
+                        "(likely a 404, non-job page, or content behind auth/JS wall)"
+                    )
             except Exception as e:
                 logger.warning("Page data extraction failed for %s: %s", item.url, e)
+                extraction_detail = f"page extraction error: {e}"
+
+        # Build a diagnostic error listing every source that was tried.
+        reasons = []
+        if manual_title or manual_desc:
+            reasons.append(
+                f"partial manual data (title={'yes' if manual_title else 'no'}, "
+                f"description={'yes' if manual_desc else 'no'})"
+            )
+        else:
+            reasons.append("no manual data")
+        if listing_id:
+            reasons.append(f"listing_id={listing_id} not found in DB")
+        else:
+            reasons.append("no listing_id")
+        if item.scraped_data:
+            reasons.append("scraped_data present but missing title")
+        else:
+            reasons.append("no scraped_data")
+        reasons.append(extraction_detail)
 
         raise ValueError(
-            f"No job data found for {item.url} - no manual data, no job_listing_id, "
-            f"no scraped_data, and page extraction failed. "
-            f"URL-only submissions require working AI agents for extraction. "
-            f"listing_id={listing_id}"
+            f"Could not extract job data from {item.url} — tried {len(reasons)} "
+            f"sources: {'; '.join(reasons)}"
         )
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:

@@ -171,7 +171,7 @@ class TestExecuteScrapePageExtractionFallback:
         processor.page_data_extractor = MagicMock()
         processor.page_data_extractor.extract.return_value = None
 
-        with pytest.raises(ValueError, match="No job data found"):
+        with pytest.raises(ValueError, match="Could not extract job data"):
             processor._execute_scrape(ctx)
 
     def test_extraction_missing_title_raises_value_error(self):
@@ -186,7 +186,7 @@ class TestExecuteScrapePageExtractionFallback:
             "url": item.url,
         }
 
-        with pytest.raises(ValueError, match="No job data found"):
+        with pytest.raises(ValueError, match="Could not extract job data"):
             processor._execute_scrape(ctx)
 
     def test_extraction_exception_falls_through_to_value_error(self):
@@ -197,7 +197,7 @@ class TestExecuteScrapePageExtractionFallback:
         processor.page_data_extractor = MagicMock()
         processor.page_data_extractor.extract.side_effect = RuntimeError("Playwright crash")
 
-        with pytest.raises(ValueError, match="No job data found"):
+        with pytest.raises(ValueError, match="Could not extract job data"):
             processor._execute_scrape(ctx)
 
     def test_no_agents_available_falls_through_to_value_error(self):
@@ -213,7 +213,7 @@ class TestExecuteScrapePageExtractionFallback:
         processor.page_data_extractor = MagicMock()
         processor.page_data_extractor.extract.side_effect = NoAgentsAvailableError("down")
 
-        with pytest.raises(ValueError, match="No job data found"):
+        with pytest.raises(ValueError, match="Could not extract job data"):
             processor._execute_scrape(ctx)
 
     def test_manual_location_merged_into_extracted(self):
