@@ -235,3 +235,24 @@ class TestExtractWorkdayEngineeringFacets:
         result = extract_workday_engineering_facets(data)
         assert result is not None
         assert result["jobFamilyGroup"] == ["eng1"]
+
+    def test_values_missing_id_skipped(self) -> None:
+        """Values matching engineering but missing 'id' are safely skipped."""
+        data = {
+            "jobPostings": [],
+            "facets": [
+                {
+                    "facetParameter": "jobFamilyGroup",
+                    "descriptor": "Job Category",
+                    "values": [
+                        {"descriptor": "Engineering", "count": 40},
+                        {"descriptor": "Software Engineering", "id": "", "count": 30},
+                        {"descriptor": "Data Science", "id": "ds1", "count": 20},
+                    ],
+                }
+            ],
+        }
+        result = extract_workday_engineering_facets(data)
+        assert result is not None
+        # Only the value with a non-empty id is included
+        assert result["jobFamilyGroup"] == ["ds1"]

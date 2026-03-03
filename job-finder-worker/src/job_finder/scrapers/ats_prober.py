@@ -204,7 +204,11 @@ def extract_workday_engineering_facets(
         if param not in _KNOWN_CATEGORY_PARAMS:
             continue
         values = facet.get("values", [])
-        eng_ids = [v["id"] for v in values if _is_engineering_category(v.get("descriptor", ""))]
+        eng_ids = [
+            v.get("id")
+            for v in values
+            if v.get("id") and _is_engineering_category(v.get("descriptor", ""))
+        ]
         if eng_ids:
             return {param: eng_ids}
 
@@ -219,7 +223,11 @@ def extract_workday_engineering_facets(
         if not any(kw in facet_desc for kw in _CATEGORY_DESCRIPTOR_KEYWORDS):
             continue
         values = facet.get("values", [])
-        eng_ids = [v["id"] for v in values if _is_engineering_category(v.get("descriptor", ""))]
+        eng_ids = [
+            v.get("id")
+            for v in values
+            if v.get("id") and _is_engineering_category(v.get("descriptor", ""))
+        ]
         if eng_ids:
             return {param: eng_ids}
 
