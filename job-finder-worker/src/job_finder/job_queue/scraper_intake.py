@@ -217,6 +217,7 @@ class ScraperIntake:
         max_to_add: Optional[int] = None,
         is_remote_source: bool = False,
         known_urls: Optional[Set[str]] = None,
+        seen_hashes: Optional[Set[str]] = None,
     ) -> int:
         """
         Submit multiple jobs to the queue with pre-filtering.
@@ -248,6 +249,8 @@ class ScraperIntake:
             company_id: Optional company ID if known
             max_to_add: Optional limit on jobs to add
             is_remote_source: If True, all jobs from this source are assumed remote
+            known_urls: Optional set of full URLs from job_listings + archive
+            seen_hashes: Optional set of url_hash values from seen_urls table
 
         Returns:
             Number of jobs successfully added to queue
@@ -306,6 +309,8 @@ class ScraperIntake:
                     if job.get("description"):
                         canonical_url = normalized_url
                     else:
+                        # Record board URL before skipping so it's tracked in seen_urls
+                        encountered_urls.append(normalized_url)
                         skipped_count += 1
                         logger.info(
                             "Board URL without detail; skipping job and deferring to source scrape: %s",
@@ -323,12 +328,20 @@ class ScraperIntake:
                     logger.info("Skipping job marked %s: %s", suppression_tag, normalized_url)
                     continue
 
-                # Fast O(1) set check — skip URLs already in known_urls
-                # (covers job_listings, archive, and seen_urls in one lookup)
+                # Fast O(1) set check — skip URLs already in job_listings/archive
                 if known_urls and canonical_url in known_urls:
                     known_skip_count += 1
                     logger.debug("Known URL (set skip): %s", canonical_url)
                     continue
+
+                # Check seen_urls via hash — covers previously filtered/skipped URLs
+                if seen_hashes:
+                    from job_finder.storage.seen_urls_storage import SeenUrlsStorage
+
+                    if SeenUrlsStorage.hash_url(canonical_url) in seen_hashes:
+                        known_skip_count += 1
+                        logger.debug("Seen URL (hash skip): %s", canonical_url)
+                        continue
 
                 # Check if URL already in queue
                 if self.queue_manager.url_exists_in_queue(canonical_url):

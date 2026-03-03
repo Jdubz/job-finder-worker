@@ -642,15 +642,12 @@ class ScrapeRunner:
 
         # Pre-load known URLs for this source (job_listings + archive + seen_urls)
         source_id = source.get("id")
-        known_urls = set()
+        known_urls: set = set()
+        seen_hashes: set = set()
         if source_id:
             try:
                 known_urls = self.job_listing_storage.get_urls_for_source(source_id)
                 seen_hashes = self.seen_urls_storage.get_seen_urls_for_source(source_id)
-                # seen_hashes are stored as hash prefixes; for the set-based dedup in
-                # submit_jobs we pass full normalized URLs.  The seen_urls check in
-                # submit_jobs will hash each canonical_url on the fly.  Here we only
-                # merge the job_listings URLs; seen_urls are checked via hash later.
                 logger.info(
                     "  Pre-loaded %d known URLs + %d seen hashes for source %s",
                     len(known_urls),
@@ -663,7 +660,10 @@ class ScrapeRunner:
         scraper = GenericScraper(source_config, request_timeout=request_timeout)
 
         start = time.monotonic()
-        jobs = scraper.scrape(known_urls=known_urls if known_urls else None)
+        jobs = scraper.scrape(
+            known_urls=known_urls if known_urls else None,
+            seen_hashes=seen_hashes if seen_hashes else None,
+        )
 
         stats["jobs_found"] = len(jobs)
 
@@ -695,6 +695,7 @@ class ScrapeRunner:
             max_to_add=remaining_matches,
             is_remote_source=source_config.is_remote_source,
             known_urls=known_urls if known_urls else None,
+            seen_hashes=seen_hashes if seen_hashes else None,
         )
         stats["jobs_submitted"] = jobs_submitted
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")

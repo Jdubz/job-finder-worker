@@ -87,6 +87,18 @@ export function runMigrations(db: Database.Database, migrationsDir: string = get
     return normalized.includes('BEGIN') && normalized.includes('COMMIT')
   }
 
+  /** Re-throw unless the error indicates the schema change already exists. */
+  const handleMigrationError = (file: string, err: unknown, wasRolledBack: boolean): void => {
+    if (isAlreadyAppliedError(err)) {
+      logger.warn({ migration: file, error: err }, '[migrations] schema already matches — recording as applied')
+    } else {
+      if (wasRolledBack) {
+        logger.error({ migration: file, error: err }, '[migrations] migration failed and was rolled back')
+      }
+      throw err
+    }
+  }
+
   for (const file of pending) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
 
@@ -94,11 +106,7 @@ export function runMigrations(db: Database.Database, migrationsDir: string = get
       try {
         db.exec(sql)
       } catch (err) {
-        if (isAlreadyAppliedError(err)) {
-          logger.warn({ migration: file, error: err }, '[migrations] schema already matches — recording as applied')
-        } else {
-          throw err
-        }
+        handleMigrationError(file, err, false)
       }
     } else {
       try {
@@ -107,12 +115,7 @@ export function runMigrations(db: Database.Database, migrationsDir: string = get
         db.exec('COMMIT')
       } catch (err) {
         db.exec('ROLLBACK')
-        if (isAlreadyAppliedError(err)) {
-          logger.warn({ migration: file, error: err }, '[migrations] schema already matches — recording as applied')
-        } else {
-          logger.error({ migration: file, error: err }, '[migrations] migration failed and was rolled back')
-          throw err
-        }
+        handleMigrationError(file, err, true)
       }
     }
 

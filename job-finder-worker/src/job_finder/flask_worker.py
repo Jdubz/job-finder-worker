@@ -10,6 +10,7 @@ This worker provides:
 """
 
 import json
+import logging
 import os
 import signal
 import sys
@@ -155,8 +156,6 @@ def wait_for_litellm(max_wait: int = 30, interval: int = 2) -> bool:
 
     Returns True if LiteLLM became ready, False on timeout.
     """
-    import logging
-
     _log = logging.getLogger(__name__)
     elapsed = 0
     _log.info("Waiting for LiteLLM proxy to become ready (max %ds)...", max_wait)

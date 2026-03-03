@@ -2,6 +2,7 @@
 
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.storage.seen_urls_storage import SeenUrlsStorage
 
 
 def _make_config(**overrides) -> SourceConfig:
@@ -188,3 +189,49 @@ class TestPaginationEarlyStop:
         # Fetched page 0 (no early-stop check) and page 1 (triggers early-stop)
         assert call_count[0] == 2
         assert len(results) == 6
+
+    def test_early_stop_via_seen_hashes(self):
+        """Early-stop should also trigger when URLs match seen_hashes."""
+        config = _make_config()
+        scraper = _make_scraper(config)
+
+        page_items = [
+            [
+                {"title": "New 1", "url": "https://example.com/new/1"},
+                {"title": "New 2", "url": "https://example.com/new/2"},
+                {"title": "New 3", "url": "https://example.com/new/3"},
+            ],
+            # Page 1: all URLs in seen_hashes → should trigger early stop
+            [
+                {"title": "Seen 1", "url": "https://example.com/seen/1"},
+                {"title": "Seen 2", "url": "https://example.com/seen/2"},
+                {"title": "Seen 3", "url": "https://example.com/seen/3"},
+            ],
+            [
+                {"title": "More 1", "url": "https://example.com/more/1"},
+            ],
+        ]
+
+        call_count = [0]
+
+        def mock_fetch_single_page(url, cursor):
+            idx = call_count[0]
+            call_count[0] += 1
+            if idx < len(page_items):
+                return page_items[idx], {"jobs": page_items[idx]}
+            return [], None
+
+        scraper._fetch_single_page = mock_fetch_single_page
+
+        # Build seen_hashes from the URLs on page 1
+        seen_hashes = {
+            SeenUrlsStorage.hash_url("https://example.com/seen/1"),
+            SeenUrlsStorage.hash_url("https://example.com/seen/2"),
+            SeenUrlsStorage.hash_url("https://example.com/seen/3"),
+        }
+
+        # No known_urls, only seen_hashes
+        results = scraper._fetch_paginated(known_urls=None, seen_hashes=seen_hashes)
+
+        assert len(results) == 6
+        assert call_count[0] == 2

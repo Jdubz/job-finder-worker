@@ -55,11 +55,11 @@ def _create_tables(db_path: str) -> None:
             updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS seen_urls (
-            url_hash TEXT PRIMARY KEY,
-            source_id TEXT,
-            first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            url_hash      TEXT NOT NULL,
+            source_id     TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            PRIMARY KEY (source_id, url_hash)
         );
-        CREATE INDEX IF NOT EXISTS idx_seen_urls_source ON seen_urls(source_id);
         """)
     conn.close()
 
@@ -167,6 +167,39 @@ class TestSeenUrlsStorage:
 
         assert len(storage.get_seen_urls_for_source("src-1")) == 1
         assert len(storage.get_seen_urls_for_source("src-2")) == 1
+
+    def test_same_url_tracked_per_source(self, tmp_db):
+        """Same URL can be recorded for different sources (composite PK)."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        storage.record_urls(["https://example.com/shared"], source_id="src-1")
+        storage.record_urls(["https://example.com/shared"], source_id="src-2")
+
+        assert len(storage.get_seen_urls_for_source("src-1")) == 1
+        assert len(storage.get_seen_urls_for_source("src-2")) == 1
+
+    def test_record_urls_returns_correct_insert_count(self, tmp_db):
+        """record_urls should only count actually inserted rows."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        assert (
+            storage.record_urls(
+                ["https://example.com/a", "https://example.com/b"], source_id="src-1"
+            )
+            == 2
+        )
+        # Re-inserting same URLs should return 0
+        assert (
+            storage.record_urls(
+                ["https://example.com/a", "https://example.com/b"], source_id="src-1"
+            )
+            == 0
+        )
+        # Mix of new and existing
+        assert (
+            storage.record_urls(
+                ["https://example.com/b", "https://example.com/c"], source_id="src-1"
+            )
+            == 1
+        )
 
     def test_hash_url_matches_internal(self):
         url = "https://example.com/test"

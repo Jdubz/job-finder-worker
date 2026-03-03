@@ -25,6 +25,7 @@ from job_finder.exceptions import (
 )
 from job_finder.rendering.playwright_renderer import RenderRequest, get_renderer
 from job_finder.scrapers.source_config import SourceConfig
+from job_finder.utils.url_utils import normalize_url
 from job_finder.scrapers.text_sanitizer import (
     sanitize_company_name,
     sanitize_html_description,
@@ -282,14 +283,19 @@ class GenericScraper:
 
         return url
 
-    def scrape(self, known_urls: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    def scrape(
+        self,
+        known_urls: Optional[Set[str]] = None,
+        seen_hashes: Optional[Set[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Scrape jobs from the configured source.
 
         Args:
-            known_urls: Optional set of normalized URLs already known.
-                        When provided, paginated sources stop early once a page
-                        is dominated (≥80%) by known URLs.
+            known_urls: Optional set of normalized URLs already known
+                        (from job_listings + archive).
+            seen_hashes: Optional set of url_hash values from seen_urls table.
+                        Combined with known_urls for early-stop decisions.
 
         Returns:
             List of standardized job dictionaries
@@ -305,7 +311,7 @@ class GenericScraper:
 
             # Fetch data based on source type
             if self.config.pagination_type:
-                data = self._fetch_paginated(known_urls=known_urls)
+                data = self._fetch_paginated(known_urls=known_urls, seen_hashes=seen_hashes)
             elif self.config.type == "api":
                 data = self._fetch_json()
             elif self.config.type == "rss":
@@ -674,7 +680,11 @@ class GenericScraper:
 
     # ── Generic pagination engine ──────────────────────────────────────
 
-    def _fetch_paginated(self, known_urls: Optional[Set[str]] = None) -> List[Any]:
+    def _fetch_paginated(
+        self,
+        known_urls: Optional[Set[str]] = None,
+        seen_hashes: Optional[Set[str]] = None,
+    ) -> List[Any]:
         """
         Fetch multiple pages from a paginated source.
 
@@ -683,7 +693,6 @@ class GenericScraper:
         page_size (when page_size > 0), no cursor token, max_pages reached,
         or early-stop when ≥80% of a page's URLs are already known.
         """
-        from job_finder.utils.url_utils import normalize_url
 
         results: List[Any] = []
         cursor: Optional[str] = None
@@ -709,7 +718,8 @@ class GenericScraper:
 
             # Early-stop: if most URLs on this page are already known,
             # we've reached "old" territory — no need to keep paginating.
-            if known_urls and page_num > 0:
+            has_known_set = known_urls or seen_hashes
+            if has_known_set and page_num > 0:
                 page_urls = []
                 for item in items:
                     job = self._extract_fields(item)
@@ -717,7 +727,14 @@ class GenericScraper:
                     if raw_url:
                         page_urls.append(normalize_url(raw_url))
                 if page_urls:
-                    known_count = sum(1 for u in page_urls if u in known_urls)
+                    from job_finder.storage.seen_urls_storage import SeenUrlsStorage
+
+                    known_count = 0
+                    for u in page_urls:
+                        if known_urls and u in known_urls:
+                            known_count += 1
+                        elif seen_hashes and SeenUrlsStorage.hash_url(u) in seen_hashes:
+                            known_count += 1
                     known_ratio = known_count / len(page_urls)
                     if known_ratio >= 0.8:
                         logger.info(

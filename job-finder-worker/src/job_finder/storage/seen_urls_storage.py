@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def _url_hash(url: str) -> str:
     """Stable, short hash for a normalized URL."""
-    return hashlib.sha256(url.encode()).hexdigest()[:16]
+    return hashlib.sha256(url.encode()).hexdigest()[:32]
 
 
 class SeenUrlsStorage:
@@ -38,13 +38,12 @@ class SeenUrlsStorage:
     def get_seen_urls_for_source(self, source_id: str) -> Set[str]:
         """Return all url_hash values recorded for *source_id*.
 
-        The caller already has the full URL → it can compute the hash to check
-        membership.  But since job_listings stores full URLs and we want a
-        unified ``known_urls`` set, we store full-URL hashes and the caller
-        does the same hash to probe.
+        The caller already has the full URL — it can compute the hash with
+        ``SeenUrlsStorage.hash_url(url)`` and check for membership in the
+        returned set.
 
         NOTE: We return the *url_hash* values (not the original URLs, which we
-        don't store).  The caller should use ``url_in_seen_set()`` to probe.
+        don't store).  The caller should use ``hash_url()`` to probe.
         """
         if not source_id:
             return set()
@@ -66,21 +65,16 @@ class SeenUrlsStorage:
         if not urls:
             return 0
 
-        inserted = 0
         with sqlite_connection(self.db_path) as conn:
             if not self._ensure_table(conn):
                 return 0
-            for url in urls:
-                h = _url_hash(url)
-                try:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO seen_urls (url_hash, source_id) VALUES (?, ?)",
-                        (h, source_id),
-                    )
-                    inserted += 1
-                except sqlite3.IntegrityError:
-                    pass
-        return inserted
+            hashes_to_insert = [(_url_hash(url), source_id) for url in urls]
+            before = conn.total_changes
+            conn.executemany(
+                "INSERT OR IGNORE INTO seen_urls (url_hash, source_id) VALUES (?, ?)",
+                hashes_to_insert,
+            )
+            return conn.total_changes - before
 
     @staticmethod
     def hash_url(url: str) -> str:

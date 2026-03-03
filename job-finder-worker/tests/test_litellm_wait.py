@@ -2,7 +2,7 @@
 
 import pytest
 
-flask = pytest.importorskip("flask", reason="Flask not installed in test environment")
+pytest.importorskip("flask", reason="Flask not installed in test environment")
 
 from unittest.mock import patch
 
