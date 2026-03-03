@@ -168,14 +168,21 @@ _CATEGORY_DESCRIPTOR_KEYWORDS = ["job category", "job family", "job function"]
 
 def _is_engineering_category(name: str) -> bool:
     """Check if a Workday facet value descriptor is an engineering/tech category."""
+    if not isinstance(name, str):
+        return False
     name_lower = name.lower()
-    for phrase in _ENGINEERING_PHRASE_KEYWORDS:
-        if phrase in name_lower:
-            return True
-    for pattern in _ENGINEERING_WORD_PATTERNS:
-        if pattern.search(name):
-            return True
-    return False
+    return any(phrase in name_lower for phrase in _ENGINEERING_PHRASE_KEYWORDS) or any(
+        pattern.search(name) for pattern in _ENGINEERING_WORD_PATTERNS
+    )
+
+
+def _extract_eng_ids(values: List[Dict[str, Any]]) -> List[str]:
+    """Return IDs of engineering/tech categories from a facet's values list."""
+    return [
+        v.get("id")
+        for v in values
+        if v.get("id") and _is_engineering_category(v.get("descriptor", ""))
+    ]
 
 
 def extract_workday_engineering_facets(
@@ -201,16 +208,9 @@ def extract_workday_engineering_facets(
     # First pass: look for known category parameter names.
     for facet in facets:
         param = facet.get("facetParameter") or facet.get("parameter", "")
-        if param not in _KNOWN_CATEGORY_PARAMS:
-            continue
-        values = facet.get("values", [])
-        eng_ids = [
-            v.get("id")
-            for v in values
-            if v.get("id") and _is_engineering_category(v.get("descriptor", ""))
-        ]
-        if eng_ids:
-            return {param: eng_ids}
+        if param in _KNOWN_CATEGORY_PARAMS:
+            if eng_ids := _extract_eng_ids(facet.get("values", [])):
+                return {param: eng_ids}
 
     # Second pass: fall back to unknown parameter names whose descriptor
     # looks like a job-category facet (e.g. Red Hat uses "d" with
@@ -220,16 +220,9 @@ def extract_workday_engineering_facets(
         if param in _KNOWN_CATEGORY_PARAMS:
             continue  # Already checked above
         facet_desc = (facet.get("descriptor") or "").lower()
-        if not any(kw in facet_desc for kw in _CATEGORY_DESCRIPTOR_KEYWORDS):
-            continue
-        values = facet.get("values", [])
-        eng_ids = [
-            v.get("id")
-            for v in values
-            if v.get("id") and _is_engineering_category(v.get("descriptor", ""))
-        ]
-        if eng_ids:
-            return {param: eng_ids}
+        if any(kw in facet_desc for kw in _CATEGORY_DESCRIPTOR_KEYWORDS):
+            if eng_ids := _extract_eng_ids(facet.get("values", [])):
+                return {param: eng_ids}
 
     return None
 

@@ -60,6 +60,11 @@ class TestIsEngineeringCategory:
         assert _is_engineering_category("Tech") is True
         assert _is_engineering_category("Biotech") is False
 
+    def test_non_string_descriptor_returns_false(self) -> None:
+        """A null or non-string descriptor from JSON should not crash."""
+        assert _is_engineering_category(None) is False
+        assert _is_engineering_category(123) is False
+
     @pytest.mark.parametrize(
         "name",
         [
