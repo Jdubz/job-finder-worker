@@ -123,6 +123,108 @@ WORKDAY_GENERIC_BOARDS = [
     "Search",
 ]
 
+# Keywords for identifying engineering/tech job categories in Workday facets.
+# Phrase keywords are matched as case-insensitive substrings.
+_ENGINEERING_PHRASE_KEYWORDS = [
+    "software engineer",
+    "software development",
+    "information technology",
+    "digital technology",
+    "product development",
+    "product engineering",
+    "systems engineering",
+    "cloud engineering",
+    "platform engineering",
+    "security engineering",
+    "machine learning",
+    "artificial intelligence",
+    "data science",
+    "data engineer",
+    "devops",
+    "site reliability",
+    "quality assurance",
+    "qa engineer",
+]
+
+# Word patterns matched with word boundaries to avoid false positives.
+# e.g. "IT" should match but not "Hospitality"; "Tech" but not "Biotech".
+_ENGINEERING_WORD_PATTERNS = [
+    re.compile(r"\bengineering\b", re.IGNORECASE),
+    re.compile(r"\btechnology\b", re.IGNORECASE),
+    re.compile(r"\btech\b", re.IGNORECASE),
+    re.compile(r"\bdata\b", re.IGNORECASE),
+    re.compile(r"\bIT\b"),  # Case-sensitive: "IT" not "it" in "Hospitality"
+    re.compile(r"\bsoftware\b", re.IGNORECASE),
+    re.compile(r"\bcybersecurity\b", re.IGNORECASE),
+    re.compile(r"\binfrastructure\b", re.IGNORECASE),
+]
+
+# Facet parameter names known to represent job categories in Workday.
+_KNOWN_CATEGORY_PARAMS = {"jobFamilyGroup", "jobFamily"}
+
+# Descriptor strings that indicate a facet represents job categories.
+_CATEGORY_DESCRIPTOR_KEYWORDS = ["job category", "job family", "job function"]
+
+
+def _is_engineering_category(name: str) -> bool:
+    """Check if a Workday facet value descriptor is an engineering/tech category."""
+    name_lower = name.lower()
+    for phrase in _ENGINEERING_PHRASE_KEYWORDS:
+        if phrase in name_lower:
+            return True
+    for pattern in _ENGINEERING_WORD_PATTERNS:
+        if pattern.search(name):
+            return True
+    return False
+
+
+def extract_workday_engineering_facets(
+    response_data: Dict[str, Any],
+) -> Optional[Dict[str, List[str]]]:
+    """Extract engineering-related facet filters from a Workday CXS /jobs response.
+
+    Workday responses include a ``facets`` list with category breakdowns.
+    This function finds the facet that represents job categories (e.g.
+    ``jobFamilyGroup``, ``jobFamily``, or a single-letter key like ``d``)
+    and returns the IDs of engineering/tech categories so we can filter
+    the source to only scrape relevant jobs.
+
+    Returns:
+        Dict like ``{"jobFamilyGroup": ["id1", "id2"]}`` if engineering
+        categories are found, or ``None`` if no match (safe fallback —
+        the source will scrape all departments).
+    """
+    facets = response_data.get("facets")
+    if not facets or not isinstance(facets, list):
+        return None
+
+    # First pass: look for known category parameter names.
+    for facet in facets:
+        param = facet.get("facetParameter") or facet.get("parameter", "")
+        if param not in _KNOWN_CATEGORY_PARAMS:
+            continue
+        values = facet.get("values", [])
+        eng_ids = [v["id"] for v in values if _is_engineering_category(v.get("descriptor", ""))]
+        if eng_ids:
+            return {param: eng_ids}
+
+    # Second pass: fall back to unknown parameter names whose descriptor
+    # looks like a job-category facet (e.g. Red Hat uses "d" with
+    # descriptor "Job Function").
+    for facet in facets:
+        param = facet.get("facetParameter") or facet.get("parameter", "")
+        if param in _KNOWN_CATEGORY_PARAMS:
+            continue  # Already checked above
+        facet_desc = (facet.get("descriptor") or "").lower()
+        if not any(kw in facet_desc for kw in _CATEGORY_DESCRIPTOR_KEYWORDS):
+            continue
+        values = facet.get("values", [])
+        eng_ids = [v["id"] for v in values if _is_engineering_category(v.get("descriptor", ""))]
+        if eng_ids:
+            return {param: eng_ids}
+
+    return None
+
 
 def generate_workday_board_variations(slug: str) -> List[str]:
     """Generate Workday board name variations based on company slug.
@@ -677,11 +779,21 @@ def probe_workday(
                 _wd_pattern = _PLATFORM_PATTERNS_BY_NAME["workday"]
                 sample_job = job_postings[0] if job_postings else None
                 base_url = f"{base_host}/{board}"
+
+                # Auto-detect engineering facets from the response
+                applied_facets = extract_workday_engineering_facets(data)
+                post_body: Dict[str, Any] = {"limit": 20, "offset": 0}
+                if applied_facets:
+                    post_body["appliedFacets"] = applied_facets
+                    logger.info(
+                        f"Workday {slug}: auto-detected engineering facets: {applied_facets}"
+                    )
+
                 scraper_config = {
                     "type": "api",
                     "url": api_url,
                     "method": "POST",
-                    "post_body": {"limit": 20, "offset": 0},
+                    "post_body": post_body,
                     "response_path": "jobPostings",
                     "base_url": base_url,
                     "headers": {"Content-Type": "application/json"},
