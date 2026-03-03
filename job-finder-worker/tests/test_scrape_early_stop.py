@@ -1,4 +1,6 @@
-"""Tests for pagination early-stop when known URLs dominate a page."""
+"""Tests for pagination early-stop and enrichment skip for known URLs."""
+
+from unittest.mock import MagicMock
 
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
@@ -235,3 +237,97 @@ class TestPaginationEarlyStop:
 
         assert len(results) == 6
         assert call_count[0] == 2
+
+
+class TestEnrichmentSkip:
+    """Detail enrichment should be skipped for known URLs."""
+
+    def test_skips_enrichment_for_known_urls(self):
+        """scrape() should not call _enrich_from_detail for URLs in known_urls."""
+        config = _make_config(
+            pagination_type=None,
+            follow_detail=True,
+        )
+        scraper = _make_scraper(config)
+
+        # Mock _fetch_json to return items
+        items = [
+            {"title": "Known Job", "url": "https://example.com/known/1"},
+            {"title": "New Job", "url": "https://example.com/new/1"},
+        ]
+        scraper._fetch_json = MagicMock(return_value=items)
+
+        enrich_calls = []
+        original_enrich = scraper._enrich_from_detail
+
+        def tracking_enrich(job):
+            enrich_calls.append(job["url"])
+            return job
+
+        scraper._enrich_from_detail = tracking_enrich
+
+        known_urls = {"https://example.com/known/1"}
+        jobs = scraper.scrape(known_urls=known_urls)
+
+        # Both jobs should be in results (they have title + url)
+        assert len(jobs) == 2
+        # Only the new URL should have been enriched
+        assert len(enrich_calls) == 1
+        assert enrich_calls[0] == "https://example.com/new/1"
+
+    def test_skips_enrichment_for_seen_hashes(self):
+        """scrape() should not call _enrich_from_detail for URLs matching seen_hashes."""
+        config = _make_config(
+            pagination_type=None,
+            follow_detail=True,
+        )
+        scraper = _make_scraper(config)
+
+        items = [
+            {"title": "Seen Job", "url": "https://example.com/seen/1"},
+            {"title": "Fresh Job", "url": "https://example.com/fresh/1"},
+        ]
+        scraper._fetch_json = MagicMock(return_value=items)
+
+        enrich_calls = []
+
+        def tracking_enrich(job):
+            enrich_calls.append(job["url"])
+            return job
+
+        scraper._enrich_from_detail = tracking_enrich
+
+        seen_hashes = {SeenUrlsStorage.hash_url("https://example.com/seen/1")}
+        jobs = scraper.scrape(seen_hashes=seen_hashes)
+
+        assert len(jobs) == 2
+        assert len(enrich_calls) == 1
+        assert enrich_calls[0] == "https://example.com/fresh/1"
+
+    def test_enrichment_cap_limits_detail_fetches(self):
+        """scrape() should stop enriching after _MAX_DETAIL_ENRICHMENTS."""
+        config = _make_config(
+            pagination_type=None,
+            follow_detail=True,
+        )
+        scraper = _make_scraper(config)
+        # Set a low cap for testing
+        scraper._MAX_DETAIL_ENRICHMENTS = 2
+
+        items = [{"title": f"Job {i}", "url": f"https://example.com/job/{i}"} for i in range(5)]
+        scraper._fetch_json = MagicMock(return_value=items)
+
+        enrich_calls = []
+
+        def tracking_enrich(job):
+            enrich_calls.append(job["url"])
+            return job
+
+        scraper._enrich_from_detail = tracking_enrich
+
+        jobs = scraper.scrape()
+
+        # All jobs in results
+        assert len(jobs) == 5
+        # Only 2 enriched (cap reached)
+        assert len(enrich_calls) == 2
