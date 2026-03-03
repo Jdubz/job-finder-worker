@@ -178,11 +178,12 @@ def _is_engineering_category(name: str) -> bool:
 
 def _extract_eng_ids(values: List[Dict[str, Any]]) -> List[str]:
     """Return IDs of engineering/tech categories from a facet's values list."""
-    return [
-        v.get("id")
-        for v in values
-        if v.get("id") and _is_engineering_category(v.get("descriptor", ""))
-    ]
+    ids: List[str] = []
+    for v in values:
+        vid = v.get("id")
+        if vid and _is_engineering_category(v.get("descriptor", "")):
+            ids.append(vid)
+    return ids
 
 
 def extract_workday_engineering_facets(
