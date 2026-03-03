@@ -67,6 +67,56 @@ MAX_COMPANY_WAIT_RETRIES = 3
 _SALARY_PATTERN = re.compile(r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)")
 
 
+_COUNTRY_ONLY_LOCATIONS = {
+    "us",
+    "usa",
+    "united states",
+    "united states of america",
+    "uk",
+    "united kingdom",
+    "great britain",
+    "gb",
+    "canada",
+    "germany",
+    "france",
+    "australia",
+    "india",
+    "netherlands",
+    "ireland",
+    "singapore",
+    "japan",
+    "brazil",
+    "israel",
+    "spain",
+    "italy",
+    "sweden",
+    "norway",
+    "denmark",
+    "finland",
+    "switzerland",
+    "portugal",
+    "poland",
+    "mexico",
+    "south korea",
+    "new zealand",
+    "czech republic",
+    "austria",
+    "belgium",
+    "romania",
+    "colombia",
+    "argentina",
+    "chile",
+    # Meta-regions used in job postings
+    "emea",
+    "apac",
+    "latam",
+    "americas",
+    "north america",
+    "europe",
+    "asia pacific",
+}
+
+
 def _location_indicates_remote(location: str) -> bool:
     """Deterministic check: does the location field clearly indicate remote work?
 
@@ -74,6 +124,7 @@ def _location_indicates_remote(location: str) -> bool:
       - "United States - Remote", "Remote - USA", "Remote (USA)"
       - "Distributed", "Distributed; Hybrid"
       - "San Francisco, CA, New York, NY, United States (or Remote in the United States)"
+      - Country-only locations like "US", "United States" (no city = remote)
     """
     lowered = location.lower().strip()
     # Explicit "remote" anywhere in the location field
@@ -81,6 +132,9 @@ def _location_indicates_remote(location: str) -> bool:
         return True
     # "Distributed" is used by companies like Cloudflare to mean remote
     if "distributed" in lowered:
+        return True
+    # Country-only location (no city component) implies remote
+    if lowered in _COUNTRY_ONLY_LOCATIONS:
         return True
     return False
 

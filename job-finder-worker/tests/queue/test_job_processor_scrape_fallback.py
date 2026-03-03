@@ -8,13 +8,18 @@ Verifies that:
 5. NoAgentsAvailableError propagates correctly
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from job_finder.exceptions import NoAgentsAvailableError
 from job_finder.job_queue.models import JobQueueItem, ProcessorContext, QueueItemType
-from job_finder.job_queue.processors.job_processor import JobProcessor, PipelineContext
+from job_finder.job_queue.processors.job_processor import (
+    JobProcessor,
+    PipelineContext,
+    _location_indicates_remote,
+)
 
 
 def _make_job_processor():
@@ -260,3 +265,107 @@ class TestExecuteScrapePageExtractionFallback:
         result = processor._execute_scrape(ctx)
 
         assert result["company"] == "UserCo"
+
+
+class TestLocationIndicatesRemote:
+    """Test _location_indicates_remote country-only detection."""
+
+    def test_country_code_us(self):
+        assert _location_indicates_remote("US") is True
+
+    def test_country_name_united_states(self):
+        assert _location_indicates_remote("United States") is True
+
+    def test_meta_region_emea(self):
+        assert _location_indicates_remote("EMEA") is True
+
+    def test_city_with_country_not_remote(self):
+        assert _location_indicates_remote("San Francisco, US") is False
+
+    def test_city_with_state_not_remote(self):
+        assert _location_indicates_remote("New York, NY") is False
+
+    def test_remote_keyword_still_works(self):
+        assert _location_indicates_remote("Remote - USA") is True
+
+    def test_distributed_keyword_still_works(self):
+        assert _location_indicates_remote("Distributed") is True
+
+
+class TestJsonLdJobLocationType:
+    """Test jobLocationType TELECOMMUTE extraction from JSON-LD."""
+
+    def _make_html_with_jsonld(self, jsonld_data):
+        """Build minimal HTML with a JSON-LD script tag."""
+        return (
+            "<html><head>"
+            '<script type="application/ld+json">'
+            f"{json.dumps(jsonld_data)}"
+            "</script></head><body><h1>Job</h1>"
+            "<p>Description of the role.</p></body></html>"
+        )
+
+    def test_telecommute_with_country_location(self):
+        from job_finder.ai.page_data_extractor import PageDataExtractor
+
+        jsonld = {
+            "@type": "JobPosting",
+            "title": "Software Engineer",
+            "description": "A great role",
+            "jobLocationType": "TELECOMMUTE",
+            "jobLocation": {
+                "@type": "Place",
+                "address": {"addressCountry": "US"},
+            },
+        }
+        extractor = PageDataExtractor(MagicMock())
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(self._make_html_with_jsonld(jsonld), "html.parser")
+        job: dict = {}
+        extractor._extract_from_jsonld(soup, job)
+
+        assert job["location"] == "Remote - US"
+
+    def test_telecommute_with_no_location(self):
+        from job_finder.ai.page_data_extractor import PageDataExtractor
+
+        jsonld = {
+            "@type": "JobPosting",
+            "title": "Software Engineer",
+            "description": "A great role",
+            "jobLocationType": "TELECOMMUTE",
+        }
+        extractor = PageDataExtractor(MagicMock())
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(self._make_html_with_jsonld(jsonld), "html.parser")
+        job: dict = {}
+        extractor._extract_from_jsonld(soup, job)
+
+        assert job["location"] == "Remote"
+
+    def test_no_job_location_type_leaves_location_unchanged(self):
+        from job_finder.ai.page_data_extractor import PageDataExtractor
+
+        jsonld = {
+            "@type": "JobPosting",
+            "title": "Software Engineer",
+            "description": "A great role",
+            "jobLocation": {
+                "@type": "Place",
+                "address": {
+                    "addressLocality": "Seattle",
+                    "addressRegion": "WA",
+                    "addressCountry": "US",
+                },
+            },
+        }
+        extractor = PageDataExtractor(MagicMock())
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(self._make_html_with_jsonld(jsonld), "html.parser")
+        job: dict = {}
+        extractor._extract_from_jsonld(soup, job)
+
+        assert job["location"] == "Seattle, WA, US"
