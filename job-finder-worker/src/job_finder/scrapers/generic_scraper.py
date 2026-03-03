@@ -350,6 +350,12 @@ class GenericScraper:
                         enrichment_skipped_known += 1
                     elif enrichment_count >= self._MAX_DETAIL_ENRICHMENTS:
                         enrichment_skipped_cap += 1
+                        # Don't append cap-skipped jobs — they'd land in
+                        # seen_urls without descriptions and become
+                        # permanently skipped.  Omitting them lets the
+                        # enrichment budget advance on the next run once
+                        # earlier jobs are already in known_urls.
+                        continue
                     else:
                         job = self._enrich_from_detail(job)
                         enrichment_count += 1
@@ -378,8 +384,8 @@ class GenericScraper:
                 )
             if enrichment_skipped_cap:
                 logger.warning(
-                    "Detail enrichment cap (%d) reached; %d items unenriched. "
-                    "They will be tracked in seen_urls and skipped on next run.",
+                    "Detail enrichment cap (%d) reached; %d items dropped from "
+                    "results so they can be retried on the next run.",
                     self._MAX_DETAIL_ENRICHMENTS,
                     enrichment_skipped_cap,
                 )
@@ -778,8 +784,6 @@ class GenericScraper:
                     if raw_url:
                         page_urls.append(normalize_url(raw_url))
                 if page_urls:
-                    from job_finder.storage.seen_urls_storage import SeenUrlsStorage
-
                     known_count = 0
                     for u in page_urls:
                         if known_urls and u in known_urls:

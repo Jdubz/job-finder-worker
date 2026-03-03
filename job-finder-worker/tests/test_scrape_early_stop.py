@@ -326,7 +326,7 @@ class TestEnrichmentSkip:
 
         jobs = scraper.scrape()
 
-        # All jobs in results
-        assert len(jobs) == 5
-        # Only 2 enriched (cap reached)
+        # Only 2 enriched; 3 cap-skipped jobs excluded from results
+        # so they aren't recorded in seen_urls and can be retried
+        assert len(jobs) == 2
         assert len(enrich_calls) == 2
