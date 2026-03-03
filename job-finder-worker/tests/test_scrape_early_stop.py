@@ -1,7 +1,5 @@
 """Tests for pagination early-stop when known URLs dominate a page."""
 
-from unittest.mock import MagicMock, patch
-
 from job_finder.scrapers.generic_scraper import GenericScraper
 from job_finder.scrapers.source_config import SourceConfig
 

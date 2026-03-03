@@ -1,7 +1,6 @@
 """Tests for known-URL pre-loading and seen_urls storage."""
 
 import sqlite3
-from unittest.mock import patch
 
 import pytest
 

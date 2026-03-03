@@ -155,16 +155,19 @@ def wait_for_litellm(max_wait: int = 30, interval: int = 2) -> bool:
 
     Returns True if LiteLLM became ready, False on timeout.
     """
+    import logging
+
+    _log = logging.getLogger(__name__)
     elapsed = 0
-    logger.info("Waiting for LiteLLM proxy to become ready (max %ds)...", max_wait)
+    _log.info("Waiting for LiteLLM proxy to become ready (max %ds)...", max_wait)
     while elapsed < max_wait:
         result = check_litellm_health()
         if result.get("healthy"):
-            logger.info("LiteLLM proxy ready after %ds", elapsed)
+            _log.info("LiteLLM proxy ready after %ds", elapsed)
             return True
         time.sleep(interval)
         elapsed += interval
-    logger.warning("LiteLLM proxy not ready after %ds — starting worker anyway", max_wait)
+    _log.warning("LiteLLM proxy not ready after %ds — starting worker anyway", max_wait)
     return False
 
 
