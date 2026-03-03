@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
@@ -359,6 +359,38 @@ class JobListingStorage:
                 (company_id, now, listing_id),
             )
             return cursor.rowcount > 0
+
+    def get_urls_for_source(self, source_id: str) -> Set[str]:
+        """Batch-load all known URLs for a source from job_listings + archive.
+
+        Returns a set of normalized URLs. Used by the scrape pipeline to skip
+        already-known listings before doing any per-URL work.
+        """
+        if not source_id:
+            return set()
+
+        urls: Set[str] = set()
+        with sqlite_connection(self.db_path) as conn:
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT url FROM job_listings WHERE source_id = ?
+                    UNION
+                    SELECT url FROM job_listings_archive WHERE source_id = ?
+                    """,
+                    (source_id, source_id),
+                ).fetchall()
+            except sqlite3.OperationalError as exc:
+                if "no such table: job_listings_archive" not in str(exc):
+                    raise
+                rows = conn.execute(
+                    "SELECT url FROM job_listings WHERE source_id = ?",
+                    (source_id,),
+                ).fetchall()
+            for row in rows:
+                if row["url"]:
+                    urls.add(row["url"])
+        return urls
 
     def delete(self, listing_id: str) -> bool:
         """Delete a job listing by ID."""

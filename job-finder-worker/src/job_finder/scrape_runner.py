@@ -48,6 +48,7 @@ from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_listing_storage import JobListingStorage
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.storage.scrape_report_storage import ScrapeReportStorage
+from job_finder.storage.seen_urls_storage import SeenUrlsStorage
 
 logger = logging.getLogger(__name__)
 DEFAULT_SCRAPES_PER_DAY = 4  # cron runs per day; used to auto-chunk unlimited runs
@@ -99,12 +100,15 @@ class ScrapeRunner:
             except Exception as e:
                 logger.warning(f"Could not create filters: {e}. Pre-filtering disabled.")
 
+        self.seen_urls_storage = SeenUrlsStorage(db_path=job_listing_storage.db_path)
+
         self.scraper_intake = ScraperIntake(
             queue_manager=queue_manager,
             job_listing_storage=job_listing_storage,
             companies_manager=companies_manager,
             title_filter=self.title_filter,
             prefilter=self.prefilter,
+            seen_urls_storage=self.seen_urls_storage,
         )
 
     def _create_filters(
@@ -636,10 +640,30 @@ class ScrapeRunner:
 
         request_timeout = get_request_timeout()
 
+        # Pre-load known URLs for this source (job_listings + archive + seen_urls)
+        source_id = source.get("id")
+        known_urls: set = set()
+        seen_hashes: set = set()
+        if source_id:
+            try:
+                known_urls = self.job_listing_storage.get_urls_for_source(source_id)
+                seen_hashes = self.seen_urls_storage.get_seen_urls_for_source(source_id)
+                logger.info(
+                    "  Pre-loaded %d known URLs + %d seen hashes for source %s",
+                    len(known_urls),
+                    len(seen_hashes),
+                    source_name,
+                )
+            except Exception as e:
+                logger.warning("Failed to pre-load known URLs for %s: %s", source_name, e)
+
         scraper = GenericScraper(source_config, request_timeout=request_timeout)
 
         start = time.monotonic()
-        jobs = scraper.scrape()
+        jobs = scraper.scrape(
+            known_urls=known_urls if known_urls else None,
+            seen_hashes=seen_hashes if seen_hashes else None,
+        )
 
         stats["jobs_found"] = len(jobs)
 
@@ -664,12 +688,14 @@ class ScrapeRunner:
         jobs_submitted = self.scraper_intake.submit_jobs(
             jobs=jobs,
             source="scraper",
-            source_id=source.get("id"),
+            source_id=source_id,
             source_label=source_label,
             source_type=source_type,
             company_id=company_id,
             max_to_add=remaining_matches,
             is_remote_source=source_config.is_remote_source,
+            known_urls=known_urls if known_urls else None,
+            seen_hashes=seen_hashes if seen_hashes else None,
         )
         stats["jobs_submitted"] = jobs_submitted
         logger.info(f"  Submitted {jobs_submitted} jobs to queue from {source_name}")

@@ -23,7 +23,7 @@ Job Listings Integration:
 import logging
 import re
 import uuid
-from typing import Any, Dict, List, Optional, get_args
+from typing import Any, Dict, List, Optional, Set, get_args
 
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
@@ -67,6 +67,7 @@ class ScraperIntake:
         sources_manager=None,
         title_filter=None,
         prefilter=None,
+        seen_urls_storage=None,
     ):
         """
         Initialize scraper intake.
@@ -78,6 +79,7 @@ class ScraperIntake:
             sources_manager: JobSourcesManager for checking aggregator domains (optional)
             title_filter: TitleFilter for pre-filtering jobs by title keywords (optional)
             prefilter: PreFilter for structured data filtering (freshness, location, etc.)
+            seen_urls_storage: SeenUrlsStorage for recording all encountered URLs (optional)
         """
         self.queue_manager = queue_manager
         self.job_listing_storage = job_listing_storage
@@ -85,6 +87,7 @@ class ScraperIntake:
         self.sources_manager = sources_manager
         self.title_filter = title_filter
         self.prefilter = prefilter
+        self.seen_urls_storage = seen_urls_storage
 
         # Stats from the last submit_jobs call (for scrape report aggregation)
         self.last_submit_stats: Optional[Dict[str, Any]] = None
@@ -213,6 +216,8 @@ class ScraperIntake:
         company_id: Optional[str] = None,
         max_to_add: Optional[int] = None,
         is_remote_source: bool = False,
+        known_urls: Optional[Set[str]] = None,
+        seen_hashes: Optional[Set[str]] = None,
     ) -> int:
         """
         Submit multiple jobs to the queue with pre-filtering.
@@ -244,6 +249,8 @@ class ScraperIntake:
             company_id: Optional company ID if known
             max_to_add: Optional limit on jobs to add
             is_remote_source: If True, all jobs from this source are assumed remote
+            known_urls: Optional set of full URLs from job_listings + archive
+            seen_hashes: Optional set of url_hash values from seen_urls table
 
         Returns:
             Number of jobs successfully added to queue
@@ -267,6 +274,9 @@ class ScraperIntake:
         skipped_count = 0
         prefiltered_count = 0
         prefilter_reasons: Dict[str, int] = {}
+        known_skip_count = 0
+        # Collect all canonical URLs we encounter for seen_urls recording
+        encountered_urls: list[str] = []
 
         for job in jobs:
             if max_to_add is not None and added_count >= max_to_add:
@@ -299,6 +309,8 @@ class ScraperIntake:
                     if job.get("description"):
                         canonical_url = normalized_url
                     else:
+                        # Record board URL before skipping so it's tracked in seen_urls
+                        encountered_urls.append(normalized_url)
                         skipped_count += 1
                         logger.info(
                             "Board URL without detail; skipping job and deferring to source scrape: %s",
@@ -306,12 +318,30 @@ class ScraperIntake:
                         )
                         continue
 
+                # Track every URL we encounter for seen_urls recording
+                encountered_urls.append(canonical_url)
+
                 # Respect LinkedIn suppression/control tags embedded in descriptions
                 suppression_tag = self._has_linkedin_suppression_tag(job)
                 if suppression_tag:
                     skipped_count += 1
                     logger.info("Skipping job marked %s: %s", suppression_tag, normalized_url)
                     continue
+
+                # Fast O(1) set check — skip URLs already in job_listings/archive
+                if known_urls and canonical_url in known_urls:
+                    known_skip_count += 1
+                    logger.debug("Known URL (set skip): %s", canonical_url)
+                    continue
+
+                # Check seen_urls via hash — covers previously filtered/skipped URLs
+                if seen_hashes:
+                    from job_finder.storage.seen_urls_storage import SeenUrlsStorage
+
+                    if SeenUrlsStorage.hash_url(canonical_url) in seen_hashes:
+                        known_skip_count += 1
+                        logger.debug("Seen URL (hash skip): %s", canonical_url)
+                        continue
 
                 # Check if URL already in queue
                 if self.queue_manager.url_exists_in_queue(canonical_url):
@@ -466,8 +496,17 @@ class ScraperIntake:
                 logger.error(f"Error adding job to queue: {e}")
                 continue
 
+        # Record all encountered URLs into seen_urls (prevents re-work next cycle)
+        if self.seen_urls_storage and encountered_urls:
+            try:
+                self.seen_urls_storage.record_urls(encountered_urls, source_id)
+            except Exception as e:
+                logger.warning("Failed to record seen URLs: %s", e)
+
         # Log detailed stats
         log_parts = [f"Submitted {added_count} jobs to queue from {source}"]
+        if known_skip_count > 0:
+            log_parts.append(f"{known_skip_count} known-set skips")
         if skipped_count > 0:
             log_parts.append(f"{skipped_count} duplicates")
         if prefiltered_count > 0:
@@ -484,6 +523,7 @@ class ScraperIntake:
         self.last_submit_stats = {
             "added": added_count,
             "duplicates": skipped_count,
+            "known_skips": known_skip_count,
             "prefiltered": prefiltered_count,
             "filter_reasons": dict(prefilter_reasons),
         }

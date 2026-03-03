@@ -21,15 +21,27 @@ chown -R node:node /data 2>/dev/null || true
 chown -R node:node /app/data 2>/dev/null || true
 chown -R node:node /app/logs 2>/dev/null || true
 
-# LiteLLM connectivity check
+# LiteLLM connectivity check (retry up to 30s)
 echo "=== LiteLLM Proxy ==="
 LITELLM_URL="${LITELLM_BASE_URL:-http://litellm:4000}"
 LITELLM_HEALTH="${LITELLM_URL%/v1}/health/readiness"
 echo "Endpoint: $LITELLM_URL"
-if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
-    echo "✓ LiteLLM proxy is reachable"
+LITELLM_WAIT=0
+LITELLM_MAX_WAIT=30
+LITELLM_READY=false
+while [ "$LITELLM_WAIT" -lt "$LITELLM_MAX_WAIT" ]; do
+    if curl -sf "$LITELLM_HEALTH" > /dev/null 2>&1; then
+        LITELLM_READY=true
+        break
+    fi
+    echo "  Waiting for LiteLLM... (${LITELLM_WAIT}s)"
+    sleep 2
+    LITELLM_WAIT=$((LITELLM_WAIT + 2))
+done
+if [ "$LITELLM_READY" = "true" ]; then
+    echo "✓ LiteLLM proxy is reachable (after ${LITELLM_WAIT}s)"
 else
-    echo "WARNING: LiteLLM proxy not reachable at $LITELLM_HEALTH (may still be starting)"
+    echo "WARNING: LiteLLM proxy not reachable at $LITELLM_HEALTH after ${LITELLM_MAX_WAIT}s (worker will retry internally)"
 fi
 echo "=== End LiteLLM Proxy ==="
 

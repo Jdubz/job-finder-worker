@@ -10,6 +10,7 @@ This worker provides:
 """
 
 import json
+import logging
 import os
 import signal
 import sys
@@ -148,6 +149,25 @@ def check_litellm_health() -> Dict[str, Any]:
         return {"healthy": False, "message": f"LiteLLM returned HTTP {resp.status_code}"}
     except Exception as e:
         return {"healthy": False, "message": f"Cannot reach LiteLLM proxy: {e}"}
+
+
+def wait_for_litellm(max_wait: int = 30, interval: int = 2) -> bool:
+    """Block until LiteLLM is healthy or *max_wait* seconds elapse.
+
+    Returns True if LiteLLM became ready, False on timeout.
+    """
+    _log = logging.getLogger(__name__)
+    elapsed = 0
+    _log.info("Waiting for LiteLLM proxy to become ready (max %ds)...", max_wait)
+    while elapsed < max_wait:
+        result = check_litellm_health()
+        if result.get("healthy"):
+            _log.info("LiteLLM proxy ready after %ds", elapsed)
+            return True
+        time.sleep(interval)
+        elapsed += interval
+    _log.warning("LiteLLM proxy not ready after %ds — starting worker anyway", max_wait)
+    return False
 
 
 def reset_stuck_processing_items(
@@ -819,6 +839,11 @@ def main():
             processing_timeout,
             _get_state("poll_interval") or DEFAULT_POLL_INTERVAL_SECONDS,
         )
+
+        # Wait for LiteLLM proxy before starting the worker loop.
+        # This avoids the ~2s race where the worker tries to call LiteLLM
+        # before it has finished initialising.
+        wait_for_litellm()
 
         # Start worker automatically
         _set_state("start_time", time.time())
