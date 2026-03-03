@@ -258,7 +258,6 @@ class TestEnrichmentSkip:
         scraper._fetch_json = MagicMock(return_value=items)
 
         enrich_calls = []
-        original_enrich = scraper._enrich_from_detail
 
         def tracking_enrich(job):
             enrich_calls.append(job["url"])
