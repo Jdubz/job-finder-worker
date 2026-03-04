@@ -17,7 +17,7 @@ Supported ATS Providers:
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 import requests
@@ -503,15 +503,20 @@ def extract_slug_from_url(url: str) -> Optional[str]:
             return parts[0]
 
     # Workable: apply.workable.com/SLUG or SLUG.workable.com
+    WORKABLE_RESERVED_SLUGS = {"careers", "jobs", "apply", "api", "oops"}
     if "workable.com" in host:
+        slug = None
         if host.startswith("apply.") and path:
             parts = path.split("/")
             if parts:
-                return parts[0]
+                slug = parts[0]
         else:
             parts = host.split(".")
             if len(parts) >= 3 and parts[0] not in ("www", "apply"):
-                return parts[0]
+                slug = parts[0]
+        if slug and slug.lower() not in WORKABLE_RESERVED_SLUGS:
+            return slug
+        return None
 
     return None
 
@@ -598,6 +603,7 @@ def probe_ats_provider(
     provider: str,
     slug: str,
     timeout: int = ATS_PROBE_TIMEOUT_SECONDS,
+    existing_api_urls: Optional[Set[str]] = None,
 ) -> ATSProbeResult:
     """Probe a specific ATS provider to check if company uses it.
 
@@ -605,6 +611,8 @@ def probe_ats_provider(
         provider: ATS provider name (greenhouse, lever, ashby, etc.)
         slug: Company slug to test
         timeout: Request timeout in seconds
+        existing_api_urls: Set of API URLs already in use by active sources.
+            If the probed URL matches, returns found=False to prevent duplicates.
 
     Returns:
         ATSProbeResult with found=True if jobs are available
@@ -682,6 +690,14 @@ def probe_ats_provider(
         sample_job_domain = None
         if sample_job:
             sample_job_domain = extract_job_url_domain(sample_job, provider)
+
+        # Check for duplicate API URL to avoid creating duplicate sources
+        if existing_api_urls and stored_url in existing_api_urls:
+            logger.warning(
+                "ATS probe %s/%s: skipping — URL %s already used by an active source",
+                provider, slug, stored_url,
+            )
+            return ATSProbeResult(found=False)
 
         aggregator_domain = config.get("aggregator_domain")
         logger.info(f"ATS probe SUCCESS: {provider}/{slug} has {job_count} jobs")
@@ -850,6 +866,7 @@ def probe_all_ats_providers_detailed(
     company_name: Optional[str] = None,
     url: Optional[str] = None,
     additional_slugs: Optional[List[str]] = None,
+    existing_api_urls: Optional[Set[str]] = None,
 ) -> ATSProbeResultSet:
     """Probe all ATS providers and return detailed results for agent analysis.
 
@@ -860,6 +877,8 @@ def probe_all_ats_providers_detailed(
         company_name: Company name to derive slugs from
         url: URL to extract potential slugs from
         additional_slugs: Extra slugs to try
+        existing_api_urls: Set of API URLs already in use by active sources.
+            Passed through to probe_ats_provider to prevent duplicate sources.
 
     Returns:
         ATSProbeResultSet with all results and collision detection info
@@ -922,7 +941,7 @@ def probe_all_ats_providers_detailed(
 
     for provider in provider_order:
         for slug in unique_slugs:
-            result = probe_ats_provider(provider, slug)
+            result = probe_ats_provider(provider, slug, existing_api_urls=existing_api_urls)
             if result.found:
                 all_results.append(result)
 
