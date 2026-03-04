@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from job_finder.utils.date_utils import parse_job_date
+from job_finder.utils.location_utils import COUNTRY_ONLY_LOCATIONS
 from job_finder.utils.timezone_utils import get_timezone_diff_hours
 from job_finder.exceptions import InitializationError
 
@@ -883,6 +884,9 @@ class PreFilter:
                 return "remote"
             if "hybrid" in loc_lower:
                 return "hybrid"
+            # Country-only locations imply remote (no city = not tied to an office)
+            if location.strip() and loc_lower.strip() in COUNTRY_ONLY_LOCATIONS:
+                return "remote"
 
         # Can't determine - return None (will be skipped or treated as onsite if configured)
         return None

@@ -998,9 +998,9 @@ class GenericScraper:
 
         if self.config.job_selector:
             items = soup.select(self.config.job_selector)
-            if not items and self.config.requires_js:
-                self._diagnose_empty_selector(soup, len(result.html), url)
             if not items:
+                html_len = len(result.html) if self.config.requires_js else len(response.text)
+                self._diagnose_empty_selector(soup, html_len, url)
                 # Fallback: try JSON-LD structured data
                 jsonld_jobs = self._try_jsonld_listing_fallback(soup)
                 if jsonld_jobs:
@@ -1027,7 +1027,7 @@ class GenericScraper:
     ]
 
     def _diagnose_empty_selector(self, soup: BeautifulSoup, html_len: int, url: str) -> None:
-        """Log diagnostic info when job_selector matches zero elements on a JS-rendered page."""
+        """Log diagnostic info when job_selector matches zero elements."""
         title_tag = soup.find("title")
         page_title = title_tag.get_text(strip=True) if title_tag else "(no <title>)"
         text_preview = soup.get_text(separator=" ", strip=True)[:300].replace("\n", " ")
@@ -1046,7 +1046,7 @@ class GenericScraper:
                 pass
 
         logger.warning(
-            "js_render_zero_jobs: selector=%r matched 0 elements "
+            "html_zero_jobs: selector=%r matched 0 elements "
             "url=%s html_size=%d page_title=%r text_preview=%r hints=[%s]",
             self.config.job_selector,
             url,
@@ -1275,6 +1275,11 @@ class GenericScraper:
             job.setdefault("location", location)
         if posted:
             job.setdefault("posted_date", posted)
+
+        # Replace API URL with human-readable posting URL
+        posting_url = (data.get("postingUrl") or "").strip()
+        if posting_url:
+            job["url"] = posting_url
 
         return job
 

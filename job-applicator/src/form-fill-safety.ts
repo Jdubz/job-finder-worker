@@ -49,37 +49,34 @@ export interface FormScanResult {
 const AMBIGUOUS_FIELD_TYPES = new Set(["checkbox", "radio"])
 
 /**
- * Parse raw get_form_fields output into a FormScanResult.
+ * Parse pre-categorized get_form_fields output into a FormScanResult.
  *
- * Checkbox and radio fields are excluded from the empty/filled counts and ratio
+ * Receives two arrays: empty fields (with selectors) and filled fields (compact summary).
+ * Checkbox and radio fields are filtered out here (not by the caller) from the empty count
  * since their unchecked state is ambiguous (intentionally unchecked vs unfilled).
- * The agent handles checkbox/radio decisions during execution.
+ * The tool-executor still includes them in the actionable "fields" array for the agent.
  *
  * Targeted mode activates when >50% of countable fields are filled.
  */
-export function parseFormScanResult(rawFields: Array<Record<string, unknown>>): FormScanResult {
-  const emptyFields: FormField[] = []
-  const filledFields: FormField[] = []
+export function parseFormScanResult(
+  emptyRaw: Array<Record<string, unknown>>,
+  filledRaw: Array<Record<string, unknown>>
+): FormScanResult {
+  const emptyFields: FormField[] = emptyRaw
+    .filter(r => !AMBIGUOUS_FIELD_TYPES.has(String(r.type || "")))
+    .map(r => ({
+      selector: String(r.selector || ""),
+      label: String(r.label || ""),
+      type: String(r.type || "text"),
+      value: "",
+    }))
 
-  for (const raw of rawFields) {
-    const field: FormField = {
-      selector: String(raw.selector || ""),
-      label: String(raw.label || ""),
-      type: String(raw.type || "text"),
-      value: String(raw.value ?? ""),
-    }
-
-    // Skip ambiguous field types from categorization
-    if (AMBIGUOUS_FIELD_TYPES.has(field.type)) {
-      continue
-    }
-
-    if (field.value.trim() === "") {
-      emptyFields.push(field)
-    } else {
-      filledFields.push(field)
-    }
-  }
+  const filledFields: FormField[] = filledRaw.map(r => ({
+    selector: "",
+    label: String(r.label || ""),
+    type: String(r.type || "text"),
+    value: String(r.value ?? ""),
+  }))
 
   const totalFields = emptyFields.length + filledFields.length
   const filledRatio = totalFields > 0 ? filledFields.length / totalFields : 0

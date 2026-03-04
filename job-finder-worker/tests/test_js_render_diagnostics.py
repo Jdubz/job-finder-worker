@@ -155,7 +155,7 @@ def test_zero_match_logs_diagnostic(caplog):
             items = scraper._fetch_html_page("https://example.com/careers")
 
     assert items == []
-    warning_msgs = [r.message for r in caplog.records if "js_render_zero_jobs" in r.message]
+    warning_msgs = [r.message for r in caplog.records if "html_zero_jobs" in r.message]
     assert len(warning_msgs) == 1
     msg = warning_msgs[0]
     # Should include page title for quick identification
@@ -294,7 +294,7 @@ def test_partial_render_triggers_zero_match_diagnostic(caplog):
 
     assert items == []
     # Zero-match diagnostic should have fired with page title and hints
-    warning_msgs = [r.message for r in caplog.records if "js_render_zero_jobs" in r.message]
+    warning_msgs = [r.message for r in caplog.records if "html_zero_jobs" in r.message]
     assert len(warning_msgs) == 1
     msg = warning_msgs[0]
     assert "Careers at WidgetCo" in msg

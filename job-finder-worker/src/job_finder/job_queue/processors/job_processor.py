@@ -54,6 +54,7 @@ from job_finder.profile.reducer import load_scoring_profile
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
+from job_finder.utils.location_utils import COUNTRY_ONLY_LOCATIONS
 from job_finder.utils.url_utils import normalize_url
 
 from .base_processor import BaseProcessor
@@ -65,56 +66,6 @@ MAX_COMPANY_WAIT_RETRIES = 3
 
 # Regex for parsing salary strings like "USD 165000-220000", "$150,000 - $170,000"
 _SALARY_PATTERN = re.compile(r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)")
-
-
-_COUNTRY_ONLY_LOCATIONS = {
-    "us",
-    "usa",
-    "united states",
-    "united states of america",
-    "uk",
-    "united kingdom",
-    "great britain",
-    "gb",
-    "canada",
-    "germany",
-    "france",
-    "australia",
-    "india",
-    "netherlands",
-    "ireland",
-    "singapore",
-    "japan",
-    "brazil",
-    "israel",
-    "spain",
-    "italy",
-    "sweden",
-    "norway",
-    "denmark",
-    "finland",
-    "switzerland",
-    "portugal",
-    "poland",
-    "mexico",
-    "south korea",
-    "new zealand",
-    "czech republic",
-    "austria",
-    "belgium",
-    "romania",
-    "colombia",
-    "argentina",
-    "chile",
-    # Meta-regions used in job postings
-    "emea",
-    "apac",
-    "latam",
-    "americas",
-    "north america",
-    "europe",
-    "asia pacific",
-}
 
 
 def _location_indicates_remote(location: str) -> bool:
@@ -134,7 +85,7 @@ def _location_indicates_remote(location: str) -> bool:
     if "distributed" in lowered:
         return True
     # Country-only location (no city component) implies remote
-    if lowered in _COUNTRY_ONLY_LOCATIONS:
+    if lowered in COUNTRY_ONLY_LOCATIONS:
         return True
     return False
 

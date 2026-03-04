@@ -320,13 +320,13 @@ export function getBrowserView(): BrowserView | null {
 let currentJobMatchId: string | null = null
 let userProfile: unknown = null
 let jobContext: unknown = null
-let documentUrls: { resumeUrl?: string; coverLetterUrl?: string } = {}
+let documentPaths: { resumePath?: string; coverLetterPath?: string } = {}
 
 /** Callback type for uploading documents to file inputs */
 type UploadCallback = (
   selector: string,
   type: "resume" | "coverLetter",
-  documentUrl: string,
+  filePath: string,
   frameUrl?: string | null
 ) => Promise<{ success: boolean; message: string }>
 
@@ -354,17 +354,17 @@ export function clearJobContext(): void {
   currentJobMatchId = null
   userProfile = null
   jobContext = null
-  documentUrls = {}
+  documentPaths = {}
   uploadCallback = null
   logger.info("[ToolExecutor] Job context cleared")
 }
 
 /**
- * Set the document URLs for the upload_file tool
+ * Set the pre-downloaded document paths for the upload_file tool
  */
-export function setDocumentUrls(urls: { resumeUrl?: string; coverLetterUrl?: string }): void {
-  documentUrls = urls
-  logger.info(`[ToolExecutor] Document URLs set: resume=${!!urls.resumeUrl}, coverLetter=${!!urls.coverLetterUrl}`)
+export function setDocumentPaths(paths: { resumePath?: string; coverLetterPath?: string }): void {
+  documentPaths = paths
+  logger.info(`[ToolExecutor] Document paths set: resume=${!!paths.resumePath}, coverLetter=${!!paths.coverLetterPath}`)
 }
 
 /**
@@ -721,7 +721,30 @@ async function handleGetFormFields(): Promise<ToolResult> {
     }
   }
 
-  return { success: true, data: { fields } }
+  // Split fields into actionable (empty) and filled (compact summary without selectors).
+  // The agent physically cannot attempt fill_field on filled fields because it has no selectors.
+  const fieldsToFill: unknown[] = []
+  const filledFields: Array<{ label: unknown; type: unknown; value: unknown }> = []
+
+  for (const f of fields) {
+    const field = f as Record<string, unknown>
+    const type = String(field.type || "")
+    const value = String(field.value ?? "").trim()
+
+    // Checkbox/radio/file always actionable (ambiguous state or always needed)
+    if (type === "checkbox" || type === "radio" || type === "file") {
+      fieldsToFill.push(field)
+      continue
+    }
+
+    if (value === "") {
+      fieldsToFill.push(field)
+    } else {
+      filledFields.push({ label: field.label, type: field.type, value: field.value })
+    }
+  }
+
+  return { success: true, data: { fields: fieldsToFill, filled_fields: filledFields } }
 }
 
 /**
@@ -2072,10 +2095,10 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
     return { success: false, error: "upload_file requires type: 'resume' or 'coverLetter'" }
   }
 
-  // Get the document URL for the requested type
-  const documentUrl = type === "resume" ? documentUrls.resumeUrl : documentUrls.coverLetterUrl
+  // Get the pre-downloaded document path for the requested type
+  const filePath = type === "resume" ? documentPaths.resumePath : documentPaths.coverLetterPath
 
-  if (!documentUrl) {
+  if (!filePath) {
     const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
     return {
       success: false,
@@ -2088,7 +2111,7 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
   }
 
   const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
-  logger.info(`[ToolExecutor] Uploading ${typeLabel} to ${selector}: ${documentUrl}`)
+  logger.info(`[ToolExecutor] Uploading ${typeLabel} to ${selector}: ${filePath}`)
 
   try {
     const ctx = await resolveExecContextForSelector(selector)
@@ -2143,7 +2166,7 @@ async function handleUploadFile(params: { selector: string; type: "resume" | "co
       }
     }
 
-    const result = await uploadCallback(selector, type, documentUrl, frameUrl)
+    const result = await uploadCallback(selector, type, filePath, frameUrl)
 
     if (result.success) {
       logger.info(`[ToolExecutor] Upload successful: ${result.message}`)

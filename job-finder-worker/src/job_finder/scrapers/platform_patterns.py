@@ -68,6 +68,12 @@ class PlatformPattern:
     # False (default) for single-company platforms like Greenhouse, Lever, Ashby.
     # Used by scrape_runner to decide whether company_filter should be applied.
     is_multi_company: bool = False
+    # Pagination config: "" | "page_num" | "offset" | "cursor" | "url_template"
+    pagination_type: str = ""
+    # Query param name for pagination value (e.g. "offset", "page")
+    pagination_param: str = ""
+    # Items per page (0 = no pagination)
+    page_size: int = 0
 
 
 # Platform patterns registry - add new platforms here, not in code
@@ -261,8 +267,8 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     PlatformPattern(
         name="smartrecruiters_api",
         # Match SmartRecruiters hosted career sites
-        url_pattern=r"(?:(?:api|www)\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/?#]+)",
-        api_url_template="https://api.smartrecruiters.com/v1/companies/{company}/postings?limit=200",
+        url_pattern=r"(?:(?:api|www|jobs)\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/?#]+)",
+        api_url_template="https://api.smartrecruiters.com/v1/companies/{company}/postings?limit=100",
         response_path="content",
         fields={
             "title": "name",
@@ -277,6 +283,9 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
         },
         validation_key="content",
         follow_detail=True,
+        pagination_type="offset",
+        pagination_param="offset",
+        page_size=100,
     ),
     PlatformPattern(
         name="avature_rss",

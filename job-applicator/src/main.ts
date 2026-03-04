@@ -79,7 +79,7 @@ import {
 
 // Tool executor and server
 import { startToolServer, stopToolServer, setToolStatusCallback, getToolServerUrl } from "./tool-server.js"
-import { executeTool, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentUrls, setUploadCallback } from "./tool-executor.js"
+import { executeTool, setCurrentJobMatchId, clearJobContext, setCompletionCallback, setUserProfile, setJobContext, setDocumentPaths, setUploadCallback } from "./tool-executor.js"
 import { getFormFillPrompt, parseFormScanResult } from "./form-fill-safety.js"
 import type { FormScanResult } from "./form-fill-safety.js"
 // Typed API client
@@ -1802,18 +1802,32 @@ ipcMain.handle(
       setUserProfile(profileText)
       setJobContext(options.jobContext)
 
-      // Set document URLs for the upload_file tool
-      setDocumentUrls({
-        resumeUrl: options.resumeUrl,
-        coverLetterUrl: options.coverLetterUrl,
-      })
+      // Pre-download documents so upload callback has no async network I/O
+      let resumePath: string | undefined
+      let coverLetterPath: string | undefined
+      try {
+        if (options.resumeUrl) {
+          resumePath = await downloadDocument(options.resumeUrl)
+        }
+        if (options.coverLetterUrl) {
+          coverLetterPath = await downloadDocument(options.coverLetterUrl)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.error(`[FillForm] Failed to pre-download documents: ${message}`)
+        fillFormInProgress = false
+        tabManager?.unlockToolExecutor()
+        return { success: false, message: `Document download failed: ${message}` }
+      }
+      setDocumentPaths({ resumePath, coverLetterPath })
 
       // Capture the BrowserView at fill-form start so the upload callback
       // always targets the correct tab even if the user switches tabs.
       const fillFormView = getActiveView()
 
       // Set upload callback - this allows the tool executor to trigger uploads
-      setUploadCallback(async (selector: string, type: "resume" | "coverLetter", documentUrl: string, frameUrl?: string | null) => {
+      // Documents are already pre-downloaded, so filePath is a local path (no network I/O here)
+      setUploadCallback(async (selector: string, type: "resume" | "coverLetter", filePath: string, frameUrl?: string | null) => {
         const docTypeLabel = type === "coverLetter" ? "Cover letter" : "Resume"
 
         try {
@@ -1822,13 +1836,10 @@ ipcMain.handle(
           }
           const view = fillFormView
 
-          logger.info(`[Upload] Agent uploading ${type}: ${documentUrl} to ${selector}`)
+          logger.info(`[Upload] Agent uploading ${type}: ${filePath} to ${selector}`)
 
-          // Download document from API
-          const resolvedPath = await downloadDocument(documentUrl)
-
-          // Use Electron's debugger API to set the file
-          await setFileInputFiles(view.webContents, selector, [resolvedPath], frameUrl)
+          // Use Electron's debugger API to set the file (already downloaded)
+          await setFileInputFiles(view.webContents, selector, [filePath], frameUrl)
 
           return { success: true, message: `${docTypeLabel} uploaded successfully to ${selector}` }
         } catch (err) {
@@ -1847,14 +1858,17 @@ ipcMain.handle(
         logger.info(`[FillForm] Pre-scanning form fields...`)
         const scanResult = await executeTool("get_form_fields", {})
         if (scanResult.success && scanResult.data) {
-          const data = scanResult.data as { fields?: Array<Record<string, unknown>> }
-          if (data.fields && Array.isArray(data.fields) && data.fields.length > 0) {
-            const parsed = parseFormScanResult(data.fields)
+          const data = scanResult.data as {
+            fields?: Array<Record<string, unknown>>,
+            filled_fields?: Array<Record<string, unknown>>
+          }
+          if (data.fields || data.filled_fields) {
+            const parsed = parseFormScanResult(data.fields || [], data.filled_fields || [])
             logger.info(
               `[FillForm] Pre-scan: ${parsed.totalFields} fields (${parsed.filledFields.length} filled, ${parsed.emptyFields.length} empty, ratio=${(parsed.filledRatio * 100).toFixed(0)}%, targeted=${parsed.isTargetedMode})`
             )
-            // Only pass formScan to the prompt when targeted mode is active
-            // to avoid inflating prompt size with large field lists
+            // Only inject full field inventory in targeted mode to avoid
+            // inflating prompt size on large forms with many fields
             if (parsed.isTargetedMode) {
               formScan = parsed
             }

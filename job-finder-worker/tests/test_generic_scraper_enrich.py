@@ -119,6 +119,7 @@ def test_enrich_smartrecruiters_detail(monkeypatch):
         "name": "Sr Backend Engineer",
         "releasedDate": "2025-12-08T12:00:00Z",
         "location": {"fullLocation": "Remote, US"},
+        "postingUrl": "https://jobs.smartrecruiters.com/acme/744000012345-sr-backend-engineer",
         "jobAd": {
             "sections": {
                 "jobDescription": {"text": "<p>SR description</p>"},
@@ -165,6 +166,57 @@ def test_enrich_smartrecruiters_detail(monkeypatch):
     assert enriched["title"] == "Sr Backend Engineer"
     assert enriched["location"] == "Remote, US"
     assert enriched["posted_date"] == "2025-12-08T12:00:00Z"
+    # URL should be replaced with the human-readable posting URL
+    assert (
+        enriched["url"] == "https://jobs.smartrecruiters.com/acme/744000012345-sr-backend-engineer"
+    )
+
+
+def test_enrich_smartrecruiters_keeps_api_url_when_no_posting_url(monkeypatch):
+    """When postingUrl is absent, the original API URL should be preserved."""
+
+    payload = {
+        "name": "Jr Engineer",
+        "jobAd": {
+            "sections": {
+                "jobDescription": {"text": "<p>Description</p>"},
+            }
+        },
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=200",
+            "response_path": "content",
+            "fields": {
+                "title": "name",
+                "url": "ref",
+                "description": "jobAd.sections.jobDescription.text",
+            },
+        }
+    )
+    scraper = GenericScraper(cfg)
+    api_url = "https://api.smartrecruiters.com/v1/companies/acme/postings/999"
+    job = {"url": api_url, "description": ""}
+
+    enriched = scraper._enrich_from_detail(job)
+    assert enriched["url"] == api_url
 
 
 def test_enrich_workday_detail(monkeypatch):
@@ -971,3 +1023,35 @@ class TestExtractCompanyWebsiteFromDescription:
         """Plain-text URL: pattern should be found before HTML fallback parsing."""
         desc = 'URL: https://primary.com\n<a href="https://secondary.com">link</a>'
         assert scraper._extract_company_website_from_description(desc) == "https://primary.com"
+
+
+class TestDiagnoseEmptySelectorForNonJS:
+    """Test that _diagnose_empty_selector fires for non-JS HTML sources."""
+
+    def test_diagnose_called_for_non_js_source(self, stub_requests, monkeypatch):
+        """Non-JS HTML source with empty selector should call _diagnose_empty_selector."""
+        stub_requests.payloads["https://example.com/careers"] = (
+            "<html><body><p>No jobs here</p></body></html>"
+        )
+
+        cfg = SourceConfig.from_dict(
+            {
+                "type": "html",
+                "url": "https://example.com/careers",
+                "job_selector": ".nonexistent-selector",
+                "fields": {"title": "h2", "url": "a@href"},
+            }
+        )
+        scraper = GenericScraper(cfg)
+
+        warnings = []
+
+        def capture_warning(msg, *args, **kwargs):
+            warnings.append(msg % args if args else msg)
+
+        monkeypatch.setattr("job_finder.scrapers.generic_scraper.logger.warning", capture_warning)
+
+        result = scraper._fetch_html_page("https://example.com/careers")
+        assert result == []  # No items found
+        # Verify diagnostic warning was logged
+        assert any("html_zero_jobs" in w for w in warnings)

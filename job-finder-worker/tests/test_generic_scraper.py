@@ -2532,3 +2532,47 @@ class TestPaginationBackwardCompat:
 
         assert len(jobs) == 1
         assert mock_post.call_count == 2
+
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_smartrecruiters_offset_pagination(self, mock_get):
+        """SmartRecruiters API should paginate using offset param."""
+        page1 = Mock()
+        page1.json.return_value = {
+            "content": [
+                {"name": f"Job {i}", "ref": f"https://sr.com/job/{i}", "releasedDate": "2024-01-01"}
+                for i in range(100)
+            ]
+        }
+        page1.raise_for_status = Mock()
+
+        page2 = Mock()
+        page2.json.return_value = {
+            "content": [
+                {"name": f"Job {i}", "ref": f"https://sr.com/job/{i}", "releasedDate": "2024-01-01"}
+                for i in range(100, 150)
+            ]
+        }
+        page2.raise_for_status = Mock()
+
+        mock_get.side_effect = [page1, page2]
+
+        config = SourceConfig(
+            type="api",
+            url="https://api.smartrecruiters.com/v1/companies/acme/postings?limit=100",
+            response_path="content",
+            fields={"title": "name", "url": "ref", "posted_date": "releasedDate"},
+            pagination_type="offset",
+            pagination_param="offset",
+            page_size=100,
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        assert len(jobs) == 150
+        assert mock_get.call_count == 2
+        # First call: offset=0 (or no offset param)
+        first_url = mock_get.call_args_list[0][0][0]
+        assert "offset=0" in first_url or "offset" not in first_url
+        # Second call: offset=100
+        second_url = mock_get.call_args_list[1][0][0]
+        assert "offset=100" in second_url

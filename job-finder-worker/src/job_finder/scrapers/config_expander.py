@@ -116,6 +116,11 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
                     expanded["fields"][key] = value
             if pattern.follow_detail:
                 expanded["follow_detail"] = True
+            # Propagate pagination config from platform pattern
+            if pattern.pagination_type and "pagination_type" not in expanded:
+                expanded["pagination_type"] = pattern.pagination_type
+                expanded["pagination_param"] = pattern.pagination_param
+                expanded["page_size"] = pattern.page_size
         return expanded
 
     # Normalize source_type to scraping method before dispatch
