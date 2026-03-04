@@ -675,8 +675,8 @@ def probe_ats_provider(
             scraper_config["salary_max_field"] = config["salary_max_field"]
         if config.get("pagination_type"):
             scraper_config["pagination_type"] = config["pagination_type"]
-            scraper_config["pagination_param"] = config["pagination_param"]
-            scraper_config["page_size"] = config["page_size"]
+            scraper_config["pagination_param"] = config.get("pagination_param", "")
+            scraper_config["page_size"] = config.get("page_size", 0)
 
         # Extract sample job URL for domain verification
         sample_job_domain = None

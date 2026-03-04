@@ -267,7 +267,7 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     PlatformPattern(
         name="smartrecruiters_api",
         # Match SmartRecruiters hosted career sites
-        url_pattern=r"(?:(?:api|www)\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/?#]+)",
+        url_pattern=r"(?:(?:api|www|jobs)\.)?smartrecruiters\.com/(?:v1/companies/)?(?P<company>[^/?#]+)",
         api_url_template="https://api.smartrecruiters.com/v1/companies/{company}/postings?limit=100",
         response_path="content",
         fields={
