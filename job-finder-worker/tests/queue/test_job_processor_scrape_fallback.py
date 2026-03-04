@@ -5,7 +5,7 @@ Verifies that:
 2. Partial manual data (title only or desc only) falls through to page extraction
 3. Page extraction results are merged with partial manual data
 4. Failures in page extraction fall through to ValueError
-5. NoAgentsAvailableError propagates correctly
+5. NoAgentsAvailableError during page extraction is converted to ValueError (does not propagate)
 """
 
 import json

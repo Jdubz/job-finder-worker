@@ -749,7 +749,8 @@ class JobProcessor(BaseProcessor):
             except Exception as e:
                 logger.warning("Page data extraction failed for %s: %s", item.url, e)
                 exc_type = type(e).__name__
-                exc_msg = str(e).splitlines()[0][:200]
+                lines = str(e).splitlines()
+                exc_msg = (lines[0] if lines else "")[:200]
                 extraction_detail = f"page extraction error ({exc_type}: {exc_msg})"
 
         # Build a diagnostic error listing every source that was tried.
@@ -762,7 +763,10 @@ class JobProcessor(BaseProcessor):
         else:
             reasons.append("no manual data")
         if listing_id:
-            reasons.append(f"listing_id={listing_id} not found in DB")
+            if self.job_listing_storage:
+                reasons.append(f"listing_id={listing_id} not found in DB")
+            else:
+                reasons.append(f"listing_id={listing_id} (job_listing_storage not configured)")
         else:
             reasons.append("no listing_id")
         reasons.append(
