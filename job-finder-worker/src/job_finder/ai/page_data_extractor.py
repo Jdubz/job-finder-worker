@@ -495,6 +495,15 @@ class PageDataExtractor:
                 if loc:
                     job["location"] = loc
 
+            # schema.org: jobLocationType "TELECOMMUTE" indicates remote
+            loc_type = jp.get("jobLocationType")
+            if isinstance(loc_type, str) and loc_type.upper() == "TELECOMMUTE":
+                current_loc = job.get("location", "")
+                if current_loc and "remote" not in current_loc.lower():
+                    job["location"] = f"Remote - {current_loc}"
+                elif not current_loc:
+                    job["location"] = "Remote"
+
             if not job.get("posted_date") and jp.get("datePosted"):
                 job["posted_date"] = jp.get("datePosted")
 

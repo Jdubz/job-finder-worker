@@ -67,6 +67,56 @@ MAX_COMPANY_WAIT_RETRIES = 3
 _SALARY_PATTERN = re.compile(r"[\$]?\s*([\d,]+(?:\.\d+)?)\s*[-–—to]+\s*[\$]?\s*([\d,]+(?:\.\d+)?)")
 
 
+_COUNTRY_ONLY_LOCATIONS = {
+    "us",
+    "usa",
+    "united states",
+    "united states of america",
+    "uk",
+    "united kingdom",
+    "great britain",
+    "gb",
+    "canada",
+    "germany",
+    "france",
+    "australia",
+    "india",
+    "netherlands",
+    "ireland",
+    "singapore",
+    "japan",
+    "brazil",
+    "israel",
+    "spain",
+    "italy",
+    "sweden",
+    "norway",
+    "denmark",
+    "finland",
+    "switzerland",
+    "portugal",
+    "poland",
+    "mexico",
+    "south korea",
+    "new zealand",
+    "czech republic",
+    "austria",
+    "belgium",
+    "romania",
+    "colombia",
+    "argentina",
+    "chile",
+    # Meta-regions used in job postings
+    "emea",
+    "apac",
+    "latam",
+    "americas",
+    "north america",
+    "europe",
+    "asia pacific",
+}
+
+
 def _location_indicates_remote(location: str) -> bool:
     """Deterministic check: does the location field clearly indicate remote work?
 
@@ -74,6 +124,7 @@ def _location_indicates_remote(location: str) -> bool:
       - "United States - Remote", "Remote - USA", "Remote (USA)"
       - "Distributed", "Distributed; Hybrid"
       - "San Francisco, CA, New York, NY, United States (or Remote in the United States)"
+      - Country-only locations like "US", "United States" (no city = remote)
     """
     lowered = location.lower().strip()
     # Explicit "remote" anywhere in the location field
@@ -81,6 +132,9 @@ def _location_indicates_remote(location: str) -> bool:
         return True
     # "Distributed" is used by companies like Cloudflare to mean remote
     if "distributed" in lowered:
+        return True
+    # Country-only location (no city component) implies remote
+    if lowered in _COUNTRY_ONLY_LOCATIONS:
         return True
     return False
 
@@ -657,6 +711,7 @@ class JobProcessor(BaseProcessor):
         # an opportunistic fallback. Failing one URL-only item should not stop the
         # queue. The critical NoAgentsAvailableError propagation happens in stage 3
         # (AI_EXTRACTION) where it applies to ALL items.
+        extraction_detail = "no URL provided"
         if item.url:
             try:
                 self._update_status(item, "Rendering page and extracting job data", "scrape")
@@ -678,14 +733,51 @@ class JobProcessor(BaseProcessor):
                             extracted.get("title", "")[:60],
                         )
                         return extracted
+                    has_title = bool(extracted.get("title"))
+                    has_desc = bool(extracted.get("description"))
+                    extraction_detail = (
+                        f"page rendered but incomplete data "
+                        f"(title={'found' if has_title else 'missing'}, "
+                        f"description={'found' if has_desc else 'missing'})"
+                    )
+                else:
+                    extraction_detail = (
+                        "page extraction returned no usable job data "
+                        "(possible causes: render failure, empty HTML, "
+                        "non-job page, or content behind auth/JS wall)"
+                    )
             except Exception as e:
                 logger.warning("Page data extraction failed for %s: %s", item.url, e)
+                exc_type = type(e).__name__
+                lines = str(e).splitlines()
+                exc_msg = (lines[0] if lines else "")[:200]
+                extraction_detail = f"page extraction error ({exc_type}: {exc_msg})"
 
+        # Build a diagnostic error listing every source that was tried.
+        reasons = []
+        if manual_title or manual_desc:
+            reasons.append(
+                f"partial manual data (title={'yes' if manual_title else 'no'}, "
+                f"description={'yes' if manual_desc else 'no'})"
+            )
+        else:
+            reasons.append("no manual data")
+        if listing_id:
+            if self.job_listing_storage:
+                reasons.append(f"listing_id={listing_id} not found in DB")
+            else:
+                reasons.append(f"listing_id={listing_id} (job_listing_storage not configured)")
+        else:
+            reasons.append("no listing_id")
+        reasons.append(
+            "scraped_data present but missing title" if item.scraped_data else "no scraped_data"
+        )
+        reasons.append(extraction_detail)
+
+        url_display = item.url or "<no url>"
         raise ValueError(
-            f"No job data found for {item.url} - no manual data, no job_listing_id, "
-            f"no scraped_data, and page extraction failed. "
-            f"URL-only submissions require working AI agents for extraction. "
-            f"listing_id={listing_id}"
+            f"Could not extract job data from {url_display} — tried {len(reasons)} "
+            f"sources: {'; '.join(reasons)}"
         )
 
     def _execute_company_lookup(self, ctx: PipelineContext) -> Optional[Dict[str, Any]]:
