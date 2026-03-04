@@ -52,8 +52,9 @@ const AMBIGUOUS_FIELD_TYPES = new Set(["checkbox", "radio"])
  * Parse pre-categorized get_form_fields output into a FormScanResult.
  *
  * Receives two arrays: empty fields (with selectors) and filled fields (compact summary).
- * Checkbox and radio fields are excluded from the empty array by the caller (tool-executor)
+ * Checkbox and radio fields are filtered out here (not by the caller) from the empty count
  * since their unchecked state is ambiguous (intentionally unchecked vs unfilled).
+ * The tool-executor still includes them in the actionable "fields" array for the agent.
  *
  * Targeted mode activates when >50% of countable fields are filled.
  */

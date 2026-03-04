@@ -1867,8 +1867,11 @@ ipcMain.handle(
             logger.info(
               `[FillForm] Pre-scan: ${parsed.totalFields} fields (${parsed.filledFields.length} filled, ${parsed.emptyFields.length} empty, ratio=${(parsed.filledRatio * 100).toFixed(0)}%, targeted=${parsed.isTargetedMode})`
             )
-            // Always inject — field inventory helps in all modes
-            formScan = parsed
+            // Only inject full field inventory in targeted mode to avoid
+            // inflating prompt size on large forms with many fields
+            if (parsed.isTargetedMode) {
+              formScan = parsed
+            }
           } else {
             logger.info(`[FillForm] Pre-scan: no countable fields found (embedded form or empty page)`)
           }
