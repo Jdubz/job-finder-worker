@@ -3,13 +3,15 @@ import { parseFormScanResult } from "./form-fill-safety.js"
 
 describe("parseFormScanResult", () => {
   it("should categorize empty and filled fields", () => {
-    const fields = [
-      { selector: "#name", label: "Name", type: "text", value: "John" },
+    const empty = [
       { selector: "#email", label: "Email", type: "email", value: "" },
-      { selector: "#phone", label: "Phone", type: "tel", value: "555-1234" },
+    ]
+    const filled = [
+      { label: "Name", type: "text", value: "John" },
+      { label: "Phone", type: "tel", value: "555-1234" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
     expect(result.filledFields).toHaveLength(2)
     expect(result.emptyFields).toHaveLength(1)
@@ -18,90 +20,101 @@ describe("parseFormScanResult", () => {
   })
 
   it("should calculate filledRatio correctly", () => {
-    const fields = [
-      { selector: "#a", label: "A", type: "text", value: "filled" },
-      { selector: "#b", label: "B", type: "text", value: "filled" },
+    const empty = [
       { selector: "#c", label: "C", type: "text", value: "" },
-      { selector: "#d", label: "D", type: "text", value: "filled" },
+    ]
+    const filled = [
+      { label: "A", type: "text", value: "filled" },
+      { label: "B", type: "text", value: "filled" },
+      { label: "D", type: "text", value: "filled" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
     expect(result.filledRatio).toBe(0.75)
     expect(result.isTargetedMode).toBe(true)
   })
 
   it("should activate targeted mode when >50% filled", () => {
-    const fields = [
-      { selector: "#a", label: "A", type: "text", value: "x" },
-      { selector: "#b", label: "B", type: "text", value: "x" },
+    const empty = [
       { selector: "#c", label: "C", type: "text", value: "" },
     ]
+    const filled = [
+      { label: "A", type: "text", value: "x" },
+      { label: "B", type: "text", value: "x" },
+    ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
     expect(result.filledRatio).toBeCloseTo(0.667, 2)
     expect(result.isTargetedMode).toBe(true)
   })
 
   it("should NOT activate targeted mode when exactly 50% filled", () => {
-    const fields = [
-      { selector: "#a", label: "A", type: "text", value: "x" },
+    const empty = [
       { selector: "#b", label: "B", type: "text", value: "" },
     ]
+    const filled = [
+      { label: "A", type: "text", value: "x" },
+    ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
     expect(result.filledRatio).toBe(0.5)
     expect(result.isTargetedMode).toBe(false)
   })
 
   it("should NOT activate targeted mode when <50% filled", () => {
-    const fields = [
-      { selector: "#a", label: "A", type: "text", value: "x" },
+    const empty = [
       { selector: "#b", label: "B", type: "text", value: "" },
       { selector: "#c", label: "C", type: "text", value: "" },
       { selector: "#d", label: "D", type: "text", value: "" },
     ]
+    const filled = [
+      { label: "A", type: "text", value: "x" },
+    ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
     expect(result.filledRatio).toBe(0.25)
     expect(result.isTargetedMode).toBe(false)
   })
 
-  it("should exclude checkbox fields from counts", () => {
-    const fields = [
-      { selector: "#name", label: "Name", type: "text", value: "John" },
-      { selector: "#agree", label: "Agree", type: "checkbox", value: "" },
+  it("should exclude checkbox fields from empty array counts", () => {
+    const empty = [
       { selector: "#email", label: "Email", type: "email", value: "" },
+      { selector: "#agree", label: "Agree", type: "checkbox", value: "" },
+    ]
+    const filled = [
+      { label: "Name", type: "text", value: "John" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
-    // Checkbox excluded, so 1 filled + 1 empty = 2 total
+    // Checkbox excluded from empty, so 1 empty + 1 filled = 2 total
     expect(result.totalFields).toBe(2)
     expect(result.filledFields).toHaveLength(1)
     expect(result.emptyFields).toHaveLength(1)
   })
 
-  it("should exclude radio fields from counts", () => {
-    const fields = [
-      { selector: "#name", label: "Name", type: "text", value: "John" },
+  it("should exclude radio fields from empty array counts", () => {
+    const empty = [
       { selector: "#option1", label: "Option 1", type: "radio", value: "" },
-      { selector: "#option2", label: "Option 2", type: "radio", value: "selected" },
+    ]
+    const filled = [
+      { label: "Name", type: "text", value: "John" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, filled)
 
-    // Both radios excluded
+    // Radio excluded from empty
     expect(result.totalFields).toBe(1)
     expect(result.filledFields).toHaveLength(1)
     expect(result.emptyFields).toHaveLength(0)
   })
 
-  it("should handle empty fields array", () => {
-    const result = parseFormScanResult([])
+  it("should handle empty arrays", () => {
+    const result = parseFormScanResult([], [])
 
     expect(result.totalFields).toBe(0)
     expect(result.filledFields).toHaveLength(0)
@@ -111,12 +124,12 @@ describe("parseFormScanResult", () => {
   })
 
   it("should handle all fields filled", () => {
-    const fields = [
-      { selector: "#a", label: "A", type: "text", value: "x" },
-      { selector: "#b", label: "B", type: "text", value: "y" },
+    const filled = [
+      { label: "A", type: "text", value: "x" },
+      { label: "B", type: "text", value: "y" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult([], filled)
 
     expect(result.filledRatio).toBe(1)
     expect(result.isTargetedMode).toBe(true)
@@ -124,40 +137,54 @@ describe("parseFormScanResult", () => {
   })
 
   it("should handle all fields empty", () => {
-    const fields = [
+    const empty = [
       { selector: "#a", label: "A", type: "text", value: "" },
       { selector: "#b", label: "B", type: "text", value: "" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, [])
 
     expect(result.filledRatio).toBe(0)
     expect(result.isTargetedMode).toBe(false)
     expect(result.filledFields).toHaveLength(0)
   })
 
-  it("should treat whitespace-only values as empty", () => {
-    const fields = [
-      { selector: "#a", label: "A", type: "text", value: "   " },
-      { selector: "#b", label: "B", type: "text", value: "\t" },
+  it("should set empty string value for empty fields", () => {
+    const empty = [
+      { selector: "#a", label: "A", type: "text", value: "" },
     ]
 
-    const result = parseFormScanResult(fields)
+    const result = parseFormScanResult(empty, [])
 
-    expect(result.emptyFields).toHaveLength(2)
-    expect(result.filledFields).toHaveLength(0)
+    expect(result.emptyFields[0].value).toBe("")
+  })
+
+  it("should set empty string selector for filled fields", () => {
+    const filled = [
+      { label: "A", type: "text", value: "hello" },
+    ]
+
+    const result = parseFormScanResult([], filled)
+
+    expect(result.filledFields[0].selector).toBe("")
+    expect(result.filledFields[0].value).toBe("hello")
   })
 
   it("should handle missing/undefined field properties gracefully", () => {
-    const fields = [
+    const empty = [
       { selector: "#a" },  // missing label, type, value
-      { selector: "#b", value: "filled" },
       {},  // missing everything
     ]
+    const filled = [
+      { value: "filled" },  // missing label, type
+    ]
 
-    const result = parseFormScanResult(fields as Array<Record<string, unknown>>)
+    const result = parseFormScanResult(
+      empty as Array<Record<string, unknown>>,
+      filled as Array<Record<string, unknown>>
+    )
 
-    // #a: no value → empty, #b: has value → filled, {}: no value → empty
+    // #a: text type (default) → empty, {}: text type (default) → empty
     expect(result.emptyFields).toHaveLength(2)
     expect(result.filledFields).toHaveLength(1)
   })

@@ -80,10 +80,11 @@ export const tools: Tool[] = [
   {
     name: "get_form_fields",
     description:
-      "Analyze the page DOM and return all form fields with their selectors, labels, types, " +
-      "current values, and options (for dropdowns). Use this FIRST to understand the form structure, " +
-      "then use fill_field/select_option to fill fields by selector. " +
-      "NOTE: This tool scans embedded iframes too (including cross-origin ATS embeds like Greenhouse).",
+      "Analyze the page DOM and return form fields split by state. " +
+      "Returns 'fields' (empty/actionable — with CSS selectors) and " +
+      "'filled_fields' (already-filled — label/type/value only, no selectors). " +
+      "Only fields in 'fields' can be filled. Checkboxes, radios, and file inputs are always in 'fields'. " +
+      "NOTE: Scans embedded iframes too (including cross-origin ATS embeds like Greenhouse).",
     inputSchema: {
       type: "object",
       properties: {},

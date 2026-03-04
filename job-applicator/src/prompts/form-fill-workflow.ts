@@ -48,27 +48,17 @@ function buildPartialFormRules(): string {
   return `============================================================
 !!! CRITICAL: HANDLING PARTIALLY COMPLETED FORMS !!!
 ============================================================
-The form may already have some fields filled in from a previous session.
-By default, DO NOT overwrite fields that already have values.
+When you call get_form_fields, it returns two arrays:
+- "fields" → empty/actionable fields WITH CSS selectors — fill these
+- "filled_fields" → already-filled fields (label + value only, NO selectors)
 
-When you call get_form_fields, each field includes a "value" property (always a string):
-- If value === "" (empty string) → FILL THIS FIELD
-- If value is non-empty (any other string) → SKIP THIS FIELD
+Only "fields" entries have selectors. Already-filled fields are read-only context.
+You cannot and should not attempt to modify filled fields.
 
-Do NOT overwrite existing values, even if they appear incorrect.
-The user may have intentionally entered different data for this application.
-When in doubt, always leave existing values alone.
-
-The tools enforce this automatically: fill_field, select_option, and select_combobox
-will SKIP fields that already have values and return { skipped: true }.
-There is no way to override this — filled fields are permanently protected.
-
-For work experience and education sections:
-- If entries already exist with data → DO NOT re-enter them
-- If no entries exist OR more entries are needed → ADD them
-- Count existing entries before adding new ones
-
-Example: If profile has 3 jobs and form shows 2 already filled, only add the 3rd.`
+For work experience and education:
+- Check "filled_fields" to count existing entries
+- Only add entries that are missing from the profile
+- Example: If profile has 3 jobs and filled_fields shows 2, only add the 3rd.`
 }
 
 function buildWorkExperienceEducationRules(): string {
@@ -138,9 +128,8 @@ method does not count as a new approach.`
 
 function buildFailureConditions(): string {
   return `FAILURE CONDITIONS:
-❌ You overwrote fields that already had values (non-empty strings)
-❌ You duplicated work/education entries that already existed
-❌ You left fields that were EMPTY on first discovery (value==="") unfilled despite having profile data
+❌ You duplicated work/education entries that already existed in "filled_fields"
+❌ You left fields from the "fields" array unfilled despite having profile data
 ❌ You claimed sections are "optional" or "populated from resume" when they're empty
 ❌ You gave up claiming "technical difficulties" without trying multiple approaches
 ❌ You said fields were "disabled" or "non-interactive" without attempting workarounds
@@ -156,10 +145,9 @@ BEFORE CALLING done() - MANDATORY CHECKLIST
 ============================================================
 Ask yourself these questions. If any answer is NO, go fix it:
 
-[ ] Are there any fields with value==="" that I have profile data for? (If yes, fill them)
-[ ] Are ALL work experience entries from the profile present? (Add any missing ones)
-[ ] Are ALL education entries from the profile present? (Add any missing ones)
-[ ] Did I check all visible fields for empty values (value==="")?
+[ ] Are there any fields in the "fields" array that I have profile data for? (If yes, fill them)
+[ ] Are ALL work experience entries from the profile present? (Check "filled_fields" for existing ones)
+[ ] Are ALL education entries from the profile present? (Check "filled_fields" for existing ones)
 [ ] Did I scroll down to check for more fields?
 
 If you cannot find work/education sections, take a screenshot and SCROLL to find them.
@@ -233,20 +221,18 @@ STEP 2: INITIAL SCREENSHOT
 - Identify major sections (contact, experience, education, etc.)
 
 STEP 3: DISCOVER FIELDS AND BUTTONS
-- Call get_form_fields to get CSS selectors for all visible INPUT fields
+- Call get_form_fields — returns "fields" (empty, with selectors) and "filled_fields" (read-only summary)
 - Call get_buttons to find ALL clickable buttons including "Add" buttons
 - IMPORTANT: get_form_fields only returns input/select/textarea elements
 - IMPORTANT: get_buttons finds buttons like "Add Another", "Add Experience", "Add Education"
-- Note which fields already have values - you will SKIP those
+- Only the "fields" array has selectors — fill those. "filled_fields" is context only.
 
 ${buildEmbeddedFormDetection()}
 
-STEP 4: FILL CONTACT INFORMATION (EMPTY FIELDS ONLY)
-- Check each field's "value" property from get_form_fields
-- ONLY fill fields where value is empty ("")
-- Skip fields that already have values - do not overwrite
-- Use fill_field(selector, value) for empty: name, email, phone, address, city, state, zip
-- Use select_option or select_combobox for empty dropdowns
+STEP 4: FILL CONTACT INFORMATION
+- Fill each field from the "fields" array: name, email, phone, address, city, state, zip
+- Use fill_field(selector, value) for text inputs
+- Use select_option or select_combobox for dropdowns
 - Take screenshot to verify
 
 STEP 5: FILL WORK EXPERIENCE (IF NEEDED)
@@ -302,8 +288,7 @@ STEP 7: UPLOAD FILES
 
 STEP 8: FILL REMAINING EMPTY FIELDS
 - Call get_form_fields again to find any remaining fields
-- Check each field's "value" - only fill if empty
-- Fill empty: skills, certifications, yes/no questions, checkboxes
+- Fill each field from the "fields" array: skills, certifications, yes/no questions, checkboxes
 - Use set_checkbox(selector, true) for unchecked agreement checkboxes
 - For "Additional Information", "Cover Letter", "Why are you interested?",
   or similar freeform text fields: write a 3-5 sentence response explaining
@@ -335,26 +320,24 @@ SELECTOR-BASED TOOLS (USE THESE)
 ============================================================
 
 get_form_fields
-- Returns all form fields with CSS selectors
+- Returns "fields" (empty, with selectors) and "filled_fields" (read-only summary)
+- Only "fields" have CSS selectors — use those for fill_field/select_option/etc.
 - Call this FIRST before filling anything
 - Call again after scrolling or adding entries
 
 fill_field(selector, value)
 - Fills text inputs, textareas, email fields, etc.
-- The selector comes from get_form_fields
-- Fields with existing values are automatically skipped
+- The selector comes from get_form_fields "fields" array
 - Example: fill_field("#email", "john@example.com")
 
 select_option(selector, value)
 - For native <select> dropdowns
 - Use the value attribute from the options
-- Fields with existing values are automatically skipped
 - Example: select_option("#country", "US")
 
 select_combobox(selector, value)
 - For searchable/autocomplete dropdowns
 - Types incrementally to filter, then selects best match
-- Fields with existing values are automatically skipped
 - Use peek_dropdown(selector) first if unsure what options exist
 - Example: select_combobox("#school", "University of California")
 
@@ -409,21 +392,20 @@ COMMON MISTAKES TO AVOID
 ============================================================
 
 DO NOT:
-- Overwrite fields that already have values
+- Attempt to fill items from "filled_fields" — they have no selectors
 - Duplicate work/education entries that already exist
 - Use click(x,y) when fill_field(selector) would work
 - Skip screenshots - you need them to verify your work
 - Think resume upload populates form fields - IT DOES NOT, EVER
-- Leave EMPTY fields unfilled when profile data is available
+- Leave fields from "fields" array unfilled when profile data is available
 - Leave sections empty claiming "optional" or "populated from resume"
 
 DO:
-- Check field "value" property before filling - skip fields where value !== ""
-- Count existing work/education entries before adding more
+- Only fill fields from the "fields" array (empty, with selectors)
+- Check "filled_fields" to count existing work/education entries before adding more
 - Always use selector-based tools
 - Take screenshots after each major section
-- Call get_form_fields after scrolling or adding entries
-- Only fill fields where value === "" (empty string)`
+- Call get_form_fields after scrolling or adding entries`
 }
 
 function buildCoordinateFallbacks(): string {
