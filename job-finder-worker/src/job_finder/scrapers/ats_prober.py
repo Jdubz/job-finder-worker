@@ -56,7 +56,7 @@ _WORKABLE_PATTERN = _PLATFORM_PATTERNS_BY_NAME["workable_api"]
 
 # Common ATS providers and their API patterns.
 # Fields are sourced from platform_patterns.py to stay in sync.
-ATS_PROVIDERS = {
+ATS_PROVIDERS: Dict[str, Dict[str, Any]] = {
     "greenhouse": {
         "api_url": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
         "config_url": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
@@ -80,10 +80,13 @@ ATS_PROVIDERS = {
         "salary_max_field": _ASHBY_PATTERN.salary_max_field,
     },
     "smartrecruiters": {
-        "api_url": "https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+        "api_url": "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100",
         "response_path": "content",
         "aggregator_domain": "smartrecruiters.com",
         "fields": _PLATFORM_PATTERNS_BY_NAME["smartrecruiters_api"].fields,
+        "pagination_type": "offset",
+        "pagination_param": "offset",
+        "page_size": 100,
     },
     "recruitee": {
         "api_url": "https://{slug}.recruitee.com/api/offers",
@@ -670,6 +673,10 @@ def probe_ats_provider(
             scraper_config["salary_min_field"] = config["salary_min_field"]
         if config.get("salary_max_field"):
             scraper_config["salary_max_field"] = config["salary_max_field"]
+        if config.get("pagination_type"):
+            scraper_config["pagination_type"] = config["pagination_type"]
+            scraper_config["pagination_param"] = config["pagination_param"]
+            scraper_config["page_size"] = config["page_size"]
 
         # Extract sample job URL for domain verification
         sample_job_domain = None

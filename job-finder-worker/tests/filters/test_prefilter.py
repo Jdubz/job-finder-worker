@@ -952,7 +952,13 @@ class TestPreFilterRemoteSource:
             "salary": {"minimum": None},
         }
         pf = PreFilter(config)
+        # "USA" is a country-only location, now correctly inferred as remote
         result = pf.filter({"title": "Engineer", "location": "USA"}, is_remote_source=False)
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed  # Detected as remote via country-only
+
+        # A city-level location should still be unknown (skipped)
+        result = pf.filter({"title": "Engineer", "location": "Austin, TX"}, is_remote_source=False)
         assert result.passed is True
         assert "workArrangement" in result.checks_skipped  # No remote indicators
 
@@ -1397,3 +1403,77 @@ class TestPreFilterCountryCheck:
         result = pf.filter({"title": "Engineer", "country": "Germany"})
         assert result.passed is False
         assert "Location not in allowed countries" in result.reason
+
+
+class TestPreFilterCountryOnlyLocationRemote:
+    """Tests that country-only locations are inferred as remote."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": False,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+        }
+
+    def test_united_states_inferred_as_remote(self, base_config):
+        """Job with location='United States' should be inferred as remote."""
+        pf = PreFilter(base_config)
+        result = pf.filter({"title": "Engineer", "location": "United States"})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_us_inferred_as_remote(self, base_config):
+        """Job with location='US' should be inferred as remote."""
+        pf = PreFilter(base_config)
+        result = pf.filter({"title": "Engineer", "location": "US"})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_canada_inferred_as_remote(self, base_config):
+        """Job with location='Canada' should be inferred as remote."""
+        pf = PreFilter(base_config)
+        result = pf.filter({"title": "Engineer", "location": "Canada"})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_seattle_not_inferred_as_remote(self, base_config):
+        """Job with location='Seattle, WA' should NOT be inferred as remote (city, not country)."""
+        pf = PreFilter(base_config)
+        arrangement = pf._infer_work_arrangement({"title": "Engineer", "location": "Seattle, WA"})
+        assert arrangement is None  # Unknown, not remote
+
+    def test_country_only_rejected_when_remote_not_allowed(self):
+        """Country-only location should be rejected when remote is not allowed."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "location": "United States"})
+        assert result.passed is False
+        assert "Remote" in result.reason
+
+    def test_emea_inferred_as_remote(self, base_config):
+        """Meta-region 'EMEA' should be inferred as remote."""
+        pf = PreFilter(base_config)
+        result = pf.filter({"title": "Engineer", "location": "EMEA"})
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
