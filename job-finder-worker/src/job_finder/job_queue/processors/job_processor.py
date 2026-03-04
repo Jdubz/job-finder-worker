@@ -742,12 +742,15 @@ class JobProcessor(BaseProcessor):
                     )
                 else:
                     extraction_detail = (
-                        "page rendered but no job data found "
-                        "(likely a 404, non-job page, or content behind auth/JS wall)"
+                        "page extraction returned no usable job data "
+                        "(possible causes: render failure, empty HTML, "
+                        "non-job page, or content behind auth/JS wall)"
                     )
             except Exception as e:
                 logger.warning("Page data extraction failed for %s: %s", item.url, e)
-                extraction_detail = f"page extraction error: {e}"
+                exc_type = type(e).__name__
+                exc_msg = str(e).splitlines()[0][:200]
+                extraction_detail = f"page extraction error ({exc_type}: {exc_msg})"
 
         # Build a diagnostic error listing every source that was tried.
         reasons = []
@@ -762,14 +765,14 @@ class JobProcessor(BaseProcessor):
             reasons.append(f"listing_id={listing_id} not found in DB")
         else:
             reasons.append("no listing_id")
-        if item.scraped_data:
-            reasons.append("scraped_data present but missing title")
-        else:
-            reasons.append("no scraped_data")
+        reasons.append(
+            "scraped_data present but missing title" if item.scraped_data else "no scraped_data"
+        )
         reasons.append(extraction_detail)
 
+        url_display = item.url or "<no url>"
         raise ValueError(
-            f"Could not extract job data from {item.url} — tried {len(reasons)} "
+            f"Could not extract job data from {url_display} — tried {len(reasons)} "
             f"sources: {'; '.join(reasons)}"
         )
 

@@ -176,8 +176,13 @@ class TestExecuteScrapePageExtractionFallback:
         processor.page_data_extractor = MagicMock()
         processor.page_data_extractor.extract.return_value = None
 
-        with pytest.raises(ValueError, match="Could not extract job data"):
+        with pytest.raises(ValueError, match="Could not extract job data") as exc_info:
             processor._execute_scrape(ctx)
+        msg = str(exc_info.value)
+        assert "no manual data" in msg
+        assert "no listing_id" in msg
+        assert "no scraped_data" in msg
+        assert "page extraction returned no usable job data" in msg
 
     def test_extraction_missing_title_raises_value_error(self):
         processor = _make_job_processor()
@@ -202,8 +207,10 @@ class TestExecuteScrapePageExtractionFallback:
         processor.page_data_extractor = MagicMock()
         processor.page_data_extractor.extract.side_effect = RuntimeError("Playwright crash")
 
-        with pytest.raises(ValueError, match="Could not extract job data"):
+        with pytest.raises(ValueError, match="Could not extract job data") as exc_info:
             processor._execute_scrape(ctx)
+        msg = str(exc_info.value)
+        assert "page extraction error (RuntimeError: Playwright crash)" in msg
 
     def test_no_agents_available_falls_through_to_value_error(self):
         """NoAgentsAvailableError in page extraction should NOT stop the queue.
