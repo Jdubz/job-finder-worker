@@ -695,7 +695,9 @@ def probe_ats_provider(
         if existing_api_urls and stored_url in existing_api_urls:
             logger.warning(
                 "ATS probe %s/%s: skipping — URL %s already used by an active source",
-                provider, slug, stored_url,
+                provider,
+                slug,
+                stored_url,
             )
             return ATSProbeResult(found=False)
 
