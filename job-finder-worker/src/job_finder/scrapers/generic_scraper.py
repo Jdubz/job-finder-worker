@@ -1382,10 +1382,10 @@ class GenericScraper:
         if posted:
             job.setdefault("posted_date", posted)
 
-        # Extract additionalLocations for work arrangement inference
+        # Extract additional locations for work arrangement inference
         additional_locations = info.get("additionalLocations")
         if isinstance(additional_locations, list) and additional_locations:
-            job["additionalLocations"] = additional_locations
+            job["additional_locations"] = additional_locations
 
         # Normalize URL to be the human-readable absolute URL
         job["url"] = human_url

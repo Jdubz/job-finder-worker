@@ -1505,7 +1505,7 @@ class TestPreFilterAdditionalLocations:
             {
                 "title": "Engineer",
                 "location": "3 Locations",
-                "additionalLocations": ["Remote", "Chicago, IL"],
+                "additional_locations": ["Remote", "Chicago, IL"],
             }
         )
         assert result.passed is True
@@ -1531,7 +1531,7 @@ class TestPreFilterAdditionalLocations:
             {
                 "title": "Engineer",
                 "location": "3 Locations",
-                "additionalLocations": ["Remote", "Austin, TX"],
+                "additional_locations": ["Remote", "Austin, TX"],
             }
         )
         assert result.passed is False
@@ -1543,7 +1543,7 @@ class TestPreFilterAdditionalLocations:
         result = pf.filter(
             {
                 "title": "Engineer",
-                "additionalLocations": ["Chicago, IL", "Austin, TX"],
+                "additional_locations": ["Chicago, IL", "Austin, TX"],
             }
         )
         assert result.passed is True

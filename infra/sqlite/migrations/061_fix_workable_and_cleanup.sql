@@ -11,104 +11,58 @@
 -- ============================================================
 
 UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/oracle')
-WHERE name = 'Oracle Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/vituity')
-WHERE name = 'Vituity Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/tidio')
-WHERE name = 'Tidio Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/icf')
-WHERE name = 'ICF Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/klick')
-WHERE name = 'Klick Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/tietoevry')
-WHERE name = 'Tietoevry Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/tkxel')
-WHERE name = 'Tkxel Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/the-hershey-company')
-WHERE name = 'The Hershey Company Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/sopra-steria')
-WHERE name = 'Sopra Steria Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/ntt-data')
-WHERE name = 'NTT DATA Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/harris')
-WHERE name = 'Harris Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/syndicode')
-WHERE name = 'Syndicode Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/aflac')
-WHERE name = 'Aflac Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/capgemini')
-WHERE name = 'Capgemini Technology Services Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/leidos')
-WHERE name = 'Leidos Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/hostpapa')
-WHERE name = 'HostPapa Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/efood')
-WHERE name = 'efood Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/teksystems')
-WHERE name = 'TEKsystems Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/ford')
-WHERE name = 'Ford Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET config_json = json_set(config_json, '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/trina-solar')
-WHERE name = 'Trina Solar Jobs (workable.com)' AND status = 'active';
+SET config_json = json_set(
+    config_json,
+    '$.url',
+    'https://apply.workable.com/api/v1/widget/accounts/' || (
+        SELECT slug FROM (
+            VALUES
+                ('Oracle Jobs (workable.com)', 'oracle'),
+                ('Vituity Jobs (workable.com)', 'vituity'),
+                ('Tidio Jobs (workable.com)', 'tidio'),
+                ('ICF Jobs (workable.com)', 'icf'),
+                ('Klick Jobs (workable.com)', 'klick'),
+                ('Tietoevry Jobs (workable.com)', 'tietoevry'),
+                ('Tkxel Jobs (workable.com)', 'tkxel'),
+                ('The Hershey Company Jobs (workable.com)', 'the-hershey-company'),
+                ('Sopra Steria Jobs (workable.com)', 'sopra-steria'),
+                ('NTT DATA Jobs (workable.com)', 'ntt-data'),
+                ('Harris Jobs (workable.com)', 'harris'),
+                ('Syndicode Jobs (workable.com)', 'syndicode'),
+                ('Aflac Jobs (workable.com)', 'aflac'),
+                ('Capgemini Technology Services Jobs (workable.com)', 'capgemini'),
+                ('Leidos Jobs (workable.com)', 'leidos'),
+                ('HostPapa Jobs (workable.com)', 'hostpapa'),
+                ('efood Jobs (workable.com)', 'efood'),
+                ('TEKsystems Jobs (workable.com)', 'teksystems'),
+                ('Ford Jobs (workable.com)', 'ford'),
+                ('Trina Solar Jobs (workable.com)', 'trina-solar')
+        ) AS mapping(source_name, slug)
+        WHERE mapping.source_name = job_sources.name
+    )
+)
+WHERE name IN (
+    'Oracle Jobs (workable.com)',
+    'Vituity Jobs (workable.com)',
+    'Tidio Jobs (workable.com)',
+    'ICF Jobs (workable.com)',
+    'Klick Jobs (workable.com)',
+    'Tietoevry Jobs (workable.com)',
+    'Tkxel Jobs (workable.com)',
+    'The Hershey Company Jobs (workable.com)',
+    'Sopra Steria Jobs (workable.com)',
+    'NTT DATA Jobs (workable.com)',
+    'Harris Jobs (workable.com)',
+    'Syndicode Jobs (workable.com)',
+    'Aflac Jobs (workable.com)',
+    'Capgemini Technology Services Jobs (workable.com)',
+    'Leidos Jobs (workable.com)',
+    'HostPapa Jobs (workable.com)',
+    'efood Jobs (workable.com)',
+    'TEKsystems Jobs (workable.com)',
+    'Ford Jobs (workable.com)',
+    'Trina Solar Jobs (workable.com)'
+) AND status = 'active';
 
 -- ============================================================
 -- 2. Clear seen_urls for all fixed sources so they re-scrape fresh
@@ -146,22 +100,12 @@ DELETE FROM seen_urls WHERE source_id IN (
 UPDATE job_sources
 SET status = 'disabled',
     config_json = json_set(config_json, '$.disabled_tags', json('["no_workable_page"]'))
-WHERE name = 'Presight Solutions AS Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET status = 'disabled',
-    config_json = json_set(config_json, '$.disabled_tags', json('["no_workable_page"]'))
-WHERE name = 'Raw Power Games Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET status = 'disabled',
-    config_json = json_set(config_json, '$.disabled_tags', json('["no_workable_page"]'))
-WHERE name = 'Epoch AI Jobs (workable.com)' AND status = 'active';
-
-UPDATE job_sources
-SET status = 'disabled',
-    config_json = json_set(config_json, '$.disabled_tags', json('["no_workable_page"]'))
-WHERE name = 'AskVinny Jobs (workable.com)' AND status = 'active';
+WHERE name IN (
+    'Presight Solutions AS Jobs (workable.com)',
+    'Raw Power Games Jobs (workable.com)',
+    'Epoch AI Jobs (workable.com)',
+    'AskVinny Jobs (workable.com)'
+) AND status = 'active';
 
 -- ============================================================
 -- 4. Delete duplicate hims source (same Ashby API URL as "Hims & Hers")

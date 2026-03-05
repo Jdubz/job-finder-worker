@@ -876,8 +876,10 @@ class PreFilter:
                     if any(kw in office_lower for kw in self.remote_keywords):
                         return "remote"
 
-        # Check additionalLocations array for remote indicators (Workday)
-        additional_locations = job_data.get("additionalLocations", [])
+        # Check additional_locations array for remote indicators (Workday)
+        additional_locations = job_data.get("additional_locations") or job_data.get(
+            "additionalLocations", []
+        )
         if isinstance(additional_locations, list):
             for loc in additional_locations:
                 if isinstance(loc, str) and loc:
@@ -1347,8 +1349,8 @@ class PreFilter:
                     # Unparseable salary string format, fall through to return None
                     pass
 
-        # If value < 1000, assume hourly rate and convert to annual
-        # (no annual salary is <$1k; no hourly rate is >$500/hr)
+        # If value < 1000, assume it's an hourly rate and convert to annual
+        # (heuristic: annual salaries are never below $1k)
         if value is not None and value < 1000:
             value = value * 2080  # 40 hrs/wk × 52 wks/yr
 

@@ -1098,7 +1098,7 @@ def test_enrich_workday_extracts_additional_locations(monkeypatch):
     job = {"url": "job/99999", "description": ""}
 
     enriched = scraper._enrich_from_detail(job)
-    assert enriched["additionalLocations"] == ["Remote", "Chicago, IL", "Austin, TX"]
+    assert enriched["additional_locations"] == ["Remote", "Chicago, IL", "Austin, TX"]
     assert enriched["description"] == "<p>Cloud stuff</p>"
 
 
@@ -1142,4 +1142,4 @@ def test_enrich_workday_no_additional_locations(monkeypatch):
     job = {"url": "job/88888", "description": ""}
 
     enriched = scraper._enrich_from_detail(job)
-    assert "additionalLocations" not in enriched
+    assert "additional_locations" not in enriched
