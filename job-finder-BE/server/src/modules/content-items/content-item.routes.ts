@@ -21,12 +21,13 @@ import { ApiHttpError } from '../../middleware/api-error'
 import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/firebase-auth'
 
 const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
-const monthSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}$/, 'Date must be in YYYY-MM format')
-  .or(z.literal('').transform(() => undefined))
-  .or(z.literal(null).transform(() => undefined))
-  .optional()
+const monthSchema = z.preprocess(
+  (val) => (val === '' || val === null ? undefined : val),
+  z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, 'Date must be in YYYY-MM format')
+    .optional()
+)
 
 const itemFieldsSchema = z.object({
   parentId: nullableIdSchema,
@@ -163,7 +164,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const response: CreateContentItemResponse = { item, message: 'Content item created' }
         res.status(201).json(success(response))
       } catch (err) {
-        if (handleRepoError(err, res)) return
+        if (handleRouteError(err, res)) return
         throw err
       }
     })
@@ -181,7 +182,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
         res.json(success(response))
       } catch (err) {
-        if (handleRepoError(err, res)) return
+        if (handleRouteError(err, res)) return
         throw err
       }
     })
@@ -201,7 +202,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         }
         res.json(success(response))
       } catch (err) {
-        if (handleRepoError(err, res)) return
+        if (handleRouteError(err, res)) return
         throw err
       }
     })
@@ -219,7 +220,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         const response: ReorderContentItemResponse = { item }
         res.json(success(response))
       } catch (err) {
-        if (handleRepoError(err, res)) return
+        if (handleRouteError(err, res)) return
         throw err
       }
     })
@@ -228,9 +229,9 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
   return router
 }
 
-function handleRepoError(err: unknown, res: Response): boolean {
+function handleRouteError(err: unknown, res: Response): boolean {
   if (err instanceof z.ZodError) {
-    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, JSON.stringify(err.errors)))
+    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')))
     return true
   }
   if (err instanceof ContentItemNotFoundError) {
