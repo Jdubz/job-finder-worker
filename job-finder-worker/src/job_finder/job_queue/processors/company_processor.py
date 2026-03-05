@@ -58,6 +58,10 @@ class CompanyProcessor(BaseProcessor):
         self.inference_client = InferenceClient()
         self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
 
+    def _refresh_runtime_config(self) -> None:
+        """Refresh config-driven settings before processing each item."""
+        self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
+
     # ============================================================
     # SINGLE-PASS PROCESSOR
     # ============================================================
@@ -79,6 +83,8 @@ class CompanyProcessor(BaseProcessor):
         if not item.id:
             logger.error("Cannot process item without ID")
             return
+
+        self._refresh_runtime_config()
 
         company_id = item.company_id
         company_name = item.company_name
