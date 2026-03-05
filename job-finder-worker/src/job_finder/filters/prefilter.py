@@ -876,6 +876,17 @@ class PreFilter:
                     if any(kw in office_lower for kw in self.remote_keywords):
                         return "remote"
 
+        # Check additional_locations array for remote indicators (Workday)
+        additional_locations = job_data.get("additional_locations") or job_data.get(
+            "additionalLocations", []
+        )
+        if isinstance(additional_locations, list):
+            for loc in additional_locations:
+                if isinstance(loc, str) and loc:
+                    loc_lower = loc.lower()
+                    if any(kw in loc_lower for kw in self.remote_keywords):
+                        return "remote"
+
         # Check location string for hints
         location = job_data.get("location", "")
         if isinstance(location, str):
@@ -1285,56 +1296,65 @@ class PreFilter:
         Extract salary value from job data.
 
         Uses max salary if available, otherwise min.
+        Converts hourly rates (<$1000) to annual equivalents (×2080).
         Returns None if no salary data.
         """
+        value = None
+
         # Try structured salary fields first
         salary_max = job_data.get("salary_max")
         salary_min = job_data.get("salary_min")
 
         if salary_max is not None:
             try:
-                return int(float(salary_max))
+                value = int(float(salary_max))
             except (ValueError, TypeError):
                 pass
 
-        if salary_min is not None:
+        if value is None and salary_min is not None:
             try:
-                return int(float(salary_min))
+                value = int(float(salary_min))
             except (ValueError, TypeError):
                 pass
 
         # Try salary string (Remotive format like "$100k - $150k")
-        salary_str = job_data.get("salary", "")
-        if salary_str and isinstance(salary_str, str):
-            try:
-                # Extract numbers with optional 'k' suffix (e.g., "100", "100,000", "150k")
-                # The 'k' is optional to handle both "$150k" and "$150,000" formats
-                numbers = re.findall(r"[\d,]+(?:k)?", salary_str.lower())
-                if numbers:
-                    # Parse the highest number as the max salary
-                    parsed = []
-                    for num in numbers:
-                        has_k = "k" in num
-                        has_comma = "," in num
+        if value is None:
+            salary_str = job_data.get("salary", "")
+            if salary_str and isinstance(salary_str, str):
+                try:
+                    # Extract numbers with optional 'k' suffix (e.g., "100", "100,000", "150k")
+                    # The 'k' is optional to handle both "$150k" and "$150,000" formats
+                    numbers = re.findall(r"[\d,]+(?:k)?", salary_str.lower())
+                    if numbers:
+                        # Parse the highest number as the max salary
+                        parsed = []
+                        for num in numbers:
+                            has_k = "k" in num
+                            has_comma = "," in num
 
-                        if has_k and has_comma:
-                            # Invalid mixed format like "120,000k", skip
-                            continue
-                        elif has_k:
-                            # "100k" -> 100 * 1000 = 100000
-                            clean = num.replace("k", "")
-                            parsed.append(int(clean) * 1000)
-                        else:
-                            # "100,000" -> 100000
-                            clean = num.replace(",", "")
-                            parsed.append(int(clean))
-                    if parsed:
-                        return max(parsed)
-            except (ValueError, TypeError):
-                # Unparseable salary string format, fall through to return None
-                pass
+                            if has_k and has_comma:
+                                # Invalid mixed format like "120,000k", skip
+                                continue
+                            elif has_k:
+                                # "100k" -> 100 * 1000 = 100000
+                                clean = num.replace("k", "")
+                                parsed.append(int(clean) * 1000)
+                            else:
+                                # "100,000" -> 100000
+                                clean = num.replace(",", "")
+                                parsed.append(int(clean))
+                        if parsed:
+                            value = max(parsed)
+                except (ValueError, TypeError):
+                    # Unparseable salary string format, fall through to return None
+                    pass
 
-        return None
+        # If value < 1000, assume it's an hourly rate and convert to annual
+        # (heuristic: annual salaries are never below $1k)
+        if value is not None and value < 1000:
+            value = value * 2080  # 40 hrs/wk × 52 wks/yr
+
+        return value
 
     def _check_salary(self, salary: int) -> PreFilterResult:
         """Check if salary meets minimum floor."""

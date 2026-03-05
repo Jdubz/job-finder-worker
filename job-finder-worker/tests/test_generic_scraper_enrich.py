@@ -1055,3 +1055,91 @@ class TestDiagnoseEmptySelectorForNonJS:
         assert result == []  # No items found
         # Verify diagnostic warning was logged
         assert any("html_zero_jobs" in w for w in warnings)
+
+
+def test_enrich_workday_extracts_additional_locations(monkeypatch):
+    """Workday detail with additionalLocations should store them on the job dict."""
+
+    payload = {
+        "jobPostingInfo": {
+            "title": "Cloud Engineer",
+            "jobDescription": "<p>Cloud stuff</p>",
+            "location": "3 Locations",
+            "additionalLocations": ["Remote", "Chicago, IL", "Austin, TX"],
+        }
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        fake_get.last_url = url
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/jobs",
+            "base_url": "https://acme.wd5.myworkdayjobs.com/careers",
+            "response_path": "jobPostings",
+            "fields": {"title": "title", "url": "externalPath"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    job = {"url": "job/99999", "description": ""}
+
+    enriched = scraper._enrich_from_detail(job)
+    assert enriched["additional_locations"] == ["Remote", "Chicago, IL", "Austin, TX"]
+    assert enriched["description"] == "<p>Cloud stuff</p>"
+
+
+def test_enrich_workday_no_additional_locations(monkeypatch):
+    """Workday detail without additionalLocations should not add key."""
+
+    payload = {
+        "jobPostingInfo": {
+            "title": "Backend Engineer",
+            "jobDescription": "<p>Backend stuff</p>",
+            "location": "San Francisco, CA",
+        }
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self_inner):
+                return payload
+
+        fake_get.last_url = url
+        return Resp()
+
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.requests.get", fake_get)
+    monkeypatch.setattr("job_finder.scrapers.generic_scraper.get_fetch_delay_seconds", lambda: 0)
+
+    cfg = SourceConfig.from_dict(
+        {
+            "type": "api",
+            "url": "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers/jobs",
+            "base_url": "https://acme.wd5.myworkdayjobs.com/careers",
+            "response_path": "jobPostings",
+            "fields": {"title": "title", "url": "externalPath"},
+        }
+    )
+    scraper = GenericScraper(cfg)
+    job = {"url": "job/88888", "description": ""}
+
+    enriched = scraper._enrich_from_detail(job)
+    assert "additional_locations" not in enriched

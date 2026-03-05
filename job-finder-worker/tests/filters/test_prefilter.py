@@ -1477,3 +1477,137 @@ class TestPreFilterCountryOnlyLocationRemote:
         result = pf.filter({"title": "Engineer", "location": "EMEA"})
         assert result.passed is True
         assert "workArrangement" in result.checks_performed
+
+
+class TestPreFilterAdditionalLocations:
+    """Tests for remote detection via Workday additionalLocations array."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+        }
+
+    def test_remote_detected_from_additional_locations(self, base_config):
+        """additionalLocations with 'Remote' should be detected as remote."""
+        pf = PreFilter(base_config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "location": "3 Locations",
+                "additional_locations": ["Remote", "Chicago, IL"],
+            }
+        )
+        assert result.passed is True
+        assert "workArrangement" in result.checks_performed
+
+    def test_remote_rejected_via_additional_locations(self):
+        """additionalLocations remote detection should be rejected when remote not allowed."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": False,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": None},
+        }
+        pf = PreFilter(config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "location": "3 Locations",
+                "additional_locations": ["Remote", "Austin, TX"],
+            }
+        )
+        assert result.passed is False
+        assert "Remote" in result.reason
+
+    def test_non_remote_additional_locations_skipped(self, base_config):
+        """additionalLocations without remote keywords should not infer work arrangement."""
+        pf = PreFilter(base_config)
+        result = pf.filter(
+            {
+                "title": "Engineer",
+                "additional_locations": ["Chicago, IL", "Austin, TX"],
+            }
+        )
+        assert result.passed is True
+        assert "workArrangement" in result.checks_skipped
+
+
+class TestPreFilterHourlySalary:
+    """Tests for hourly rate to annual salary conversion."""
+
+    def test_hourly_rate_converted_to_annual(self):
+        """$60/hr should be converted to ~$124,800/yr and pass $120k minimum."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": 120000},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "salary_max": 60})
+        assert result.passed is True
+        assert "salary" in result.checks_performed
+
+    def test_hourly_rate_below_minimum_fails(self):
+        """$50/hr = $104,000/yr should fail $120k minimum."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": 120000},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "salary_max": 50})
+        assert result.passed is False
+        assert "$104,000" in result.reason
+
+    def test_annual_salary_not_converted(self):
+        """$150,000 annual should not be multiplied by 2080."""
+        config = {
+            "title": {"requiredKeywords": [], "excludedKeywords": []},
+            "freshness": {"maxAgeDays": 0},
+            "workArrangement": {
+                "allowRemote": True,
+                "allowHybrid": True,
+                "allowOnsite": True,
+                "willRelocate": True,
+                "userLocation": "Portland, OR",
+            },
+            "employmentType": {"allowFullTime": True, "allowPartTime": True, "allowContract": True},
+            "salary": {"minimum": 120000},
+        }
+        pf = PreFilter(config)
+        result = pf.filter({"title": "Engineer", "salary_max": 150000})
+        assert result.passed is True
