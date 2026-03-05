@@ -14,32 +14,28 @@ UPDATE job_sources
 SET config_json = json_set(
     config_json,
     '$.url',
-    'https://apply.workable.com/api/v1/widget/accounts/' || (
-        SELECT slug FROM (
-            VALUES
-                ('Oracle Jobs (workable.com)', 'oracle'),
-                ('Vituity Jobs (workable.com)', 'vituity'),
-                ('Tidio Jobs (workable.com)', 'tidio'),
-                ('ICF Jobs (workable.com)', 'icf'),
-                ('Klick Jobs (workable.com)', 'klick'),
-                ('Tietoevry Jobs (workable.com)', 'tietoevry'),
-                ('Tkxel Jobs (workable.com)', 'tkxel'),
-                ('The Hershey Company Jobs (workable.com)', 'the-hershey-company'),
-                ('Sopra Steria Jobs (workable.com)', 'sopra-steria'),
-                ('NTT DATA Jobs (workable.com)', 'ntt-data'),
-                ('Harris Jobs (workable.com)', 'harris'),
-                ('Syndicode Jobs (workable.com)', 'syndicode'),
-                ('Aflac Jobs (workable.com)', 'aflac'),
-                ('Capgemini Technology Services Jobs (workable.com)', 'capgemini'),
-                ('Leidos Jobs (workable.com)', 'leidos'),
-                ('HostPapa Jobs (workable.com)', 'hostpapa'),
-                ('efood Jobs (workable.com)', 'efood'),
-                ('TEKsystems Jobs (workable.com)', 'teksystems'),
-                ('Ford Jobs (workable.com)', 'ford'),
-                ('Trina Solar Jobs (workable.com)', 'trina-solar')
-        ) AS mapping(source_name, slug)
-        WHERE mapping.source_name = job_sources.name
-    )
+    'https://apply.workable.com/api/v1/widget/accounts/' || CASE name
+        WHEN 'Oracle Jobs (workable.com)' THEN 'oracle'
+        WHEN 'Vituity Jobs (workable.com)' THEN 'vituity'
+        WHEN 'Tidio Jobs (workable.com)' THEN 'tidio'
+        WHEN 'ICF Jobs (workable.com)' THEN 'icf'
+        WHEN 'Klick Jobs (workable.com)' THEN 'klick'
+        WHEN 'Tietoevry Jobs (workable.com)' THEN 'tietoevry'
+        WHEN 'Tkxel Jobs (workable.com)' THEN 'tkxel'
+        WHEN 'The Hershey Company Jobs (workable.com)' THEN 'the-hershey-company'
+        WHEN 'Sopra Steria Jobs (workable.com)' THEN 'sopra-steria'
+        WHEN 'NTT DATA Jobs (workable.com)' THEN 'ntt-data'
+        WHEN 'Harris Jobs (workable.com)' THEN 'harris'
+        WHEN 'Syndicode Jobs (workable.com)' THEN 'syndicode'
+        WHEN 'Aflac Jobs (workable.com)' THEN 'aflac'
+        WHEN 'Capgemini Technology Services Jobs (workable.com)' THEN 'capgemini'
+        WHEN 'Leidos Jobs (workable.com)' THEN 'leidos'
+        WHEN 'HostPapa Jobs (workable.com)' THEN 'hostpapa'
+        WHEN 'efood Jobs (workable.com)' THEN 'efood'
+        WHEN 'TEKsystems Jobs (workable.com)' THEN 'teksystems'
+        WHEN 'Ford Jobs (workable.com)' THEN 'ford'
+        WHEN 'Trina Solar Jobs (workable.com)' THEN 'trina-solar'
+    END
 )
 WHERE name IN (
     'Oracle Jobs (workable.com)',
