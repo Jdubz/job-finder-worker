@@ -246,6 +246,15 @@ class ConfigLoader:
         runtime = settings["runtime"]
         return bool(runtime["isProcessingEnabled"])
 
+    def is_local_models_enabled(self) -> bool:
+        """Check if local model routing is enabled (worker-settings.runtime.useLocalModels).
+
+        Defaults to True when the key is absent (backward compat).
+        """
+        settings = self.get_worker_settings()
+        runtime = settings["runtime"]
+        return bool(runtime.get("useLocalModels", True))
+
     def _set_config(self, key: str, payload: Dict[str, Any]) -> None:
         """Update a config entry in the database."""
         with sqlite_connection(self.db_path) as conn:

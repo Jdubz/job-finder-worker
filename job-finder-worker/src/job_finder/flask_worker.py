@@ -308,6 +308,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     # Initialize config loader and inference client (LiteLLM proxy)
     config_loader = ConfigLoader(db_path)
     inference_client = InferenceClient()
+    inference_client.use_local_models = config_loader.is_local_models_enabled()
 
     # Get match policy (deterministic scoring settings) - required, fail loud
     match_policy = config_loader.get_match_policy()

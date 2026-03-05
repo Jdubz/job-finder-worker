@@ -56,6 +56,7 @@ class CompanyProcessor(BaseProcessor):
         self.company_info_fetcher = ctx.company_info_fetcher
         # InferenceClient for intelligent source discovery (career page selection).
         self.inference_client = InferenceClient()
+        self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
 
     # ============================================================
     # SINGLE-PASS PROCESSOR

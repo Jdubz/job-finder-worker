@@ -167,6 +167,7 @@ class JobProcessor(BaseProcessor):
 
         # Initialize InferenceClient for AI operations (LiteLLM proxy)
         self.inference_client = InferenceClient()
+        self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
         self.extractor = JobExtractor(self.inference_client)
         self.page_data_extractor = PageDataExtractor(self.inference_client)
 
@@ -241,6 +242,9 @@ class JobProcessor(BaseProcessor):
             self.scrape_runner.title_filter = self.title_filter
         if hasattr(self.scraper_intake, "title_filter"):
             self.scraper_intake.title_filter = self.title_filter
+
+        # Refresh local-models flag from config
+        self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
 
         # Recreate the extractor with the inference client
         self.extractor = JobExtractor(self.inference_client)
