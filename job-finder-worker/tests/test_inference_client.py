@@ -40,6 +40,21 @@ class TestTaskRouter:
         expected = {"extraction", "analysis", "document", "chat"}
         assert expected == set(TASK_MODEL_MAP.keys())
 
+    def test_use_local_false_reroutes_local_models(self):
+        """When use_local=False, local-* models should reroute to DEFAULT_MODEL."""
+        assert get_model_for_task("extraction", use_local=False) == DEFAULT_MODEL
+        assert get_model_for_task("analysis", use_local=False) == DEFAULT_MODEL
+
+    def test_use_local_false_preserves_non_local_models(self):
+        """When use_local=False, non-local models should remain unchanged."""
+        assert get_model_for_task("document", use_local=False) == "claude-document"
+        assert get_model_for_task("chat", use_local=False) == "claude-document"
+
+    def test_use_local_true_is_default(self):
+        """Default use_local=True should return local models as configured."""
+        assert get_model_for_task("extraction") == "local-extract"
+        assert get_model_for_task("extraction", use_local=True) == "local-extract"
+
 
 class TestInferenceClientExecute:
     """Test InferenceClient.execute() method."""
@@ -184,6 +199,22 @@ class TestInferenceClientExecute:
 
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert "response_format" not in call_kwargs
+
+    @patch("job_finder.ai.inference_client.OpenAI")
+    def test_use_local_models_false_reroutes_to_default(self, mock_openai_cls):
+        """When use_local_models=False, local-* tasks should route to DEFAULT_MODEL."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._make_mock_response(
+            model="gemini-general"
+        )
+        mock_openai_cls.return_value = mock_client
+
+        client = InferenceClient(api_key="test-key")
+        client.use_local_models = False
+        client.execute("extraction", "test prompt")
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["model"] == "gemini-general"
 
     @patch("job_finder.ai.inference_client.OpenAI")
     def test_backward_compat_without_new_params(self, mock_openai_cls):

@@ -84,6 +84,10 @@ class InferenceClient:
             timeout=self._timeout,
         )
 
+        # When False, local-* models are rerouted to the default cloud model.
+        # Set from worker-settings.runtime.useLocalModels by the queue runner.
+        self.use_local_models: bool = True
+
     def execute(
         self,
         task_type: str,
@@ -122,7 +126,7 @@ class InferenceClient:
             TransientError: Timeout or temporary connection failure
             AIProviderError: Other API errors
         """
-        model = model_override or get_model_for_task(task_type)
+        model = model_override or get_model_for_task(task_type, use_local=self.use_local_models)
 
         messages: list[dict[str, str]] = []
         if system_prompt:

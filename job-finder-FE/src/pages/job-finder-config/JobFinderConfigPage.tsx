@@ -134,7 +134,16 @@ export function JobFinderConfigPage() {
             />
           )}
 
-          {activeTab === "llm" && <LlmStatusTab />}
+          {activeTab === "llm" && configState.workerSettings && (
+            <LlmStatusTab
+              useLocalModels={configState.workerSettings.runtime.useLocalModels ?? true}
+              onToggleLocalModels={configState.setLocalModels}
+              hasChanges={configState.hasWorkerChanges}
+              isSaving={configState.isSaving}
+              onSave={configState.handleSaveWorkerSettings}
+              onReset={configState.resetWorker}
+            />
+          )}
 
           {activeTab === "personal" && (
             <PersonalInfoTab

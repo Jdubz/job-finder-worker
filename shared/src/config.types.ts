@@ -521,6 +521,13 @@ export interface WorkerSettings {
     }
     /** Reason the worker was stopped (set automatically on critical errors) */
     stopReason?: string | null
+    /**
+     * Whether to route tasks to local models (Ollama).
+     * When false, tasks that would normally go to local-extract are routed
+     * to gemini-general instead, avoiding latency from failed Ollama attempts.
+     * Defaults to true when absent.
+     */
+    useLocalModels?: boolean
   }
 }
 

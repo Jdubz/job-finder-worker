@@ -168,6 +168,7 @@ class SourceProcessor(BaseProcessor):
         self.companies_manager = ctx.companies_manager
         self.job_listing_storage = ctx.job_listing_storage
         self.inference_client = InferenceClient()
+        self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
 
         # Create filters from prefilter-policy for early rejection
         prefilter_policy = ctx.config_loader.get_prefilter_policy()
@@ -189,8 +190,10 @@ class SourceProcessor(BaseProcessor):
         Reload config-driven components so each item uses fresh settings.
 
         Rebuilds title_filter, prefilter, and scraper_intake from latest config.
-        InferenceClient is stateless, so no explicit refresh needed.
         """
+        # Refresh local-models flag from config
+        self.inference_client.use_local_models = self.config_loader.is_local_models_enabled()
+
         prefilter_policy = self.config_loader.get_prefilter_policy()
         title_cfg = prefilter_policy.get("title", {}) if isinstance(prefilter_policy, dict) else {}
 

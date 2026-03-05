@@ -232,6 +232,36 @@ def test_job_pipeline_full_path(tmp_path: Path):
                 now_iso,
             ),
         )
+        conn.execute(
+            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "worker-settings",
+                json.dumps(
+                    {
+                        "scraping": {
+                            "requestTimeoutSeconds": 30,
+                            "maxHtmlSampleLength": 20000,
+                        },
+                        "textLimits": {
+                            "minCompanyPageLength": 200,
+                            "minSparseCompanyInfoLength": 100,
+                            "maxIntakeTextLength": 500,
+                            "maxIntakeDescriptionLength": 2000,
+                            "maxIntakeFieldLength": 400,
+                            "maxDescriptionPreviewLength": 500,
+                            "maxCompanyInfoTextLength": 1000,
+                        },
+                        "runtime": {
+                            "processingTimeoutSeconds": 1800,
+                            "isProcessingEnabled": True,
+                            "taskDelaySeconds": 0,
+                            "pollIntervalSeconds": 60,
+                        },
+                    }
+                ),
+                now_iso,
+            ),
+        )
 
     # Stub AI matcher and filter to avoid network/LLM
     class DummyMatcher:

@@ -141,6 +141,10 @@ export function useConfigState() {
     setWorkerSettings((prev) => (prev ? { ...prev, runtime: { ...prev.runtime, ...updates } } : prev))
   }
 
+  const setLocalModels = (enabled: boolean) => {
+    setRuntimeSettings({ useLocalModels: enabled })
+  }
+
   const setScrapingSettings = (updates: Partial<WorkerSettings["scraping"]>) => {
     setWorkerSettings((prev) => (prev ? { ...prev, scraping: { ...prev.scraping, ...updates } } : prev))
   }
@@ -209,6 +213,7 @@ export function useConfigState() {
     workerSettings,
     setRuntimeSettings,
     setScrapingSettings,
+    setLocalModels,
     handleSaveWorkerSettings,
     hasWorkerChanges: stableStringify(workerSettings) !== stableStringify(originalWorkerSettings),
     resetWorker: () => setWorkerSettings(deepClone(originalWorkerSettings)),

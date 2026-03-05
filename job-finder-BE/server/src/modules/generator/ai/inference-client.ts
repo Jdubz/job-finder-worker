@@ -22,8 +22,10 @@ const TASK_MODEL_MAP: Record<string, string> = {
 
 const DEFAULT_MODEL = 'gemini-general'
 
-function getModelForTask(taskType: string): string {
-  return TASK_MODEL_MAP[taskType] ?? DEFAULT_MODEL
+function getModelForTask(taskType: string, useLocal = true): string {
+  const model = TASK_MODEL_MAP[taskType] ?? DEFAULT_MODEL
+  if (!useLocal && model.startsWith('local-')) return DEFAULT_MODEL
+  return model
 }
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -53,6 +55,9 @@ export class InferenceClient {
   private readonly apiKey: string
   private readonly timeoutMs: number
 
+  /** When false, local-* models are rerouted to the default cloud model. */
+  useLocalModels = true
+
   constructor(private readonly log: Logger = logger) {
     this.baseUrl = (process.env.LITELLM_BASE_URL || 'http://litellm:4000').replace(/\/v1\/?$/, '')
     this.apiKey = process.env.LITELLM_MASTER_KEY || ''
@@ -70,7 +75,7 @@ export class InferenceClient {
     modelOverride?: string,
     options: { max_tokens?: number; temperature?: number; systemPrompt?: string } = {}
   ): Promise<AgentExecutionResult> {
-    const model = modelOverride || getModelForTask(taskType)
+    const model = modelOverride || getModelForTask(taskType, this.useLocalModels)
     const url = `${this.baseUrl}/v1/chat/completions`
 
     const controller = new AbortController()
@@ -161,7 +166,7 @@ export class InferenceClient {
     model?: string,
     options: { max_tokens?: number } = {}
   ): AsyncGenerator<string> {
-    const resolvedModel = model || getModelForTask('chat')
+    const resolvedModel = model || getModelForTask('chat', this.useLocalModels)
     const url = `${this.baseUrl}/v1/chat/completions`
 
     const body: Record<string, unknown> = {

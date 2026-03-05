@@ -17,13 +17,18 @@ TASK_MODEL_MAP = {
 DEFAULT_MODEL = "gemini-general"
 
 
-def get_model_for_task(task_type: str) -> str:
+def get_model_for_task(task_type: str, use_local: bool = True) -> str:
     """Return the LiteLLM model name for a given task type.
 
     Args:
         task_type: One of "extraction", "analysis", "document", "chat"
+        use_local: When False, any local-* model is replaced with DEFAULT_MODEL.
+            This lets callers skip Ollama when it's intentionally offline.
 
     Returns:
         LiteLLM model name (e.g. "local-extract", "claude-document")
     """
-    return TASK_MODEL_MAP.get(task_type, DEFAULT_MODEL)
+    model = TASK_MODEL_MAP.get(task_type, DEFAULT_MODEL)
+    if not use_local and model.startswith("local-"):
+        return DEFAULT_MODEL
+    return model

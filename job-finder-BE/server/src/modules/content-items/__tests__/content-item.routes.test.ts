@@ -92,6 +92,22 @@ describe('content-item routes', () => {
       .expect(404)
   })
 
+  it('returns 400 when date format is invalid', async () => {
+    const created = await request(app).post('/content-items').send(basePayload).expect(201)
+    const itemId = created.body.data.item.id
+
+    const res = await request(app)
+      .patch(`/content-items/${itemId}`)
+      .send({
+        userEmail: basePayload.userEmail,
+        itemData: { startDate: 'not-a-date' }
+      })
+      .expect(400)
+
+    expect(res.body.success).toBe(false)
+    expect(res.body.error.message).toContain('Date must be in YYYY-MM format')
+  })
+
   it('reorders root items and moves children between parents', async () => {
     const rootA = await request(app).post('/content-items').send(basePayload).expect(201)
     const rootB = await request(app)
