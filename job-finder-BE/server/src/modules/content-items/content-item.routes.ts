@@ -24,6 +24,8 @@ const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
 const monthSchema = z
   .string()
   .regex(/^\d{4}-\d{2}$/, 'Date must be in YYYY-MM format')
+  .or(z.literal('').transform(() => undefined))
+  .or(z.literal(null).transform(() => undefined))
   .optional()
 
 const itemFieldsSchema = z.object({
@@ -227,6 +229,10 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
 }
 
 function handleRepoError(err: unknown, res: Response): boolean {
+  if (err instanceof z.ZodError) {
+    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, JSON.stringify(err.errors)))
+    return true
+  }
   if (err instanceof ContentItemNotFoundError) {
     res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
     return true

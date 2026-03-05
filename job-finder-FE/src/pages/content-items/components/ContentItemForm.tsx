@@ -166,21 +166,21 @@ export function ContentItemForm({
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="startDate">Start Date (YYYY-MM)</Label>
+          <Label htmlFor="startDate">Start Date</Label>
           <Input
             id="startDate"
+            type="month"
             value={formValues.startDate ?? ""}
             onChange={handleChange("startDate")}
-            placeholder="2022-01"
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="endDate">End Date (YYYY-MM)</Label>
+          <Label htmlFor="endDate">End Date</Label>
           <Input
             id="endDate"
+            type="month"
             value={formValues.endDate ?? ""}
             onChange={handleChange("endDate")}
-            placeholder="2023-10"
           />
         </div>
       </div>
