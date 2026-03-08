@@ -35,7 +35,7 @@ test.describe('Admin Route Protection', () => {
       const publicRoutes = [
         ROUTES.HOME,
         ROUTES.CONTENT_ITEMS,
-        ROUTES.DOCUMENT_BUILDER,
+        ROUTES.RESUMES,
         ROUTES.JOB_APPLICATIONS,
         ROUTES.AI_PROMPTS  // AI Prompts is public for viewing
       ]

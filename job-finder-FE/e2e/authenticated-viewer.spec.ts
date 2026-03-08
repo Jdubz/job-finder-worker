@@ -13,7 +13,7 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
   test('can access all public pages', async ({ page }) => {
     const publicRoutes = [
       ROUTES.CONTENT_ITEMS,
-      ROUTES.DOCUMENT_BUILDER,
+      ROUTES.RESUMES,
       ROUTES.JOB_APPLICATIONS,
       ROUTES.HOME
     ]
@@ -91,19 +91,9 @@ test.describe('Authenticated Viewer Access (Non-Admin)', () => {
     }
   })
 
-  test('can generate documents', async ({ page }) => {
-    await page.goto(ROUTES.DOCUMENT_BUILDER)
-
-    // Look for generate/create button
-    const generateButton = page.getByRole('button', { name: /generate|create|build/i }).first()
-    if (await generateButton.isVisible()) {
-      await generateButton.click()
-
-      // Should see document generation interface (not sign-in prompt)
-      await expect(
-        page.getByLabel(/template|job|content/i).first()
-      ).toBeVisible({ timeout: 5000 })
-    }
+  test('can view resumes page', async ({ page }) => {
+    await page.goto(ROUTES.RESUMES)
+    await expect(page).toHaveURL(ROUTES.RESUMES)
   })
 
   test('can sign out', async ({ page }) => {

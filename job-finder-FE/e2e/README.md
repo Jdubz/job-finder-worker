@@ -14,7 +14,6 @@ Playwright tests live in this folder and exercise the real frontend against the 
 
 ```
 e2e/
-├── document-builder.spec.ts          # Job match hydration + document builder inputs
 ├── owner-config-and-prompts.spec.ts  # Stop list, queue + AI settings, and AI prompts flows
 ├── owner-content-and-queue.spec.ts   # Content CRUD + queue management rendering
 ├── owner-navigation.spec.ts          # Drawer navigation + owner/guest permissions

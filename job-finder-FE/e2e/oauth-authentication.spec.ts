@@ -172,7 +172,7 @@ test.describe('Google OAuth Authentication Flow', () => {
     await page.goto(ROUTES.CONTENT_ITEMS, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
-    await page.goto(ROUTES.DOCUMENT_BUILDER, { waitUntil: 'domcontentloaded' })
+    await page.goto(ROUTES.RESUMES, { waitUntil: 'domcontentloaded' })
     await expect(getAuthIcon(page, 'viewer')).toBeVisible({ timeout: 15000 })
 
     await page.close()
