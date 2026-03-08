@@ -22,6 +22,8 @@ import type {
   ResumeContent,
   CoverLetterContent,
   DraftContentResponse,
+  ListResumeVersionsResponse,
+  ResumeVersion,
 } from "@shared/types"
 import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
@@ -500,6 +502,34 @@ export async function submitJobToQueue(job: {
     id: data.data.queueItem.id,
     status: data.data.queueItem.status,
   }
+}
+
+// ============================================================================
+// Resume Versions API
+// ============================================================================
+
+/**
+ * Fetch all resume versions (published and draft).
+ * Returns version metadata including slug, name, and publish status.
+ */
+export async function fetchResumeVersions(): Promise<ResumeVersion[]> {
+  const url = `${getApiUrl()}/resume-versions`
+  const res = await fetchWithRetry(url, fetchOptions(), { maxRetries: 2, timeoutMs: 15000 })
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Failed to fetch resume versions: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<ListResumeVersionsResponse> = await res.json()
+  return data.data.versions
+}
+
+/**
+ * Get the PDF download URL for a published resume version.
+ */
+export function getResumeVersionPdfUrl(slug: string): string {
+  return `${getApiUrl()}/resume-versions/${slug}/pdf`
 }
 
 // ============================================================================

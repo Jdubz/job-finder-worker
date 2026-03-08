@@ -95,10 +95,10 @@
           <h3 class="section-title">Documents</h3>
           <div class="document-selectors">
             <div class="document-selector">
-              <label for="resumeSelect">Resume</label>
+              <label for="resumeVersionSelect">Resume Version</label>
               <div class="document-select-row">
-                <select id="resumeSelect" class="document-select" disabled>
-                  <option value="">-- Select Resume --</option>
+                <select id="resumeVersionSelect" class="document-select" disabled>
+                  <option value="">-- Loading versions --</option>
                 </select>
                 <button class="btn-preview" id="previewResumeBtn" disabled title="Preview selected resume">👁</button>
               </div>
@@ -112,14 +112,6 @@
                 <button class="btn-preview" id="previewCoverLetterBtn" disabled title="Preview selected cover letter">👁</button>
               </div>
             </div>
-          </div>
-          <div class="section-actions generate-actions">
-            <select id="generateType" class="generate-type-select">
-              <option value="both">Resume + Cover Letter</option>
-              <option value="resume">Resume Only</option>
-              <option value="coverLetter">Cover Letter Only</option>
-            </select>
-            <button class="btn-generate" id="generateBtn" disabled>Generate</button>
           </div>
           <!-- Generation Progress -->
           <div class="generation-progress hidden" id="generationProgress">

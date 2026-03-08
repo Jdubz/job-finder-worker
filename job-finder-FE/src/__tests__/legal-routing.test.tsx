@@ -33,10 +33,6 @@ vi.mock("@/pages/content-items/ContentItemsPage", () => ({
   ContentItemsPage: () => <div data-testid="content-items-page">Content Items Page</div>,
 }))
 
-vi.mock("@/pages/document-builder/DocumentBuilderPage", () => ({
-  DocumentBuilderPage: () => <div data-testid="document-builder-page">Document Builder Page</div>,
-}))
-
 vi.mock("@/pages/ai-prompts/AIPromptsPage", () => ({
   AIPromptsPage: () => <div data-testid="ai-prompts-page">AI Prompts Page</div>,
 }))

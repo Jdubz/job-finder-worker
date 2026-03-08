@@ -38,8 +38,7 @@ const TOOL_DISPLAY: Record<string, { icon: string; verb: string }> = {
   press_key: { icon: "⌨️", verb: "Pressing key" },
   scroll: { icon: "📜", verb: "Scrolling" },
   get_form_fields: { icon: "📋", verb: "Analyzing form fields" },
-  generate_resume: { icon: "📄", verb: "Generating resume" },
-  generate_cover_letter: { icon: "📝", verb: "Generating cover letter" },
+  get_resume_versions: { icon: "📄", verb: "Fetching resume versions" },
   upload_file: { icon: "📤", verb: "Uploading file" },
   done: { icon: "✅", verb: "Completed" },
 }
@@ -88,10 +87,8 @@ function formatToolCall(toolName: string, params?: Record<string, unknown>): str
       return `${display.icon} Scrolling...`
     case "get_form_fields":
       return `${display.icon} Analyzing form fields...`
-    case "generate_resume":
-      return `${display.icon} Generating tailored resume...`
-    case "generate_cover_letter":
-      return `${display.icon} Generating cover letter...`
+    case "get_resume_versions":
+      return `${display.icon} Fetching resume versions...`
     case "upload_file":
       if (params?.type) {
         const fileType = params.type === "coverLetter" ? "cover letter" : "resume"
@@ -278,7 +275,7 @@ interface ElectronAPI {
   showBrowserView: () => Promise<{ success: boolean }>
 
   // Form Fill API (MCP-based)
-  fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) => Promise<{ success: boolean; message?: string }>
+  fillForm: (options: { jobMatchId: string; jobContext: string; resumeVersionSlug?: string; coverLetterUrl?: string }) => Promise<{ success: boolean; message?: string }>
   stopFillForm: () => Promise<{ success: boolean }>
   sendAgentInput: (input: string) => Promise<{ success: boolean; message?: string }>
   pauseAgent: () => Promise<{ success: boolean; message?: string }>
@@ -317,7 +314,10 @@ interface ElectronAPI {
     status: "active" | "ignored" | "applied"
   }) => Promise<{ success: boolean; message?: string }>
 
-  // Documents
+  // Resume Versions
+  getResumeVersions: () => Promise<Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }>>
+
+  // Documents (cover letters)
   getDocuments: (jobMatchId: string) => Promise<{
     success: boolean
     data?: DocumentInfo[]
@@ -406,10 +406,11 @@ const api = window.electronAPI
 // State
 let _currentUser: { email: string; name?: string } | null = null
 let selectedJobMatchId: string | null = null
-let selectedResumeId: string | null = null
+let selectedResumeVersionSlug: string | null = null
 let selectedCoverLetterId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
+let resumeVersions: Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }> = []
 const workflowState: WorkflowState = {
   job: "pending",
   docs: "pending",
@@ -453,10 +454,9 @@ const newTabBtn = getElement<HTMLButtonElement>("newTabBtn")
 
 // DOM elements - Sidebar
 const jobSelect = getElement<HTMLSelectElement>("jobSelect")
-const resumeSelect = getElement<HTMLSelectElement>("resumeSelect")
+const resumeVersionSelect = getElement<HTMLSelectElement>("resumeVersionSelect")
 const coverLetterSelect = getElement<HTMLSelectElement>("coverLetterSelect")
-const generateBtn = getElement<HTMLButtonElement>("generateBtn")
-const generateTypeSelect = getElement<HTMLSelectElement>("generateType")
+// generateBtn and generateTypeSelect removed — resume generation replaced by curated versions
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
 const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
@@ -679,7 +679,7 @@ function renderJobSelect() {
 // Select a job match
 async function selectJobMatch(id: string) {
   selectedJobMatchId = id
-  selectedResumeId = null
+  selectedResumeVersionSlug = null
   selectedCoverLetterId = null
 
   // Update dropdown selection
@@ -716,40 +716,22 @@ async function selectJobMatch(id: string) {
     setStatus(navResult.message || "Failed to load job listing", "error")
   }
 
-  // Load documents for this job match
+  // Load cover letter documents for this job match
   await loadDocuments(id)
-
-  // Enable generate button
-  generateBtn.disabled = false
 }
 
-// Load documents for a job match
-// If autoSelectId is provided, auto-select that document in the appropriate dropdown
+// Load resume versions (once on startup) and cover letter documents (per job match)
 async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
-  // Disable dropdowns while loading
-  resumeSelect.disabled = true
   coverLetterSelect.disabled = true
 
   try {
+    // Load cover letters from generator (per job match)
     const result = await api.getDocuments(jobMatchId)
 
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
-
-      // Filter documents with resume and cover letter URLs
-      // Note: Don't filter by status - documents with URLs are selectable regardless of workflow state
-      const resumes = documents.filter((d) => d.resumeUrl)
       const coverLetters = documents.filter((d) => d.coverLetterUrl)
 
-      // Populate resume dropdown with date + ID snippet
-      resumeSelect.innerHTML = '<option value="">-- Select Resume --</option>' +
-        resumes.map((doc) => {
-          const date = new Date(doc.createdAt).toLocaleDateString()
-          const idSnippet = doc.id.slice(0, 6)
-          return `<option value="${escapeAttr(doc.id)}">${escapeHtml(date)} (${escapeHtml(idSnippet)})</option>`
-        }).join("")
-
-      // Populate cover letter dropdown with date + ID snippet
       coverLetterSelect.innerHTML = '<option value="">-- Select Cover Letter --</option>' +
         coverLetters.map((doc) => {
           const date = new Date(doc.createdAt).toLocaleDateString()
@@ -757,54 +739,74 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
           return `<option value="${escapeAttr(doc.id)}">${escapeHtml(date)} (${escapeHtml(idSnippet)})</option>`
         }).join("")
 
-      // Auto-select logic
       if (autoSelectId) {
         const doc = documents.find((d) => d.id === autoSelectId)
-        if (doc?.resumeUrl) selectedResumeId = doc.id
         if (doc?.coverLetterUrl) selectedCoverLetterId = doc.id
-      } else {
-        // Auto-select most recent if not already selected
-        if (!selectedResumeId && resumes.length > 0) {
-          selectedResumeId = resumes[0].id
-        }
-        if (!selectedCoverLetterId && coverLetters.length > 0) {
-          selectedCoverLetterId = coverLetters[0].id
-        }
+      } else if (!selectedCoverLetterId && coverLetters.length > 0) {
+        selectedCoverLetterId = coverLetters[0].id
       }
 
-      // Set dropdown values
-      resumeSelect.value = selectedResumeId || ""
       coverLetterSelect.value = selectedCoverLetterId || ""
-
-      // Enable dropdowns if they have options
-      resumeSelect.disabled = resumes.length === 0
       coverLetterSelect.disabled = coverLetters.length === 0
-
       updateUploadButtonsState()
     } else {
       documents = []
-      selectedResumeId = null
       selectedCoverLetterId = null
-      resumeSelect.innerHTML = '<option value="">-- No resumes --</option>'
       coverLetterSelect.innerHTML = '<option value="">-- No cover letters --</option>'
       updateUploadButtonsState()
     }
   } catch (err) {
     documents = []
-    selectedResumeId = null
     selectedCoverLetterId = null
     const message = err instanceof Error ? err.message : String(err)
     log.error("Failed to load documents:", message)
-    resumeSelect.innerHTML = '<option value="">-- Error loading --</option>'
     coverLetterSelect.innerHTML = '<option value="">-- Error loading --</option>'
     updateUploadButtonsState()
   }
 }
 
-// Get the selected resume document
-function getSelectedResume(): DocumentInfo | null {
-  if (!selectedResumeId) return null
-  return documents.find((d) => d.id === selectedResumeId) || null
+// Load resume versions from API (called once on startup)
+async function loadResumeVersions() {
+  resumeVersionSelect.disabled = true
+  try {
+    const versions = await api.getResumeVersions()
+    resumeVersions = versions
+      .filter((v: any) => v.pdfPath) // only published
+      .map((v: any) => ({ slug: v.slug, name: v.name, pdfPath: v.pdfPath, publishedAt: v.publishedAt }))
+
+    if (resumeVersions.length > 0) {
+      resumeVersionSelect.innerHTML = resumeVersions.map((v) => {
+        const pubDate = v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : ""
+        return `<option value="${escapeAttr(v.slug)}">${escapeHtml(v.name)}${pubDate ? ` (${escapeHtml(pubDate)})` : ""}</option>`
+      }).join("")
+
+      // Auto-select first version if none selected
+      if (!selectedResumeVersionSlug) {
+        selectedResumeVersionSlug = resumeVersions[0].slug
+      }
+      resumeVersionSelect.value = selectedResumeVersionSlug
+      resumeVersionSelect.disabled = false
+    } else {
+      resumeVersionSelect.innerHTML = '<option value="">-- No published resumes --</option>'
+    }
+    updateUploadButtonsState()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.error("Failed to load resume versions:", message)
+    resumeVersionSelect.innerHTML = '<option value="">-- Error loading --</option>'
+    updateUploadButtonsState()
+  }
+}
+
+// Get the selected resume version slug
+function getSelectedResumeVersionSlug(): string | null {
+  return selectedResumeVersionSlug
+}
+
+// Check if selected resume version has a published PDF
+function hasSelectedResumeVersion(): boolean {
+  if (!selectedResumeVersionSlug) return false
+  return resumeVersions.some((v) => v.slug === selectedResumeVersionSlug && v.pdfPath)
 }
 
 // Get the selected cover letter document
@@ -813,27 +815,20 @@ function getSelectedCoverLetter(): DocumentInfo | null {
   return documents.find((d) => d.id === selectedCoverLetterId) || null
 }
 
-// Get selected document by type (prefixed with _ as currently unused but may be needed)
-function _getSelectedDocumentByType(type: "resume" | "coverLetter"): DocumentInfo | null {
-  const id = type === "resume" ? selectedResumeId : selectedCoverLetterId
-  if (!id) return null
-  return documents.find((d) => d.id === id) || null
-}
-
 // Update upload buttons and preview buttons enabled state based on requirements:
 // Upload: 1. File input must exist on page 2. A document must be selected for that type
 // Preview: Document must be selected
 function updateUploadButtonsState() {
-  const resumeDoc = getSelectedResume()
+  const hasResume = hasSelectedResumeVersion()
   const coverLetterDoc = getSelectedCoverLetter()
-  const canUploadResume = hasFileInput && resumeDoc?.resumeUrl
+  const canUploadResume = hasFileInput && hasResume
   const canUploadCover = hasFileInput && coverLetterDoc?.coverLetterUrl
 
   uploadResumeBtn.disabled = !canUploadResume
   uploadCoverBtn.disabled = !canUploadCover
 
   // Preview buttons only need a document selected
-  previewResumeBtn.disabled = !resumeDoc?.resumeUrl
+  previewResumeBtn.disabled = !hasResume
   previewCoverLetterBtn.disabled = !coverLetterDoc?.coverLetterUrl
 
   // Update status message
@@ -842,7 +837,7 @@ function updateUploadButtonsState() {
     uploadStatusText.textContent = "No file input detected on page"
   } else {
     const ready: string[] = []
-    if (resumeDoc?.resumeUrl) ready.push("Resume")
+    if (hasResume) ready.push("Resume")
     if (coverLetterDoc?.coverLetterUrl) ready.push("Cover Letter")
     if (ready.length > 0) {
       uploadStatus.className = "upload-status ready"
@@ -858,7 +853,7 @@ function updateUploadButtonsState() {
     uploadResumeBtn.title = "Navigate to a page with file upload"
     uploadCoverBtn.title = "Navigate to a page with file upload"
   } else {
-    uploadResumeBtn.title = resumeDoc?.resumeUrl ? "Upload resume to file input" : "Select a resume first"
+    uploadResumeBtn.title = hasResume ? "Upload resume to file input" : "Select a resume first"
     uploadCoverBtn.title = coverLetterDoc?.coverLetterUrl ? "Upload cover letter to file input" : "Select a cover letter first"
   }
 }
@@ -894,7 +889,6 @@ function handleGenerationProgress(progress: GenerationProgress) {
   if (progress.status === "completed") {
     setStatus("Documents generated successfully", "success")
     generationProgress.classList.add("hidden")
-    generateBtn.disabled = false
     setWorkflowStep("docs", "completed")
     setWorkflowStep("fill", "active")
     // Clean up the listener now that generation is complete
@@ -905,7 +899,6 @@ function handleGenerationProgress(progress: GenerationProgress) {
     }
   } else if (progress.status === "failed") {
     setStatus(progress.error || "Generation failed", "error")
-    generateBtn.disabled = false
     // Clean up the listener on failure too
     cleanupGenerationProgressListener()
   } else if (progress.status === "awaiting_review") {
@@ -955,7 +948,6 @@ const reviewDeps: ReviewFlowDeps = {
     reviewFeedbackArea,
     reviewFeedbackInput,
     generationProgress,
-    generateBtn,
   },
   setStatus,
   renderReviewForm,
@@ -1203,7 +1195,6 @@ async function cancelReview() {
   // Restore BrowserView now that modal is closed
   await api.showBrowserView()
   generationProgress.classList.add("hidden")
-  generateBtn.disabled = false
   currentReviewRequestId = null
   currentReviewDocumentType = null
   currentReviewContent = null
@@ -1259,64 +1250,6 @@ async function rejectReview() {
 
   rejectReviewBtn.disabled = false
   approveReviewBtn.disabled = false
-}
-
-// Generate new document
-async function generateDocument() {
-  // Disable button immediately to prevent double-clicks
-  generateBtn.disabled = true
-
-  if (!selectedJobMatchId) {
-    setStatus("Select a job match first", "error")
-    generateBtn.disabled = false
-    return
-  }
-
-  // Prevent concurrent generations - atomic check and set
-  if (isGenerating) {
-    setStatus("Generation already in progress", "error")
-    generateBtn.disabled = false
-    return
-  }
-  isGenerating = true
-
-  try {
-    // Show generation progress UI
-    generationProgress.classList.remove("hidden")
-    generationSteps.innerHTML = '<div class="loading-placeholder">Starting generation...</div>'
-    setStatus("Generating documents...", "loading")
-
-    // Subscribe to progress updates (clean up any existing listener first)
-    cleanupGenerationProgressListener()
-    unsubscribeGenerationProgress = api.onGenerationProgress(handleGenerationProgress)
-
-    // Get selected document type
-    const generateType = generateTypeSelect.value as "resume" | "coverLetter" | "both"
-
-    // Start generation with sequential step execution
-    const result = await api.runGeneration({
-      jobMatchId: selectedJobMatchId,
-      type: generateType,
-    })
-
-    if (result.success && result.data) {
-      // Final update from result (will also cleanup listener)
-      handleGenerationProgress(result.data)
-    } else {
-      setStatus(result.message || "Generation failed", "error")
-      generationProgress.classList.add("hidden")
-      generateBtn.disabled = false
-      cleanupGenerationProgressListener()
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Generation failed"
-    setStatus(message, "error")
-    generationProgress.classList.add("hidden")
-    generateBtn.disabled = false
-    cleanupGenerationProgressListener()
-  } finally {
-    isGenerating = false
-  }
 }
 
 // Mark job match as applied
@@ -1400,7 +1333,7 @@ async function checkUrlForJobMatch(url: string) {
       }
       // Auto-select the match (but don't navigate again)
       selectedJobMatchId = match.id ?? null
-      selectedResumeId = null
+      selectedResumeVersionSlug = null
       selectedCoverLetterId = null
       jobSelect.value = match.id ?? ""
 
@@ -1416,14 +1349,12 @@ async function checkUrlForJobMatch(url: string) {
       markAppliedBtn.disabled = match.status === "applied"
       markIgnoredBtn.disabled = match.status === "ignored"
 
-      // Load documents only when we have an id
+      // Load cover letter documents only when we have an id
       if (match.id) {
         await loadDocuments(match.id)
-        generateBtn.disabled = false
         setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
       } else {
         log.warn("No match.id found; skipping document load")
-        generateBtn.disabled = true
         setStatus("Matched job has no id; cannot load documents", "error")
       }
     }
@@ -1609,15 +1540,15 @@ async function fillFormWithAgent() {
   agentOutputParser.reset()
   agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
 
-  // Get selected document URLs for the agent to upload
-  const resumeDoc = getSelectedResume()
+  // Get selected document info for the agent to upload
+  const resumeSlug = getSelectedResumeVersionSlug()
   const coverLetterDoc = getSelectedCoverLetter()
 
   log.info("Calling api.fillForm for job:", selectedJobMatchId)
   const result = await api.fillForm({
     jobMatchId: selectedJobMatchId,
     jobContext,
-    resumeUrl: resumeDoc?.resumeUrl,
+    resumeVersionSlug: resumeSlug || undefined,
     coverLetterUrl: coverLetterDoc?.coverLetterUrl,
   })
   log.info("api.fillForm returned:", result)
@@ -1711,10 +1642,22 @@ function cleanupAgentListeners() {
   }
 }
 
-// Upload document (resume or cover letter)
+// Upload document (resume version PDF or cover letter)
 async function uploadDocument(type: "resume" | "coverLetter") {
-  const doc = type === "resume" ? getSelectedResume() : getSelectedCoverLetter()
-  const documentUrl = type === "resume" ? doc?.resumeUrl : doc?.coverLetterUrl
+  let documentUrl: string | undefined
+
+  if (type === "resume") {
+    const slug = getSelectedResumeVersionSlug()
+    if (!slug) {
+      setStatus("Select a resume version first", "error")
+      return
+    }
+    // Use the resume version PDF endpoint
+    documentUrl = `/api/resume-versions/${slug}/pdf`
+  } else {
+    const doc = getSelectedCoverLetter()
+    documentUrl = doc?.coverLetterUrl
+  }
 
   if (!documentUrl) {
     setStatus(`Select a ${type === "coverLetter" ? "cover letter" : "resume"} first`, "error")
@@ -1756,9 +1699,20 @@ function uploadCoverLetterFile() {
 
 // Preview document (opens in default PDF viewer)
 async function previewDocument(type: "resume" | "coverLetter") {
-  const doc = type === "resume" ? getSelectedResume() : getSelectedCoverLetter()
-  const url = type === "resume" ? doc?.resumeUrl : doc?.coverLetterUrl
+  let url: string | undefined
   const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
+
+  if (type === "resume") {
+    const slug = getSelectedResumeVersionSlug()
+    if (!slug) {
+      setStatus("No resume version selected", "error")
+      return
+    }
+    url = `/api/resume-versions/${slug}/pdf`
+  } else {
+    const doc = getSelectedCoverLetter()
+    url = doc?.coverLetterUrl
+  }
 
   if (!url) {
     setStatus(`No ${typeLabel} selected`, "error")
@@ -1906,15 +1860,13 @@ function initializeApp() {
     } else {
       // Deselected - clear state
       selectedJobMatchId = null
-      selectedResumeId = null
+      selectedResumeVersionSlug = null
       selectedCoverLetterId = null
       jobActionsSection.classList.add("hidden")
-      generateBtn.disabled = true
       updateUploadButtonsState()
       updateAgentStatusUI(_agentSessionState)
     }
   })
-  generateBtn.addEventListener("click", generateDocument)
   markAppliedBtn.addEventListener("click", markAsApplied)
   markIgnoredBtn.addEventListener("click", markAsIgnored)
   uploadResumeBtn.addEventListener("click", uploadResumeFile)
@@ -1923,8 +1875,8 @@ function initializeApp() {
   refreshJobsBtn.addEventListener("click", refreshJobMatches)
 
   // Event listeners - Document dropdowns
-  resumeSelect.addEventListener("change", () => {
-    selectedResumeId = resumeSelect.value || null
+  resumeVersionSelect.addEventListener("change", () => {
+    selectedResumeVersionSlug = resumeVersionSelect.value || null
     updateUploadButtonsState()
   })
   coverLetterSelect.addEventListener("change", () => {
@@ -1983,6 +1935,9 @@ async function init() {
 
   // Initialize upload button state
   updateUploadButtonsState()
+
+  // Load resume versions (available to all users, not auth-gated)
+  loadResumeVersions()
 
   // Check auth state on startup
   try {

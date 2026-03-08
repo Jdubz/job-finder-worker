@@ -17,8 +17,7 @@ describe("MCP Tool Definitions", () => {
       expect(toolNames).toContain("scroll")
       expect(toolNames).toContain("get_form_fields")
       expect(toolNames).toContain("get_page_info")
-      expect(toolNames).toContain("generate_resume")
-      expect(toolNames).toContain("generate_cover_letter")
+      expect(toolNames).toContain("get_resume_versions")
       expect(toolNames).toContain("upload_file")
       expect(toolNames).toContain("done")
     })
@@ -57,7 +56,7 @@ describe("MCP Tool Definitions", () => {
 
     it("should have descriptive help text", () => {
       expect(tool.description).toContain("screenshot")
-      expect(tool.description).toContain("base64")
+      expect(tool.description).toContain("VERIFICATION")
     })
   })
 
@@ -151,27 +150,15 @@ describe("MCP Tool Definitions", () => {
     })
   })
 
-  describe("generate_resume tool", () => {
-    const tool = tools.find((t) => t.name === "generate_resume")!
+  describe("get_resume_versions tool", () => {
+    const tool = tools.find((t) => t.name === "get_resume_versions")!
 
     it("should require no parameters", () => {
       expect(tool.inputSchema.required).toEqual([])
     })
 
-    it("should mention PDF in description", () => {
-      expect(tool.description).toContain("PDF")
-    })
-  })
-
-  describe("generate_cover_letter tool", () => {
-    const tool = tools.find((t) => t.name === "generate_cover_letter")!
-
-    it("should require no parameters", () => {
-      expect(tool.inputSchema.required).toEqual([])
-    })
-
-    it("should mention PDF in description", () => {
-      expect(tool.description).toContain("PDF")
+    it("should mention resume versions in description", () => {
+      expect(tool.description).toContain("resume versions")
     })
   })
 

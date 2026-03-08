@@ -226,6 +226,18 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: "get_resume_versions",
+    description:
+      "Get the list of available resume versions (e.g., frontend, fullstack, backend, AI, solution-engineer). " +
+      "Each version is a curated, role-targeted resume. Returns slug, name, and whether a published PDF exists. " +
+      "Use this to select the most appropriate resume version for the job being applied to.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "done",
     description:
       "Signal that form filling is complete. Call this when all fields are filled. " +

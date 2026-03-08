@@ -87,7 +87,7 @@ describe("Electron Client", () => {
       const result = await callTool("screenshot", {})
 
       expect(result.success).toBe(false)
-      expect(result.error).toContain("Cannot connect to Electron app")
+      expect(result.error).toContain("Cannot connect to Electron tool server")
     })
 
     it("should handle generic network errors", async () => {
@@ -105,7 +105,7 @@ describe("Electron Client", () => {
       abortError.name = "AbortError"
       mockFetch.mockRejectedValue(abortError)
 
-      const result = await callTool("generate_resume", {})
+      const result = await callTool("get_resume_versions", {})
 
       expect(result.success).toBe(false)
       expect(result.error).toContain("timed out")
@@ -192,8 +192,7 @@ describe("Electron Client", () => {
       ["scroll", { dy: 300 }],
       ["get_form_fields", {}],
       ["get_page_info", {}],
-      ["generate_resume", {}],
-      ["generate_cover_letter", {}],
+      ["get_resume_versions", {}],
       ["upload_file", { type: "resume" }],
       ["done", { summary: "Complete" }],
     ])("should call %s tool with params", async (tool, params) => {

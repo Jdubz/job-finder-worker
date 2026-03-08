@@ -79,9 +79,9 @@ describe("Footer Integration", () => {
       "href",
       "/content-items"
     )
-    expect(screen.getByRole("link", { name: "Document Builder" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Resumes" })).toHaveAttribute(
       "href",
-      "/document-builder"
+      "/resumes"
     )
   })
 

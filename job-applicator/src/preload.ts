@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("show-browser-view"),
 
   // Form Fill API (MCP-based)
-  fillForm: (options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }) =>
+  fillForm: (options: { jobMatchId: string; jobContext: string; resumeVersionSlug?: string; coverLetterUrl?: string }) =>
     ipcRenderer.invoke("fill-form", options),
   stopFillForm: () => ipcRenderer.invoke("stop-fill-form"),
   sendAgentInput: (input: string) => ipcRenderer.invoke("send-agent-input", input),
@@ -99,6 +99,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   findJobMatchByUrl: (url: string) => ipcRenderer.invoke("find-job-match-by-url", url),
   updateJobMatchStatus: (options: { id: string; status: "active" | "ignored" | "applied" }) =>
     ipcRenderer.invoke("update-job-match-status", options),
+
+  // Resume Versions
+  getResumeVersions: () => ipcRenderer.invoke("get-resume-versions"),
 
   // Documents
   getDocuments: (jobMatchId: string) => ipcRenderer.invoke("get-documents", jobMatchId),

@@ -22,11 +22,6 @@ describe("ROUTES configuration", () => {
       expect(ROUTES.CONTENT_ITEMS).toMatch(/^\//)
     })
 
-    it("should define DOCUMENT_BUILDER route", () => {
-      expect(ROUTES.DOCUMENT_BUILDER).toBeDefined()
-      expect(ROUTES.DOCUMENT_BUILDER).toMatch(/^\//)
-    })
-
     it("should define JOB_APPLICATIONS route", () => {
       expect(ROUTES.JOB_APPLICATIONS).toBeDefined()
       expect(ROUTES.JOB_APPLICATIONS).toMatch(/^\//)
@@ -63,7 +58,6 @@ describe("ROUTES configuration", () => {
         "HOME",
         "HOW_IT_WORKS",
         "CONTENT_ITEMS",
-        "DOCUMENT_BUILDER",
         "JOB_APPLICATIONS",
       ]
 

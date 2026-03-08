@@ -34,8 +34,7 @@ const publicLinks: NavLink[] = [
   { to: ROUTES.HOME, label: "Home", icon: Home },
   { to: ROUTES.HOW_IT_WORKS, label: "How It Works", icon: HelpCircle },
   { to: ROUTES.CONTENT_ITEMS, label: "Experience", icon: FolderOpen },
-  { to: ROUTES.DOCUMENT_BUILDER, label: "Document Builder", icon: FileText },
-  { to: ROUTES.DOCUMENTS, label: "Documents", icon: Files },
+  { to: ROUTES.RESUMES, label: "Resumes", icon: Files },
 ]
 
 const jobFinderLinks: NavLink[] = [

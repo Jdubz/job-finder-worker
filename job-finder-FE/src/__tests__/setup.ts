@@ -186,7 +186,7 @@ vi.mock("react-router-dom", async () => {
   return {
     ...actual,
     useLocation: () => ({
-      pathname: "/document-builder",
+      pathname: "/resumes",
       search: "",
       hash: "",
       state: null,

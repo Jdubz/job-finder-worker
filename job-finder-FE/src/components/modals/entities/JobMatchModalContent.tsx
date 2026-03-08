@@ -27,7 +27,6 @@ import { toast } from "@/components/toast"
 interface JobMatchModalContentProps {
   match: JobMatchWithListing
   handlers?: {
-    onGenerateResume?: (match: JobMatchWithListing) => void
     onStatusChange?: (match: JobMatchWithListing) => void
   }
 }
