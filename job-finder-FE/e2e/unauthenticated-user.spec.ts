@@ -29,8 +29,8 @@ test.describe('Unauthenticated User Access', () => {
     await page.goto(ROUTES.RESUMES)
     await expect(page).toHaveURL(ROUTES.RESUMES)
 
-    // Should see the Resumes interface
-    await expect(page.getByRole('heading', { name: /resumes/i })).toBeVisible()
+    // Should see the Resume Versions interface
+    await expect(page.getByRole('heading', { name: /resume versions/i })).toBeVisible()
   })
 
   test('is redirected from Job Applications page (requires auth)', async ({ page }) => {

@@ -13,7 +13,7 @@ test.describe("Smoke navigation", () => {
       await expect(page.getByRole("heading", { name: /Queue Management/i, level: 1 })).toBeVisible({ timeout: 15000 })
     }],
     ["/resumes", async (page) => {
-      await expect(page.getByRole("heading", { name: /Resumes/i, level: 1 })).toBeVisible({ timeout: 15000 })
+      await expect(page.getByRole("heading", { name: /Resume Versions/i, level: 1 })).toBeVisible({ timeout: 15000 })
     }],
     ["/content-items", async (page) => {
       await expect(page.getByRole("heading", { name: /Career Story/i, level: 1 })).toBeVisible({ timeout: 15000 })
