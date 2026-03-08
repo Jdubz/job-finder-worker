@@ -419,7 +419,7 @@ const workflowState: WorkflowState = {
 }
 let unsubscribeGenerationProgress: (() => void) | null = null
 let unsubscribeGenerationReview: (() => void) | null = null
-let isGenerating = false // Prevent concurrent document generations
+let _isGenerating = false // Prevent concurrent document generations
 let hasFileInput = false // Whether current page has a file input element
 let currentReviewRequestId: string | null = null // Request ID when in review mode
 let currentReviewDocumentType: "resume" | "coverLetter" | null = null // Document type being reviewed
@@ -771,8 +771,8 @@ async function loadResumeVersions() {
   try {
     const versions = await api.getResumeVersions()
     resumeVersions = versions
-      .filter((v: any) => v.pdfPath) // only published
-      .map((v: any) => ({ slug: v.slug, name: v.name, pdfPath: v.pdfPath, publishedAt: v.publishedAt }))
+      .filter((v) => v.pdfPath)
+      .map((v) => ({ slug: v.slug, name: v.name, pdfPath: v.pdfPath, publishedAt: v.publishedAt }))
 
     if (resumeVersions.length > 0) {
       resumeVersionSelect.innerHTML = resumeVersions.map((v) => {
@@ -913,7 +913,7 @@ function cleanupGenerationProgressListener() {
     unsubscribeGenerationProgress()
     unsubscribeGenerationProgress = null
   }
-  isGenerating = false
+  _isGenerating = false
 }
 
 // ============================================================================

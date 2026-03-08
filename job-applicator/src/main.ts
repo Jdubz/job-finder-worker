@@ -1834,7 +1834,6 @@ ipcMain.handle(
           // downloadDocument expects a relative path like /api/...
           // getResumeVersionPdfUrl returns full URL like http://localhost:3000/api/resume-versions/slug/pdf
           // Convert to relative path for downloadDocument
-          const apiUrlObj = new URL(getApiUrl())
           const pdfUrlObj = new URL(pdfUrl)
           const relativePath = pdfUrlObj.pathname
           resumePath = await downloadDocument(relativePath)
