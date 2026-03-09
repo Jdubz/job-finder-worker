@@ -47,7 +47,7 @@ const mockItems: ResumeItemNode[] = [
 
 vi.mock("@/api", () => ({
   resumeVersionsClient: {
-    getVersion: vi.fn().mockResolvedValue({ version: null, items: [] }),
+    getVersion: vi.fn().mockResolvedValue({ version: null, items: [], contentFit: null }),
     createItem: vi.fn().mockResolvedValue({}),
     updateItem: vi.fn().mockResolvedValue({}),
     deleteItem: vi.fn().mockResolvedValue(undefined),
@@ -61,7 +61,8 @@ describe("useResumeVersion", () => {
     vi.clearAllMocks()
     vi.mocked(resumeVersionsClient.getVersion).mockResolvedValue({
       version: mockVersion,
-      items: mockItems
+      items: mockItems,
+      contentFit: null
     })
   })
 
