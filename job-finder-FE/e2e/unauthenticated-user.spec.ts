@@ -25,12 +25,12 @@ test.describe('Unauthenticated User Access', () => {
     await expect(page.getByRole('heading', { name: /career story|experience/i }).first()).toBeVisible({ timeout: 15000 })
   })
 
-  test('can access Document Builder page', async ({ page }) => {
-    await page.goto(ROUTES.DOCUMENT_BUILDER)
-    await expect(page).toHaveURL(ROUTES.DOCUMENT_BUILDER)
+  test('can access Resumes page', async ({ page }) => {
+    await page.goto(ROUTES.RESUMES)
+    await expect(page).toHaveURL(ROUTES.RESUMES)
 
-    // Should see the Document Builder interface
-    await expect(page.getByRole('heading', { name: /document builder/i })).toBeVisible()
+    // Should see the Resume Versions interface
+    await expect(page.getByRole('heading', { name: /resume versions/i })).toBeVisible()
   })
 
   test('is redirected from Job Applications page (requires auth)', async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe('Unauthenticated User Access', () => {
       { name: /home/i, route: ROUTES.HOME },
       { name: /how it works/i, route: ROUTES.HOW_IT_WORKS },
       { name: /experience/i, route: ROUTES.CONTENT_ITEMS },
-      { name: /document builder/i, route: ROUTES.DOCUMENT_BUILDER }
+      { name: /resumes/i, route: ROUTES.RESUMES }
     ]
 
     for (const link of linksToTest) {

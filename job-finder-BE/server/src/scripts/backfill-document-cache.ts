@@ -167,7 +167,7 @@ async function main() {
   const contentItems: ContentItem[] = contentItemRows.map((row) => ({
     id: row.id,
     parentId: row.parent_id,
-    order: row.order_index,
+    orderIndex: row.order_index,
     title: row.title,
     role: row.role,
     location: row.location,

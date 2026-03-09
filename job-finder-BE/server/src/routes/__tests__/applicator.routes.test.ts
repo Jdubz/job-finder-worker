@@ -163,7 +163,7 @@ describe('applicator routes', () => {
       parentId: company.id,
       description: 'Architected microservices migration reducing API latency by 40%',
       aiContext: 'highlight',
-      order: 0
+      orderIndex: 0
     })
 
     contentRepo.create({
@@ -171,7 +171,7 @@ describe('applicator routes', () => {
       parentId: company.id,
       description: 'Implemented event-driven architecture with Kafka',
       aiContext: 'highlight',
-      order: 1
+      orderIndex: 1
     })
 
     const response = await request(app).get('/applicator/profile').expect(200)

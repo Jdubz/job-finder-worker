@@ -45,7 +45,7 @@ describe("HowItWorksPage", () => {
     renderPage()
     expect(screen.getByText("Matches")).toBeInTheDocument()
     expect(screen.getByText("Career Story")).toBeInTheDocument()
-    expect(screen.getByText("Document Builder")).toBeInTheDocument()
+    expect(screen.getByText("Resume Versions")).toBeInTheDocument()
   })
 
   it("renders quality and access section", () => {
@@ -58,15 +58,18 @@ describe("HowItWorksPage", () => {
 
   it("renders CTA section with links", () => {
     renderPage()
-    expect(screen.getByText("Want to see a sample packet?")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /Build a Packet/i })).toBeInTheDocument()
+    expect(screen.getByText("Want to see a sample resume?")).toBeInTheDocument()
+    const resumeLinks = screen.getAllByRole("link", { name: /View Resumes/i })
+    expect(resumeLinks.length).toBeGreaterThanOrEqual(1)
     const accessLink = screen.getByRole("link", { name: /Request Access/i })
     expect(accessLink).toHaveAttribute("href", expect.stringContaining("mailto:job-finder@joshwentworth.com"))
   })
 
-  it("has correct href for Document Builder link", () => {
+  it("has correct href for Resumes link", () => {
     renderPage()
-    const builderLink = screen.getByRole("link", { name: /Open the builder/i })
-    expect(builderLink).toHaveAttribute("href", "/document-builder")
+    const resumeLinks = screen.getAllByRole("link", { name: /View resumes/i })
+    resumeLinks.forEach((link) => {
+      expect(link).toHaveAttribute("href", "/resumes")
+    })
   })
 })

@@ -47,10 +47,10 @@ export function Footer() {
               </li>
               <li>
                 <Link
-                  to={ROUTES.DOCUMENT_BUILDER}
+                  to={ROUTES.RESUMES}
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Document Builder
+                  Resumes
                 </Link>
               </li>
             </ul>

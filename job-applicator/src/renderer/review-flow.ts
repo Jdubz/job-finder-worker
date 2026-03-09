@@ -43,7 +43,7 @@ export interface ReviewFlowDeps {
     reviewFeedbackArea: { classList: { add(c: string): void } }
     reviewFeedbackInput: { value: string }
     generationProgress: { classList: { add(c: string): void; remove(c: string): void } }
-    generateBtn: { disabled: boolean }
+    generateBtn?: { disabled: boolean }
   }
   setStatus(message: string, type: "success" | "error" | "loading" | ""): void
   renderReviewForm(documentType: "resume" | "coverLetter", content: ResumeContent | CoverLetterContent): void
@@ -74,7 +74,7 @@ export async function handleGenerationAwaitingReview(
   if (!result.success || !result.data) {
     deps.setStatus(result.message || "Failed to fetch draft content", "error")
     deps.dom.generationProgress.classList.add("hidden")
-    deps.dom.generateBtn.disabled = false
+    if (deps.dom.generateBtn) deps.dom.generateBtn.disabled = false
     return
   }
 

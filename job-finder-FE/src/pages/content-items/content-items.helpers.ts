@@ -4,7 +4,7 @@ import type { ContentItemFormValues } from "@/types/content-items"
 export interface NormalizedImportNode {
   legacyId: string
   parentLegacyId: string | null
-  order: number
+  orderIndex: number
   values: ContentItemFormValues
   children: NormalizedImportNode[]
 }
@@ -12,7 +12,7 @@ export interface NormalizedImportNode {
 export interface SerializedContentItem {
   id: string
   parentId: string | null
-  order: number
+  orderIndex: number
   title?: string
   role?: string
   location?: string
@@ -45,7 +45,7 @@ export function sortNodesByOrder(nodes: ContentItemNode[]): ContentItemNode[] {
         ...item,
         children: item.children ? sortRecursive(item.children) : undefined
       }))
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
 
   return sortRecursive(nodes)
 }
@@ -54,7 +54,7 @@ export function serializeForExport(nodes: ContentItemNode[]): SerializedContentI
   return nodes.map((node) => ({
     id: node.id,
     parentId: node.parentId,
-    order: node.order,
+    orderIndex: node.orderIndex,
     title: node.title ?? undefined,
     role: node.role ?? undefined,
     location: node.location ?? undefined,
@@ -121,7 +121,7 @@ export function normalizeImportNodes(data: unknown): NormalizedImportNode[] {
   })
 
   const sortRecursive = (items: NormalizedImportNode[], ancestors: Set<string>) => {
-    items.sort((a, b) => a.order - b.order)
+    items.sort((a, b) => a.orderIndex - b.orderIndex)
     items.forEach((child) => {
       if (ancestors.has(child.legacyId)) {
         child.children = []
@@ -159,7 +159,7 @@ function buildNormalizedNode(record: Record<string, unknown>, index: number): No
   const expanded = expandRecord(record)
   const legacyId = typeof expanded.id === "string" && expanded.id.trim().length ? expanded.id : `import-${index}`
   const parentLegacyId = coerceParentId(expanded)
-  const order = coerceOrder(expanded, index)
+  const orderIndex = coerceOrder(expanded, index)
   const values: ContentItemFormValues = {
     title: pickString(expanded, ["title", "name", "heading", "label"]),
     role: pickString(expanded, ["role", "position", "company", "subtitle", "category"]),
@@ -181,7 +181,7 @@ function buildNormalizedNode(record: Record<string, unknown>, index: number): No
   return {
     legacyId,
     parentLegacyId,
-    order,
+    orderIndex,
     values,
     children: []
   }

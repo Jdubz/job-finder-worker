@@ -7,7 +7,7 @@ export const contentItemSchema: z.ZodType<ContentItemNode> = z.lazy(() =>
     .object({
       id: z.string(),
       parentId: z.string().nullable(),
-      order: z.number(),
+      orderIndex: z.number(),
       title: z.string().nullable().optional(),
       role: z.string().nullable().optional(),
       location: z.string().nullable().optional(),

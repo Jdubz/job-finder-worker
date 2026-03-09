@@ -25,7 +25,7 @@ describe('content item contract', () => {
   it('serializes list responses according to shared schema', async () => {
     repo.create({
       parentId: null,
-      order: 0,
+      orderIndex: 0,
       title: 'Root Item',
       description: 'contract test',
       userEmail: 'contract@test.dev'

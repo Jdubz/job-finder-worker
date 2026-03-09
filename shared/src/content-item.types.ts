@@ -15,7 +15,7 @@ export type ContentItemAIContext = 'work' | 'highlight' | 'project' | 'education
 export interface ContentItem {
   id: string
   parentId: string | null
-  order: number
+  orderIndex: number
   title?: string | null
   role?: string | null
   location?: string | null
@@ -38,7 +38,7 @@ export type ContentItemNode = ContentItem & {
 
 export type CreateContentItemData = {
   parentId?: string | null
-  order?: number
+  orderIndex?: number
   title?: string | null
   role?: string | null
   location?: string | null

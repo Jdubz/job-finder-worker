@@ -292,8 +292,7 @@ describe("MCP Server", () => {
       ["scroll", { dy: 300 }],
       ["get_form_fields", {}],
       ["get_page_info", {}],
-      ["generate_resume", {}],
-      ["generate_cover_letter", {}],
+      ["get_resume_versions", {}],
       ["upload_file", { type: "resume" }],
       ["done", { summary: "Complete" }],
     ])("should handle %s tool call", async (toolName, args) => {

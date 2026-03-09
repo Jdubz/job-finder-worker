@@ -645,7 +645,7 @@ export function isContentItem(value: unknown): value is ContentItem {
   return (
     typeof item.id === "string" &&
     (item.parentId === undefined || item.parentId === null || typeof item.parentId === "string") &&
-    typeof item.order === "number" &&
+    typeof item.orderIndex === "number" &&
     (item.title === undefined || typeof item.title === "string") &&
     (item.role === undefined || typeof item.role === "string") &&
     (item.location === undefined || typeof item.location === "string") &&

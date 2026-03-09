@@ -17,14 +17,9 @@ const ContentItemsPage = lazyWithRetry(() =>
     default: m.ContentItemsPage,
   }))
 )
-const DocumentBuilderPage = lazyWithRetry(() =>
-  import("@/pages/document-builder/DocumentBuilderPage").then((m) => ({
-    default: m.DocumentBuilderPage,
-  }))
-)
-const DocumentsPage = lazyWithRetry(() =>
-  import("@/pages/documents/DocumentsPage").then((m) => ({
-    default: m.DocumentsPage,
+const ResumeVersionsPage = lazyWithRetry(() =>
+  import("@/pages/resume-versions/ResumeVersionsPage").then((m) => ({
+    default: m.ResumeVersionsPage,
   }))
 )
 const AIPromptsPage = lazyWithRetry(() =>
@@ -108,18 +103,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: ROUTES.DOCUMENT_BUILDER,
+        path: ROUTES.RESUMES,
         element: (
           <LazyPage>
-            <DocumentBuilderPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.DOCUMENTS,
-        element: (
-          <LazyPage>
-            <DocumentsPage />
+            <ResumeVersionsPage />
           </LazyPage>
         ),
       },

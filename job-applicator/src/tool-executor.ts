@@ -8,6 +8,7 @@
 import type { BrowserView } from "electron"
 import * as crypto from "crypto"
 import { logger } from "./logger.js"
+import { fetchResumeVersions } from "./api-client.js"
 
 // ============================================================================
 // Types
@@ -504,6 +505,9 @@ async function executeToolInternal(
 
     case "get_job_context":
       return handleGetJobContext()
+
+    case "get_resume_versions":
+      return await handleGetResumeVersions()
 
     case "upload_file":
       return await handleUploadFile(params as { selector: string; type: "resume" | "coverLetter" })
@@ -2079,6 +2083,30 @@ function handleGetJobContext(): ToolResult {
 
   logger.info("[ToolExecutor] Returning job context")
   return { success: true, data: jobContext }
+}
+
+/**
+ * Get available resume versions for the agent to select the most appropriate one
+ */
+async function handleGetResumeVersions(): Promise<ToolResult> {
+  try {
+    const versions = await fetchResumeVersions()
+    const published = versions
+      .filter((v) => v.pdfPath)
+      .map((v) => ({
+        slug: v.slug,
+        name: v.name,
+        description: v.description,
+        publishedAt: v.publishedAt ?? null,
+      }))
+
+    logger.info(`[ToolExecutor] Returning ${published.length} resume versions`)
+    return { success: true, data: { versions: published } }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error(`[ToolExecutor] Failed to fetch resume versions: ${message}`)
+    return { success: false, error: `Failed to fetch resume versions: ${message}` }
+  }
 }
 
 /**

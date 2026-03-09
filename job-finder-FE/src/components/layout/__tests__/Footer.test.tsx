@@ -9,7 +9,7 @@ vi.mock("@/types/routes", () => ({
     HOME: "/",
     HOW_IT_WORKS: "/how-it-works",
     CONTENT_ITEMS: "/content-items",
-    DOCUMENT_BUILDER: "/document-builder",
+    RESUMES: "/resumes",
     TERMS_OF_USE: "/terms-of-use",
     PRIVACY_POLICY: "/privacy-policy",
     COOKIE_POLICY: "/cookie-policy",
@@ -52,7 +52,7 @@ describe("Footer", () => {
     expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "How It Works" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Content Items" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Document Builder" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Resumes" })).toBeInTheDocument()
   })
 
   it("renders legal links section", () => {
@@ -85,9 +85,9 @@ describe("Footer", () => {
       "href",
       "/content-items"
     )
-    expect(screen.getByRole("link", { name: "Document Builder" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Resumes" })).toHaveAttribute(
       "href",
-      "/document-builder"
+      "/resumes"
     )
     expect(screen.getByRole("link", { name: "Terms of Use" })).toHaveAttribute(
       "href",

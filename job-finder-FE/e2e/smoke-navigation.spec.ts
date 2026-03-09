@@ -12,8 +12,8 @@ test.describe("Smoke navigation", () => {
     ["/queue-management", async (page) => {
       await expect(page.getByRole("heading", { name: /Queue Management/i, level: 1 })).toBeVisible({ timeout: 15000 })
     }],
-    ["/document-builder", async (page) => {
-      await expect(page.getByRole("heading", { name: /Document Builder/i, level: 1 })).toBeVisible({ timeout: 15000 })
+    ["/resumes", async (page) => {
+      await expect(page.getByRole("heading", { name: /Resume Versions/i, level: 1 })).toBeVisible({ timeout: 15000 })
     }],
     ["/content-items", async (page) => {
       await expect(page.getByRole("heading", { name: /Career Story/i, level: 1 })).toBeVisible({ timeout: 15000 })

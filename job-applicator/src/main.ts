@@ -96,6 +96,8 @@ import {
   submitDocumentReview,
   rejectDocumentReview,
   submitJobToQueue,
+  fetchResumeVersions,
+  getResumeVersionPdfUrl,
   getApiUrl,
 } from "./api-client.js"
 
@@ -1237,6 +1239,26 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   return { hasFileInput: false }
 })
 
+// Get resume versions from backend
+ipcMain.handle(
+  "get-resume-versions",
+  async (): Promise<Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }>> => {
+    try {
+      const versions = await fetchResumeVersions()
+      return versions.map((v) => ({
+        slug: v.slug,
+        name: v.name,
+        pdfPath: v.pdfPath ?? null,
+        publishedAt: v.publishedAt ? String(v.publishedAt) : null,
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`Failed to fetch resume versions: ${message}`)
+      return []
+    }
+  }
+)
+
 // Get job matches from backend using typed API client
 ipcMain.handle(
   "get-job-matches",
@@ -1730,7 +1752,7 @@ ipcMain.handle(
   "fill-form",
   async (
     _event: IpcMainInvokeEvent,
-    options: { jobMatchId: string; jobContext: string; resumeUrl?: string; coverLetterUrl?: string }
+    options: { jobMatchId: string; jobContext: string; resumeVersionSlug?: string; coverLetterUrl?: string }
   ): Promise<{ success: boolean; message?: string }> => {
     // Prevent multiple simultaneous fill-form calls
     if (fillFormInProgress) {
@@ -1806,8 +1828,15 @@ ipcMain.handle(
       let resumePath: string | undefined
       let coverLetterPath: string | undefined
       try {
-        if (options.resumeUrl) {
-          resumePath = await downloadDocument(options.resumeUrl)
+        if (options.resumeVersionSlug) {
+          // Download resume version PDF from the backend API
+          const pdfUrl = getResumeVersionPdfUrl(options.resumeVersionSlug)
+          // downloadDocument expects a relative path like /api/...
+          // getResumeVersionPdfUrl returns full URL like http://localhost:3000/api/resume-versions/slug/pdf
+          // Convert to relative path for downloadDocument
+          const pdfUrlObj = new URL(pdfUrl)
+          const relativePath = pdfUrlObj.pathname
+          resumePath = await downloadDocument(relativePath)
         }
         if (options.coverLetterUrl) {
           coverLetterPath = await downloadDocument(options.coverLetterUrl)

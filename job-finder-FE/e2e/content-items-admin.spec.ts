@@ -20,13 +20,13 @@ test.describe("Content items administration", () => {
     const parentAlpha = await seedContentItem(request, {
       itemData: {
         title: `${slug} Alpha`,
-        order: 0,
+        orderIndex: 0,
       },
     })
     const parentBeta = await seedContentItem(request, {
       itemData: {
         title: `${slug} Beta`,
-        order: 1,
+        orderIndex: 1,
       },
     })
 

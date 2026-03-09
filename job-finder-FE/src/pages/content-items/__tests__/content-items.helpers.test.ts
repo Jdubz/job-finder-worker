@@ -12,7 +12,7 @@ import {
 const baseNode: ContentItemNode = {
   id: "root",
   parentId: null,
-  order: 5,
+  orderIndex: 5,
   title: "Root",
   createdAt: new Date("2024-01-01T00:00:00.000Z"),
   updatedAt: new Date("2024-01-01T00:00:00.000Z"),
@@ -26,13 +26,13 @@ describe("content-items helpers", () => {
       {
         ...baseNode,
         id: "b",
-        order: 2,
+        orderIndex: 2,
         children: [
-          { ...baseNode, id: "b-2", parentId: "b", order: 5 },
-          { ...baseNode, id: "b-1", parentId: "b", order: 1 }
+          { ...baseNode, id: "b-2", parentId: "b", orderIndex: 5 },
+          { ...baseNode, id: "b-1", parentId: "b", orderIndex: 1 }
         ]
       },
-      { ...baseNode, id: "a", order: 1 }
+      { ...baseNode, id: "a", orderIndex: 1 }
     ]
 
     const sorted = sortNodesByOrder(tree)
@@ -68,14 +68,14 @@ describe("content-items helpers", () => {
       {
         ...baseNode,
         id: "root-1",
-        order: 0,
+        orderIndex: 0,
         title: "Root",
         description: undefined,
-        children: [{ ...baseNode, id: "child-1", parentId: "root-1", order: 1, title: null }]
+        children: [{ ...baseNode, id: "child-1", parentId: "root-1", orderIndex: 1, title: null }]
       }
     ]
     const payload = serializeForExport(nodes)
-    expect(payload[0]).toMatchObject({ id: "root-1", order: 0, title: "Root" })
+    expect(payload[0]).toMatchObject({ id: "root-1", orderIndex: 0, title: "Root" })
     expect(payload[0].children?.[0]).toMatchObject({ id: "child-1", parentId: "root-1" })
     expect(payload[0].description).toBeUndefined()
   })
@@ -85,7 +85,7 @@ describe("content-items helpers", () => {
       {
         id: "parent",
         name: "Legacy Parent",
-        order: 2,
+        orderIndex: 2,
         createdAt: "2024-02-01T00:00:00.000Z"
       },
       {
@@ -110,7 +110,7 @@ describe("content-items helpers", () => {
     expect(child.values.role).toBe("Engineer")
     expect(child.values.description).toMatch(/- Shipped feature/)
     expect(child.values.skills).toEqual(["Node.js", "React"])
-    expect(child.order).toBe(0)
+    expect(child.orderIndex).toBe(0)
   })
 
   it("normalizeImportNodes falls back to generated ids and order", () => {

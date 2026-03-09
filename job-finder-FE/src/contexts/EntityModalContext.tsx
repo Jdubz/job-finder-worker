@@ -22,7 +22,6 @@ export type EntityModalDescriptor =
   | {
       type: "jobMatch"
       match: JobMatchWithListing
-      onGenerateResume?: (match: JobMatchWithListing) => void
       onStatusChange?: (match: JobMatchWithListing) => void
     }
   | {

@@ -26,6 +26,7 @@ import { buildAuthRouter } from './routes/auth.routes'
 import { buildApplicatorRouter } from './routes/applicator.routes'
 import { buildOriginGuard } from './middleware/origin-guard'
 import { buildChatWidgetRouter } from './modules/chat-widget/chat.routes'
+import { buildResumeVersionRouter } from './modules/resume-versions/resume-version.routes'
 
 export function buildApp() {
   const app = express()
@@ -119,6 +120,10 @@ export function buildApp() {
   // Content items should be publicly readable. Mutations require admin role.
   const contentItemMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
   app.use('/api/content-items', buildContentItemRouter({ mutationsMiddleware: contentItemMutationGuards }))
+
+  // Resume versions — public read, admin mutations + publish
+  const resumeVersionMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
+  app.use('/api/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: resumeVersionMutationGuards }))
 
   // Chat widget - public endpoint for visitor interactions
   app.use('/api/chat', buildChatWidgetRouter())

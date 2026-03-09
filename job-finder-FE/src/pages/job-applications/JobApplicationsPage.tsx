@@ -194,19 +194,8 @@ export function JobApplicationsPage() {
     openModal({
       type: "jobMatch",
       match,
-      onGenerateResume: handleGenerateResume,
       onStatusChange: (updated) => {
         setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
-      },
-    })
-  }
-
-  const handleGenerateResume = (match: JobMatchWithListing) => {
-    // Navigate to document builder with pre-filled job data
-    navigate(ROUTES.DOCUMENT_BUILDER, {
-      state: {
-        jobMatch: match,
-        documentType: "resume",
       },
     })
   }
@@ -246,8 +235,8 @@ export function JobApplicationsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => navigate(ROUTES.DOCUMENT_BUILDER)}>
-          Build Documents
+        <Button variant="outline" onClick={() => navigate(ROUTES.RESUMES)}>
+          View Resumes
         </Button>
         <Button variant="secondary" onClick={() => navigate(ROUTES.JOB_LISTINGS)}>
           Add New Job

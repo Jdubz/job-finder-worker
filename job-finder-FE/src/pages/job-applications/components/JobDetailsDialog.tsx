@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { ExternalLink, FileText, Building2, Database, AlertCircle, Calculator } from "lucide-react"
+import { ExternalLink, Building2, Database, AlertCircle, Calculator } from "lucide-react"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import type { JobMatchWithListing } from "@shared/types"
 
@@ -19,14 +19,12 @@ interface JobDetailsDialogProps {
   match: JobMatchWithListing | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onGenerateResume?: (match: JobMatchWithListing) => void
 }
 
 export function JobDetailsDialog({
   match,
   open,
   onOpenChange,
-  onGenerateResume,
 }: JobDetailsDialogProps) {
   const { openModal } = useEntityModal()
 
@@ -351,13 +349,6 @@ export function JobDetailsDialog({
 
         {/* Footer Actions */}
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 mt-auto border-t flex-shrink-0">
-          {onGenerateResume && (
-            <Button onClick={() => onGenerateResume(match)} className="flex-1">
-              <FileText className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Generate Custom Resume</span>
-              <span className="sm:hidden">Generate Resume</span>
-            </Button>
-          )}
           <Button variant="outline" onClick={() => window.open(match.listing.url, "_blank")}>
             <ExternalLink className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">View Job Posting</span>

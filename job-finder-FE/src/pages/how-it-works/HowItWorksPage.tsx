@@ -94,8 +94,8 @@ export function HowItWorksPage() {
               </div>
               <CardTitle>Deliver tailored materials</CardTitle>
               <CardDescription>
-                From the Matches table, generate a resume and optional cover letter in the Document Builder.
-                PDFs stay specific to the job details you provided.
+                From the Matches table, pick a role-targeted resume version and download a tailored PDF.
+                Cover letters can also be generated specific to the job details you provided.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -149,7 +149,7 @@ export function HowItWorksPage() {
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
-                <span>Used directly by the Document Builder so resumes stay consistent.</span>
+                <span>Used directly by Resume Versions so resumes stay consistent.</span>
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
@@ -162,29 +162,29 @@ export function HowItWorksPage() {
         <Card>
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Document Builder</CardTitle>
-              <CardDescription>Exports the tailored resume and optional cover letter.</CardDescription>
+              <CardTitle>Resume Versions</CardTitle>
+              <CardDescription>Curated, role-targeted resumes ready to download.</CardDescription>
             </div>
             <a
-              href={ROUTES.DOCUMENT_BUILDER}
+              href={ROUTES.RESUMES}
               className="inline-flex items-center gap-2 text-primary font-medium"
             >
-              Open the builder
+              View resumes
               <ArrowRight className="h-4 w-4" />
             </a>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <div className="flex items-start gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
-              <span>Select a match, confirm the job details, and generate PDFs.</span>
+              <span>Five versions target different role types: frontend, fullstack, backend, AI, and solution engineer.</span>
             </div>
             <div className="flex items-start gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
-              <span>Progress steps show when data is collected, generated, and rendered.</span>
+              <span>Admins edit content per version and publish to generate a polished PDF.</span>
             </div>
             <div className="flex items-start gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
-              <span>Download links appear on completion—no waiting on email.</span>
+              <span>Download any published version instantly—no generation wait time.</span>
             </div>
           </CardContent>
         </Card>
@@ -225,17 +225,17 @@ export function HowItWorksPage() {
 
       {/* CTA */}
       <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-lg p-8 text-center space-y-3">
-        <h2 className="text-2xl font-bold">Want to see a sample packet?</h2>
+        <h2 className="text-2xl font-bold">Want to see a sample resume?</h2>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Try the Document Builder to generate a tailored resume and cover letter. For full access to matches
+          Browse and download role-targeted resumes. For full access to matches
           and analytics, reach out to request an account.
         </p>
         <div className="flex gap-3 justify-center pt-2">
           <a
-            href={ROUTES.DOCUMENT_BUILDER}
+            href={ROUTES.RESUMES}
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
           >
-            Build a Packet
+            View Resumes
             <ArrowRight className="h-4 w-4" />
           </a>
           <a

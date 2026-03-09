@@ -422,26 +422,6 @@ select:focus {
   margin-top: 8px;
 }
 
-.generate-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.generate-type-select {
-  flex: 1;
-  padding: 8px;
-  font-size: 12px;
-  background: #0f3460;
-  color: #e0e0e0;
-  border: 1px solid #1a1a2e;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.generate-type-select:focus {
-  outline: none;
-  border-color: #533483;
-}
 
 /* Job Select Dropdown */
 .job-select {
