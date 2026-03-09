@@ -1,5 +1,17 @@
 import type { ResumeVersion, ResumeItem, ResumeItemNode, CreateResumeItemData, UpdateResumeItemData } from '../resume-version.types'
 
+// --- Content fit estimation ---
+
+export interface ContentFitEstimate {
+  mainColumnLines: number
+  maxLines: number
+  usagePercent: number    // 0–100+
+  pageCount: number       // 1 if fits, 2+ if overflow
+  fits: boolean
+  overflow: number        // negative = room to spare, positive = overflow lines
+  suggestions: string[]
+}
+
 // --- Version endpoints ---
 
 export interface ListResumeVersionsResponse {
@@ -9,6 +21,7 @@ export interface ListResumeVersionsResponse {
 export interface GetResumeVersionResponse {
   version: ResumeVersion
   items: ResumeItemNode[]
+  contentFit: ContentFitEstimate | null
 }
 
 export interface PublishResumeVersionResponse {

@@ -7,6 +7,7 @@ import { Loader2, Plus, Download, Upload, FileText } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useResumeVersions } from "./hooks/useResumeVersions"
 import { useResumeVersion } from "@/hooks/useResumeVersion"
+import type { ContentFitEstimate } from "@shared/types"
 import { resumeVersionsClient } from "@/api"
 import { ContentItemForm } from "../content-items/components/ContentItemForm"
 import { ContentItemCard } from "../content-items/components/ContentItemCard"
@@ -66,6 +67,7 @@ export function ResumeVersionsPage() {
   const {
     version,
     items,
+    contentFit,
     loading: versionLoading,
     error: versionError,
     publishing,
@@ -242,6 +244,9 @@ export function ResumeVersionsPage() {
                 </CardHeader>
               </Card>
 
+              {/* Content fit indicator */}
+              {contentFit && <ContentFitIndicator fit={contentFit} />}
+
               {/* Items tree */}
               <div className="space-y-4">
                 {canEdit && (
@@ -302,6 +307,57 @@ export function ResumeVersionsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function ContentFitIndicator({ fit }: { fit: ContentFitEstimate }) {
+  const barColor = fit.usagePercent <= 85
+    ? "bg-green-500"
+    : fit.usagePercent <= 100
+      ? "bg-amber-500"
+      : "bg-red-500"
+
+  const textColor = fit.usagePercent <= 85
+    ? "text-green-700"
+    : fit.usagePercent <= 100
+      ? "text-amber-700"
+      : "text-red-700"
+
+  const label = fit.fits
+    ? `${fit.usagePercent}% of 1 page`
+    : `${fit.usagePercent}% — overflows to ${fit.pageCount} pages`
+
+  return (
+    <Card>
+      <CardContent className="py-3 px-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-muted-foreground">Page Usage</span>
+              <span className={cn("text-xs font-semibold", textColor)}>{label}</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all", barColor)}
+                style={{ width: `${Math.min(fit.usagePercent, 100)}%` }}
+              />
+            </div>
+          </div>
+          <span className={cn("text-lg font-bold tabular-nums", textColor)}>
+            {fit.pageCount}p
+          </span>
+        </div>
+        {fit.suggestions.length > 0 && (
+          <ul className="mt-2 space-y-0.5">
+            {fit.suggestions.map((s, i) => (
+              <li key={i} className="text-xs text-muted-foreground">
+                &bull; {s}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

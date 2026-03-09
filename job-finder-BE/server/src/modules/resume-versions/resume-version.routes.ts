@@ -22,7 +22,9 @@ import {
   ResumeItemNotFoundError,
   ResumeItemInvalidParentError
 } from './resume-version.repository'
-import { buildItemTree, publishResumeVersion, getResumePdfAbsolutePath } from './resume-version.publish'
+import { buildItemTree, transformItemsToResumeContent, publishResumeVersion, getResumePdfAbsolutePath } from './resume-version.publish'
+import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
+import { PersonalInfoStore } from '../generator/personal-info.store'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiHttpError } from '../../middleware/api-error'
@@ -129,10 +131,10 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
     })
   )
 
-  // GET /:slug — get version detail + items tree
+  // GET /:slug — get version detail + items tree + content fit estimate
   router.get(
     '/:slug',
-    asyncHandler((req, res) => {
+    asyncHandler(async (req, res) => {
       const slug = slugSchema.parse(req.params.slug)
       const version = repo.getVersionBySlug(slug)
       if (!version) {
@@ -141,7 +143,33 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
       }
       const items = repo.listItems(version.id)
       const tree = buildItemTree(items)
-      const response: GetResumeVersionResponse = { version, items: tree }
+
+      // Compute content fit estimate if there are items and personal info is available
+      let contentFit: GetResumeVersionResponse['contentFit'] = null
+      if (items.length > 0) {
+        try {
+          const personalInfoStore = new PersonalInfoStore()
+          const personalInfo = await personalInfoStore.get()
+          if (personalInfo) {
+            const resumeContent = transformItemsToResumeContent(tree, personalInfo)
+            const fit = estimateContentFit(resumeContent)
+            const usagePercent = Math.round((fit.mainColumnLines / LAYOUT.MAX_LINES) * 100)
+            contentFit = {
+              mainColumnLines: fit.mainColumnLines,
+              maxLines: LAYOUT.MAX_LINES,
+              usagePercent,
+              pageCount: fit.fits ? 1 : Math.ceil(fit.mainColumnLines / LAYOUT.MAX_LINES),
+              fits: fit.fits,
+              overflow: fit.overflow,
+              suggestions: fit.suggestions
+            }
+          }
+        } catch {
+          // Non-critical — return null if estimation fails
+        }
+      }
+
+      const response: GetResumeVersionResponse = { version, items: tree, contentFit }
       res.json(success(response))
     })
   )

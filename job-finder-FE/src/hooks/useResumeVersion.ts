@@ -5,6 +5,7 @@ import type {
   ResumeVersion,
   ResumeItem,
   ResumeItemNode,
+  ContentFitEstimate,
   CreateResumeItemData,
   UpdateResumeItemData
 } from "@shared/types"
@@ -12,6 +13,7 @@ import type {
 interface UseResumeVersionResult {
   version: ResumeVersion | null
   items: ResumeItemNode[]
+  contentFit: ContentFitEstimate | null
   loading: boolean
   error: Error | null
   publishing: boolean
@@ -28,6 +30,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
 
   const [version, setVersion] = useState<ResumeVersion | null>(null)
   const [items, setItems] = useState<ResumeItemNode[]>([])
+  const [contentFit, setContentFit] = useState<ContentFitEstimate | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [publishing, setPublishing] = useState(false)
@@ -39,6 +42,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
       const data = await resumeVersionsClient.getVersion(slug)
       setVersion(data.version)
       setItems(data.items)
+      setContentFit(data.contentFit)
       setError(null)
     } catch (err) {
       setError(err as Error)
@@ -111,6 +115,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
   return {
     version,
     items,
+    contentFit,
     loading,
     error,
     publishing,
