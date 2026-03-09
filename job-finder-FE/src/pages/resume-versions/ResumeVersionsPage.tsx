@@ -310,16 +310,19 @@ export function ResumeVersionsPage() {
   )
 }
 
+const USAGE_THRESHOLD_OK = 85
+const USAGE_THRESHOLD_WARN = 100
+
 function ContentFitIndicator({ fit }: { fit: ContentFitEstimate }) {
-  const barColor = fit.usagePercent <= 85
+  const barColor = fit.usagePercent <= USAGE_THRESHOLD_OK
     ? "bg-green-500"
-    : fit.usagePercent <= 100
+    : fit.usagePercent <= USAGE_THRESHOLD_WARN
       ? "bg-amber-500"
       : "bg-red-500"
 
-  const textColor = fit.usagePercent <= 85
+  const textColor = fit.usagePercent <= USAGE_THRESHOLD_OK
     ? "text-green-700"
-    : fit.usagePercent <= 100
+    : fit.usagePercent <= USAGE_THRESHOLD_WARN
       ? "text-amber-700"
       : "text-red-700"
 

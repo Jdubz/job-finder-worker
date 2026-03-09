@@ -273,7 +273,7 @@ UPDATE resume_items SET
 WHERE id = 'ri-se-britelite-h2';
 
 -- ==============================================================================
--- SE — Intuit widgets (se-h2)
+-- OPNA — Intuit widgets (se-opna-h2)
 -- Was: "5 widgets", "4-week", "100K+ impressions" (fabricated)
 -- Now: describe the delivery and outcome
 -- ==============================================================================

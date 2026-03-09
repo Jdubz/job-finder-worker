@@ -25,6 +25,7 @@ import {
 import { buildItemTree, transformItemsToResumeContent, publishResumeVersion, getResumePdfAbsolutePath } from './resume-version.publish'
 import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
+import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiHttpError } from '../../middleware/api-error'
@@ -164,8 +165,8 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
               suggestions: fit.suggestions
             }
           }
-        } catch {
-          // Non-critical — return null if estimation fails
+        } catch (err) {
+          logger.warn({ err, slug }, 'Failed to compute content fit estimate for resume version')
         }
       }
 

@@ -134,7 +134,7 @@ Exhaustive list of every hardcoded single-user pattern found across the codebase
               └──────┬──────────────┬───────┘
                      │              │
             ┌────────┴───┐   ┌─────┴────────┐
-            │  API (x2)  │   │  API (x2)    │
+            │   API 1    │   │    API 2     │
             └────────┬───┘   └─────┬────────┘
                      │              │
          ┌───────────┴──────────────┴───────────┐
