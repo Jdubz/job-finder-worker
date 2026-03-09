@@ -6,13 +6,13 @@
  * fits on a single page. This catches drift between the CSS layout
  * constants in content-fit.service.ts and the actual rendered output.
  *
- * Requires Chromium available via playwright-core (set CHROMIUM_PATH if needed).
- * Tests that require Chromium are skipped automatically in CI or environments
- * without a browser installed.
+ * Requires Chromium available via playwright-core.
+ * Run `npx playwright install chromium` if browsers are not installed.
  */
 import { describe, it, expect } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 import { estimateContentFit, LAYOUT } from '../content-fit.service'
+import { HtmlPdfService } from '../html-pdf.service'
 import type { ResumeContent, PersonalInfo } from '@shared/types'
 
 const personalInfo: PersonalInfo = {
@@ -75,40 +75,10 @@ async function getPdfPageCount(pdfBuffer: Buffer): Promise<number> {
   return doc.getPageCount()
 }
 
-/**
- * Check if Chromium is available for Playwright PDF rendering.
- * Returns the HtmlPdfService instance if available, null otherwise.
- */
-async function tryCreateHtmlPdfService() {
-  try {
-    const { HtmlPdfService } = await import('../html-pdf.service')
-    const service = new HtmlPdfService()
-    // Attempt a minimal render to verify Chromium is available
-    const minimalContent = makeResume()
-    await service.renderResume(minimalContent, personalInfo)
-    return service
-  } catch {
-    return null
-  }
-}
-
-// Detect Chromium availability once, share across PDF-rendering tests
-let htmlPdf: Awaited<ReturnType<typeof tryCreateHtmlPdfService>> = null
-let chromiumChecked = false
-
-async function getHtmlPdfService() {
-  if (!chromiumChecked) {
-    htmlPdf = await tryCreateHtmlPdfService()
-    chromiumChecked = true
-  }
-  return htmlPdf
-}
+const htmlPdf = new HtmlPdfService()
 
 describe('content-fit estimation accuracy (PDF rendering)', () => {
   it('minimal resume: estimate fits AND renders as 1 page', async () => {
-    const service = await getHtmlPdfService()
-    if (!service) return // Skip if Chromium unavailable
-
     const content = makeResume({
       experience: [makeExperience('Acme Corp', 'Engineer', 2, 'short')],
       skills: [{ category: 'Languages', items: ['TypeScript', 'Python'] }],
@@ -116,7 +86,7 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
     })
 
     const estimate = estimateContentFit(content)
-    const pdf = await service.renderResume(content, personalInfo)
+    const pdf = await htmlPdf.renderResume(content, personalInfo)
     const pages = await getPdfPageCount(pdf)
 
     expect(estimate.fits).toBe(true)
@@ -124,9 +94,6 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
   }, 30_000)
 
   it('typical single-page resume: estimate fits AND renders as 1 page', async () => {
-    const service = await getHtmlPdfService()
-    if (!service) return
-
     const content = makeResume({
       professionalSummary: 'Senior full-stack engineer with 8+ years building production systems for enterprise clients.',
       experience: [
@@ -145,7 +112,7 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
     })
 
     const estimate = estimateContentFit(content)
-    const pdf = await service.renderResume(content, personalInfo)
+    const pdf = await htmlPdf.renderResume(content, personalInfo)
     const pages = await getPdfPageCount(pdf)
 
     expect(estimate.fits).toBe(true)
@@ -153,9 +120,6 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
   }, 30_000)
 
   it('overflowing resume: estimate overflows AND renders as 2+ pages', async () => {
-    const service = await getHtmlPdfService()
-    if (!service) return
-
     const content = makeResume({
       professionalSummary: 'Senior full-stack engineer with deep expertise across the entire stack. Proven track record of delivering complex distributed systems at scale for Fortune 500 clients.',
       experience: [
@@ -179,7 +143,7 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
     })
 
     const estimate = estimateContentFit(content)
-    const pdf = await service.renderResume(content, personalInfo)
+    const pdf = await htmlPdf.renderResume(content, personalInfo)
     const pages = await getPdfPageCount(pdf)
 
     expect(estimate.fits).toBe(false)
@@ -188,9 +152,6 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
   }, 30_000)
 
   it('estimation is conservative — never predicts fit when PDF overflows', async () => {
-    const service = await getHtmlPdfService()
-    if (!service) return
-
     // The estimator may be slightly conservative (predicting overflow when
     // the PDF still fits on 1 page), but must NEVER be optimistic (predicting
     // fit when the PDF actually overflows). This is the critical safety property.
@@ -233,7 +194,7 @@ describe('content-fit estimation accuracy (PDF rendering)', () => {
 
     for (const content of testCases) {
       const estimate = estimateContentFit(content)
-      const pdf = await service.renderResume(content, personalInfo)
+      const pdf = await htmlPdf.renderResume(content, personalInfo)
       const pages = await getPdfPageCount(pdf)
 
       // CRITICAL: if estimate says it fits, PDF must actually be 1 page
