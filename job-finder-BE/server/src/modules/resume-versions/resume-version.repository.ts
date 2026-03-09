@@ -4,6 +4,7 @@ import type {
   ResumeVersion,
   ResumeItem,
   CreateResumeItemData,
+  CreateResumeVersionData,
   UpdateResumeItemData,
   ResumeVersionSlug
 } from '@shared/types'
@@ -151,6 +152,34 @@ export class ResumeVersionRepository {
     }
 
     return this.getVersionBySlug(slug) as ResumeVersion
+  }
+
+  createVersion(data: CreateResumeVersionData): ResumeVersion {
+    const id = randomUUID()
+    const now = new Date().toISOString()
+
+    const existing = this.getVersionBySlug(data.slug)
+    if (existing) {
+      throw new Error(`Resume version with slug "${data.slug}" already exists`)
+    }
+
+    this.db
+      .prepare(
+        `INSERT INTO resume_versions (id, slug, name, description, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, data.slug, data.name, data.description ?? null, now, now)
+
+    return this.getVersionById(id) as ResumeVersion
+  }
+
+  deleteVersion(slug: string): void {
+    const version = this.getVersionBySlug(slug)
+    if (!version) {
+      throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
+    }
+    // CASCADE delete will remove all resume_items for this version
+    this.db.prepare('DELETE FROM resume_versions WHERE slug = ?').run(slug)
   }
 
   // ── Item queries ─────────────────────────────────────────────────

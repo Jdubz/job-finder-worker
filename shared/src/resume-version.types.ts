@@ -1,13 +1,7 @@
 import type { ContentItemAIContext } from './content-item.types'
 import type { TimestampJson } from './schemas/timestamp.schema'
 
-/** The 5 resume version slugs */
-export type ResumeVersionSlug =
-  | 'frontend'
-  | 'fullstack'
-  | 'backend'
-  | 'ai'
-  | 'solution-engineer'
+export type ResumeVersionSlug = string
 
 export interface ResumeVersion {
   id: string
@@ -61,3 +55,9 @@ export type CreateResumeItemData = {
 }
 
 export type UpdateResumeItemData = Partial<CreateResumeItemData>
+
+export interface CreateResumeVersionData {
+  name: string
+  slug: string
+  description?: string | null
+}

@@ -3,7 +3,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Plus, Download, Upload, FileText } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Loader2, Plus, Download, Upload, FileText, Trash2, X } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useResumeVersions } from "./hooks/useResumeVersions"
 import { useResumeVersion } from "@/hooks/useResumeVersion"
@@ -55,10 +57,17 @@ interface AlertState {
 
 export function ResumeVersionsPage() {
   const { user, isOwner } = useAuth()
-  const { versions, loading: versionsLoading, error: versionsError } = useResumeVersions()
+  const {
+    versions,
+    loading: versionsLoading,
+    error: versionsError,
+    createVersion,
+    deleteVersion
+  } = useResumeVersions()
   const [selectedSlug, setSelectedSlug] = useState<ResumeVersionSlug>("frontend")
   const [editMode, setEditMode] = useState(false)
   const [showRootForm, setShowRootForm] = useState(false)
+  const [showNewVersionForm, setShowNewVersionForm] = useState(false)
   const [alert, setAlert] = useState<AlertState | null>(null)
 
   const isAdmin = Boolean(user?.email && isOwner)
@@ -132,6 +141,30 @@ export function ResumeVersionsPage() {
     }
   }
 
+  const handleCreateVersion = async (name: string, slug: string, description: string) => {
+    try {
+      const version = await createVersion({ name, slug, description: description || null })
+      setSelectedSlug(version.slug)
+      setShowNewVersionForm(false)
+      setAlert({ type: "success", message: `Version "${version.name}" created` })
+    } catch (err) {
+      setAlert({ type: "error", message: (err as Error).message })
+    }
+  }
+
+  const handleDeleteVersion = async (slug: string) => {
+    try {
+      await deleteVersion(slug)
+      if (selectedSlug === slug) {
+        const remaining = versions.filter((v) => v.slug !== slug)
+        setSelectedSlug(remaining.length > 0 ? remaining[0].slug : "")
+      }
+      setAlert({ type: "success", message: `Version "${slug}" deleted` })
+    } catch (err) {
+      setAlert({ type: "error", message: (err as Error).message })
+    }
+  }
+
   const handleDownload = () => {
     if (!selectedSlug) return
     window.open(resumeVersionsClient.getPdfUrl(selectedSlug), "_blank", "noopener,noreferrer")
@@ -186,9 +219,28 @@ export function ResumeVersionsPage() {
               key={v.slug}
               version={v}
               isSelected={v.slug === selectedSlug}
+              canEdit={canEdit}
               onClick={() => setSelectedSlug(v.slug)}
+              onDelete={() => handleDeleteVersion(v.slug)}
             />
           ))}
+          {canEdit && (
+            showNewVersionForm ? (
+              <NewVersionForm
+                onSubmit={handleCreateVersion}
+                onCancel={() => setShowNewVersionForm(false)}
+              />
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => setShowNewVersionForm(true)}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add Version
+              </Button>
+            )
+          )}
         </div>
 
         {/* Version detail panel */}
@@ -367,41 +419,146 @@ function ContentFitIndicator({ fit }: { fit: ContentFitEstimate }) {
 function VersionCard({
   version,
   isSelected,
-  onClick
+  canEdit,
+  onClick,
+  onDelete
 }: {
   version: ResumeVersion
   isSelected: boolean
+  canEdit: boolean
   onClick: () => void
+  onDelete: () => void
 }) {
+  const [confirming, setConfirming] = useState(false)
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "w-full rounded-lg border p-3 text-left transition-colors",
+        "relative w-full rounded-lg border p-3 text-left transition-colors",
         isSelected
           ? "border-primary bg-primary/5 shadow-sm"
           : "border-border hover:bg-muted/50"
       )}
     >
-      <div className="flex items-center justify-between">
-        <span className="font-medium text-sm">{version.name}</span>
-        {version.pdfPath ? (
-          <Badge variant="outline" className="text-xs text-green-600 border-green-200">
-            Published
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
-            Draft
-          </Badge>
+      <button type="button" onClick={onClick} className="w-full text-left">
+        <div className="flex items-center justify-between">
+          <span className="font-medium text-sm">{version.name}</span>
+          {version.pdfPath ? (
+            <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+              Published
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
+              Draft
+            </Badge>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{version.description}</p>
+        {version.publishedAt && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {new Date(String(version.publishedAt)).toLocaleDateString()}
+          </p>
         )}
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{version.description}</p>
-      {version.publishedAt && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {new Date(String(version.publishedAt)).toLocaleDateString()}
-        </p>
+      </button>
+      {canEdit && (
+        confirming ? (
+          <div className="mt-2 flex items-center gap-1">
+            <span className="text-xs text-destructive">Delete?</span>
+            <Button variant="destructive" size="sm" className="h-6 px-2 text-xs" onClick={onDelete}>
+              Yes
+            </Button>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(false)}>
+              No
+            </Button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="absolute top-2 right-2 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )
       )}
-    </button>
+    </div>
+  )
+}
+
+function NewVersionForm({
+  onSubmit,
+  onCancel
+}: {
+  onSubmit: (name: string, slug: string, description: string) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState("")
+  const [slug, setSlug] = useState("")
+  const [description, setDescription] = useState("")
+  const [slugTouched, setSlugTouched] = useState(false)
+
+  const handleNameChange = (value: string) => {
+    setName(value)
+    if (!slugTouched) {
+      setSlug(
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+      )
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">New Version</span>
+          <button type="button" onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <Label htmlFor="version-name" className="text-xs">Name</Label>
+            <Input
+              id="version-name"
+              value={name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="e.g. DevOps Engineer"
+              className="h-8 text-sm"
+            />
+          </div>
+          <div>
+            <Label htmlFor="version-slug" className="text-xs">Slug</Label>
+            <Input
+              id="version-slug"
+              value={slug}
+              onChange={(e) => { setSlug(e.target.value); setSlugTouched(true) }}
+              placeholder="e.g. devops"
+              className="h-8 text-sm font-mono"
+            />
+          </div>
+          <div>
+            <Label htmlFor="version-desc" className="text-xs">Description</Label>
+            <Input
+              id="version-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description"
+              className="h-8 text-sm"
+            />
+          </div>
+        </div>
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={!name.trim() || !slug.trim()}
+          onClick={() => onSubmit(name.trim(), slug.trim(), description.trim())}
+        >
+          Create Version
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
