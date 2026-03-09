@@ -45,7 +45,7 @@ const contentItems: ContentItem[] = [
   {
     id: 'work-1',
     parentId: null,
-    order: 0,
+    orderIndex: 0,
     title: 'Acme Corp',
     role: 'Engineer',
     location: 'Remote',

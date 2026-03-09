@@ -73,7 +73,7 @@ function buildWorkHistory(items: ContentItem[]): string {
     // Highlights (child items)
     const highlights = (children.get(work.id) || [])
       .filter(item => item.aiContext === 'highlight')
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
 
     if (highlights.length > 0) {
       lines.push('')

@@ -25,7 +25,6 @@ export interface ListResumeItemsResponse {
 
 export interface CreateResumeItemRequest {
   itemData: CreateResumeItemData
-  userEmail: string
 }
 
 export interface CreateResumeItemResponse {
@@ -35,7 +34,6 @@ export interface CreateResumeItemResponse {
 
 export interface UpdateResumeItemRequest {
   itemData: UpdateResumeItemData
-  userEmail: string
 }
 
 export interface UpdateResumeItemResponse {
@@ -52,7 +50,6 @@ export interface DeleteResumeItemResponse {
 export interface ReorderResumeItemRequest {
   parentId?: string | null
   orderIndex: number
-  userEmail: string
 }
 
 export interface ReorderResumeItemResponse {

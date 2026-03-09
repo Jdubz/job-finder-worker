@@ -48,10 +48,9 @@ export class ResumeVersionsClient extends BaseApiClient {
 
   async createItem(
     slug: string,
-    userEmail: string,
     data: CreateResumeItemData
   ): Promise<ResumeItem> {
-    const payload: CreateResumeItemRequest = { itemData: data, userEmail }
+    const payload: CreateResumeItemRequest = { itemData: data }
     const response = await this.post<ApiSuccessResponse<CreateResumeItemResponse>>(
       `/resume-versions/${slug}/items`,
       payload
@@ -62,10 +61,9 @@ export class ResumeVersionsClient extends BaseApiClient {
   async updateItem(
     slug: string,
     id: string,
-    userEmail: string,
     data: UpdateResumeItemData
   ): Promise<ResumeItem> {
-    const payload: UpdateResumeItemRequest = { itemData: data, userEmail }
+    const payload: UpdateResumeItemRequest = { itemData: data }
     const response = await this.patch<ApiSuccessResponse<UpdateResumeItemResponse>>(
       `/resume-versions/${slug}/items/${id}`,
       payload
@@ -82,11 +80,10 @@ export class ResumeVersionsClient extends BaseApiClient {
   async reorderItem(
     slug: string,
     id: string,
-    userEmail: string,
     parentId: string | null,
     orderIndex: number
   ): Promise<ResumeItem> {
-    const payload: ReorderResumeItemRequest = { parentId, orderIndex, userEmail }
+    const payload: ReorderResumeItemRequest = { parentId, orderIndex }
     const response = await this.post<ApiSuccessResponse<ReorderResumeItemResponse>>(
       `/resume-versions/${slug}/items/${id}/reorder`,
       payload

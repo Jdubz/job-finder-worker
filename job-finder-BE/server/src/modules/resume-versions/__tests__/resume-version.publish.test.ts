@@ -19,7 +19,7 @@ function makeItem(overrides: Partial<ResumeItemNode> & { id: string }): ResumeIt
   return {
     resumeVersionId: 'rv-test',
     parentId: null,
-    order: 0,
+    orderIndex: 0,
     aiContext: null,
     title: null,
     role: null,
@@ -61,8 +61,8 @@ describe('transformItemsToResumeContent', () => {
         endDate: '2025-03',
         skills: ['TypeScript', 'AWS'],
         children: [
-          makeItem({ id: '1a', parentId: '1', aiContext: 'highlight', description: 'Led migration of 50 services', order: 0 }),
-          makeItem({ id: '1b', parentId: '1', aiContext: 'highlight', description: 'Built CI/CD pipeline', order: 1 })
+          makeItem({ id: '1a', parentId: '1', aiContext: 'highlight', description: 'Led migration of 50 services', orderIndex: 0 }),
+          makeItem({ id: '1b', parentId: '1', aiContext: 'highlight', description: 'Built CI/CD pipeline', orderIndex: 1 })
         ]
       })
     ]
@@ -89,7 +89,7 @@ describe('transformItemsToResumeContent', () => {
         website: 'https://github.com/jdubz/job-finder',
         skills: ['React', 'Node.js'],
         children: [
-          makeItem({ id: '1a', parentId: '1', aiContext: 'highlight', description: 'Built MCP integration', order: 0 })
+          makeItem({ id: '1a', parentId: '1', aiContext: 'highlight', description: 'Built MCP integration', orderIndex: 0 })
         ]
       })
     ]
@@ -104,7 +104,7 @@ describe('transformItemsToResumeContent', () => {
   it('maps skills items to skills categories', () => {
     const items: ResumeItemNode[] = [
       makeItem({ id: '1', aiContext: 'skills', title: 'Languages', skills: ['TypeScript', 'Python', 'Go'] }),
-      makeItem({ id: '2', aiContext: 'skills', title: 'Frameworks', skills: ['React', 'Express', 'FastAPI'], order: 1 })
+      makeItem({ id: '2', aiContext: 'skills', title: 'Frameworks', skills: ['React', 'Express', 'FastAPI'], orderIndex: 1 })
     ]
 
     const result = transformItemsToResumeContent(items, personalInfo)
@@ -148,7 +148,7 @@ describe('transformItemsToResumeContent', () => {
             role: 'Engineer',
             startDate: '2020-01',
             children: [
-              makeItem({ id: 'h1', parentId: 'work1', aiContext: 'highlight', description: 'Built APIs', order: 0 })
+              makeItem({ id: 'h1', parentId: 'work1', aiContext: 'highlight', description: 'Built APIs', orderIndex: 0 })
             ]
           })
         ]
@@ -172,19 +172,19 @@ describe('transformItemsToResumeContent', () => {
 
   it('handles a full resume structure in order', () => {
     const items: ResumeItemNode[] = [
-      makeItem({ id: 'summary', aiContext: 'narrative', description: 'Full-stack engineer.', order: 0 }),
+      makeItem({ id: 'summary', aiContext: 'narrative', description: 'Full-stack engineer.', orderIndex: 0 }),
       makeItem({
         id: 'exp',
         aiContext: 'section',
         title: 'Experience',
-        order: 1,
+        orderIndex: 1,
         children: [
-          makeItem({ id: 'w1', parentId: 'exp', aiContext: 'work', title: 'Co A', role: 'Lead', startDate: '2023-01', order: 0, children: [] }),
-          makeItem({ id: 'w2', parentId: 'exp', aiContext: 'work', title: 'Co B', role: 'Senior', startDate: '2020-01', order: 1, children: [] })
+          makeItem({ id: 'w1', parentId: 'exp', aiContext: 'work', title: 'Co A', role: 'Lead', startDate: '2023-01', orderIndex: 0, children: [] }),
+          makeItem({ id: 'w2', parentId: 'exp', aiContext: 'work', title: 'Co B', role: 'Senior', startDate: '2020-01', orderIndex: 1, children: [] })
         ]
       }),
-      makeItem({ id: 'sk', aiContext: 'skills', title: 'Core', skills: ['TS', 'React'], order: 2 }),
-      makeItem({ id: 'ed', aiContext: 'education', title: 'MIT', role: 'BS CS', order: 3 })
+      makeItem({ id: 'sk', aiContext: 'skills', title: 'Core', skills: ['TS', 'React'], orderIndex: 2 }),
+      makeItem({ id: 'ed', aiContext: 'education', title: 'MIT', role: 'BS CS', orderIndex: 3 })
     ]
 
     const result = transformItemsToResumeContent(items, personalInfo)
@@ -200,9 +200,9 @@ describe('transformItemsToResumeContent', () => {
 describe('buildItemTree', () => {
   it('builds nested tree from flat array', () => {
     const flat = [
-      { ...makeItem({ id: 'root', order: 0 }), children: undefined } as any,
-      { ...makeItem({ id: 'child', parentId: 'root', order: 0 }), children: undefined } as any,
-      { ...makeItem({ id: 'grandchild', parentId: 'child', order: 0 }), children: undefined } as any
+      { ...makeItem({ id: 'root', orderIndex: 0 }), children: undefined } as any,
+      { ...makeItem({ id: 'child', parentId: 'root', orderIndex: 0 }), children: undefined } as any,
+      { ...makeItem({ id: 'grandchild', parentId: 'child', orderIndex: 0 }), children: undefined } as any
     ]
 
     const tree = buildItemTree(flat)
@@ -216,8 +216,8 @@ describe('buildItemTree', () => {
 
   it('handles multiple roots', () => {
     const flat = [
-      { ...makeItem({ id: 'a', order: 0 }), children: undefined } as any,
-      { ...makeItem({ id: 'b', order: 1 }), children: undefined } as any
+      { ...makeItem({ id: 'a', orderIndex: 0 }), children: undefined } as any,
+      { ...makeItem({ id: 'b', orderIndex: 1 }), children: undefined } as any
     ]
 
     const tree = buildItemTree(flat)

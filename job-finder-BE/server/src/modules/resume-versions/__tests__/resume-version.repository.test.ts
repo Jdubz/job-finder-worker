@@ -68,7 +68,7 @@ describe('ResumeVersionRepository', () => {
       expect(item.resumeVersionId).toBe(version.id)
       expect(item.title).toBe('Experience')
       expect(item.aiContext).toBe('section')
-      expect(item.order).toBe(0)
+      expect(item.orderIndex).toBe(0)
     })
 
     it('auto-increments order for siblings', () => {
@@ -77,9 +77,9 @@ describe('ResumeVersionRepository', () => {
       const b = repo.createItem(version.id, { title: 'B', userEmail: baseUser })
       const c = repo.createItem(version.id, { title: 'C', userEmail: baseUser })
 
-      expect(a.order).toBe(0)
-      expect(b.order).toBe(1)
-      expect(c.order).toBe(2)
+      expect(a.orderIndex).toBe(0)
+      expect(b.orderIndex).toBe(1)
+      expect(c.orderIndex).toBe(2)
     })
 
     it('creates nested items (parent-child)', () => {
@@ -98,7 +98,7 @@ describe('ResumeVersionRepository', () => {
       })
 
       expect(child.parentId).toBe(parent.id)
-      expect(child.order).toBe(0)
+      expect(child.orderIndex).toBe(0)
     })
 
     it('lists items for a version', () => {

@@ -42,7 +42,7 @@ export function transformItemsToResumeContent(
           endDate: node.endDate ?? null,
           highlights: (node.children ?? [])
             .filter((c) => c.aiContext === 'highlight' && c.description)
-            .sort((a, b) => a.order - b.order)
+            .sort((a, b) => a.orderIndex - b.orderIndex)
             .map((c) => c.description as string),
           technologies: node.skills ?? undefined
         })
@@ -54,7 +54,7 @@ export function transformItemsToResumeContent(
           description: node.description ?? '',
           highlights: (node.children ?? [])
             .filter((c) => c.aiContext === 'highlight' && c.description)
-            .sort((a, b) => a.order - b.order)
+            .sort((a, b) => a.orderIndex - b.orderIndex)
             .map((c) => c.description as string),
           technologies: node.skills ?? undefined,
           link: node.website ?? undefined
@@ -80,14 +80,14 @@ export function transformItemsToResumeContent(
 
       case 'section':
         // Section containers: process children only
-        for (const child of (node.children ?? []).sort((a, b) => a.order - b.order)) {
+        for (const child of (node.children ?? []).sort((a, b) => a.orderIndex - b.orderIndex)) {
           processNode(child)
         }
         break
 
       default:
         // Unknown context: recurse into children
-        for (const child of (node.children ?? []).sort((a, b) => a.order - b.order)) {
+        for (const child of (node.children ?? []).sort((a, b) => a.orderIndex - b.orderIndex)) {
           processNode(child)
         }
         break
@@ -95,7 +95,7 @@ export function transformItemsToResumeContent(
   }
 
   // Process top-level items in order
-  for (const item of items.sort((a, b) => a.order - b.order)) {
+  for (const item of items.sort((a, b) => a.orderIndex - b.orderIndex)) {
     processNode(item)
   }
 

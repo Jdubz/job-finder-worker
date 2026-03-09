@@ -40,7 +40,7 @@ function parseRow(row: ContentItemRow): ContentItem {
   return {
     id: row.id,
     parentId: row.parent_id,
-    order: row.order_index,
+    orderIndex: row.order_index,
     title: row.title,
     role: row.role,
     location: row.location,
@@ -101,7 +101,7 @@ export class ContentItemRepository {
     const id = randomUUID()
     const now = new Date().toISOString()
     const parentId = data.parentId ?? null
-    const order = data.order ?? this.nextOrderIndex(parentId)
+    const order = data.orderIndex ?? this.nextOrderIndex(parentId)
     const stmt = this.db.prepare(
       `
       INSERT INTO content_items (
@@ -152,7 +152,7 @@ export class ContentItemRepository {
     if (!existing) throw new ContentItemNotFoundError(`Content item not found: ${id}`)
 
     const parentId = data.parentId ?? existing.parentId
-    const order = data.order ?? existing.order ?? this.nextOrderIndex(parentId ?? null)
+    const order = data.orderIndex ?? existing.orderIndex ?? this.nextOrderIndex(parentId ?? null)
     const now = new Date().toISOString()
 
     const stmt = this.db.prepare(

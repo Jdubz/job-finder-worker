@@ -87,7 +87,7 @@ function parseItemRow(row: ItemRow): ResumeItem {
     id: row.id,
     resumeVersionId: row.resume_version_id,
     parentId: row.parent_id,
-    order: row.order_index,
+    orderIndex: row.order_index,
     aiContext: row.ai_context as ResumeItem['aiContext'],
     title: row.title,
     role: row.role,
@@ -184,7 +184,16 @@ export class ResumeVersionRepository {
     const id = randomUUID()
     const now = new Date().toISOString()
     const parentId = data.parentId ?? null
-    const order = data.order ?? this.nextOrderIndex(resumeVersionId, parentId)
+
+    if (parentId) {
+      const parent = this.getItemById(parentId)
+      if (!parent) throw new ResumeItemInvalidParentError('Parent item not found')
+      if (parent.resumeVersionId !== resumeVersionId) {
+        throw new ResumeItemInvalidParentError('Parent belongs to a different resume version')
+      }
+    }
+
+    const order = data.orderIndex ?? this.nextOrderIndex(resumeVersionId, parentId)
 
     this.db
       .prepare(
@@ -234,7 +243,7 @@ export class ResumeVersionRepository {
       )
       .run(
         data.parentId !== undefined ? data.parentId : existing.parentId,
-        data.order ?? existing.order,
+        data.orderIndex ?? existing.orderIndex,
         data.aiContext !== undefined ? data.aiContext : existing.aiContext ?? null,
         data.title !== undefined ? data.title : existing.title ?? null,
         data.role !== undefined ? data.role : existing.role ?? null,

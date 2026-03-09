@@ -12,12 +12,35 @@ import { ContentItemForm } from "../content-items/components/ContentItemForm"
 import { ContentItemCard } from "../content-items/components/ContentItemCard"
 import type { ContentItemFormValues } from "@/types/content-items"
 import type { ContentItemNode } from "@shared/types"
-import type { ResumeVersion, ResumeItemNode } from "@shared/types"
+import type { ResumeVersion, ResumeVersionSlug, ResumeItemNode } from "@shared/types"
 import { cn } from "@/lib/utils"
+
+/** Map a ResumeItemNode to a ContentItemNode by picking only the shared fields. */
+function toContentItemNode(node: ResumeItemNode): ContentItemNode {
+  return {
+    id: node.id,
+    parentId: node.parentId,
+    orderIndex: node.orderIndex,
+    aiContext: node.aiContext,
+    title: node.title,
+    role: node.role,
+    location: node.location,
+    website: node.website,
+    startDate: node.startDate,
+    endDate: node.endDate,
+    description: node.description,
+    skills: node.skills,
+    createdAt: node.createdAt,
+    updatedAt: node.updatedAt,
+    createdBy: node.createdBy,
+    updatedBy: node.updatedBy,
+    children: node.children?.map(toContentItemNode)
+  }
+}
 
 function sortNodesByOrder(nodes: ResumeItemNode[]): ResumeItemNode[] {
   return [...nodes]
-    .sort((a, b) => a.order - b.order)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
     .map((node) => ({
       ...node,
       children: node.children ? sortNodesByOrder(node.children) : undefined
@@ -31,8 +54,8 @@ interface AlertState {
 
 export function ResumeVersionsPage() {
   const { user, isOwner } = useAuth()
-  const { versions, loading: versionsLoading } = useResumeVersions()
-  const [selectedSlug, setSelectedSlug] = useState<string>("frontend")
+  const { versions, loading: versionsLoading, error: versionsError } = useResumeVersions()
+  const [selectedSlug, setSelectedSlug] = useState<ResumeVersionSlug>("frontend")
   const [editMode, setEditMode] = useState(false)
   const [showRootForm, setShowRootForm] = useState(false)
   const [alert, setAlert] = useState<AlertState | null>(null)
@@ -44,6 +67,7 @@ export function ResumeVersionsPage() {
     version,
     items,
     loading: versionLoading,
+    error: versionError,
     publishing,
     createItem,
     updateItem,
@@ -53,6 +77,7 @@ export function ResumeVersionsPage() {
   } = useResumeVersion(selectedSlug)
 
   const sortedItems = useMemo(() => sortNodesByOrder(items), [items])
+  const contentItems = useMemo(() => sortedItems.map(toContentItemNode), [sortedItems])
 
   const handleCreateRoot = async (values: ContentItemFormValues) => {
     try {
@@ -107,7 +132,7 @@ export function ResumeVersionsPage() {
 
   const handleDownload = () => {
     if (!selectedSlug) return
-    window.open(resumeVersionsClient.getPdfUrl(selectedSlug), "_blank")
+    window.open(resumeVersionsClient.getPdfUrl(selectedSlug), "_blank", "noopener,noreferrer")
   }
 
   if (versionsLoading) {
@@ -115,6 +140,14 @@ export function ResumeVersionsPage() {
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
+    )
+  }
+
+  if (versionsError) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>Failed to load resume versions: {versionsError.message}</AlertDescription>
+      </Alert>
     )
   }
 
@@ -158,7 +191,11 @@ export function ResumeVersionsPage() {
 
         {/* Version detail panel */}
         <div className="space-y-4">
-          {versionLoading ? (
+          {versionError ? (
+            <Alert variant="destructive">
+              <AlertDescription>Failed to load version: {versionError.message}</AlertDescription>
+            </Alert>
+          ) : versionLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -198,7 +235,7 @@ export function ResumeVersionsPage() {
                   </div>
                   {version.publishedAt && (
                     <p className="text-xs text-muted-foreground">
-                      Published {new Date(version.publishedAt as string | number).toLocaleDateString()}{" "}
+                      Published {new Date(String(version.publishedAt)).toLocaleDateString()}{" "}
                       by {version.publishedBy}
                     </p>
                   )}
@@ -242,11 +279,11 @@ export function ResumeVersionsPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  sortedItems.map((item, index) => (
+                  contentItems.map((item, index) => (
                     <ContentItemCard
                       key={item.id}
-                      item={item as unknown as ContentItemNode}
-                      siblings={sortedItems as unknown as ContentItemNode[]}
+                      item={item}
+                      siblings={contentItems}
                       index={index}
                       depth={0}
                       canEdit={canEdit}
@@ -303,7 +340,7 @@ function VersionCard({
       <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{version.description}</p>
       {version.publishedAt && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {new Date(version.publishedAt as string | number).toLocaleDateString()}
+          {new Date(String(version.publishedAt)).toLocaleDateString()}
         </p>
       )}
     </button>

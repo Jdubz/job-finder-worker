@@ -26,7 +26,7 @@ export interface ResumeItem {
   id: string
   resumeVersionId: string
   parentId: string | null
-  order: number
+  orderIndex: number
   aiContext: ContentItemAIContext | null
   title: string | null
   role: string | null
@@ -48,7 +48,7 @@ export type ResumeItemNode = ResumeItem & {
 
 export type CreateResumeItemData = {
   parentId?: string | null
-  order?: number
+  orderIndex?: number
   aiContext?: ContentItemAIContext | null
   title?: string | null
   role?: string | null

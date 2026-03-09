@@ -71,7 +71,7 @@ function normalizeRecords(records, defaults) {
   })
 
   const sortRecursive = (items, ancestors) => {
-    items.sort((a, b) => a.order - b.order)
+    items.sort((a, b) => a.orderIndex - b.orderIndex)
     items.forEach((child) => {
       if (ancestors.has(child.legacyId)) {
         child.children = []
@@ -106,7 +106,7 @@ function buildNormalizedNode(record, index, defaults) {
   const expanded = expandRecord(record)
   const legacyId = typeof expanded.id === "string" && expanded.id.trim().length ? expanded.id : `import-${index}`
   const parentLegacyId = coerceParentId(expanded)
-  const order = coerceOrder(expanded, index)
+  const orderIndex = coerceOrder(expanded, index)
   const values = {
     title: pickString(expanded, ["title", "name", "heading", "label"]),
     role: pickString(expanded, ["role", "position", "company", "subtitle", "category"]),
@@ -147,7 +147,7 @@ function buildNormalizedNode(record, index, defaults) {
   return {
     legacyId,
     parentLegacyId,
-    order,
+    orderIndex,
     fields: cleanValues,
     meta: {
       userId,
@@ -307,9 +307,9 @@ function insertNodes(db, nodes, options) {
   const assign = (items, parentId) => {
     items
       .slice()
-      .sort((a, b) => a.order - b.order)
+      .sort((a, b) => a.orderIndex - b.orderIndex)
       .forEach((node, index) => {
-        const orderIndex = Number.isFinite(node.order) ? node.order : index
+        const orderIndex = Number.isFinite(node.orderIndex) ? node.orderIndex : index
         const payload = {
           id: node.legacyId,
           userId: node.meta.userId,
@@ -390,7 +390,7 @@ function serializeNormalized(nodes, parentId = null) {
     const payload = {
       id: node.legacyId,
       parentId,
-      order: node.order,
+      orderIndex: node.orderIndex,
       title: node.fields.title ?? undefined,
       role: node.fields.role ?? undefined,
       location: node.fields.location ?? undefined,

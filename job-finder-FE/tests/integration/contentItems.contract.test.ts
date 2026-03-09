@@ -7,7 +7,7 @@ describe("Content Items contract fixtures", () => {
       {
         id: "content-1",
         parentId: null,
-        order: 0,
+        orderIndex: 0,
         title: "Root",
         description: "Root item",
         createdAt: new Date().toISOString(),

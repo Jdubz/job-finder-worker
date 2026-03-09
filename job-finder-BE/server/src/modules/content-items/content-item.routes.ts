@@ -31,7 +31,7 @@ const monthSchema = z.preprocess(
 
 const itemFieldsSchema = z.object({
   parentId: nullableIdSchema,
-  order: z.number().int().min(0).optional(),
+  orderIndex: z.number().int().min(0).optional(),
   title: z.string().min(1).optional(),
   role: z.string().min(1).optional(),
   location: z.string().min(1).optional(),

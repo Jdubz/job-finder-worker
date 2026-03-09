@@ -2097,7 +2097,7 @@ async function handleGetResumeVersions(): Promise<ToolResult> {
         slug: v.slug,
         name: v.name,
         description: v.description,
-        publishedAt: v.publishedAt ? String(v.publishedAt) : null,
+        publishedAt: v.publishedAt ?? null,
       }))
 
     logger.info(`[ToolExecutor] Returning ${published.length} resume versions`)

@@ -1,5 +1,7 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express'
+import { createReadStream } from 'node:fs'
 import fs from 'node:fs/promises'
+import { pipeline } from 'node:stream/promises'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
@@ -40,7 +42,7 @@ const monthSchema = z.preprocess(
 
 const itemFieldsSchema = z.object({
   parentId: z.string().min(1).or(z.literal(null)).optional(),
-  order: z.number().int().min(0).optional(),
+  orderIndex: z.number().int().min(0).optional(),
   aiContext: z.enum(['work', 'highlight', 'project', 'education', 'skills', 'narrative', 'section']).optional(),
   title: z.string().min(1).optional(),
   role: z.string().min(1).optional(),
@@ -53,19 +55,16 @@ const itemFieldsSchema = z.object({
 })
 
 const createRequestSchema = z.object({
-  itemData: itemFieldsSchema,
-  userEmail: z.string().email()
+  itemData: itemFieldsSchema
 })
 
 const updateRequestSchema = z.object({
-  itemData: itemFieldsSchema.partial(),
-  userEmail: z.string().email()
+  itemData: itemFieldsSchema.partial()
 })
 
 const reorderRequestSchema = z.object({
   parentId: z.string().min(1).or(z.literal(null)).optional(),
-  orderIndex: z.number().int().min(0),
-  userEmail: z.string().email()
+  orderIndex: z.number().int().min(0)
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -190,8 +189,7 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
 
       res.setHeader('Content-Type', 'application/pdf')
       res.setHeader('Content-Disposition', `inline; filename="${slug}-resume.pdf"`)
-      const fileBuffer = await fs.readFile(absolutePath)
-      res.send(fileBuffer)
+      await pipeline(createReadStream(absolutePath), res)
     })
   )
 

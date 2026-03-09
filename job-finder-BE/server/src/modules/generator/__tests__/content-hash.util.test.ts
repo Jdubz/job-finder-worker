@@ -28,7 +28,7 @@ const baseContentItems: ContentItem[] = [
   {
     id: 'ci-1',
     parentId: null,
-    order: 0,
+    orderIndex: 0,
     title: 'Acme Corp',
     role: 'Engineer',
     description: 'Built things',
@@ -170,8 +170,8 @@ describe('computeContentHash', () => {
   })
 
   it('changes when content item order changes', () => {
-    const item1: ContentItem = { ...baseContentItems[0], order: 0 }
-    const item1Reordered: ContentItem = { ...baseContentItems[0], order: 1 }
+    const item1: ContentItem = { ...baseContentItems[0], orderIndex: 0 }
+    const item1Reordered: ContentItem = { ...baseContentItems[0], orderIndex: 1 }
     const hash1 = computeContentHash(basePersonalInfo, [item1], basePrompts)
     const hash2 = computeContentHash(basePersonalInfo, [item1Reordered], basePrompts)
     expect(hash1).not.toBe(hash2)

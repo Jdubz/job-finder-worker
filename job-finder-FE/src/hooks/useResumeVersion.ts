@@ -32,8 +32,6 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
   const [error, setError] = useState<Error | null>(null)
   const [publishing, setPublishing] = useState(false)
 
-  const userEmail = user?.email ?? null
-
   const fetchData = useCallback(async () => {
     if (!slug) return
     setLoading(true)
@@ -54,14 +52,13 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
   }, [fetchData])
 
   const ensureAuth = useCallback(() => {
-    if (!userEmail) throw new Error("User authentication required")
-    return { userEmail }
-  }, [userEmail])
+    if (!user?.email) throw new Error("User authentication required")
+  }, [user?.email])
 
   const createItem = useCallback(
     async (data: CreateResumeItemData) => {
-      const auth = ensureAuth()
-      const created = await resumeVersionsClient.createItem(slug, auth.userEmail, data)
+      ensureAuth()
+      const created = await resumeVersionsClient.createItem(slug, data)
       await fetchData()
       return created
     },
@@ -70,8 +67,8 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
 
   const updateItem = useCallback(
     async (id: string, data: UpdateResumeItemData) => {
-      const auth = ensureAuth()
-      await resumeVersionsClient.updateItem(slug, id, auth.userEmail, data)
+      ensureAuth()
+      await resumeVersionsClient.updateItem(slug, id, data)
       await fetchData()
     },
     [slug, ensureAuth, fetchData]
@@ -88,8 +85,8 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
 
   const reorderItem = useCallback(
     async (id: string, parentId: string | null, orderIndex: number) => {
-      const auth = ensureAuth()
-      await resumeVersionsClient.reorderItem(slug, id, auth.userEmail, parentId, orderIndex)
+      ensureAuth()
+      await resumeVersionsClient.reorderItem(slug, id, parentId, orderIndex)
       await fetchData()
     },
     [slug, ensureAuth, fetchData]
@@ -101,7 +98,6 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
     try {
       const result = await resumeVersionsClient.publish(slug)
       setVersion(result.version)
-      // Refetch to get updated version data
       await fetchData()
     } finally {
       setPublishing(false)

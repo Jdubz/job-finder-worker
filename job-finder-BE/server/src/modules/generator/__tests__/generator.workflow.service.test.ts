@@ -161,7 +161,7 @@ class FakeContentItemRepository {
     {
       id: '1',
       parentId: null,
-      order: 0,
+      orderIndex: 0,
       title: 'Acme Corp',
       role: 'Senior Developer',
       location: 'Remote',
@@ -195,7 +195,7 @@ function makeContentItems(overrides: Partial<ContentItem>[] = []): ContentItem[]
   const base: ContentItem = {
     id: '1',
     parentId: null,
-    order: 0,
+    orderIndex: 0,
     title: 'Acme Corp',
     role: 'Senior Developer',
     location: 'Remote',

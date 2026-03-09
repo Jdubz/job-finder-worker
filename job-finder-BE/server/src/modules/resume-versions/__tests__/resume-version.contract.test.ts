@@ -103,7 +103,7 @@ describe('resume-version routes contract', () => {
     it('creates a root item', async () => {
       const res = await request(app)
         .post('/resume-versions/frontend/items')
-        .send({ itemData: { title: 'Skills', aiContext: 'section' }, userEmail })
+        .send({ itemData: { title: 'Skills', aiContext: 'section' } })
 
       expect(res.status).toBe(201)
       expect(res.body.data.item.title).toBe('Skills')
@@ -126,8 +126,7 @@ describe('resume-version routes contract', () => {
             startDate: '2023-01',
             endDate: '2025-06',
             skills: ['TypeScript', 'React']
-          },
-          userEmail
+          }
         })
 
       expect(res.status).toBe(201)
@@ -138,7 +137,7 @@ describe('resume-version routes contract', () => {
     it('returns 404 for unknown version slug', async () => {
       const res = await request(app)
         .post('/resume-versions/nonexistent/items')
-        .send({ itemData: { title: 'X' }, userEmail })
+        .send({ itemData: { title: 'X' } })
 
       expect(res.status).toBe(404)
     })
@@ -147,8 +146,7 @@ describe('resume-version routes contract', () => {
       const res = await request(app)
         .post('/resume-versions/frontend/items')
         .send({
-          itemData: { title: 'Bad Date', startDate: '2023-13-01' },
-          userEmail
+          itemData: { title: 'Bad Date', startDate: '2023-13-01' }
         })
 
       expect(res.status).toBe(400)
@@ -162,7 +160,7 @@ describe('resume-version routes contract', () => {
 
       const res = await request(app)
         .patch(`/resume-versions/frontend/items/${item.id}`)
-        .send({ itemData: { title: 'Updated', description: 'New desc' }, userEmail })
+        .send({ itemData: { title: 'Updated', description: 'New desc' } })
 
       expect(res.status).toBe(200)
       expect(res.body.data.item.title).toBe('Updated')
@@ -172,7 +170,7 @@ describe('resume-version routes contract', () => {
     it('returns 404 for unknown item', async () => {
       const res = await request(app)
         .patch('/resume-versions/frontend/items/missing-id')
-        .send({ itemData: { title: 'X' }, userEmail })
+        .send({ itemData: { title: 'X' } })
 
       expect(res.status).toBe(404)
     })
@@ -211,7 +209,7 @@ describe('resume-version routes contract', () => {
       // Move C to position 0
       const res = await request(app)
         .post(`/resume-versions/frontend/items/${c.id}/reorder`)
-        .send({ orderIndex: 0, userEmail })
+        .send({ orderIndex: 0 })
 
       expect(res.status).toBe(200)
 
@@ -228,7 +226,7 @@ describe('resume-version routes contract', () => {
 
       const res = await request(app)
         .post(`/resume-versions/frontend/items/${child.id}/reorder`)
-        .send({ parentId: parent.id, orderIndex: 0, userEmail })
+        .send({ parentId: parent.id, orderIndex: 0 })
 
       expect(res.status).toBe(200)
       expect(res.body.data.item.parentId).toBe(parent.id)

@@ -297,7 +297,7 @@ All mounted at `/api/resume-versions`.
 | GET | `/:slug/items` | Public | Get items as nested tree |
 | POST | `/:slug/items` | Admin | Create a new item |
 | PATCH | `/:slug/items/:id` | Admin | Update an item |
-| DELETE | `/:slug/items/:id` | Admin | Delete an item (cascades to children) |
+| DELETE | `/:slug/items/:id` | Admin | Delete an item; children become root-level items (parent_id set to NULL) |
 | POST | `/:slug/items/:id/reorder` | Admin | Reorder/reparent an item |
 | POST | `/:slug/publish` | Admin | Render PDF and update version |
 | GET | `/:slug/pdf` | Public | Stream the published PDF file |

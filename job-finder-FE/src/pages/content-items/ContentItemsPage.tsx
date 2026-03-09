@@ -88,7 +88,7 @@ export function ContentItemsPage() {
         reordered.map((item, idx) =>
           updateContentItem(item.id, {
             parentId: parentId ?? null,
-            order: idx,
+            orderIndex: idx,
           })
         )
       )
@@ -289,7 +289,7 @@ async function replaceContentItems({
       const payload = {
         ...node.values,
         parentId,
-        order: Number.isFinite(node.order) ? node.order : undefined
+        orderIndex: Number.isFinite(node.orderIndex) ? node.orderIndex : undefined
       }
       const createdItem = await contentItemsClient.createContentItem(userEmail, payload)
       created += 1
