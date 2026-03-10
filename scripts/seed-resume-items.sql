@@ -14,7 +14,7 @@ DELETE FROM resume_items WHERE resume_version_id IN (
 
 -- ==============================================================================
 -- rv-frontend — Frontend Engineer
--- Bullet allocation: 3/2/3/1 = 9 total, 2 projects
+-- Bullet allocation: 4/3/3/2 = 12 total, no projects (work experience fills the page)
 -- ==============================================================================
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
@@ -33,55 +33,50 @@ INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title,
 VALUES ('ri-fe-consult', 'rv-frontend', 4, 'work', 'Various Consulting Projects', 'Software Engineer', 'San Francisco, CA', '2015-08', '2017-06', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-projects', 'rv-frontend', 5, 'section', 'Projects', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-skills', 'rv-frontend', 5, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-skills', 'rv-frontend', 6, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
-INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-edu', 'rv-frontend', 7, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-edu', 'rv-frontend', 6, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Fulfil highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-fulfil-h1', 'rv-frontend', 'ri-fe-fulfil', 0, 'highlight', 'Shipped white-label grocery ordering PWA with Stripe payments and Contentful CMS, owning full product lifecycle from requirements through production', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-fulfil-h1', 'rv-frontend', 'ri-fe-fulfil', 0, 'highlight', 'Owned Angular/Ionic grocery PWA end-to-end, scaling from pre-launch to 3 automated stores serving Amazon, DoorDash, and Uber Eats', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-fulfil-h2', 'rv-frontend', 'ri-fe-fulfil', 1, 'highlight', 'Built marketplace integrations for DoorDash, Uber Eats, and Amazon Fresh into unified ordering UI', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-fulfil-h2', 'rv-frontend', 'ri-fe-fulfil', 1, 'highlight', 'Built unified ordering UI for DoorDash, Uber Eats, and Amazon Fresh with real-time inventory sync', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-fulfil-h3', 'rv-frontend', 'ri-fe-fulfil', 2, 'highlight', 'Led observability migration to Grafana/Loki and built frontend performance dashboards for the team', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-fulfil-h3', 'rv-frontend', 'ri-fe-fulfil', 2, 'highlight', 'Led observability migration from Elastic to Grafana/Loki and built frontend performance dashboards for the team', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
--- Meow Wolf highlights (2)
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-fe-fulfil-h4', 'rv-frontend', 'ri-fe-fulfil', 3, 'highlight', 'Integrated Contentful CMS for marketing team to manage sales banners and push real-time updates to live PWA', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+-- Meow Wolf highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
 VALUES ('ri-fe-meow-h1', 'rv-frontend', 'ri-fe-meow', 0, 'highlight', 'Built shared React component library with Styled Components and MaterialUI across product teams', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
 VALUES ('ri-fe-meow-h2', 'rv-frontend', 'ri-fe-meow', 1, 'highlight', 'Integrated Pub/Sub architecture for real-time visitor tracking at immersive art installations', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-fe-meow-h3', 'rv-frontend', 'ri-fe-meow', 2, 'highlight', 'Integrated Docker fleet management system for coordinating app deployments across venue installations', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
 -- Opna highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-opna-h1', 'rv-frontend', 'ri-fe-opna', 0, 'highlight', 'Led consultancy delivering React/TypeScript apps for Intuit, McDonald''s, and Google on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-opna-h1', 'rv-frontend', 'ri-fe-opna', 0, 'highlight', 'Co-founded consultancy as solution architect and client lead, delivering React/TypeScript apps for Intuit, McDonald''s, and JLL', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-opna-h2', 'rv-frontend', 'ri-fe-opna', 1, 'highlight', 'Built McDonald''s digital ordering UI in React with Dialogflow NLP for menu navigation, substitutions, and coupons', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-opna-h2', 'rv-frontend', 'ri-fe-opna', 1, 'highlight', 'Built McDonald''s conversational ordering UI with Dialogflow NLP for menu navigation, substitutions, and coupons', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-opna-h3', 'rv-frontend', 'ri-fe-opna', 2, 'highlight', 'Built GraphQL/Apollo frontend for JLL enabling natural language facility request submission on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-opna-h3', 'rv-frontend', 'ri-fe-opna', 2, 'highlight', 'Built React/GraphQL frontend for JLL chatbot handling facility requests, meeting scheduling, and ordering', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
--- Consulting highlight (1)
+-- Consulting highlights (2)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-consult-h1', 'rv-frontend', 'ri-fe-consult', 0, 'highlight', 'Shipped micro-credential builder for National Education Association and National Geographic on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Project: App Monitor (1 highlight, no tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, website, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-proj-appmon', 'rv-frontend', 'ri-fe-projects', 0, 'project', 'App Monitor', 'https://app-monitor.joshwentworth.com', 'Full-stack platform for orchestrating AI development agents with real-time event streaming', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-consult-h1', 'rv-frontend', 'ri-fe-consult', 0, 'highlight', 'Built micro-credential platform for Digital Promise on GCP, adopted by National Education Association and National Geographic', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-proj-appmon-h1', 'rv-frontend', 'ri-fe-proj-appmon', 0, 'highlight', 'React/Tailwind frontend with SSE for real-time AI agent status and 400+ automated tests', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Project: Portfolio Website (description only, no highlights or tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fe-proj-portfolio', 'rv-frontend', 'ri-fe-projects', 1, 'project', 'Portfolio Website', 'Statically-generated portfolio with Gatsby, React, and TypeScript featuring MDX content, animated transitions, and CI/CD via GitHub Actions', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fe-consult-h2', 'rv-frontend', 'ri-fe-consult', 1, 'highlight', 'Rebuilt Bartendro cocktail machine UI in React with containerized Django server for hardware control', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Skills (4 categories)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, skills, created_at, updated_at, created_by, updated_by)
@@ -105,7 +100,7 @@ VALUES ('ri-fe-edu-ucsc', 'rv-frontend', 'ri-fe-edu', 1, 'education', 'Universit
 
 -- ==============================================================================
 -- rv-fullstack — Full Stack Engineer
--- Bullet allocation: 4/1/2/1 = 8 total, 2 projects
+-- Bullet allocation: 5/2/3/2 = 12 total, no projects
 -- ==============================================================================
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
@@ -124,55 +119,50 @@ INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title,
 VALUES ('ri-fs-consult', 'rv-fullstack', 4, 'work', 'Various Consulting Projects', 'Software Engineer', 'San Francisco, CA', '2015-08', '2017-06', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-projects', 'rv-fullstack', 5, 'section', 'Projects', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-skills', 'rv-fullstack', 5, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-skills', 'rv-fullstack', 6, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
-INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-edu', 'rv-fullstack', 7, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-edu', 'rv-fullstack', 6, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Fulfil highlights (4)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-fulfil-h1', 'rv-fullstack', 'ri-fs-fulfil', 0, 'highlight', 'Launched Amazon Fresh — first tier-1 enterprise partner — with event-driven Pub/Sub pipeline for high-volume order processing', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-fulfil-h1', 'rv-fullstack', 'ri-fs-fulfil', 0, 'highlight', 'Launched Amazon Fresh — first tier-1 partner — building Pub/Sub event pipeline with strict failure recovery for robotic fulfillment systems', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-fulfil-h2', 'rv-fullstack', 'ri-fs-fulfil', 1, 'highlight', 'Doubled robotic fulfillment throughput by designing intelligent order batching algorithm', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-fulfil-h2', 'rv-fullstack', 'ri-fs-fulfil', 1, 'highlight', 'Built load testing system that identified collision bottleneck, enabling 2x robotic fulfillment throughput', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-fulfil-h3', 'rv-fullstack', 'ri-fs-fulfil', 2, 'highlight', 'Shipped white-label grocery PWA with Angular/Ionic frontend, Contentful CMS, and Firebase hosting', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-fulfil-h3', 'rv-fullstack', 'ri-fs-fulfil', 2, 'highlight', 'Shipped consumer grocery PWA end-to-end — Angular/Ionic frontend, Node.js/Sails backend, Stripe payments', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-fulfil-h4', 'rv-fullstack', 'ri-fs-fulfil', 3, 'highlight', 'Built unified ordering API for DoorDash, Uber Eats, and Amazon Fresh for multi-channel platform', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Meow Wolf highlight (1)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-meow-h1', 'rv-fullstack', 'ri-fs-meow', 0, 'highlight', 'Built shared React component library and Docker deployment pipeline for immersive art venues', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Opna highlights (2)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-opna-h1', 'rv-fullstack', 'ri-fs-opna', 0, 'highlight', 'Co-founded consultancy delivering full-stack solutions for Intuit, McDonald''s, Google, and JLL on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-fulfil-h4', 'rv-fullstack', 'ri-fs-fulfil', 3, 'highlight', 'Created unified ordering API for DoorDash, Uber Eats, and Amazon Fresh with webhook events and inventory sync', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-opna-h2', 'rv-fullstack', 'ri-fs-opna', 1, 'highlight', 'Built Python gRPC game server with Docker, cutting provisioning from minutes to seconds at scale', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-fulfil-h5', 'rv-fullstack', 'ri-fs-fulfil', 4, 'highlight', 'Owned features end-to-end — requirements gathering, stakeholder interviews, RFC documents, and implementation', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
--- Consulting highlight (1)
+-- Meow Wolf highlights (2)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-consult-h1', 'rv-fullstack', 'ri-fs-consult', 0, 'highlight', 'Built full-stack micro-credential platform with React and PostgreSQL on GCP for educator networks', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Project: Job Finder (1 highlight, no tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-proj-jobfinder', 'rv-fullstack', 'ri-fs-projects', 0, 'project', 'Job Finder', 'AI-assisted job search platform with LiteLLM proxy for unified model routing across Claude, Gemini, and Ollama', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-meow-h1', 'rv-fullstack', 'ri-fs-meow', 0, 'highlight', 'Built React component library and Docker deployment pipeline powering web apps across immersive art venues', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-proj-jf-h1', 'rv-fullstack', 'ri-fs-proj-jobfinder', 0, 'highlight', 'Monorepo with React/Vite frontend, Express API, Python worker, and shared TypeScript contracts', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-meow-h2', 'rv-fullstack', 'ri-fs-meow', 1, 'highlight', 'Integrated Pub/Sub architecture for real-time visitor tracking at immersive art installations', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
--- Project: App Monitor (1 highlight, no tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, website, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-proj-appmon', 'rv-fullstack', 'ri-fs-projects', 1, 'project', 'App Monitor', 'https://app-monitor.joshwentworth.com', 'Platform orchestrating autonomous AI development agents with ephemeral Docker containers and real-time SSE', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+-- Opna highlights (3)
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-fs-opna-h1', 'rv-fullstack', 'ri-fs-opna', 0, 'highlight', 'Co-founded consultancy as solution architect and client lead, delivering full-stack apps for Intuit, McDonald''s, and JLL on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-fs-proj-am-h1', 'rv-fullstack', 'ri-fs-proj-appmon', 0, 'highlight', 'Shared TypeScript contracts across full-stack monorepo with 400+ automated tests and E2E coverage', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-fs-opna-h2', 'rv-fullstack', 'ri-fs-opna', 1, 'highlight', 'Built Python/gRPC multiplayer game server on GCP with Docker for match-based instance provisioning', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-fs-opna-h3', 'rv-fullstack', 'ri-fs-opna', 2, 'highlight', 'Delivered Intuit marketing widgets with vanilla JS under tight deadlines and comprehensive test coverage', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+-- Consulting highlights (2)
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-fs-consult-h1', 'rv-fullstack', 'ri-fs-consult', 0, 'highlight', 'Built micro-credential platform with React and PostgreSQL on GCP App Engine for Digital Promise, serving national educator networks', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-fs-consult-h2', 'rv-fullstack', 'ri-fs-consult', 1, 'highlight', 'Rebuilt Bartendro cocktail machine — React UI, Django API on Docker/Raspberry Pi with remote monitoring', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Skills (4 categories)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, skills, created_at, updated_at, created_by, updated_by)
@@ -196,7 +186,7 @@ VALUES ('ri-fs-edu-ucsc', 'rv-fullstack', 'ri-fs-edu', 1, 'education', 'Universi
 
 -- ==============================================================================
 -- rv-backend — Backend Engineer
--- Bullet allocation: 4/2/1/1 = 8 total, 2 projects
+-- Bullet allocation: 5/3/2/2 = 12 total, no projects
 -- ==============================================================================
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
@@ -215,55 +205,50 @@ INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title,
 VALUES ('ri-be-britelite', 'rv-backend', 4, 'work', 'Britelite Immersive', 'Technical Director', 'San Francisco, CA', '2013-02', '2015-09', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-projects', 'rv-backend', 5, 'section', 'Projects', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-skills', 'rv-backend', 5, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-skills', 'rv-backend', 6, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
-INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-edu', 'rv-backend', 7, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-edu', 'rv-backend', 6, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Fulfil highlights (4)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-fulfil-h1', 'rv-backend', 'ri-be-fulfil', 0, 'highlight', 'Architected event-driven Pub/Sub pipeline for Amazon Fresh — first tier-1 partner — with sub-second inventory sync', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-fulfil-h1', 'rv-backend', 'ri-be-fulfil', 0, 'highlight', 'Architected Pub/Sub event pipeline for Amazon Fresh with strict failure recovery handling real-world robotic inventory operations', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-fulfil-h2', 'rv-backend', 'ri-be-fulfil', 1, 'highlight', 'Doubled robotic fulfillment throughput by designing intelligent order batching algorithm', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-fulfil-h2', 'rv-backend', 'ri-be-fulfil', 1, 'highlight', 'Built load testing framework that exposed collision bottleneck, enabling 2x peak throughput in fulfillment', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-fulfil-h3', 'rv-backend', 'ri-be-fulfil', 2, 'highlight', 'Built unified REST API for DoorDash, Uber Eats, and Amazon Fresh with webhook lifecycle events', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-fulfil-h3', 'rv-backend', 'ri-be-fulfil', 2, 'highlight', 'Designed unified REST API for DoorDash, Uber Eats, and Amazon Fresh with webhook events and inventory sync', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-fulfil-h4', 'rv-backend', 'ri-be-fulfil', 3, 'highlight', 'Cut infrastructure costs by migrating from Elastic to Grafana/Loki/Prometheus with PagerDuty alerting', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Opna highlights (2)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-opna-h1', 'rv-backend', 'ri-be-opna', 0, 'highlight', 'Designed microservice architecture with Dialogflow NLP and GraphQL/Apollo APIs on GCP App Engine', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-fulfil-h4', 'rv-backend', 'ri-be-fulfil', 3, 'highlight', 'Migrated observability from Elastic to Grafana/Loki/Prometheus, reducing costs and adding PagerDuty alerting', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-opna-h2', 'rv-backend', 'ri-be-opna', 1, 'highlight', 'Built Python gRPC game server with Docker, cutting provisioning from minutes to seconds', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-fulfil-h5', 'rv-backend', 'ri-be-fulfil', 4, 'highlight', 'Managed BullMQ job queues and MongoSync replication for real-time inventory across factory and cloud systems', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
--- Consulting highlight (1)
+-- Opna highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-consult-h1', 'rv-backend', 'ri-be-consult', 0, 'highlight', 'Built micro-credential backend on GCP App Engine with PostgreSQL for national educator platforms', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Britelite highlight (1)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-britelite-h1', 'rv-backend', 'ri-be-britelite', 0, 'highlight', 'Achieved 100% uptime across live events by engineering real-time social media API integrations', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Project: Job Finder (1 highlight, no tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-proj-jobfinder', 'rv-backend', 'ri-be-projects', 0, 'project', 'Job Finder', 'AI-assisted job search platform with Python scraping worker, Express REST API, and SQLite database', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-opna-h1', 'rv-backend', 'ri-be-opna', 0, 'highlight', 'Architected microservice platform behind Dialogflow NLP for JLL — facility requests, meeting scheduling, and vendor ordering on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-proj-jf-h1', 'rv-backend', 'ri-be-proj-jobfinder', 0, 'highlight', 'Multi-service architecture: Express API, Flask worker, SQLite + sqlite-vec, Docker Compose', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Project: Imagineer (1 highlight, no tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-proj-imagineer', 'rv-backend', 'ri-be-projects', 1, 'project', 'Imagineer', 'Full-stack AI/ML platform for Stable Diffusion image generation with split-service architecture', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-opna-h2', 'rv-backend', 'ri-be-opna', 1, 'highlight', 'Built Python/gRPC multiplayer game server with Docker on GCP for match-based instance lifecycle management', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-be-proj-im-h1', 'rv-backend', 'ri-be-proj-imagineer', 0, 'highlight', 'Flask API with GPU worker using subprocess execution for automatic VRAM management and model hot-swapping', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-be-opna-h3', 'rv-backend', 'ri-be-opna', 2, 'highlight', 'Built McDonald''s ordering backend with Dialogflow for intent recognition, substitutions, and coupon handling', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+-- Consulting highlights (2)
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-be-consult-h1', 'rv-backend', 'ri-be-consult', 0, 'highlight', 'Built micro-credential backend on GCP App Engine with PostgreSQL for Digital Promise, serving national educator programs', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-be-consult-h2', 'rv-backend', 'ri-be-consult', 1, 'highlight', 'Containerized Bartendro cocktail machine server with Django and Docker on Raspberry Pi for remote monitoring', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+-- Britelite highlights (2)
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-be-britelite-h1', 'rv-backend', 'ri-be-britelite', 0, 'highlight', 'Built zero-tolerance broadcast software for live events at Facebook, Instagram, and Twitter — millions of viewers, no room for error', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-be-britelite-h2', 'rv-backend', 'ri-be-britelite', 1, 'highlight', 'Built moderated social media stream pipeline pulling real-time content for celebrity interactive broadcasts', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Skills (4 categories)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, skills, created_at, updated_at, created_by, updated_by)
@@ -313,27 +298,27 @@ VALUES ('ri-ai-edu', 'rv-ai', 6, 'section', 'Education & Certifications', '2026-
 
 -- Fulfil highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-fulfil-h1', 'rv-ai', 'ri-ai-fulfil', 0, 'highlight', 'Doubled robotic fulfillment throughput by designing heuristic optimization for order batching', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-fulfil-h1', 'rv-ai', 'ri-ai-fulfil', 0, 'highlight', 'Built intelligent load testing system that isolated collision algorithm bottleneck, enabling 2x peak throughput in robotic fulfillment', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-fulfil-h2', 'rv-ai', 'ri-ai-fulfil', 1, 'highlight', 'Built event-driven Pub/Sub data pipeline for Amazon Fresh with sub-second latency at scale', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-fulfil-h2', 'rv-ai', 'ri-ai-fulfil', 1, 'highlight', 'Designed event-driven Pub/Sub pipeline for Amazon Fresh with real-time inventory sync across robotic systems', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-fulfil-h3', 'rv-ai', 'ri-ai-fulfil', 2, 'highlight', 'Cut mean time to detection with Grafana/Loki/Prometheus observability across Kubernetes', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-fulfil-h3', 'rv-ai', 'ri-ai-fulfil', 2, 'highlight', 'Migrated to Grafana/Loki/Prometheus across Kubernetes, improving anomaly detection for robotic systems', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Opna highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-opna-h1', 'rv-ai', 'ri-ai-opna', 0, 'highlight', 'Built McDonald''s NLP ordering microservices with Dialogflow for intent recognition and entity extraction on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-opna-h1', 'rv-ai', 'ri-ai-opna', 0, 'highlight', 'Implemented McDonald''s full menu in Dialogflow conversational ordering with intent recognition, entity extraction, and slot filling', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-opna-h2', 'rv-ai', 'ri-ai-opna', 1, 'highlight', 'Designed Dialogflow chatbot for JLL enabling natural language facility requests at enterprise scale', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-opna-h2', 'rv-ai', 'ri-ai-opna', 1, 'highlight', 'Designed NLP enterprise chatbot for JLL — facility requests, meeting scheduling, and ordering via Dialogflow', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-opna-h3', 'rv-ai', 'ri-ai-opna', 2, 'highlight', 'Built Python gRPC game server with Docker for real-time session management at scale', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-opna-h3', 'rv-ai', 'ri-ai-opna', 2, 'highlight', 'Built Python/gRPC game server on GCP with Docker for match-based instance provisioning and session management', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Britelite highlight (1)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-ai-britelite-h1', 'rv-ai', 'ri-ai-britelite', 0, 'highlight', 'Delivered real-time interactive installations using Python and GLSL shaders with sub-frame latency', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-ai-britelite-h1', 'rv-ai', 'ri-ai-britelite', 0, 'highlight', 'Built real-time interactive systems with Python and GLSL for live broadcast installations at Facebook, Instagram, and Twitter', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Project: Blinky Time (2 highlights, no tech)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
@@ -377,7 +362,7 @@ VALUES ('ri-ai-edu-ucsc', 'rv-ai', 'ri-ai-edu', 1, 'education', 'University of C
 
 -- ==============================================================================
 -- rv-solution-engineer — Solution Engineer
--- Bullet allocation: 3/3/1/1 = 8 total, 2 projects
+-- Bullet allocation: 5/3/2/2 = 12 total, no projects
 -- ==============================================================================
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
@@ -396,52 +381,50 @@ INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title,
 VALUES ('ri-se-britelite', 'rv-solution-engineer', 4, 'work', 'Britelite Immersive', 'Technical Director', 'San Francisco, CA', '2013-02', '2015-09', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-projects', 'rv-solution-engineer', 5, 'section', 'Projects', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-skills', 'rv-solution-engineer', 5, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-skills', 'rv-solution-engineer', 6, 'section', 'Skills', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
-INSERT INTO resume_items (id, resume_version_id, order_index, ai_context, title, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-edu', 'rv-solution-engineer', 7, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-edu', 'rv-solution-engineer', 6, 'section', 'Education & Certifications', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Fulfil highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-fulfil-h1', 'rv-solution-engineer', 'ri-se-fulfil', 0, 'highlight', 'Shipped grocery PWA end-to-end from stakeholder requirements through deployment and post-launch support', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-fulfil-h1', 'rv-solution-engineer', 'ri-se-fulfil', 0, 'highlight', 'Owned grocery PWA end-to-end — gathering requirements from marketing and ops, delivering to 3 stores serving Amazon and DoorDash', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-fulfil-h2', 'rv-solution-engineer', 'ri-se-fulfil', 1, 'highlight', 'Launched Amazon Fresh by collaborating with Amazon engineering to translate requirements into Pub/Sub architecture', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-fulfil-h2', 'rv-solution-engineer', 'ri-se-fulfil', 1, 'highlight', 'Launched Amazon Fresh by partnering with Amazon engineering to define event-driven integration architecture', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-fulfil-h3', 'rv-solution-engineer', 'ri-se-fulfil', 2, 'highlight', 'Built unified ordering API for DoorDash, Uber Eats, and Amazon, consolidating all order sources', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-fulfil-h3', 'rv-solution-engineer', 'ri-se-fulfil', 2, 'highlight', 'Unified 4 marketplace order sources into single API with DoorDash, Uber Eats, and Amazon integration contracts', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-se-fulfil-h4', 'rv-solution-engineer', 'ri-se-fulfil', 3, 'highlight', 'Owned feature lifecycle — gathering requirements, interviewing stakeholders, drafting RFCs, and pairing with SMEs', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-se-fulfil-h5', 'rv-solution-engineer', 'ri-se-fulfil', 4, 'highlight', 'Joined as employee #98 pre-launch, scaling team and product to 3 automated stores over 3 years', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Opna highlights (3)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-opna-h1', 'rv-solution-engineer', 'ri-se-opna', 0, 'highlight', 'Co-founded consultancy leading client requirements and delivery for Intuit, McDonald''s, and Google', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-opna-h1', 'rv-solution-engineer', 'ri-se-opna', 0, 'highlight', 'Co-founded consultancy leading client pitches, requirements gathering, and technical delivery for enterprise clients on GCP', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-opna-h2', 'rv-solution-engineer', 'ri-se-opna', 1, 'highlight', 'Built McDonald''s NLP and JLL facility workflows with Dialogflow requiring deep stakeholder alignment', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-opna-h2', 'rv-solution-engineer', 'ri-se-opna', 1, 'highlight', 'Led McDonald''s and JLL engagements end-to-end, scoping NLP requirements and architecting Dialogflow solutions', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-opna-h3', 'rv-solution-engineer', 'ri-se-opna', 2, 'highlight', 'Delivered Intuit marketing widgets on tight timelines serving high-traffic monthly impressions', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-opna-h3', 'rv-solution-engineer', 'ri-se-opna', 2, 'highlight', 'Delivered Intuit marketing widgets under tight deadlines with vanilla JS and comprehensive test coverage', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Consulting highlight (1)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-consult-h1', 'rv-solution-engineer', 'ri-se-consult', 0, 'highlight', 'Delivered micro-credential builder on GCP for National Education Association and National Geographic', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Britelite highlight (1)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-britelite-h1', 'rv-solution-engineer', 'ri-se-britelite', 0, 'highlight', 'Directed technical delivery of interactive installations for Fortune 500 clients at live events', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
-
--- Project: App Monitor (1 highlight, no tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, website, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-proj-appmon', 'rv-solution-engineer', 'ri-se-projects', 0, 'project', 'App Monitor', 'https://app-monitor.joshwentworth.com', 'Platform orchestrating autonomous AI development agents with real-time event streaming', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-consult-h1', 'rv-solution-engineer', 'ri-se-consult', 0, 'highlight', 'Delivered micro-credential platform for Digital Promise on GCP, adopted by National Education Association and National Geographic', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-proj-am-h1', 'rv-solution-engineer', 'ri-se-proj-appmon', 0, 'highlight', 'End-to-end delivery with comprehensive documentation and 400+ automated tests across all layers', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+VALUES ('ri-se-consult-h2', 'rv-solution-engineer', 'ri-se-consult', 1, 'highlight', 'Modernized HIPAA-compliant Salesforce workflow for gig worker healthcare, maintaining compliance through migration', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
--- Project: Imagineer (description only, no highlights or tech)
-INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, description, created_at, updated_at, created_by, updated_by)
-VALUES ('ri-se-proj-imagineer', 'rv-solution-engineer', 'ri-se-projects', 1, 'project', 'Imagineer', 'Full-stack AI platform for Stable Diffusion image generation with interactive story engine and semantic model search', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+-- Britelite highlights (2)
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-se-britelite-h1', 'rv-solution-engineer', 'ri-se-britelite', 0, 'highlight', 'Directed technical delivery of broadcast installations for Facebook, Twitter, Salesforce, and Pinterest at live events', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
+
+INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, description, created_at, updated_at, created_by, updated_by)
+VALUES ('ri-se-britelite-h2', 'rv-solution-engineer', 'ri-se-britelite', 1, 'highlight', 'Managed client relationships and on-site delivery for million-dollar broadcast spots with zero-tolerance requirements', '2026-03-09 02:04:54', '2026-03-09 02:04:54', 'contact@joshwentworth.com', 'contact@joshwentworth.com');
 
 -- Skills (4 categories)
 INSERT INTO resume_items (id, resume_version_id, parent_id, order_index, ai_context, title, skills, created_at, updated_at, created_by, updated_by)

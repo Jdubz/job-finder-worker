@@ -9,7 +9,7 @@ import type { ResumeContent } from '@shared/types'
  *
  * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable (940.8px)
  * Line unit: bullet text 10.5px × 1.35 line-height = 14.175px → 940.8 / 14.175 ≈ 66 raw lines.
- * Safety margin of 3 lines → 63 max.
+ * Safety margin of 2 lines → 64 max.
  *
  * Constants are derived from actual CSS pixel heights in html-ats-style.ts,
  * converted to the 14.175px line unit. Keep in sync with @page margin and
@@ -26,12 +26,13 @@ export interface FitEstimate {
 
 // Characters per line at 11px Calibri in single-column layout (~7in / 672px content width)
 // Body: 672px / 5.8px avg char width ≈ 116; bullets at 10.5px: (672-16) / 5.5 ≈ 119
-const CHARS_PER_LINE = 110
-const BULLET_CHARS_PER_LINE = 105
+// Keep ~2-5% conservative buffer over measured values.
+const CHARS_PER_LINE = 114
+const BULLET_CHARS_PER_LINE = 112
 
 // Skill rows: 10.5px base but category label is bold (~10-15% wider).
-// Effective chars ≈ 95 to account for bold label + comma-separated items.
-const SKILL_CHARS_PER_LINE = 95
+// Effective chars ≈ 100 to account for bold label + comma-separated items.
+const SKILL_CHARS_PER_LINE = 100
 
 // Heuristic averages for functions that don't have actual text to measure
 const AVG_LINES_PER_BULLET = 1.5
@@ -57,7 +58,7 @@ export const LAYOUT = {
 
   // Experience: role(11.5px×1.35) + company(10.5px×1.35 + 2mb) + UL 2mt ≈ 34px
   EXP_HEADER_LINES: 2.5,
-  EXP_SPACING: 1,              // exp-entry margin-bottom 12px ≈ 0.85 lines
+  EXP_SPACING: 0.85,            // exp-entry margin-bottom 12px / 14.175px ≈ 0.85 lines
   BULLET_OVERHEAD: 0.1,        // li margin-bottom 1px per bullet ≈ 0.07 lines
 
   PROJECT_HEADER_LINES: 2,     // Project name + link line
@@ -68,7 +69,7 @@ export const LAYOUT = {
   EDUCATION_ENTRY_LINES: 2.3,
   EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
 
-  MAX_LINES: 63,               // 66 raw - 3 safety for rounding / browser variance
+  MAX_LINES: 64,               // 66 raw - 2 safety for browser variance (char widths already have buffer)
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
@@ -139,7 +140,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     mainLines += eduCount * (LAYOUT.EDUCATION_ENTRY_LINES + LAYOUT.EDUCATION_SPACING)
   }
 
-  // Round up fractional lines conservatively before computing overflow
+  // Round up fractional lines to preserve safety property (never underestimate).
   const roundedMainLines = Math.ceil(mainLines)
   const overflow = roundedMainLines - LAYOUT.MAX_LINES
 
