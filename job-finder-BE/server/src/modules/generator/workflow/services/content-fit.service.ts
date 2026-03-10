@@ -45,9 +45,9 @@ const AVG_LINES_PER_TECH = 1.5
 // Each summary line costs 15.4px / 14.175px ≈ 1.09 line-units.
 const SUMMARY_LINE_SCALE = 1.09
 
-// Section heading margin-top in line units: 10px / 14.175px ≈ 0.71.
-// Used for CSS margin collapse corrections at section boundaries.
-const SECTION_HEADING_MT = 0.71
+// Section heading margins in line units, used for CSS margin collapse corrections.
+const SECTION_HEADING_MT = 0.71  // margin-top: 10px / 14.175px
+const SECTION_HEADING_MB = 0.42  // margin-bottom: 6px / 14.175px
 
 /** Estimate how many rendered lines a text string occupies. */
 function textToLines(text: string, charsPerLine: number): number {
@@ -77,6 +77,7 @@ export const LAYOUT = {
   // Education: degree + school = ~29px → 2.05 lines
   EDUCATION_ENTRY_LINES: 2.1,
   EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
+  EDU_NOTES_OVERHEAD: 0.07,    // .edu-notes margin-top 1px / 14.175px
 
   MAX_LINES: 64,               // 66 raw - 2 safety for browser variance
 }
@@ -108,8 +109,9 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     textToLines(summaryText, CHARS_PER_LINE)
   )
   const summaryLines = rawSummaryLines * SUMMARY_LINE_SCALE
-  mainLines += LAYOUT.SECTION_TITLE_LINES + summaryLines
-  prevMargin = 0 // summary CSS mb (2px) exists but is not counted in mainLines
+  const summaryTrailingMargin = 2 / 14.175 // summary .summary margin-bottom: 2px
+  mainLines += LAYOUT.SECTION_TITLE_LINES + summaryLines + summaryTrailingMargin
+  prevMargin = summaryTrailingMargin
 
   // Experience
   mainLines += marginCollapseAdj(prevMargin)
@@ -125,7 +127,9 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     }
     mainLines += LAYOUT.EXP_SPACING
   }
-  prevMargin = (content.experience?.length ?? 0) > 0 ? LAYOUT.EXP_SPACING : 0
+  // When experience has entries, trailing margin is the last entry's EXP_SPACING.
+  // When empty, the section heading still renders — its margin-bottom is the trailing margin.
+  prevMargin = (content.experience?.length ?? 0) > 0 ? LAYOUT.EXP_SPACING : SECTION_HEADING_MB
 
   // Skills (in main column for single-column layout)
   const skillCategories = content.skills?.length || 0
@@ -172,15 +176,15 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       mainLines += LAYOUT.EDUCATION_ENTRY_LINES
       // edu-notes: when degree contains "in" and field exists, field renders as extra notes line
       if (edu.field && edu.degree?.includes(' in ')) {
-        mainLines += textToLines(edu.field, CHARS_PER_LINE)
+        mainLines += textToLines(edu.field, CHARS_PER_LINE) + LAYOUT.EDU_NOTES_OVERHEAD
       }
       mainLines += LAYOUT.EDUCATION_SPACING
     }
   }
 
-  // Round to nearest integer for accuracy (not conservative ceiling).
+  // Round to nearest integer for reporting, but use conservative ceiling for fit/overflow.
   const roundedMainLines = Math.round(mainLines)
-  const overflow = roundedMainLines - LAYOUT.MAX_LINES
+  const overflow = Math.ceil(mainLines) - LAYOUT.MAX_LINES
 
   // Suggestions
   if (overflow > 0) {
