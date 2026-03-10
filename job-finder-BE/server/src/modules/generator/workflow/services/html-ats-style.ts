@@ -241,6 +241,13 @@ export const atsCss = `
     color: #444;
   }
 
+  .edu-notes {
+    font-size: 10px;
+    color: #555;
+    font-style: italic;
+    margin: 1px 0 0 0;
+  }
+
   /* ── Cover letter ───────────────────────────────────────── */
   .letter {
     max-width: 7in;

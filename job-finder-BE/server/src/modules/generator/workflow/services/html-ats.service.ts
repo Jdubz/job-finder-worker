@@ -96,14 +96,26 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   const educationHtml = (content.education || [])
     .map((e) => {
       const gradDate = (e as any).graduationDate || e.endDate
-      const degreeField = [e.degree, e.field].filter(Boolean).join(' in ')
+      // Build degree text and optional notes line
+      const hasFieldInDegree = e.degree?.includes(' in ')
+      let degreeText = e.degree || ''
+      let notes = ''
+
+      if (hasFieldInDegree) {
+        // "B.A. in Music" + field "Regents Scholar…" → show field as separate notes
+        if (e.field) notes = e.field
+      } else if (e.field) {
+        // "Bachelor of Science" + "Computer Science" → "Bachelor of Science in Computer Science"
+        degreeText = degreeText ? `${degreeText} in ${e.field}` : e.field
+      }
       return `
         <div class="edu-entry">
           <h3 class="edu-header">
-            <span class="edu-degree">${safeText(degreeField)}</span>
+            <span class="edu-degree">${safeText(degreeText)}</span>
             ${gradDate ? `<span class="edu-date">${safeText(formatDate(gradDate))}</span>` : ''}
           </h3>
           <p class="edu-school">${safeText(e.institution)}</p>
+          ${notes ? `<p class="edu-notes">${safeText(notes)}</p>` : ''}
         </div>
       `
     })
