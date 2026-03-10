@@ -140,9 +140,8 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     mainLines += eduCount * (LAYOUT.EDUCATION_ENTRY_LINES + LAYOUT.EDUCATION_SPACING)
   }
 
-  // Round fractional lines — per-item textToLines() already uses Math.ceil,
-  // so Math.round here avoids double-conservative rounding
-  const roundedMainLines = Math.round(mainLines)
+  // Round up fractional lines to preserve safety property (never underestimate).
+  const roundedMainLines = Math.ceil(mainLines)
   const overflow = roundedMainLines - LAYOUT.MAX_LINES
 
   // Suggestions
