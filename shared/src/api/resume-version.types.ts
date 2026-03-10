@@ -24,11 +24,7 @@ export interface GetResumeVersionResponse {
   contentFit: ContentFitEstimate | null
 }
 
-export interface CreateResumeVersionRequest {
-  name: string
-  slug: string
-  description?: string | null
-}
+export type CreateResumeVersionRequest = CreateResumeVersionData
 
 export interface CreateResumeVersionResponse {
   version: ResumeVersion

@@ -36,7 +36,14 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
   const [publishing, setPublishing] = useState(false)
 
   const fetchData = useCallback(async () => {
-    if (!slug) return
+    if (!slug) {
+      setVersion(null)
+      setItems([])
+      setContentFit(null)
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
     try {
       const data = await resumeVersionsClient.getVersion(slug)

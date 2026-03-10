@@ -35,19 +35,19 @@ export function useResumeVersions(): UseResumeVersionsResult {
 
   const createVersion = useCallback(
     async (data: CreateResumeVersionRequest) => {
-      const version = await resumeVersionsClient.createVersion(data)
-      await fetchVersions()
-      return version
+      const newVersion = await resumeVersionsClient.createVersion(data)
+      setVersions((prev) => [...prev, newVersion].sort((a, b) => a.slug.localeCompare(b.slug)))
+      return newVersion
     },
-    [fetchVersions]
+    []
   )
 
   const deleteVersion = useCallback(
     async (slug: string) => {
       await resumeVersionsClient.deleteVersion(slug)
-      await fetchVersions()
+      setVersions((prev) => prev.filter((v) => v.slug !== slug))
     },
-    [fetchVersions]
+    []
   )
 
   return {

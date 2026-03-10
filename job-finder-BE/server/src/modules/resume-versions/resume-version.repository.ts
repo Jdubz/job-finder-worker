@@ -31,6 +31,13 @@ export class ResumeItemInvalidParentError extends Error {
   }
 }
 
+export class ResumeVersionAlreadyExistsError extends Error {
+  constructor(slug: string) {
+    super(`Resume version with slug "${slug}" already exists`)
+    this.name = 'ResumeVersionAlreadyExistsError'
+  }
+}
+
 // ─── Row types ───────────────────────────────────────────────────────
 
 type VersionRow = {
@@ -160,7 +167,7 @@ export class ResumeVersionRepository {
 
     const existing = this.getVersionBySlug(data.slug)
     if (existing) {
-      throw new Error(`Resume version with slug "${data.slug}" already exists`)
+      throw new ResumeVersionAlreadyExistsError(data.slug)
     }
 
     this.db
@@ -170,7 +177,11 @@ export class ResumeVersionRepository {
       )
       .run(id, data.slug, data.name, data.description ?? null, now, now)
 
-    return this.getVersionById(id) as ResumeVersion
+    const newVersion = this.getVersionById(id)
+    if (!newVersion) {
+      throw new Error(`Failed to retrieve newly created resume version with id: ${id}`)
+    }
+    return newVersion
   }
 
   deleteVersion(slug: string): void {

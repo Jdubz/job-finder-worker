@@ -1,6 +1,6 @@
 import express from 'express'
 import request from 'supertest'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildResumeVersionRouter } from '../resume-version.routes'
 import { ResumeVersionRepository } from '../resume-version.repository'
 import type { AuthenticatedRequest } from '../../../middleware/firebase-auth'
@@ -94,6 +94,79 @@ describe('resume-version routes contract', () => {
       expect(res.status).toBe(200)
       expect(res.body.data.items).toHaveLength(2)
       expect(res.body.data.total).toBe(2)
+    })
+  })
+
+  // ── Version mutation endpoints ─────────────────────────────────
+
+  describe('POST /resume-versions', () => {
+    const cleanupSlugs: string[] = []
+
+    afterEach(() => {
+      for (const slug of cleanupSlugs) {
+        try { repo.deleteVersion(slug) } catch { /* already deleted */ }
+      }
+      cleanupSlugs.length = 0
+    })
+
+    it('creates a new version', async () => {
+      cleanupSlugs.push('test-new')
+      const res = await request(app)
+        .post('/resume-versions')
+        .send({ name: 'Test New', slug: 'test-new', description: 'A test version' })
+
+      expect(res.status).toBe(201)
+      expect(res.body.data.version.name).toBe('Test New')
+      expect(res.body.data.version.slug).toBe('test-new')
+      expect(res.body.data.version.description).toBe('A test version')
+      expect(res.body.data.message).toContain('created')
+    })
+
+    it('returns 409 for duplicate slug', async () => {
+      const res = await request(app)
+        .post('/resume-versions')
+        .send({ name: 'Dupe', slug: 'frontend' })
+
+      expect(res.status).toBe(409)
+      expect(res.body.error.code).toBe('ALREADY_EXISTS')
+    })
+
+    it('returns 400 for invalid slug format', async () => {
+      const res = await request(app)
+        .post('/resume-versions')
+        .send({ name: 'Bad Slug', slug: 'Has Spaces' })
+
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 for missing name', async () => {
+      const res = await request(app)
+        .post('/resume-versions')
+        .send({ slug: 'no-name' })
+
+      expect(res.status).toBe(400)
+    })
+  })
+
+  describe('DELETE /resume-versions/:slug', () => {
+    it('deletes a version and its items', async () => {
+      // Create a version to delete
+      repo.createVersion({ name: 'To Delete', slug: 'to-delete' })
+      const version = repo.getVersionBySlug('to-delete')!
+      repo.createItem(version.id, { title: 'Item', userEmail })
+
+      const res = await request(app).delete('/resume-versions/to-delete')
+      expect(res.status).toBe(200)
+      expect(res.body.data.deleted).toBe(true)
+      expect(res.body.data.slug).toBe('to-delete')
+
+      // Verify version is gone
+      expect(repo.getVersionBySlug('to-delete')).toBeNull()
+    })
+
+    it('returns 404 for unknown slug', async () => {
+      const res = await request(app).delete('/resume-versions/nonexistent')
+      expect(res.status).toBe(404)
     })
   })
 

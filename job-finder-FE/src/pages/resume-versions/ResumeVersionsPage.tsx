@@ -476,6 +476,8 @@ function VersionCard({
             type="button"
             onClick={() => setConfirming(true)}
             className="absolute top-2 right-2 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            aria-label="Delete version"
+            title="Delete version"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -497,6 +499,9 @@ function NewVersionForm({
   const [description, setDescription] = useState("")
   const [slugTouched, setSlugTouched] = useState(false)
 
+  const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+  const isSlugValid = slug.trim() !== "" && slugPattern.test(slug.trim())
+
   const handleNameChange = (value: string) => {
     setName(value)
     if (!slugTouched) {
@@ -504,7 +509,7 @@ function NewVersionForm({
         value
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")
+          .replace(/^-+|-+$/g, "")
       )
     }
   }
@@ -536,8 +541,12 @@ function NewVersionForm({
               value={slug}
               onChange={(e) => { setSlug(e.target.value); setSlugTouched(true) }}
               placeholder="e.g. devops"
+              pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
               className="h-8 text-sm font-mono"
             />
+            {slug && !isSlugValid && (
+              <p className="text-xs text-destructive mt-1">Lowercase letters, numbers, and hyphens only</p>
+            )}
           </div>
           <div>
             <Label htmlFor="version-desc" className="text-xs">Description</Label>
@@ -553,7 +562,7 @@ function NewVersionForm({
         <Button
           size="sm"
           className="w-full"
-          disabled={!name.trim() || !slug.trim()}
+          disabled={!name.trim() || !isSlugValid}
           onClick={() => onSubmit(name.trim(), slug.trim(), description.trim())}
         >
           Create Version

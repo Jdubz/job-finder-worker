@@ -21,6 +21,7 @@ import type {
 import {
   ResumeVersionRepository,
   ResumeVersionNotFoundError,
+  ResumeVersionAlreadyExistsError,
   ResumeItemNotFoundError,
   ResumeItemInvalidParentError
 } from './resume-version.repository'
@@ -107,6 +108,10 @@ function handleRouteError(err: unknown, res: Response): boolean {
   }
   if (err instanceof ResumeItemInvalidParentError) {
     res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
+    return true
+  }
+  if (err instanceof ResumeVersionAlreadyExistsError) {
+    res.status(409).json(failure(ApiErrorCode.ALREADY_EXISTS, err.message))
     return true
   }
   return false
@@ -248,10 +253,6 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
         res.status(201).json(success(response))
       } catch (err) {
         if (handleRouteError(err, res)) return
-        if (err instanceof Error && err.message.includes('already exists')) {
-          res.status(409).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
-          return
-        }
         throw err
       }
     })
