@@ -17,10 +17,11 @@ Usage:
     python -m job_finder.migrations.fix_disabled_sources_march /path/to/database.db
 """
 
+import argparse
+import copy
 import json
 import logging
 import sqlite3
-import sys
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -250,104 +251,114 @@ DELETE = [
 def run(db_path: str, dry_run: bool = False) -> None:
     """Execute the migration."""
     conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(timezone.utc).isoformat()
-    total_fixed = 0
+    try:
+        conn.row_factory = sqlite3.Row
+        now = datetime.now(timezone.utc).isoformat()
+        total_fixed = 0
 
-    # 1. Re-enable sources (clear error state, set active)
-    for name in REENABLE:
-        row = conn.execute(
-            "SELECT id, status, config_json FROM job_sources WHERE name = ?", (name,)
-        ).fetchone()
-        if not row:
-            logger.warning("SKIP (not found): %s", name)
-            continue
-        if row["status"] == "active":
-            logger.info("SKIP (already active): %s", name)
-            continue
+        # 1. Re-enable sources (clear error state, set active)
+        for name in REENABLE:
+            row = conn.execute(
+                "SELECT id, status, config_json FROM job_sources WHERE name = ?", (name,)
+            ).fetchone()
+            if not row:
+                logger.warning("SKIP (not found): %s", name)
+                continue
+            if row["status"] == "active":
+                logger.info("SKIP (already active): %s", name)
+                continue
 
-        config = json.loads(row["config_json"]) if row["config_json"] else {}
-        # Clear failure tracking
-        config.pop("consecutive_failures", None)
-        config.pop("disabled_at", None)
-        config.pop("disabled_tags", None)
-        notes = config.get("disabled_notes", "")
-        config["disabled_notes"] = f"{notes}\n[{now}] Re-enabled: bug fix deployed".strip()
+            config = json.loads(row["config_json"]) if row["config_json"] else {}
+            # Clear failure tracking
+            config.pop("consecutive_failures", None)
+            config.pop("disabled_at", None)
+            config.pop("disabled_tags", None)
+            notes = config.get("disabled_notes", "")
+            config["disabled_notes"] = f"{notes}\n[{now}] Re-enabled: bug fix deployed".strip()
 
-        logger.info("RE-ENABLE: %s (was %s)", name, row["status"])
-        if not dry_run:
-            conn.execute(
-                "UPDATE job_sources SET status = 'active', last_error = NULL, "
-                "config_json = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(config), now, row["id"]),
+            logger.info("RE-ENABLE: %s (was %s)", name, row["status"])
+            if not dry_run:
+                conn.execute(
+                    "UPDATE job_sources SET status = 'active', last_error = NULL, "
+                    "config_json = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(config), now, row["id"]),
+                )
+            total_fixed += 1
+
+        # 2. Fix configs and re-enable
+        for name, raw_config in CONFIG_FIXES.items():
+            row = conn.execute(
+                "SELECT id, status, source_type, config_json FROM job_sources WHERE name = ?",
+                (name,),
+            ).fetchone()
+            if not row:
+                logger.warning("SKIP (not found): %s", name)
+                continue
+
+            # Deep-copy to avoid mutating the global CONFIG_FIXES dict
+            new_config = copy.deepcopy(raw_config)
+
+            old_config = json.loads(row["config_json"]) if row["config_json"] else {}
+            # Preserve company_name from old config if not in new config
+            if "company_name" not in new_config and old_config.get("company_name"):
+                new_config["company_name"] = old_config["company_name"]
+            # Add migration note
+            old_notes = old_config.get("disabled_notes", "")
+            new_config["disabled_notes"] = f"{old_notes}\n[{now}] Config fixed by migration".strip()
+
+            # Determine new source_type from config type
+            new_source_type = new_config.get("type", row["source_type"])
+
+            logger.info(
+                "FIX CONFIG: %s — %s → %s",
+                name,
+                old_config.get("url", "?")[:60],
+                new_config.get("url", "?")[:60],
             )
-        total_fixed += 1
+            if not dry_run:
+                conn.execute(
+                    "UPDATE job_sources SET status = 'active', last_error = NULL, "
+                    "source_type = ?, config_json = ?, updated_at = ? WHERE id = ?",
+                    (new_source_type, json.dumps(new_config), now, row["id"]),
+                )
+            total_fixed += 1
 
-    # 2. Fix configs and re-enable
-    for name, new_config in CONFIG_FIXES.items():
-        row = conn.execute(
-            "SELECT id, status, source_type, config_json FROM job_sources WHERE name = ?",
-            (name,),
-        ).fetchone()
-        if not row:
-            logger.warning("SKIP (not found): %s", name)
-            continue
+        # 3. Soft-delete dead sources (preserve history)
+        for name in DELETE:
+            row = conn.execute("SELECT id FROM job_sources WHERE name = ?", (name,)).fetchone()
+            if not row:
+                logger.warning("SKIP (not found): %s", name)
+                continue
+            logger.info("SOFT-DELETE: %s", name)
+            if not dry_run:
+                conn.execute(
+                    "UPDATE job_sources SET status = 'deleted', updated_at = ? WHERE id = ?",
+                    (now, row["id"]),
+                )
+            total_fixed += 1
 
-        old_config = json.loads(row["config_json"]) if row["config_json"] else {}
-        # Preserve company_name from old config if not in new config
-        if "company_name" not in new_config and old_config.get("company_name"):
-            new_config["company_name"] = old_config["company_name"]
-        # Add migration note
-        old_notes = old_config.get("disabled_notes", "")
-        new_config["disabled_notes"] = f"{old_notes}\n[{now}] Config fixed by migration".strip()
-
-        # Determine new source_type from config type
-        new_source_type = new_config.get("type", row["source_type"])
-
-        logger.info(
-            "FIX CONFIG: %s — %s → %s",
-            name,
-            old_config.get("url", "?")[:60],
-            new_config.get("url", "?")[:60],
-        )
         if not dry_run:
-            conn.execute(
-                "UPDATE job_sources SET status = 'active', last_error = NULL, "
-                "source_type = ?, config_json = ?, updated_at = ? WHERE id = ?",
-                (new_source_type, json.dumps(new_config), now, row["id"]),
-            )
-        total_fixed += 1
+            conn.commit()
 
-    # 3. Delete dead sources
-    for name in DELETE:
-        row = conn.execute("SELECT id FROM job_sources WHERE name = ?", (name,)).fetchone()
-        if not row:
-            logger.warning("SKIP (not found): %s", name)
-            continue
-        logger.info("DELETE: %s", name)
-        if not dry_run:
-            # Clean up seen_urls first
-            conn.execute("DELETE FROM seen_urls WHERE source_id = ?", (row["id"],))
-            conn.execute("DELETE FROM job_sources WHERE id = ?", (row["id"],))
-        total_fixed += 1
-
-    if not dry_run:
-        conn.commit()
-    conn.close()
-
-    action = "would fix" if dry_run else "fixed"
-    logger.info("Done: %s %d sources", action, total_fixed)
+        action = "would fix" if dry_run else "fixed"
+        logger.info("Done: %s %d sources", action, total_fixed)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(f"Usage: python -m {__name__} <db_path> [--dry-run]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Fix disabled/failed job sources identified on 2026-03-09."
+    )
+    parser.add_argument("db_path", help="Path to the SQLite database file.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview changes without modifying the database.",
+    )
+    args = parser.parse_args()
 
-    db_path = sys.argv[1]
-    dry_run = "--dry-run" in sys.argv
-
-    if dry_run:
+    if args.dry_run:
         logger.info("DRY RUN — no changes will be made")
 
-    run(db_path, dry_run=dry_run)
+    run(args.db_path, dry_run=args.dry_run)

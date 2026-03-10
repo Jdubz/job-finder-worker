@@ -1097,7 +1097,8 @@ class GenericScraper:
                 base = (self.config.base_url or self.config.url).rstrip("/")
                 if not self.config.base_url:
                     parsed = urlparse(base)
-                    base = f"{parsed.scheme}://{parsed.netloc}"
+                    if parsed.scheme and parsed.netloc:
+                        base = f"{parsed.scheme}://{parsed.netloc}"
                 relative = raw_url.lstrip("/")
                 job["url"] = f"{base}/{relative}"
             else:
@@ -1700,7 +1701,8 @@ class GenericScraper:
                 # appending relative path to an API endpoint path
                 if not self.config.base_url:
                     parsed = urlparse(base)
-                    base = f"{parsed.scheme}://{parsed.netloc}"
+                    if parsed.scheme and parsed.netloc:
+                        base = f"{parsed.scheme}://{parsed.netloc}"
                 relative = url.lstrip("/")
                 job["url"] = f"{base}/{relative}"
 
