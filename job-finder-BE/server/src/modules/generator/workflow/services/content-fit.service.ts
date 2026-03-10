@@ -14,6 +14,10 @@ import type { ResumeContent } from '@shared/types'
  * Constants are derived from actual CSS pixel heights in html-ats-style.ts,
  * converted to the 14.175px line unit. Keep in sync with @page margin and
  * element spacing there.
+ *
+ * CSS margin collapse: adjacent block-level margins collapse to max(prev_mb, next_mt).
+ * The algorithm tracks each section's trailing margin and corrects for this
+ * at section boundaries to avoid double-counting.
  */
 
 export interface FitEstimate {
@@ -25,10 +29,9 @@ export interface FitEstimate {
 }
 
 // Characters per line at 11px Calibri in single-column layout (~7in / 672px content width)
-// Body: 672px / 5.8px avg char width ≈ 116; bullets at 10.5px: (672-16) / 5.5 ≈ 119
-// Keep ~2-5% conservative buffer over measured values.
-const CHARS_PER_LINE = 114
-const BULLET_CHARS_PER_LINE = 112
+// Calibrated via Playwright rendering: body text ~122 cpl, bullets ~126 cpl at 10.5px.
+const CHARS_PER_LINE = 120
+const BULLET_CHARS_PER_LINE = 126
 
 // Skill rows: 10.5px base but category label is bold (~10-15% wider).
 // Effective chars ≈ 100 to account for bold label + comma-separated items.
@@ -42,6 +45,10 @@ const AVG_LINES_PER_TECH = 1.5
 // Each summary line costs 15.4px / 14.175px ≈ 1.09 line-units.
 const SUMMARY_LINE_SCALE = 1.09
 
+// Section heading margins in line units, used for CSS margin collapse corrections.
+const SECTION_HEADING_MT = 0.71  // margin-top: 10px / 14.175px
+const SECTION_HEADING_MB = 0.42  // margin-bottom: 6px / 14.175px
+
 /** Estimate how many rendered lines a text string occupies. */
 function textToLines(text: string, charsPerLine: number): number {
   if (!text || text.length === 0) return 0
@@ -49,45 +56,65 @@ function textToLines(text: string, charsPerLine: number): number {
 }
 
 export const LAYOUT = {
-  // Header: name(22px×1.35 + 2mb) + title(13px×1.35 + 6mb) + header(4mb collapses)
-  //         + rule(2px + 5mb) + contact(10px×1.6 + 10mb) ≈ 92px → 6.5 lines
-  HEADER_LINES: 6.5,
-  SUMMARY_MIN_LINES: 2,
+  // Header: name + title + rule + contact. Calibrated: ~88px = 6.21 lines
+  HEADER_LINES: 6.25,
+  // Contact-row margin-bottom (10px / 14.175px) included within HEADER_LINES
+  HEADER_TRAILING_MARGIN: 0.71,
+  SUMMARY_MIN_LINES: 1,
   // Section heading: 10mt + text(13px×1.35) + 2pb + 1.5border + 6mb ≈ 37px → 2.6 lines
   SECTION_TITLE_LINES: 2.6,
 
-  // Experience: role(11.5px×1.35) + company(10.5px×1.35 + 2mb) + UL 2mt ≈ 34px
-  EXP_HEADER_LINES: 2.5,
+  // Experience: role(15.5px) + company(14.2px) + gap(2px) = 31.7px → 2.24 lines
+  EXP_HEADER_LINES: 2.25,
   EXP_SPACING: 0.85,            // exp-entry margin-bottom 12px / 14.175px ≈ 0.85 lines
-  BULLET_OVERHEAD: 0.1,        // li margin-bottom 1px per bullet ≈ 0.07 lines
+  BULLET_OVERHEAD: 0.07,        // li margin-bottom 1px per bullet = 0.071 lines
 
-  PROJECT_HEADER_LINES: 2,     // Project name + link line
+  // Project name (+ optional inline link): 14.85px + 2px gap = 16.85px → 1.19 lines
+  PROJECT_HEADER_LINES: 1.2,
   PROJECT_SPACING: 0.5,        // project-entry margin-bottom 6px ≈ 0.42 lines
 
   SKILL_CATEGORY_OVERHEAD: 0.15, // 2px margin-bottom per skill-row ≈ 0.14 lines
-  // Education: degree(11px×1.35) + school(10.5px×1.35) + 4mb ≈ 33px → 2.3 lines
-  EDUCATION_ENTRY_LINES: 2.3,
+  // Education: degree + school = ~29px → 2.05 lines
+  EDUCATION_ENTRY_LINES: 2.1,
   EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
+  EDU_NOTES_OVERHEAD: 0.07,    // .edu-notes margin-top 1px / 14.175px
 
-  MAX_LINES: 64,               // 66 raw - 2 safety for browser variance (char widths already have buffer)
+  MAX_LINES: 64,               // 66 raw - 2 safety for browser variance
+}
+
+/**
+ * Subtract CSS margin collapse overlap at section boundaries.
+ * When a section's trailing margin (already counted in mainLines) is followed
+ * by a section heading (whose margin-top is in SECTION_TITLE_LINES), CSS
+ * collapses them to max(prev_mb, heading_mt). We subtract min(prev_mb, heading_mt).
+ */
+function marginCollapseAdj(prevTrailingMargin: number): number {
+  return -Math.min(prevTrailingMargin, SECTION_HEADING_MT)
 }
 
 export function estimateContentFit(content: ResumeContent): FitEstimate {
   const suggestions: string[] = []
 
-  // All content in one column
+  // Track the trailing margin of the previous section (in line units) that was
+  // already counted in mainLines. Used for CSS margin collapse correction
+  // before each section heading.
   let mainLines = LAYOUT.HEADER_LINES
+  let prevMargin = LAYOUT.HEADER_TRAILING_MARGIN
 
-  // Summary — uses line-height 1.4 in CSS vs 1.35 base, so scale up
+  // Summary — heading margin collapses with header's contact-row margin-bottom
+  mainLines += marginCollapseAdj(prevMargin)
   const summaryText = content.professionalSummary || ''
   const rawSummaryLines = Math.max(
     LAYOUT.SUMMARY_MIN_LINES,
     textToLines(summaryText, CHARS_PER_LINE)
   )
   const summaryLines = rawSummaryLines * SUMMARY_LINE_SCALE
-  mainLines += LAYOUT.SECTION_TITLE_LINES + summaryLines
+  const summaryTrailingMargin = 2 / 14.175 // summary .summary margin-bottom: 2px
+  mainLines += LAYOUT.SECTION_TITLE_LINES + summaryLines + summaryTrailingMargin
+  prevMargin = summaryTrailingMargin
 
   // Experience
+  mainLines += marginCollapseAdj(prevMargin)
   mainLines += LAYOUT.SECTION_TITLE_LINES
   for (const exp of content.experience || []) {
     mainLines += LAYOUT.EXP_HEADER_LINES
@@ -100,20 +127,26 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     }
     mainLines += LAYOUT.EXP_SPACING
   }
+  // When experience has entries, trailing margin is the last entry's EXP_SPACING.
+  // When empty, the section heading still renders — its margin-bottom is the trailing margin.
+  prevMargin = (content.experience?.length ?? 0) > 0 ? LAYOUT.EXP_SPACING : SECTION_HEADING_MB
 
   // Skills (in main column for single-column layout)
   const skillCategories = content.skills?.length || 0
   if (skillCategories > 0) {
+    mainLines += marginCollapseAdj(prevMargin)
     mainLines += LAYOUT.SECTION_TITLE_LINES
     for (const skill of content.skills!) {
       const rowText = `${skill.category}: ${skill.items.join(', ')}`
       mainLines += textToLines(rowText, SKILL_CHARS_PER_LINE) + LAYOUT.SKILL_CATEGORY_OVERHEAD
     }
+    prevMargin = LAYOUT.SKILL_CATEGORY_OVERHEAD
   }
 
   // Projects
   const projectCount = content.projects?.length || 0
   if (projectCount > 0) {
+    mainLines += marginCollapseAdj(prevMargin)
     mainLines += LAYOUT.SECTION_TITLE_LINES
     for (const proj of content.projects || []) {
       mainLines += LAYOUT.PROJECT_HEADER_LINES
@@ -131,18 +164,27 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       }
       mainLines += LAYOUT.PROJECT_SPACING
     }
+    prevMargin = LAYOUT.PROJECT_SPACING
   }
 
   // Education
   const eduCount = content.education?.length || 0
   if (eduCount > 0) {
+    mainLines += marginCollapseAdj(prevMargin)
     mainLines += LAYOUT.SECTION_TITLE_LINES
-    mainLines += eduCount * (LAYOUT.EDUCATION_ENTRY_LINES + LAYOUT.EDUCATION_SPACING)
+    for (const edu of content.education!) {
+      mainLines += LAYOUT.EDUCATION_ENTRY_LINES
+      // edu-notes: when degree contains "in" and field exists, field renders as extra notes line
+      if (edu.field && edu.degree?.includes(' in ')) {
+        mainLines += textToLines(edu.field, CHARS_PER_LINE) + LAYOUT.EDU_NOTES_OVERHEAD
+      }
+      mainLines += LAYOUT.EDUCATION_SPACING
+    }
   }
 
-  // Round up fractional lines to preserve safety property (never underestimate).
-  const roundedMainLines = Math.ceil(mainLines)
-  const overflow = roundedMainLines - LAYOUT.MAX_LINES
+  // Round to nearest integer for reporting, but use conservative ceiling for fit/overflow.
+  const roundedMainLines = Math.round(mainLines)
+  const overflow = Math.ceil(mainLines) - LAYOUT.MAX_LINES
 
   // Suggestions
   if (overflow > 0) {
