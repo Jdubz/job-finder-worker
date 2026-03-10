@@ -136,9 +136,7 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
                     if pattern.headers:
                         expanded.setdefault("headers", pattern.headers.copy())
                     if pattern.base_url_template:
-                        expanded.setdefault(
-                            "base_url", pattern.base_url_template.format(**groups)
-                        )
+                        expanded.setdefault("base_url", pattern.base_url_template.format(**groups))
         return expanded
 
     # Normalize source_type to scraping method before dispatch

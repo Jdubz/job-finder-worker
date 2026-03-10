@@ -36,7 +36,9 @@ class TestExpandConfigPaginationPropagation:
         }
         expanded = expand_config("api", config)
 
-        assert expanded["url"] == "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs"
+        assert (
+            expanded["url"] == "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs"
+        )
         assert expanded["method"] == "POST"
         assert expanded["post_body"] == {"limit": 20, "offset": 0}
         assert expanded["base_url"] == "https://alkami.wd12.myworkdayjobs.com/Alkami"
@@ -53,7 +55,9 @@ class TestExpandConfigPaginationPropagation:
         expanded = expand_config("api", config)
 
         # URL should remain unchanged (CXS URL is already the API URL)
-        assert expanded["url"] == "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs"
+        assert (
+            expanded["url"] == "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs"
+        )
 
     def test_existing_pagination_not_overwritten(self):
         """If config already has pagination_type, pattern should not overwrite it."""

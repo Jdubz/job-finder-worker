@@ -40,7 +40,9 @@ class TestExpandGreenhouse:
 
         assert result["type"] == "api"
         # URL is upgraded to include ?content=true for full descriptions
-        assert result["url"] == "https://boards-api.greenhouse.io/v1/boards/custom/jobs?content=true"
+        assert (
+            result["url"] == "https://boards-api.greenhouse.io/v1/boards/custom/jobs?content=true"
+        )
         assert result["fields"]["title"] == "custom_title"
         assert result["fields"]["url"] == "custom_url"
 
