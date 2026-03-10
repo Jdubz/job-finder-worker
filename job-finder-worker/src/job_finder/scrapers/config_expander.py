@@ -110,7 +110,7 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
         # Use match_platform() as single source of truth for field enrichment
         platform_result = match_platform(expanded.get("url", ""))
         if platform_result:
-            pattern, _groups = platform_result
+            pattern, groups = platform_result
             for key, value in pattern.fields.items():
                 if key not in expanded["fields"]:
                     expanded["fields"][key] = value
@@ -121,6 +121,24 @@ def expand_config(source_type: str, config: Dict[str, Any]) -> Dict[str, Any]:
                 expanded["pagination_type"] = pattern.pagination_type
                 expanded["pagination_param"] = pattern.pagination_param
                 expanded["page_size"] = pattern.page_size
+            # Convert human-readable URL to API URL when the platform defines a
+            # template and the current URL isn't already the API endpoint.
+            if pattern.api_url_template and groups:
+                api_url = pattern.api_url_template.format(**groups)
+                if expanded["url"] != api_url:
+                    expanded["url"] = api_url
+                    if pattern.method and pattern.method != "GET":
+                        expanded.setdefault("method", pattern.method)
+                    if pattern.post_body_template:
+                        expanded.setdefault("post_body", pattern.post_body_template.copy())
+                    if pattern.response_path:
+                        expanded.setdefault("response_path", pattern.response_path)
+                    if pattern.headers:
+                        expanded.setdefault("headers", pattern.headers.copy())
+                    if pattern.base_url_template:
+                        expanded.setdefault(
+                            "base_url", pattern.base_url_template.format(**groups)
+                        )
         return expanded
 
     # Normalize source_type to scraping method before dispatch

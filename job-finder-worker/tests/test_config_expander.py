@@ -28,6 +28,33 @@ class TestExpandConfigPaginationPropagation:
 
         assert "pagination_type" not in expanded
 
+    def test_workday_human_url_converted_to_api(self):
+        """Workday human page URL should be converted to CXS API URL."""
+        config = {
+            "url": "https://alkami.wd12.myworkdayjobs.com/Alkami",
+            "fields": {"title": "title", "url": "externalPath", "location": "locationsText"},
+        }
+        expanded = expand_config("api", config)
+
+        assert expanded["url"] == "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs"
+        assert expanded["method"] == "POST"
+        assert expanded["post_body"] == {"limit": 20, "offset": 0}
+        assert expanded["base_url"] == "https://alkami.wd12.myworkdayjobs.com/Alkami"
+        assert expanded["headers"] == {"Content-Type": "application/json"}
+
+    def test_workday_api_url_not_double_converted(self):
+        """Workday CXS API URL should not be re-converted."""
+        config = {
+            "url": "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs",
+            "fields": {"title": "title", "url": "externalPath"},
+            "method": "POST",
+            "post_body": {"limit": 20, "offset": 0},
+        }
+        expanded = expand_config("api", config)
+
+        # URL should remain unchanged (CXS URL is already the API URL)
+        assert expanded["url"] == "https://alkami.wd12.myworkdayjobs.com/wday/cxs/alkami/Alkami/jobs"
+
     def test_existing_pagination_not_overwritten(self):
         """If config already has pagination_type, pattern should not overwrite it."""
         config = {

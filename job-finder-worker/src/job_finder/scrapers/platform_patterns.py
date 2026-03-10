@@ -165,10 +165,11 @@ PLATFORM_PATTERNS: List[PlatformPattern] = [
     ),
     PlatformPattern(
         name="workday",
-        # Match tenant.wdX.myworkdayjobs.com/[lang]/site_id
+        # Match tenant.wdX.myworkdayjobs.com/[lang]/site_id (human career pages)
+        # Excludes CXS API URLs (/wday/cxs/...) which are already in API format
         # Language prefix (e.g., en-US/, fr-FR/) is optional
         # Uses strict format: lowercase lang (2 chars) + optional uppercase country (2 chars)
-        url_pattern=r"https?://(?P<tenant>[^.]+)\.(?P<wd_instance>wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?(?P<site_id>[^/?#]+)",
+        url_pattern=r"https?://(?P<tenant>[^.]+)\.(?P<wd_instance>wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?(?!wday/)(?P<site_id>[^/?#]+)",
         api_url_template="https://{tenant}.{wd_instance}.myworkdayjobs.com/wday/cxs/{tenant}/{site_id}/jobs",
         method="POST",
         post_body_template={"limit": 20, "offset": 0},

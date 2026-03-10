@@ -389,6 +389,28 @@ class TestGenericScraperAPI:
 
         assert jobs[0]["url"] == "https://tenant.wd1.myworkdayjobs.com/site/job/123"
 
+    @patch("job_finder.scrapers.generic_scraper.requests.get")
+    def test_relative_url_auto_resolved_from_source_url(self, mock_get):
+        """Relative URLs should be resolved using source URL origin when base_url is not set."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {"title": "Engineer", "path": "/jobs/42", "posted_date": "2024-01-01"}
+        ]
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        config = SourceConfig(
+            type="api",
+            url="https://example.com/api/v1/postings",
+            response_path="",
+            fields={"title": "title", "url": "path", "posted_date": "posted_date"},
+        )
+        scraper = GenericScraper(config)
+        jobs = scraper.scrape()
+
+        # Should extract origin (scheme+host) from source URL, not append to full path
+        assert jobs[0]["url"] == "https://example.com/jobs/42"
+
     @patch("job_finder.scrapers.generic_scraper.requests.post")
     def test_scrape_api_post_stops_when_first_page_under_limit(self, mock_post):
         """Pagination should stop when first page has fewer than limit items."""
@@ -778,7 +800,7 @@ class TestGenericScraperHTML:
 
         assert len(jobs) == 1
         assert jobs[0]["title"] == "Engineer"
-        assert jobs[0]["url"] == "/jobs/1"
+        assert jobs[0]["url"] == "https://example.com/jobs/1"
 
     @patch("job_finder.scrapers.generic_scraper.get_renderer")
     def test_scrape_html_with_js_renderer(self, mock_get_renderer):
@@ -821,7 +843,7 @@ class TestGenericScraperHTML:
         renderer.render.assert_called_once()
         assert len(jobs) == 1
         assert jobs[0]["title"] == "JS Job"
-        assert jobs[0]["url"] == "/js-job"
+        assert jobs[0]["url"] == "https://example.com/js-job"
 
 
 class TestGenericScraperEdgeCases:

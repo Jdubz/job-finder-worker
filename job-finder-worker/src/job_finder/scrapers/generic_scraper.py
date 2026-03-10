@@ -1091,10 +1091,13 @@ class GenericScraper:
             )
             job["company"] = sanitize_company_name(company_raw)
             job["description"] = sanitize_html_description(jp.get("description", ""))
-            # URL: reconstruct relative URLs using base_url
+            # URL: reconstruct relative URLs
             raw_url = jp.get("url") or jp.get("sameAs") or ""
-            if raw_url and self.config.base_url and not re.match(r"^https?://", raw_url):
-                base = self.config.base_url.rstrip("/")
+            if raw_url and not re.match(r"^https?://", raw_url):
+                base = (self.config.base_url or self.config.url).rstrip("/")
+                if not self.config.base_url:
+                    parsed = urlparse(base)
+                    base = f"{parsed.scheme}://{parsed.netloc}"
                 relative = raw_url.lstrip("/")
                 job["url"] = f"{base}/{relative}"
             else:
@@ -1686,14 +1689,18 @@ class GenericScraper:
         if self.config.company_name:
             job["company"] = self.config.company_name
 
-        # Construct full URL from relative path if base_url is specified
-        if self.config.base_url and job.get("url"):
+        # Construct full URL from relative path
+        if job.get("url"):
             url = str(job["url"])
             job["url"] = url
-            is_absolute = re.match(r"^https?://", url)
-            if not is_absolute:
-                # Normalize slashes to avoid double slashes
-                base = self.config.base_url.rstrip("/")
+            if not re.match(r"^https?://", url):
+                # Derive base from explicit base_url, or fall back to source URL
+                base = (self.config.base_url or self.config.url).rstrip("/")
+                # For source URLs, extract origin (scheme+host) to avoid
+                # appending relative path to an API endpoint path
+                if not self.config.base_url:
+                    parsed = urlparse(base)
+                    base = f"{parsed.scheme}://{parsed.netloc}"
                 relative = url.lstrip("/")
                 job["url"] = f"{base}/{relative}"
 
