@@ -22,6 +22,7 @@ import logging
 import sqlite3
 import sys
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ REENABLE = [
 ]
 
 # Sources that need config replacement + re-enable
-CONFIG_FIXES = {
+CONFIG_FIXES: Dict[str, Dict[str, Any]] = {
     # Veritone: doubled Workday URL path, wrong XPath fields
     "Veritone, Inc. Jobs": {
         "type": "api",
