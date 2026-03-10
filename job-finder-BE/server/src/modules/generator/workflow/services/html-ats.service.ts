@@ -96,12 +96,18 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   const educationHtml = (content.education || [])
     .map((e) => {
       const gradDate = (e as any).graduationDate || e.endDate
-      // If degree already contains " in " (e.g. "B.A. in Music"), don't append field with " in "
+      // Build degree text and optional notes line
       const hasFieldInDegree = e.degree?.includes(' in ')
-      const degreeText = hasFieldInDegree || !e.field
-        ? (e.degree || '')
-        : `${e.degree || ''} in ${e.field}`
-      const notes = hasFieldInDegree && e.field ? e.field : ''
+      let degreeText = e.degree || ''
+      let notes = ''
+
+      if (hasFieldInDegree) {
+        // "B.A. in Music" + field "Regents Scholar…" → show field as separate notes
+        if (e.field) notes = e.field
+      } else if (e.field) {
+        // "Bachelor of Science" + "Computer Science" → "Bachelor of Science in Computer Science"
+        degreeText = degreeText ? `${degreeText} in ${e.field}` : e.field
+      }
       return `
         <div class="edu-entry">
           <h3 class="edu-header">
