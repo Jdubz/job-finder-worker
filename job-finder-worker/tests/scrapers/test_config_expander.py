@@ -30,7 +30,7 @@ class TestExpandGreenhouse:
         assert result["fields"] == GREENHOUSE_FIELDS
 
     def test_full_config_preserved(self):
-        """Full config with url and fields is preserved (type added)."""
+        """Full config with url and fields is preserved (type added, URL upgraded)."""
         config = {
             "url": "https://boards-api.greenhouse.io/v1/boards/custom/jobs",
             "response_path": "jobs",
@@ -39,8 +39,12 @@ class TestExpandGreenhouse:
         result = expand_config("greenhouse", config)
 
         assert result["type"] == "api"
-        assert result["url"] == config["url"]
-        assert result["fields"] == config["fields"]
+        # URL is upgraded to include ?content=true for full descriptions
+        assert (
+            result["url"] == "https://boards-api.greenhouse.io/v1/boards/custom/jobs?content=true"
+        )
+        assert result["fields"]["title"] == "custom_title"
+        assert result["fields"]["url"] == "custom_url"
 
     def test_missing_board_token_raises(self):
         """Missing board_token raises ValueError."""
@@ -322,6 +326,8 @@ class TestNormalizationInExpandConfig:
         }
         result = expand_config("workday", config)
         assert result["type"] == "api"
+        # CXS URL should be preserved (not re-converted)
+        assert result["url"] == config["url"]
 
     def test_full_config_with_unknown_type_defaults_to_api(self):
         """A full config with an unknown type should default to 'api'."""
@@ -388,17 +394,35 @@ class TestPlatformFieldEnrichment:
         for key in ASHBY_FIELDS:
             assert key in result["fields"]
 
-    def test_workday_url_enriched_with_standard_fields_and_follow_detail(self):
-        """Full config with Workday URL gets standard fields + follow_detail=True."""
+    def test_workday_human_url_converted_and_enriched(self):
+        """Workday human page URL gets converted to API URL + standard fields."""
         config = {
-            "url": "https://company.wd5.myworkdayjobs.com/wday/cxs/company/board/jobs",
+            "url": "https://company.wd5.myworkdayjobs.com/board",
             "fields": {"title": "title"},
         }
         result = expand_config("api", config)
 
+        assert result["url"] == "https://company.wd5.myworkdayjobs.com/wday/cxs/company/board/jobs"
+        assert result["method"] == "POST"
+        assert result["post_body"] == {"limit": 20, "offset": 0}
+        assert result["base_url"] == "https://company.wd5.myworkdayjobs.com/board"
         for key in WORKDAY_FIELDS:
             assert key in result["fields"]
         assert result["follow_detail"] is True
+
+    def test_workday_cxs_url_preserved(self):
+        """Workday CXS API URL is preserved as-is (not re-converted)."""
+        config = {
+            "url": "https://company.wd5.myworkdayjobs.com/wday/cxs/company/board/jobs",
+            "fields": {"title": "title"},
+            "method": "POST",
+            "post_body": {"limit": 20, "offset": 0},
+        }
+        result = expand_config("api", config)
+
+        # CXS URL is already the API URL - should not be changed
+        assert result["url"] == "https://company.wd5.myworkdayjobs.com/wday/cxs/company/board/jobs"
+        assert result["method"] == "POST"
 
     def test_lever_url_enriched_with_standard_fields(self):
         """Full config with Lever URL gets standard Lever fields."""
@@ -529,3 +553,45 @@ class TestUrlTypeConsistency:
         }
         result = expand_config("html", config)
         assert result["type"] == "api"
+
+
+class TestExpandConfigPaginationPropagation:
+    """Tests that pagination fields propagate from platform patterns."""
+
+    def test_smartrecruiters_gets_pagination_from_pattern(self):
+        """SmartRecruiters sources with url+fields should get pagination config."""
+        config = {
+            "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=100",
+            "fields": {"title": "name", "url": "ref"},
+        }
+        expanded = expand_config("api", config)
+
+        assert expanded["pagination_type"] == "offset"
+        assert expanded["pagination_param"] == "offset"
+        assert expanded["page_size"] == 100
+
+    def test_greenhouse_does_not_get_pagination(self):
+        """Greenhouse sources should not get pagination (no pagination defined)."""
+        config = {
+            "url": "https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true",
+            "fields": {"title": "title", "url": "absolute_url"},
+        }
+        expanded = expand_config("api", config)
+
+        assert "pagination_type" not in expanded
+
+    def test_existing_pagination_not_overwritten(self):
+        """If config already has pagination_type, pattern should not overwrite it."""
+        config = {
+            "url": "https://api.smartrecruiters.com/v1/companies/acme/postings?limit=100",
+            "fields": {"title": "name", "url": "ref"},
+            "pagination_type": "cursor",
+            "pagination_param": "next",
+            "page_size": 50,
+        }
+        expanded = expand_config("api", config)
+
+        # Should keep the original values
+        assert expanded["pagination_type"] == "cursor"
+        assert expanded["pagination_param"] == "next"
+        assert expanded["page_size"] == 50
