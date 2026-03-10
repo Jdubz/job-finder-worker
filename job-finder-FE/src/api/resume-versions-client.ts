@@ -16,7 +16,10 @@ import type {
   ListResumeItemsResponse,
   ReorderResumeItemRequest,
   ReorderResumeItemResponse,
-  PublishResumeVersionResponse
+  PublishResumeVersionResponse,
+  CreateResumeVersionRequest,
+  CreateResumeVersionResponse,
+  DeleteResumeVersionResponse
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
@@ -89,6 +92,20 @@ export class ResumeVersionsClient extends BaseApiClient {
       payload
     )
     return response.data.item
+  }
+
+  async createVersion(data: CreateResumeVersionRequest): Promise<ResumeVersion> {
+    const response = await this.post<ApiSuccessResponse<CreateResumeVersionResponse>>(
+      "/resume-versions",
+      data
+    )
+    return response.data.version
+  }
+
+  async deleteVersion(slug: string): Promise<void> {
+    await this.delete<ApiSuccessResponse<DeleteResumeVersionResponse>>(
+      `/resume-versions/${slug}`
+    )
   }
 
   async publish(slug: string): Promise<PublishResumeVersionResponse> {

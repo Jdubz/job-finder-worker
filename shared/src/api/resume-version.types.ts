@@ -1,4 +1,4 @@
-import type { ResumeVersion, ResumeItem, ResumeItemNode, CreateResumeItemData, UpdateResumeItemData } from '../resume-version.types'
+import type { ResumeVersion, ResumeItem, ResumeItemNode, CreateResumeItemData, UpdateResumeItemData, CreateResumeVersionData } from '../resume-version.types'
 
 // --- Content fit estimation ---
 
@@ -22,6 +22,19 @@ export interface GetResumeVersionResponse {
   version: ResumeVersion
   items: ResumeItemNode[]
   contentFit: ContentFitEstimate | null
+}
+
+export type CreateResumeVersionRequest = CreateResumeVersionData
+
+export interface CreateResumeVersionResponse {
+  version: ResumeVersion
+  message: string
+}
+
+export interface DeleteResumeVersionResponse {
+  slug: string
+  deleted: boolean
+  message: string
 }
 
 export interface PublishResumeVersionResponse {

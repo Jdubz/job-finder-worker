@@ -4,6 +4,7 @@ import type {
   ResumeVersion,
   ResumeItem,
   CreateResumeItemData,
+  CreateResumeVersionData,
   UpdateResumeItemData,
   ResumeVersionSlug
 } from '@shared/types'
@@ -27,6 +28,13 @@ export class ResumeItemInvalidParentError extends Error {
   constructor(message = 'Invalid resume item parent') {
     super(message)
     this.name = 'ResumeItemInvalidParentError'
+  }
+}
+
+export class ResumeVersionAlreadyExistsError extends Error {
+  constructor(slug: string) {
+    super(`Resume version with slug "${slug}" already exists`)
+    this.name = 'ResumeVersionAlreadyExistsError'
   }
 }
 
@@ -151,6 +159,38 @@ export class ResumeVersionRepository {
     }
 
     return this.getVersionBySlug(slug) as ResumeVersion
+  }
+
+  createVersion(data: CreateResumeVersionData): ResumeVersion {
+    const id = randomUUID()
+    const now = new Date().toISOString()
+
+    const existing = this.getVersionBySlug(data.slug)
+    if (existing) {
+      throw new ResumeVersionAlreadyExistsError(data.slug)
+    }
+
+    this.db
+      .prepare(
+        `INSERT INTO resume_versions (id, slug, name, description, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, data.slug, data.name, data.description ?? null, now, now)
+
+    const newVersion = this.getVersionById(id)
+    if (!newVersion) {
+      throw new Error(`Failed to retrieve newly created resume version with id: ${id}`)
+    }
+    return newVersion
+  }
+
+  deleteVersion(slug: string): void {
+    const version = this.getVersionBySlug(slug)
+    if (!version) {
+      throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
+    }
+    // CASCADE delete will remove all resume_items for this version
+    this.db.prepare('DELETE FROM resume_versions WHERE slug = ?').run(slug)
   }
 
   // ── Item queries ─────────────────────────────────────────────────

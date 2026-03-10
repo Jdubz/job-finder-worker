@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
 import { resumeVersionsClient } from "@/api"
-import type { ResumeVersion } from "@shared/types"
+import type { ResumeVersion, CreateResumeVersionRequest } from "@shared/types"
 
 interface UseResumeVersionsResult {
   versions: ResumeVersion[]
   loading: boolean
   error: Error | null
   refetch: () => Promise<void>
+  createVersion: (data: CreateResumeVersionRequest) => Promise<ResumeVersion>
+  deleteVersion: (slug: string) => Promise<void>
 }
 
 export function useResumeVersions(): UseResumeVersionsResult {
@@ -31,10 +33,29 @@ export function useResumeVersions(): UseResumeVersionsResult {
     fetchVersions()
   }, [fetchVersions])
 
+  const createVersion = useCallback(
+    async (data: CreateResumeVersionRequest) => {
+      const newVersion = await resumeVersionsClient.createVersion(data)
+      setVersions((prev) => [...prev, newVersion].sort((a, b) => a.slug.localeCompare(b.slug)))
+      return newVersion
+    },
+    []
+  )
+
+  const deleteVersion = useCallback(
+    async (slug: string) => {
+      await resumeVersionsClient.deleteVersion(slug)
+      setVersions((prev) => prev.filter((v) => v.slug !== slug))
+    },
+    []
+  )
+
   return {
     versions,
     loading,
     error,
-    refetch: fetchVersions
+    refetch: fetchVersions,
+    createVersion,
+    deleteVersion
   }
 }

@@ -8,6 +8,8 @@ import type {
   ListResumeVersionsResponse,
   GetResumeVersionResponse,
   ListResumeItemsResponse,
+  CreateResumeVersionResponse,
+  DeleteResumeVersionResponse,
   CreateResumeItemRequest,
   CreateResumeItemResponse,
   UpdateResumeItemRequest,
@@ -19,6 +21,7 @@ import type {
 import {
   ResumeVersionRepository,
   ResumeVersionNotFoundError,
+  ResumeVersionAlreadyExistsError,
   ResumeItemNotFoundError,
   ResumeItemInvalidParentError
 } from './resume-version.repository'
@@ -70,6 +73,16 @@ const reorderRequestSchema = z.object({
   orderIndex: z.number().int().min(0)
 })
 
+const createVersionRequestSchema = z.object({
+  name: z.string().min(1).max(100),
+  slug: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  description: z.string().max(500).optional().nullable()
+})
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
@@ -95,6 +108,10 @@ function handleRouteError(err: unknown, res: Response): boolean {
   }
   if (err instanceof ResumeItemInvalidParentError) {
     res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
+    return true
+  }
+  if (err instanceof ResumeVersionAlreadyExistsError) {
+    res.status(409).json(failure(ApiErrorCode.ALREADY_EXISTS, err.message))
     return true
   }
   return false
@@ -219,6 +236,42 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
       res.setHeader('Content-Type', 'application/pdf')
       res.setHeader('Content-Disposition', `inline; filename="${slug}-resume.pdf"`)
       await pipeline(createReadStream(absolutePath), res)
+    })
+  )
+
+  // ── Version mutation endpoints (admin only) ────────────────────
+
+  // POST / — create version
+  router.post(
+    '/',
+    ...mutationsMiddleware,
+    asyncHandler((req, res) => {
+      try {
+        const payload = createVersionRequestSchema.parse(req.body)
+        const version = repo.createVersion(payload)
+        const response: CreateResumeVersionResponse = { version, message: `Resume version "${version.name}" created` }
+        res.status(201).json(success(response))
+      } catch (err) {
+        if (handleRouteError(err, res)) return
+        throw err
+      }
+    })
+  )
+
+  // DELETE /:slug — delete version
+  router.delete(
+    '/:slug',
+    ...mutationsMiddleware,
+    asyncHandler((req, res) => {
+      try {
+        const slug = slugSchema.parse(req.params.slug)
+        repo.deleteVersion(slug)
+        const response: DeleteResumeVersionResponse = { slug, deleted: true, message: `Resume version "${slug}" deleted` }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRouteError(err, res)) return
+        throw err
+      }
     })
   )
 
