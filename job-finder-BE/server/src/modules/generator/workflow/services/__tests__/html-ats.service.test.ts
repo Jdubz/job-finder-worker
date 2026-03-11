@@ -18,6 +18,44 @@ function makeResume(overrides: Partial<ResumeContent> = {}): ResumeContent {
   }
 }
 
+describe('atsResumeHtml – project rendering', () => {
+  it('renders description as summary paragraph when highlights are present', () => {
+    const html = atsResumeHtml(
+      makeResume({
+        projects: [
+          { name: 'My Project', description: 'A cool platform', highlights: ['Built the thing'] }
+        ]
+      })
+    )
+    expect(html).toContain('<p class="project-desc">A cool platform</p>')
+    expect(html).toContain('Built the thing')
+  })
+
+  it('renders description as bullet fallback when no highlights', () => {
+    const html = atsResumeHtml(
+      makeResume({
+        projects: [
+          { name: 'My Project', description: 'A cool platform', highlights: [] }
+        ]
+      })
+    )
+    expect(html).not.toContain('<p class="project-desc">')
+    expect(html).toContain('<li>A cool platform</li>')
+  })
+
+  it('omits description when not provided', () => {
+    const html = atsResumeHtml(
+      makeResume({
+        projects: [
+          { name: 'My Project', highlights: ['Built the thing'] }
+        ]
+      })
+    )
+    expect(html).not.toContain('<p class="project-desc">')
+    expect(html).toContain('Built the thing')
+  })
+})
+
 describe('atsResumeHtml – education rendering', () => {
   it('combines degree and field with "in" when degree has no "in"', () => {
     const html = atsResumeHtml(

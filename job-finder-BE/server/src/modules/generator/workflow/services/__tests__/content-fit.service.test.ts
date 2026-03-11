@@ -61,6 +61,21 @@ describe('estimateContentFit', () => {
     expect(withProjects.mainColumnLines).toBeGreaterThan(withoutProjects.mainColumnLines)
   })
 
+  it('counts project description lines when highlights are present', () => {
+    const withoutDesc = estimateContentFit(makeResume({
+      projects: [
+        { name: 'Project A', highlights: ['H1', 'H2'] }
+      ]
+    }))
+    const withDesc = estimateContentFit(makeResume({
+      projects: [
+        { name: 'Project A', description: 'A platform for doing things with stuff', highlights: ['H1', 'H2'] }
+      ]
+    }))
+
+    expect(withDesc.mainColumnLines).toBeGreaterThan(withoutDesc.mainColumnLines)
+  })
+
   it('returns suggestions when overflowing', () => {
     // 6 entries triggers "Reduce experience entries from 6 to 4"
     const manyEntries = Array.from({ length: 6 }, (_, i) => ({
