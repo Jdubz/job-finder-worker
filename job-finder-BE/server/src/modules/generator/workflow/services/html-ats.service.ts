@@ -11,19 +11,21 @@ import { atsCss } from './html-ats-style'
 export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string {
   const info = personalInfo ?? (content as any).personalInfo
 
-  // Contact row: pipe-separated with text labels
+  // Contact row: pipe-separated, no labels (ATS uses pattern matching, not labels)
   const contactParts: string[] = []
   if (info?.email) {
-    contactParts.push(`Email: <a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
+    contactParts.push(`<a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
   }
   if (info?.linkedin) {
-    contactParts.push(`LinkedIn: <a href="${escapeAttr(normalizeUrl(info.linkedin))}">LinkedIn</a>`)
+    const linkedinDisplay = info.linkedin.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.linkedin))}">${safeText(linkedinDisplay)}</a>`)
   }
   if (info?.github) {
-    contactParts.push(`GitHub: <a href="${escapeAttr(normalizeUrl(info.github))}">GitHub</a>`)
+    const githubDisplay = info.github.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.github))}">${safeText(githubDisplay)}</a>`)
   }
   if (info?.phone) {
-    contactParts.push(`Phone: ${safeText(info.phone)}`)
+    contactParts.push(safeText(info.phone))
   }
   if (info?.location) {
     contactParts.push(safeText(info.location))
