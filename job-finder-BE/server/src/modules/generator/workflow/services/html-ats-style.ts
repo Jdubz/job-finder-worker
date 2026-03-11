@@ -207,6 +207,12 @@ export const atsCss = `
     color: #111;
   }
 
+  .project-desc {
+    font-size: 10.5px;
+    color: #444;
+    margin: 1px 0 0 0;
+  }
+
   .project-link {
     font-size: 10px;
     color: #2563eb;
