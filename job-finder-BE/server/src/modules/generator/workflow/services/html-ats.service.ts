@@ -1,6 +1,6 @@
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { safeText, escapeAttr } from './text.util'
-import { normalizeUrl } from './url.util'
+import { normalizeUrl, displayUrl } from './url.util'
 import { formatDate } from './date.util'
 import { atsCss } from './html-ats-style'
 
@@ -11,25 +11,25 @@ import { atsCss } from './html-ats-style'
 export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInfo): string {
   const info = personalInfo ?? (content as any).personalInfo
 
-  // Contact row: pipe-separated with text labels
+  // Contact row: pipe-separated, no labels (ATS uses pattern matching, not labels)
   const contactParts: string[] = []
   if (info?.email) {
-    contactParts.push(`Email: <a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
+    contactParts.push(`<a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
   }
   if (info?.linkedin) {
-    contactParts.push(`LinkedIn: <a href="${escapeAttr(normalizeUrl(info.linkedin))}">LinkedIn</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.linkedin))}">${safeText(displayUrl(info.linkedin))}</a>`)
   }
   if (info?.github) {
-    contactParts.push(`GitHub: <a href="${escapeAttr(normalizeUrl(info.github))}">GitHub</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.github))}">${safeText(displayUrl(info.github))}</a>`)
   }
   if (info?.phone) {
-    contactParts.push(`Phone: ${safeText(info.phone)}`)
+    contactParts.push(safeText(info.phone))
   }
   if (info?.location) {
     contactParts.push(safeText(info.location))
   }
   if (info?.website) {
-    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.website))}">${safeText(info.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.website))}">${safeText(displayUrl(info.website))}</a>`)
   }
   const contactRow = contactParts.length
     ? `<div class="contact-row">${contactParts.join('<span class="sep">|</span>')}</div>`
@@ -42,10 +42,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       const bullets = (exp.highlights || [])
         .map((b) => `<li>${safeText(b)}</li>`)
         .join('')
-      const tech = Array.isArray(exp.technologies) && exp.technologies.length
-        ? `<p class="exp-tech">${safeText(exp.technologies.join(', '))}</p>`
-        : ''
-
       return `
         <div class="exp-entry">
           <h3 class="exp-header">
@@ -54,7 +50,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
           </h3>
           <p class="exp-company">${safeText(exp.company)}${exp.location ? ' - ' + safeText(exp.location) : ''}</p>
           ${bullets ? `<ul class="exp-bullets">${bullets}</ul>` : ''}
-          ${tech}
         </div>
       `
     })
@@ -78,9 +73,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
         : ''
       const fallbackDesc = !bullets && proj.description ? `<li>${safeText(proj.description)}</li>` : ''
       const allBullets = bullets || fallbackDesc
-      const tech = proj.technologies?.length
-        ? `<p class="exp-tech">${safeText(proj.technologies.join(', '))}</p>`
-        : ''
       const link = proj.link
         ? ` <span class="project-link">(<a href="${escapeAttr(normalizeUrl(proj.link))}">${safeText(proj.link.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>)</span>`
         : ''
@@ -90,7 +82,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
           <h3 class="project-name">${safeText(proj.name)}${link}</h3>
           ${bullets ? summary : ''}
           ${allBullets ? `<ul class="exp-bullets">${allBullets}</ul>` : ''}
-          ${tech}
         </div>
       `
     })

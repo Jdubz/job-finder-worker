@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeUrl } from '../url.util'
+import { normalizeUrl, displayUrl } from '../url.util'
 
 describe('normalizeUrl', () => {
   it('returns empty string for empty input', () => {
@@ -39,5 +39,38 @@ describe('normalizeUrl', () => {
   it('handles URLs with paths, query strings, and fragments', () => {
     expect(normalizeUrl('example.com/path?query=1#hash')).toBe('https://example.com/path?query=1#hash')
     expect(normalizeUrl('https://example.com/path?query=1#hash')).toBe('https://example.com/path?query=1#hash')
+  })
+})
+
+describe('displayUrl', () => {
+  it('strips https:// protocol', () => {
+    expect(displayUrl('https://linkedin.com/in/josh')).toBe('linkedin.com/in/josh')
+  })
+
+  it('strips http:// protocol', () => {
+    expect(displayUrl('http://github.com/josh')).toBe('github.com/josh')
+  })
+
+  it('strips protocol case-insensitively', () => {
+    expect(displayUrl('HTTPS://github.com/josh')).toBe('github.com/josh')
+    expect(displayUrl('Https://LinkedIn.com/in/josh')).toBe('LinkedIn.com/in/josh')
+  })
+
+  it('strips www. prefix', () => {
+    expect(displayUrl('https://www.linkedin.com/in/josh')).toBe('linkedin.com/in/josh')
+    expect(displayUrl('www.github.com/josh')).toBe('github.com/josh')
+  })
+
+  it('strips trailing slash', () => {
+    expect(displayUrl('https://joshwentworth.com/')).toBe('joshwentworth.com')
+  })
+
+  it('handles bare domain input (no protocol)', () => {
+    expect(displayUrl('linkedin.com/in/josh')).toBe('linkedin.com/in/josh')
+    expect(displayUrl('github.com/josh')).toBe('github.com/josh')
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(displayUrl('')).toBe('')
   })
 })

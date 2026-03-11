@@ -39,7 +39,6 @@ const SKILL_CHARS_PER_LINE = 100
 
 // Heuristic averages for functions that don't have actual text to measure
 const AVG_LINES_PER_BULLET = 1.5
-const AVG_LINES_PER_TECH = 1.5
 
 // Summary CSS uses line-height: 1.4 but the line unit is based on 1.35.
 // Each summary line costs 15.4px / 14.175px ≈ 1.09 line-units.
@@ -121,10 +120,6 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
     for (const bullet of exp.highlights || []) {
       mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE) + LAYOUT.BULLET_OVERHEAD
     }
-    const techText = (exp.technologies || []).join(', ')
-    if (techText) {
-      mainLines += textToLines(techText, CHARS_PER_LINE)
-    }
     mainLines += LAYOUT.EXP_SPACING
   }
   // When experience has entries, trailing margin is the last entry's EXP_SPACING.
@@ -160,10 +155,6 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
         }
       } else if (proj.description) {
         mainLines += textToLines(proj.description, BULLET_CHARS_PER_LINE)
-      }
-      const techText = (proj.technologies || []).join(', ')
-      if (techText) {
-        mainLines += textToLines(techText, CHARS_PER_LINE)
       }
       mainLines += LAYOUT.PROJECT_SPACING
     }
@@ -249,7 +240,7 @@ export function getRecommendedSkillCategories(experienceCount: number, avgBullet
   const mainLines = LAYOUT.HEADER_LINES +
     LAYOUT.SECTION_TITLE_LINES + 3 * SUMMARY_LINE_SCALE + // Summary ~3 lines (scaled)
     LAYOUT.SECTION_TITLE_LINES +
-    experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * AVG_LINES_PER_BULLET + AVG_LINES_PER_TECH + LAYOUT.EXP_SPACING)
+    experienceCount * (LAYOUT.EXP_HEADER_LINES + avgBulletsPerExp * AVG_LINES_PER_BULLET + LAYOUT.EXP_SPACING)
 
   const remainingLines = LAYOUT.MAX_LINES - mainLines
   // Reserve education section: title + ~2 entries

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { atsResumeHtml } from '../html-ats.service'
-import type { ResumeContent } from '@shared/types'
+import type { ResumeContent, PersonalInfo } from '@shared/types'
 
 function makeResume(overrides: Partial<ResumeContent> = {}): ResumeContent {
   return {
@@ -17,6 +17,69 @@ function makeResume(overrides: Partial<ResumeContent> = {}): ResumeContent {
     ...overrides
   }
 }
+
+describe('atsResumeHtml – contact row', () => {
+  const personalInfo: PersonalInfo = {
+    name: 'Josh Wentworth',
+    email: 'contact@joshwentworth.com',
+    title: 'Full-Stack Engineer',
+    location: 'Portland, OR',
+    phone: '(510)898-8892',
+    linkedin: 'https://www.linkedin.com/in/josh',
+    github: 'https://github.com/josh',
+    website: 'https://joshwentworth.com/',
+    applicationInfo: ''
+  }
+
+  function renderContact(overrides: Partial<PersonalInfo> = {}): string {
+    return atsResumeHtml(makeResume(), { ...personalInfo, ...overrides })
+  }
+
+  it('does not render label prefixes', () => {
+    const html = renderContact()
+    expect(html).not.toContain('Email:')
+    expect(html).not.toContain('LinkedIn:')
+    expect(html).not.toContain('GitHub:')
+    expect(html).not.toContain('Phone:')
+  })
+
+  it('strips protocol and www from LinkedIn display', () => {
+    const html = renderContact()
+    expect(html).toContain('>linkedin.com/in/josh<')
+  })
+
+  it('strips protocol from GitHub display', () => {
+    const html = renderContact()
+    expect(html).toContain('>github.com/josh<')
+  })
+
+  it('strips protocol and trailing slash from website display', () => {
+    const html = renderContact()
+    expect(html).toContain('>joshwentworth.com<')
+  })
+
+  it('handles bare domain input without protocol', () => {
+    const html = renderContact({ linkedin: 'linkedin.com/in/josh', github: 'github.com/josh' })
+    expect(html).toContain('>linkedin.com/in/josh<')
+    expect(html).toContain('>github.com/josh<')
+  })
+
+  it('handles www-prefixed input without protocol', () => {
+    const html = renderContact({ linkedin: 'www.linkedin.com/in/josh' })
+    expect(html).toContain('>linkedin.com/in/josh<')
+  })
+
+  it('renders email as plain text (no label)', () => {
+    const html = renderContact()
+    expect(html).toContain('>contact@joshwentworth.com<')
+    expect(html).toContain('mailto:contact@joshwentworth.com')
+  })
+
+  it('renders phone as plain text', () => {
+    const html = renderContact()
+    expect(html).toContain('(510)898-8892')
+  })
+})
 
 describe('atsResumeHtml – project rendering', () => {
   it('renders description as summary paragraph when highlights are present', () => {

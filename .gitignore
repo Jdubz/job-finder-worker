@@ -45,6 +45,10 @@ htmlcov/
 **/test-results/
 **/playwright-report/
 
+# Extraction benchmark generated artifacts
+job-finder-worker/tests/extraction_benchmark/ground_truth_batch_*.jsonl
+job-finder-worker/tests/extraction_benchmark/results/*.jsonl
+
 # Firebase
 **/.firebase/
 **/firebase-debug.log

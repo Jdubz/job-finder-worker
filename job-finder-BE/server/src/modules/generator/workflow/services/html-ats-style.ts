@@ -171,14 +171,6 @@ export const atsCss = `
     color: #2563eb;
   }
 
-  .exp-tech {
-    font-size: 10px;
-    color: #666;
-    font-style: italic;
-    margin-top: 2px;
-    margin-left: 16px;
-  }
-
   /* ── Skills ─────────────────────────────────────────────── */
   .skills-list {
     margin-bottom: 2px;
