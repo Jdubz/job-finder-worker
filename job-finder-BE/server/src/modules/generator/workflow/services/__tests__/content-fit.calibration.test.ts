@@ -106,8 +106,6 @@ async function measureContentHeight(content: ResumeContent): Promise<{
         if (co) elementHeights[`  exp-company: ${role}`] = co.getBoundingClientRect().height
         const ul = el.querySelector('.exp-bullets') as HTMLElement
         if (ul) elementHeights[`  exp-bullets: ${role}`] = ul.getBoundingClientRect().height
-        const tech = el.querySelector('.exp-tech') as HTMLElement
-        if (tech) elementHeights[`  exp-tech: ${role}`] = tech.getBoundingClientRect().height
       })
 
       // Skills
