@@ -166,7 +166,7 @@ def build_extraction_prompt(
     user = f"""Job Title: {title}{location_section}{posted_section}{structured_section}
 
 Job Description:
-{description[:4000]}"""
+{description[:8000]}"""
 
     return (system, user)
 
@@ -220,6 +220,6 @@ Return ONLY the JSON object, no explanation or markdown."""
     user = f"""Job Title: {title}{location_section}{posted_section}
 
 Job Description:
-{description[:4000]}"""
+{description[:8000]}"""
 
     return (system, user)

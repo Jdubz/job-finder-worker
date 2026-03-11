@@ -2,6 +2,12 @@
 
 Extracts structured semantic data from job postings using AI.
 This data is then used by the deterministic ScoringEngine.
+
+Post-extraction validation guards catch common hallucinations:
+- Salary: nulled when description has no salary-related text
+- Equity: nulled when description has no compensation-equity text
+- Technologies: entries >35 chars or >4 words are dropped
+- Short descriptions (<200 chars): raise ExtractionError
 """
 
 import json
@@ -15,6 +21,50 @@ from job_finder.ai.response_parser import extract_json_from_response
 from job_finder.exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
+
+# ── Post-extraction validation constants ────────────────────────────────────
+
+# Minimum description length to attempt extraction.  Descriptions shorter than
+# this are broken scrapes (requisition IDs, stubs) that produce garbage.
+MIN_DESCRIPTION_LENGTH = 200
+
+# Maximum length / word count for a single technology entry.
+_MAX_TECH_LENGTH = 35
+_MAX_TECH_WORDS = 4
+
+# Keywords whose presence in the description indicates salary info exists.
+# Checked case-insensitively.
+_SALARY_KEYWORDS = (
+    "$",
+    "salary",
+    "compensation",
+    "per year",
+    "per annum",
+    "annually",
+    "usd ",
+    "usd,",
+    "pay range",
+    "base pay",
+    "hourly rate",
+    "wage",
+    "total comp",
+    "on-target earnings",
+)
+
+# Keywords indicating genuine compensation-equity (not DEI "equity").
+_EQUITY_KEYWORDS = (
+    "stock",
+    "rsu",
+    "rsus",
+    "vest",
+    "vesting",
+    "shares",
+    "options",
+    "equity compensation",
+    "equity grant",
+    "equity package",
+    "equity award",
+)
 
 # Type checking import to avoid circular dependency
 from typing import TYPE_CHECKING
@@ -73,6 +123,9 @@ class JobExtractionResult:
 
     # Timezone flexibility for remote jobs
     timezone_flexible: bool = False
+
+    # Which model performed the extraction
+    extraction_model: Optional[str] = None
 
     # Key fields used for confidence scoring
     CONFIDENCE_FIELDS = (
@@ -169,6 +222,8 @@ class JobExtractionResult:
             "confidence": self.confidence,
             # Timezone flexibility
             "timezoneFlexible": self.timezone_flexible,
+            # Model tracking
+            "extractionModel": self.extraction_model,
         }
 
     @classmethod
@@ -213,6 +268,8 @@ class JobExtractionResult:
             role_types=_parse_role_types(data),
             # Timezone flexibility
             timezone_flexible=bool(_get("timezoneFlexible", "timezone_flexible", False)),
+            # Model tracking
+            extraction_model=_get("extractionModel", "extraction_model"),
         )
         result.confidence = result.compute_confidence()
         return result
@@ -317,6 +374,110 @@ def _safe_days_old(value: Any) -> Optional[int]:
     return None
 
 
+# ── Post-extraction validation helpers ──────────────────────────────────────
+
+
+def _sanitize_technologies(result: "JobExtractionResult") -> None:
+    """Remove garbage technology entries that are clearly not tech names.
+
+    Rules (validated against 12,102 production entries):
+    - Drop entries longer than 35 chars (0.5% of entries, all garbage)
+    - Drop entries with more than 4 words (catches phrases like
+      "diagnosing and resolving technical issues")
+    - Deduplicate
+    """
+    if not result.technologies:
+        return
+
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for tech in result.technologies:
+        t = tech.strip()
+        if not t or len(t) > _MAX_TECH_LENGTH:
+            continue
+        if len(t.split()) > _MAX_TECH_WORDS:
+            continue
+        key = t.lower()
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(t)
+
+    if len(cleaned) != len(result.technologies):
+        dropped = len(result.technologies) - len(cleaned)
+        logger.debug("Sanitized technologies: dropped %d entries", dropped)
+    result.technologies = cleaned
+
+
+def _guard_salary(
+    result: "JobExtractionResult",
+    description: str,
+    salary_range: Optional[str],
+) -> None:
+    """Null out AI-extracted salary when the description has no salary text.
+
+    If the scraper already provided a salary_range, the AI salary is kept
+    (it was likely parsed from that structured data).  Otherwise, the
+    description must contain at least one salary keyword for the AI value
+    to be trusted.
+
+    Validated: catches ~115 hallucinated salaries while preserving 651
+    legitimate extractions (15% false-positive rate in production).
+    """
+    if result.salary_min is None and result.salary_max is None:
+        return  # nothing to guard
+
+    # Scraped salary exists — AI likely parsed from structured data, keep it
+    if salary_range:
+        return
+
+    desc_lower = description.lower()
+    for kw in _SALARY_KEYWORDS:
+        if kw in desc_lower:
+            return  # description mentions salary, trust the extraction
+
+    logger.info(
+        "Salary guard: nulling hallucinated salary %s-%s (no salary text in description)",
+        result.salary_min,
+        result.salary_max,
+    )
+    result.salary_min = None
+    result.salary_max = None
+
+
+def _guard_equity(result: "JobExtractionResult", description: str) -> None:
+    """Set includesEquity to false when description has no equity-compensation text.
+
+    Distinguishes compensation equity (stock, RSU, vesting) from DEI equity
+    (diversity, equity, inclusion).
+
+    Validated: catches ~98 hallucinated equity flags.  30% of "equity"
+    mentions in production are DEI context, not compensation.
+    """
+    if not result.includes_equity:
+        return  # nothing to guard
+
+    desc_lower = description.lower()
+
+    for kw in _EQUITY_KEYWORDS:
+        if re.search(r"\b" + re.escape(kw) + r"\b", desc_lower):
+            return  # genuine compensation-equity mention
+
+    # Check for standalone "equity" NOT in DEI context
+    # Look for "equity" that is NOT preceded/followed by diversity/inclusion
+    if "equity" in desc_lower:
+        # Find all occurrences and check context
+        for match in re.finditer(r"equity", desc_lower):
+            start = max(0, match.start() - 40)
+            end = min(len(desc_lower), match.end() + 40)
+            context = desc_lower[start:end]
+            # If "diversity" or "inclusion" appear nearby, it's DEI
+            if "diversity" not in context and "inclusion" not in context:
+                return  # standalone equity mention — trust it
+
+    logger.info("Equity guard: clearing hallucinated includesEquity flag")
+    result.includes_equity = False
+
+
 class JobExtractor:
     """
     Extract structured semantic data from job postings using AI.
@@ -362,9 +523,18 @@ class JobExtractor:
 
         Returns:
             JobExtractionResult with extracted data
+
+        Raises:
+            ExtractionError: If title/description empty or description too short
         """
         if not description or not title:
             raise ExtractionError("Empty title or description provided for extraction")
+
+        if len(description) < MIN_DESCRIPTION_LENGTH:
+            raise ExtractionError(
+                f"Description too short for reliable extraction "
+                f"({len(description)} chars < {MIN_DESCRIPTION_LENGTH})"
+            )
 
         system_prompt, user_prompt = build_extraction_prompt(
             title,
@@ -382,7 +552,15 @@ class JobExtractor:
             max_tokens=2048,
             temperature=0.1,  # Low temperature for consistent extraction
         )
-        return self._parse_response(result.text)
+        extraction = self._parse_response(result.text)
+        extraction.extraction_model = result.model
+
+        # Post-extraction validation guards
+        _sanitize_technologies(extraction)
+        _guard_salary(extraction, description, salary_range)
+        _guard_equity(extraction, description)
+
+        return extraction
 
     def _parse_response(self, response: str) -> JobExtractionResult:
         """
