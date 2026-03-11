@@ -1,25 +1,49 @@
-"""Prompt templates for job data extraction.
+#!/usr/bin/env python3
+"""Generate ground truth extraction data using Claude Sonnet.
 
-Each prompt function returns a PromptPair (system, user) to enable:
-- Clear separation of general instructions (system) from per-request context (user)
-- Prompt caching on providers that support it (system prompt is stable per day)
-- Better instruction following on local models (clear system/user separation)
+Reads sample_listings.jsonl and sends each job through Claude with the exact
+same extraction prompt used in production.  Claude's output is treated as
+ground truth for benchmarking local models.
+
+Usage:
+    # Requires ANTHROPIC_API_KEY in env
+    python generate_ground_truth.py
+
+Output:
+    ground_truth.jsonl  — one JSON object per line with:
+        {id, title, company_name, extraction: {...}}
 """
 
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+try:
+    from openai import OpenAI
+except ImportError:
+    sys.exit("pip install openai")
+
+BENCHMARK_DIR = Path(__file__).parent
+SAMPLE_FILE = BENCHMARK_DIR / "sample_listings.jsonl"
+OUTPUT_FILE = BENCHMARK_DIR / "ground_truth.jsonl"
+
+# Use the same prompt from production, but with today's date frozen for
+# reproducibility. We import the prompt builder to stay in sync.
+sys.path.insert(0, str(BENCHMARK_DIR.parent.parent / "src"))
+
+# Build prompt inline to avoid import chain issues (sqlite3, etc.)
 from datetime import date
-from typing import List, Optional, Tuple
 
-# (system_prompt, user_prompt)
-PromptPair = Tuple[str, str]
+TODAY = date.today().isoformat()
 
 
-def _build_extraction_system_prompt() -> str:
-    """Build the system prompt for extraction (stable per day, cacheable intra-day)."""
-    today_str = date.today().isoformat()
-
+def build_system_prompt() -> str:
+    """Identical to _build_extraction_system_prompt() in extraction_prompts.py."""
     return f"""You are a job posting data extractor. Extract structured information and return ONLY a valid JSON object.
 
-Today's date: {today_str}
+Today's date: {TODAY}
 
 Extract and return this exact JSON structure (use null for unknown values, false for unknown booleans):
 {{
@@ -87,9 +111,9 @@ Rules:
    - India -> +5.5
    - If no location/timezone info, use null
 
-6. For daysOld, calculate days between posted date and today ({today_str}):
+6. For daysOld, calculate days between posted date and today ({TODAY}):
    - "Posted 3 days ago" -> 3
-   - "Posted December 1, 2025" with today {today_str} -> calculate difference
+   - "Posted December 1, 2025" with today {TODAY} -> calculate difference
    - If no posted date or unclear, use null
 
 7. roleTypes - array of role type strings that describe the position. Include ALL that apply:
@@ -121,36 +145,18 @@ Rules:
 Return ONLY the JSON object, no explanation or markdown."""
 
 
-def build_extraction_prompt(
-    title: str,
-    description: str,
-    location: Optional[str] = None,
-    posted_date: Optional[str] = None,
-    salary_range: Optional[str] = None,
-    url: Optional[str] = None,
-) -> PromptPair:
-    """
-    Build prompt for extracting structured data from a job posting.
-
-    AI extracts DATA ONLY - no scoring or match calculations.
-
-    Args:
-        title: Job title
-        description: Job description text
-        location: Optional location string from job posting
-        posted_date: Optional posted date string
-        salary_range: Optional pre-extracted salary range from ATS API
-        url: Optional job listing URL (may contain metadata like employmentType)
-
-    Returns:
-        PromptPair of (system_prompt, user_prompt) for AI extraction
-    """
-    system = _build_extraction_system_prompt()
+def build_user_prompt(job: dict) -> str:
+    """Build the user prompt from a sample listing."""
+    title = job["title"]
+    description = job["description"] or ""
+    location = job.get("location")
+    posted_date = job.get("posted_date")
+    salary_range = job.get("salary_range")
+    url = job.get("url")
 
     location_section = f"\nLocation: {location}" if location else ""
     posted_section = f"\nPosted: {posted_date}" if posted_date else ""
 
-    # Build structured data section from pre-extracted ATS data
     structured_lines = []
     if salary_range:
         structured_lines.append(f"Salary Range: {salary_range}")
@@ -163,63 +169,113 @@ def build_extraction_prompt(
             + "\n".join(structured_lines)
         )
 
-    user = f"""Job Title: {title}{location_section}{posted_section}{structured_section}
+    return f"""Job Title: {title}{location_section}{posted_section}{structured_section}
 
 Job Description:
 {description[:8000]}"""
 
-    return (system, user)
+
+def extract_json(text: str) -> dict:
+    """Extract JSON from Claude's response."""
+    text = text.strip()
+    # Strip markdown code fences
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = [ln for ln in lines if not ln.strip().startswith("```")]
+        text = "\n".join(lines)
+    return json.loads(text)
 
 
-def build_repair_prompt(
-    title: str,
-    description: str,
-    missing_fields: List[str],
-    location: Optional[str] = None,
-    posted_date: Optional[str] = None,
-) -> PromptPair:
-    """Build a targeted repair prompt for fields the initial extraction missed.
+def main():
+    # Use LiteLLM proxy (has all API keys configured) or direct Anthropic API
+    litellm_url = os.environ.get("LITELLM_URL", "http://localhost:4000")
+    litellm_key = os.environ.get("LITELLM_MASTER_KEY", "")
+    model = os.environ.get("GROUND_TRUTH_MODEL", "claude-document")
 
-    Args:
-        title: Job title
-        description: Job description text
-        missing_fields: List of field names that were null/unknown
-        location: Optional location string
-        posted_date: Optional posted date string
+    client = OpenAI(
+        base_url=f"{litellm_url}/v1",
+        api_key=litellm_key or "none",
+    )
+    system_prompt = build_system_prompt()
+    print(f"Using LiteLLM at {litellm_url}, model={model}")
 
-    Returns:
-        PromptPair of (system_prompt, user_prompt) for repair extraction
-    """
-    today_str = date.today().isoformat()
+    # Load sample listings
+    listings = []
+    with open(SAMPLE_FILE) as f:
+        for line in f:
+            listings.append(json.loads(line))
 
-    field_hints = {
-        "seniority": "seniority (junior/mid/senior/staff/lead/principal) — infer from title, years of experience mentioned, or responsibility level",
-        "work_arrangement": 'workArrangement (remote/hybrid/onsite) — look for "remote", "hybrid", "on-site", office mentions, or location field',
-        "timezone": "timezone (UTC offset as float) — infer from city, state, country, or office location mentioned",
-        "salary_min": "salaryMin/salaryMax (annual USD integers) — look for salary ranges, hourly rates (convert to annual), or compensation sections",
-        "employment_type": "employmentType (full-time/part-time/contract) — look for benefits, contract language, or employment type mentions",
-        "technologies": "technologies (array of lowercase strings) — programming languages, frameworks, tools, platforms mentioned in requirements",
-    }
+    print(f"Loaded {len(listings)} sample listings")
 
-    field_descriptions = "\n".join(f"- {field_hints.get(f, f)}" for f in missing_fields)
+    # Resume from existing output if interrupted
+    done_ids: set[str] = set()
+    if OUTPUT_FILE.exists():
+        with open(OUTPUT_FILE) as f:
+            for line in f:
+                obj = json.loads(line)
+                done_ids.add(obj["id"])
+        print(f"Resuming: {len(done_ids)} already completed")
 
-    system = f"""You are a job posting data extractor performing a repair pass. The initial extraction returned null/unknown for several fields.
+    remaining = [item for item in listings if item["id"] not in done_ids]
+    print(f"Processing {len(remaining)} remaining listings...")
 
-Today's date: {today_str}
+    errors = 0
+    with open(OUTPUT_FILE, "a") as out:
+        for i, job in enumerate(remaining):
+            job_id = job["id"]
+            title = job["title"]
+            company = job["company_name"]
 
-Missing fields to fill:
-{field_descriptions}
+            user_prompt = build_user_prompt(job)
 
-Re-examine the posting and try harder to infer these specific fields. Return ONLY a JSON object with the fields you can now fill. Use camelCase field names. For fields you still cannot determine, use null or "unknown" as appropriate. Do not include fields that were already successfully extracted.
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    max_tokens=2048,
+                    temperature=0.0,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                )
+                text = response.choices[0].message.content or ""
+                extraction = extract_json(text)
 
-Return ONLY the JSON object, no explanation or markdown."""
+                # Normalize technologies to lowercase
+                if "technologies" in extraction:
+                    extraction["technologies"] = [
+                        t.lower().strip() for t in extraction["technologies"] if isinstance(t, str)
+                    ]
 
-    location_section = f"\nLocation: {location}" if location else ""
-    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
+                record = {
+                    "id": job_id,
+                    "title": title,
+                    "company_name": company,
+                    "extraction": extraction,
+                }
+                out.write(json.dumps(record) + "\n")
+                out.flush()
 
-    user = f"""Job Title: {title}{location_section}{posted_section}
+                print(
+                    f"  [{i+1}/{len(remaining)}] {company} — {title[:50]}  "
+                    f"({extraction.get('seniority', '?')}, "
+                    f"{extraction.get('workArrangement', '?')}, "
+                    f"{len(extraction.get('technologies', []))} techs)"
+                )
 
-Job Description:
-{description[:8000]}"""
+            except Exception as e:
+                errors += 1
+                print(f"  [{i+1}/{len(remaining)}] ERROR: {company} — {title[:50]}: {e}")
 
-    return (system, user)
+            # Rate limit courtesy
+            time.sleep(0.5)
+
+    total = len(done_ids) + len(remaining) - errors
+    print(f"\nDone. {total} ground truth records in {OUTPUT_FILE}")
+    if errors:
+        print(f"  {errors} errors — re-run to retry")
+
+
+if __name__ == "__main__":
+    main()

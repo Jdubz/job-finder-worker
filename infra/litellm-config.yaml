@@ -9,7 +9,7 @@
 # ──────────────
 #   claude-document  → Claude Sonnet (via API key)
 #   gemini-general   → Gemini 2.5 Flash (via API key)
-#   local-extract    → Ollama Llama 3.1 8B (local, no cost)
+#   local-extract    → Ollama Gemma3 12B (local, no cost)
 #
 # FALLBACK CHAINS:
 # ────────────────
@@ -34,10 +34,11 @@ model_list:
       api_key: os.environ/GEMINI_API_KEY
 
   # ── Local extraction/analysis ───────────────────────────────────────────────
-  # Ollama Llama 3.1 8B — zero cost, runs locally via Docker
+  # Ollama Gemma3 12B — zero cost, runs locally via Docker
+  # Benchmarked at 83.9% accuracy vs Claude ground truth (best of 7 models tested)
   - model_name: local-extract
     litellm_params:
-      model: openai/llama3.1:8b
+      model: openai/gemma3:12b
       api_base: http://ollama:11434/v1
       api_key: none
 
