@@ -562,7 +562,7 @@ class TestExtractWithRepair:
         initial.confidence = initial.compute_confidence()
 
         extractor = self._make_extractor(initial)
-        result = extractor.extract_with_repair("Title", "Description")
+        result = extractor.extract_with_repair("Title", "A" * 200)
 
         assert result is initial
         # Agent manager should only be called once (no repair)
@@ -589,7 +589,7 @@ class TestExtractWithRepair:
         )
 
         extractor = self._make_extractor(initial, repair)
-        result = extractor.extract_with_repair("Title", "Description")
+        result = extractor.extract_with_repair("Title", "A" * 200)
 
         # Should have called inference_client twice
         assert extractor.agent_manager.execute.call_count == 2
@@ -621,7 +621,7 @@ class TestExtractWithRepair:
         parse_results = [initial]
         extractor._parse_response = MagicMock(side_effect=parse_results)
 
-        result = extractor.extract_with_repair("Title", "Description")
+        result = extractor.extract_with_repair("Title", "A" * 200)
         # Should return original result despite repair failure
         assert result.seniority == "unknown"
 

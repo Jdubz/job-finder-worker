@@ -41,6 +41,11 @@ SAMPLE_FILE = BENCHMARK_DIR / "sample_listings.jsonl"
 GROUND_TRUTH_FILE = BENCHMARK_DIR / "ground_truth.jsonl"
 RESULTS_DIR = BENCHMARK_DIR / "results"
 
+# Import the production prompt builder to stay in sync.
+sys.path.insert(0, str(BENCHMARK_DIR.parent.parent / "src"))
+
+from job_finder.ai.extraction_prompts import build_extraction_prompt  # noqa: E402
+
 # Ollama endpoint — defaults to localhost but production Ollama is only
 # accessible inside the Docker network.  Use --ollama-url or set OLLAMA_URL.
 # For production: temporarily expose via
@@ -63,101 +68,6 @@ CANDIDATE_MODELS = [
 ]
 
 TODAY = date.today().isoformat()
-
-
-def build_system_prompt() -> str:
-    """Same extraction system prompt as production and ground truth generator."""
-    return f"""You are a job posting data extractor. Extract structured information and return ONLY a valid JSON object.
-
-Today's date: {TODAY}
-
-Extract and return this exact JSON structure (use null for unknown values, false for unknown booleans):
-{{
-  "seniority": "<junior|mid|senior|staff|lead|principal|unknown>",
-  "workArrangement": "<remote|hybrid|onsite|unknown>",
-  "timezone": <UTC offset as float, e.g. -8 for PST, +5.5 for India, or null>,
-  "city": "<city name or null>",
-  "salaryMin": <minimum annual salary as integer or null>,
-  "salaryMax": <maximum annual salary as integer or null>,
-  "experienceMin": <minimum years required as integer or null>,
-  "experienceMax": <maximum years required as integer or null>,
-  "technologies": ["<tech1>", "<tech2>", ...],
-  "daysOld": <number of days between posted date and today, or null if unknown>,
-  "isRepost": <true if this appears to be a reposted job, false otherwise>,
-  "relocationRequired": <true if explicitly requires relocation, false otherwise>,
-  "includesEquity": <true if compensation includes equity/stock, false otherwise>,
-  "isContract": <true if contract/temporary/freelance/hourly position, false otherwise>,
-  "employmentType": "<full-time|part-time|contract|unknown>",
-  "isManagement": <true if people management responsibilities, false otherwise>,
-  "isLead": <true if technical lead role, false otherwise>,
-  "roleTypes": ["<role-type-1>", "<role-type-2>", ...],
-  "timezoneFlexible": <true if no timezone requirement, false otherwise>
-}}
-
-Rules:
-1. Infer seniority from title and description:
-   - "junior", "entry", "associate", "I", "1" -> "junior"
-   - "mid", "intermediate", "II", "2" -> "mid"
-   - "senior", "sr", "III", "3" -> "senior"
-   - "staff", "IV", "4" -> "staff"
-   - "lead", "principal", "architect", "distinguished", "V", "5+" -> "lead" or "principal"
-   - If unclear, use "unknown"
-
-2. Detect work arrangement — IMPORTANT: check in this exact priority order:
-   a) If the Location field contains "Remote" anywhere, classify as "remote". This overrides ALL other signals.
-   b) If the Location field says "Distributed" or contains only a country name without a city, classify as "remote".
-   c) If the description says "remotely in the United States", "remote-eligible", "can be held remotely", "work from anywhere", "fully remote", or "100% remote", classify as "remote".
-   d) "hybrid", "2-3 days in office", "in-office with flexibility" -> "hybrid"
-   e) "on-site", "in-office required", "must be local", "must relocate" -> "onsite"
-   f) If ambiguous, use "unknown"
-
-3. Parse salary as annual USD amounts (convert hourly/monthly if needed). If no salary info, use null.
-
-4. Extract technologies/skills: programming languages, frameworks, tools, platforms. Lowercase all entries.
-
-5. For timezone, return UTC offset as float based on location. If unknown, null.
-
-6. For daysOld, calculate days between posted date and today ({TODAY}). If unknown, null.
-
-7. roleTypes - include ALL that apply: "backend", "frontend", "fullstack", "devops", "ml-ai", "data", "security", "clearance-required", "consulting", "mobile", "embedded", "qa", "non-software"
-
-8. relocationRequired: ONLY true if explicitly requires relocation.
-
-9. timezoneFlexible: true only if explicitly no timezone requirement.
-
-10. employmentType: infer from benefits, contract language, URL params. Default isContract to false.
-
-Return ONLY the JSON object, no explanation or markdown."""
-
-
-def build_user_prompt(job: dict) -> str:
-    """Build user prompt from a sample listing."""
-    title = job["title"]
-    description = job["description"] or ""
-    location = job.get("location")
-    posted_date = job.get("posted_date")
-    salary_range = job.get("salary_range")
-    url = job.get("url")
-
-    location_section = f"\nLocation: {location}" if location else ""
-    posted_section = f"\nPosted: {posted_date}" if posted_date else ""
-
-    structured_lines = []
-    if salary_range:
-        structured_lines.append(f"Salary Range: {salary_range}")
-    if url:
-        structured_lines.append(f"URL: {url}")
-    structured_section = ""
-    if structured_lines:
-        structured_section = (
-            "\n\nPre-extracted structured data (from ATS API — authoritative):\n"
-            + "\n".join(structured_lines)
-        )
-
-    return f"""Job Title: {title}{location_section}{posted_section}{structured_section}
-
-Job Description:
-{description[:8000]}"""
 
 
 def extract_json_from_response(text: str) -> Optional[dict]:
@@ -419,14 +329,20 @@ def run_model_benchmark(model: str, listings: list[dict], ground_truth: dict[str
     print(f"  Processing {len(remaining)} jobs with {model}...")
 
     client = OpenAI(base_url=f"{OLLAMA_URL}/v1", api_key="none")
-    system_prompt = build_system_prompt()
 
     errors = 0
     total_time = 0.0
 
     with open(result_file, "a") as out:
         for i, job in enumerate(remaining):
-            user_prompt = build_user_prompt(job)
+            system_prompt, user_prompt = build_extraction_prompt(
+                title=job["title"],
+                description=job["description"] or "",
+                location=job.get("location"),
+                posted_date=job.get("posted_date"),
+                salary_range=job.get("salary_range"),
+                url=job.get("url"),
+            )
             t0 = time.time()
 
             try:

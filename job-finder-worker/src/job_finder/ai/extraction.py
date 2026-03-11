@@ -49,7 +49,6 @@ _SALARY_KEYWORDS = (
     "wage",
     "total comp",
     "on-target earnings",
-    "ote",
 )
 
 # Keywords indicating genuine compensation-equity (not DEI "equity").
@@ -269,6 +268,8 @@ class JobExtractionResult:
             role_types=_parse_role_types(data),
             # Timezone flexibility
             timezone_flexible=bool(_get("timezoneFlexible", "timezone_flexible", False)),
+            # Model tracking
+            extraction_model=_get("extractionModel", "extraction_model"),
         )
         result.confidence = result.compute_confidence()
         return result
@@ -458,7 +459,7 @@ def _guard_equity(result: "JobExtractionResult", description: str) -> None:
     desc_lower = description.lower()
 
     for kw in _EQUITY_KEYWORDS:
-        if kw in desc_lower:
+        if re.search(r"\b" + re.escape(kw) + r"\b", desc_lower):
             return  # genuine compensation-equity mention
 
     # Check for standalone "equity" NOT in DEI context

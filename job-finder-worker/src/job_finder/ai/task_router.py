@@ -10,10 +10,6 @@ Model selection (2026-03-10 benchmark):
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 # Task type → LiteLLM model name
 # LiteLLM config defines what provider each model routes to and its fallback chain.
 TASK_MODEL_MAP = {
