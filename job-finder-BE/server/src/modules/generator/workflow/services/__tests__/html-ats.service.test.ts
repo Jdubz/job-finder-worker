@@ -47,7 +47,7 @@ describe('atsResumeHtml – project rendering', () => {
     const html = atsResumeHtml(
       makeResume({
         projects: [
-          { name: 'My Project', highlights: ['Built the thing'] }
+          { name: 'My Project', description: '', highlights: ['Built the thing'] }
         ]
       })
     )

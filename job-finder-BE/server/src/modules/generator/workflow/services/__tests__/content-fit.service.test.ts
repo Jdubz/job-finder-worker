@@ -64,7 +64,7 @@ describe('estimateContentFit', () => {
   it('counts project description lines when highlights are present', () => {
     const withoutDesc = estimateContentFit(makeResume({
       projects: [
-        { name: 'Project A', highlights: ['H1', 'H2'] }
+        { name: 'Project A', description: '', highlights: ['H1', 'H2'] }
       ]
     }))
     const withDesc = estimateContentFit(makeResume({
