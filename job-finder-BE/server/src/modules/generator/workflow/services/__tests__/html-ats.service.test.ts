@@ -43,30 +43,21 @@ describe('atsResumeHtml – contact row', () => {
     expect(html).not.toContain('Phone:')
   })
 
-  it('strips protocol and www from LinkedIn display', () => {
+  it('renders LinkedIn as short anchor text with full href', () => {
     const html = renderContact()
-    expect(html).toContain('>linkedin.com/in/josh<')
+    expect(html).toContain('>LinkedIn<')
+    expect(html).toContain('href="https://www.linkedin.com/in/josh"')
   })
 
-  it('strips protocol from GitHub display', () => {
+  it('renders GitHub as short anchor text with full href', () => {
     const html = renderContact()
-    expect(html).toContain('>github.com/josh<')
+    expect(html).toContain('>GitHub<')
+    expect(html).toContain('href="https://github.com/josh"')
   })
 
-  it('strips protocol and trailing slash from website display', () => {
+  it('renders website as display URL', () => {
     const html = renderContact()
     expect(html).toContain('>joshwentworth.com<')
-  })
-
-  it('handles bare domain input without protocol', () => {
-    const html = renderContact({ linkedin: 'linkedin.com/in/josh', github: 'github.com/josh' })
-    expect(html).toContain('>linkedin.com/in/josh<')
-    expect(html).toContain('>github.com/josh<')
-  })
-
-  it('handles www-prefixed input without protocol', () => {
-    const html = renderContact({ linkedin: 'www.linkedin.com/in/josh' })
-    expect(html).toContain('>linkedin.com/in/josh<')
   })
 
   it('renders email as plain text (no label)', () => {
