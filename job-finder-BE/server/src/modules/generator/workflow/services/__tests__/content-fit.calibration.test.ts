@@ -3,10 +3,12 @@
  *
  * Renders actual resume HTML via Playwright and measures the real content
  * height in pixels, then compares against the estimator's prediction.
- * This test does NOT assert pass/fail — it prints a calibration report
- * showing exactly where the estimator diverges from reality.
+ * Asserts estimator accuracy within a loose threshold and prints a detailed
+ * calibration report showing where the estimator diverges from reality.
  *
- * Run: npx vitest run --reporter=verbose content-fit.calibration
+ * Skipped by default — pixel measurements depend on system fonts and
+ * Chromium rendering, making them flaky across environments.
+ * Run explicitly: CALIBRATE=1 npx vitest run --reporter=verbose content-fit.calibration
  */
 import { describe, it, expect } from 'vitest'
 import { chromium } from 'playwright-core'
@@ -356,7 +358,9 @@ function makeBoundaryResume(): ResumeContent {
   })
 }
 
-describe('content-fit calibration (pixel-accurate)', () => {
+const enabled = process.env.CALIBRATE === '1'
+
+describe.skipIf(!enabled)('content-fit calibration (pixel-accurate)', () => {
   const cases: [string, ResumeContent][] = [
     ['fullstack (prod-like)', makeFullstackResume()],
     ['typical 4-exp', makeTypicalResume()],
