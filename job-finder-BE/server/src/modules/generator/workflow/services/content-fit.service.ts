@@ -152,6 +152,9 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       mainLines += LAYOUT.PROJECT_HEADER_LINES
       const highlights = proj.highlights || []
       if (highlights.length > 0) {
+        if (proj.description) {
+          mainLines += textToLines(proj.description, CHARS_PER_LINE)
+        }
         for (const h of highlights) {
           mainLines += textToLines(h, BULLET_CHARS_PER_LINE) + LAYOUT.BULLET_OVERHEAD
         }

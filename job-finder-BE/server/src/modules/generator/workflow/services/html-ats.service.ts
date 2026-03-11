@@ -73,8 +73,11 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       const bullets = (proj.highlights || [])
         .map((b) => `<li>${safeText(b)}</li>`)
         .join('')
-      const desc = !bullets && proj.description ? `<li>${safeText(proj.description)}</li>` : ''
-      const allBullets = bullets || desc
+      const summary = proj.description
+        ? `<p class="project-desc">${safeText(proj.description)}</p>`
+        : ''
+      const fallbackDesc = !bullets && proj.description ? `<li>${safeText(proj.description)}</li>` : ''
+      const allBullets = bullets || fallbackDesc
       const tech = proj.technologies?.length
         ? `<p class="exp-tech">${safeText(proj.technologies.join(', '))}</p>`
         : ''
@@ -85,6 +88,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       return `
         <div class="project-entry">
           <h3 class="project-name">${safeText(proj.name)}${link}</h3>
+          ${bullets ? summary : ''}
           ${allBullets ? `<ul class="exp-bullets">${allBullets}</ul>` : ''}
           ${tech}
         </div>
