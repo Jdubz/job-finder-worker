@@ -17,10 +17,10 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
     contactParts.push(`<a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
   }
   if (info?.linkedin) {
-    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.linkedin))}">${safeText(displayUrl(info.linkedin))}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.linkedin))}">LinkedIn</a>`)
   }
   if (info?.github) {
-    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.github))}">${safeText(displayUrl(info.github))}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.github))}">GitHub</a>`)
   }
   if (info?.phone) {
     contactParts.push(safeText(info.phone))

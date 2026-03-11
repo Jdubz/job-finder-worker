@@ -14,7 +14,7 @@
  *   - Tasteful horizontal rules and spacing
  */
 export const atsCss = `
-  @page { margin: 0.6in 0.75in; size: Letter; }
+  @page { margin: 0.6in 0.75in 0.4in; size: Letter; }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
