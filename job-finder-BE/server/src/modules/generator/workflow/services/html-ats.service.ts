@@ -1,6 +1,6 @@
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { safeText, escapeAttr } from './text.util'
-import { normalizeUrl } from './url.util'
+import { normalizeUrl, displayUrl } from './url.util'
 import { formatDate } from './date.util'
 import { atsCss } from './html-ats-style'
 
@@ -17,12 +17,10 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
     contactParts.push(`<a href="mailto:${escapeAttr(info.email)}">${safeText(info.email)}</a>`)
   }
   if (info?.linkedin) {
-    const linkedinDisplay = info.linkedin.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
-    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.linkedin))}">${safeText(linkedinDisplay)}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.linkedin))}">${safeText(displayUrl(info.linkedin))}</a>`)
   }
   if (info?.github) {
-    const githubDisplay = info.github.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
-    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.github))}">${safeText(githubDisplay)}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.github))}">${safeText(displayUrl(info.github))}</a>`)
   }
   if (info?.phone) {
     contactParts.push(safeText(info.phone))
@@ -31,7 +29,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
     contactParts.push(safeText(info.location))
   }
   if (info?.website) {
-    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.website))}">${safeText(info.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`)
+    contactParts.push(`<a href="${escapeAttr(normalizeUrl(info.website))}">${safeText(displayUrl(info.website))}</a>`)
   }
   const contactRow = contactParts.length
     ? `<div class="contact-row">${contactParts.join('<span class="sep">|</span>')}</div>`

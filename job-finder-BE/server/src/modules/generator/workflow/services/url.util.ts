@@ -8,3 +8,12 @@ export function normalizeUrl(value: string): string {
   const trimmed = value.trim()
   return /^https?:/i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
+
+/**
+ * Create a human-readable display version of a URL by stripping
+ * protocol and www prefix (case-insensitive) and trailing slash.
+ * Derives from normalizeUrl output to handle all input forms consistently.
+ */
+export function displayUrl(value: string): string {
+  return normalizeUrl(value).replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')
+}
