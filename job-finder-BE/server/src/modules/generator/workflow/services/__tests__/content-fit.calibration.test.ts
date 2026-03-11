@@ -135,8 +135,8 @@ async function measureContentHeight(content: ResumeContent): Promise<{
       return { contentHeightPx, sectionHeights, elementHeights }
     })
 
-    // Letter page usable height: 11in - 2×0.6in margins = 9.8in = 940.8px at 96dpi
-    const usableHeightPx = 940.8
+    // Letter page usable height: 11in - 1.0in margins (0.6in top + 0.4in bottom) = 10.0in = 960px at 96dpi
+    const usableHeightPx = 960
 
     return { ...measurements, usableHeightPx }
   } finally {
