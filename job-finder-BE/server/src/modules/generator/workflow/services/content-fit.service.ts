@@ -67,6 +67,7 @@ export const LAYOUT = {
   // Experience: role(15.5px) + company(14.2px) + gap(2px) = 31.7px → 2.24 lines
   EXP_HEADER_LINES: 2.25,
   EXP_SPACING: 0.85,            // exp-entry margin-bottom 12px / 14.175px ≈ 0.85 lines
+  EXP_DESC_OVERHEAD: 0.14,      // exp-desc margin 2px / 14.175px (margin-collapse with company)
   BULLET_OVERHEAD: 0.07,        // li margin-bottom 1px per bullet = 0.071 lines
 
   // Project name (+ optional inline link): 14.85px + 2px gap = 16.85px → 1.19 lines
@@ -119,7 +120,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   for (const exp of content.experience || []) {
     mainLines += LAYOUT.EXP_HEADER_LINES
     if (exp.description) {
-      mainLines += textToLines(exp.description, CHARS_PER_LINE)
+      mainLines += textToLines(exp.description, CHARS_PER_LINE) + LAYOUT.EXP_DESC_OVERHEAD
     }
     for (const bullet of exp.highlights || []) {
       mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE) + LAYOUT.BULLET_OVERHEAD
@@ -178,6 +179,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       }
       mainLines += LAYOUT.EDUCATION_SPACING
     }
+    prevMargin = LAYOUT.EDUCATION_SPACING
   }
 
   // Trim trailing margin of the last section — in print CSS, bottom margin at
@@ -185,7 +187,7 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   mainLines -= prevMargin
 
   const roundedMainLines = Math.round(mainLines)
-  const overflow = Math.round(mainLines) - LAYOUT.MAX_LINES
+  const overflow = roundedMainLines - LAYOUT.MAX_LINES
 
   // Suggestions
   if (overflow > 0) {

@@ -72,6 +72,47 @@ describe('atsResumeHtml – contact row', () => {
   })
 })
 
+describe('atsResumeHtml – experience description rendering', () => {
+  it('renders description between company and bullets when present', () => {
+    const html = atsResumeHtml(
+      makeResume({
+        experience: [{
+          company: 'Acme Corp', role: 'Engineer', startDate: '2020-01', endDate: '2023-06',
+          description: 'Led platform engineering team',
+          highlights: ['Built the API']
+        }]
+      })
+    )
+    expect(html).toContain('<p class="exp-desc">Led platform engineering team</p>')
+    expect(html).toContain('Built the API')
+  })
+
+  it('omits description paragraph when not provided', () => {
+    const html = atsResumeHtml(
+      makeResume({
+        experience: [{
+          company: 'Acme Corp', role: 'Engineer', startDate: '2020-01', endDate: '2023-06',
+          highlights: ['Built the API']
+        }]
+      })
+    )
+    expect(html).not.toContain('<p class="exp-desc">')
+  })
+
+  it('omits description paragraph when empty string', () => {
+    const html = atsResumeHtml(
+      makeResume({
+        experience: [{
+          company: 'Acme Corp', role: 'Engineer', startDate: '2020-01', endDate: '2023-06',
+          description: '',
+          highlights: ['Built the API']
+        }]
+      })
+    )
+    expect(html).not.toContain('<p class="exp-desc">')
+  })
+})
+
 describe('atsResumeHtml – project rendering', () => {
   it('renders description as summary paragraph when highlights are present', () => {
     const html = atsResumeHtml(
