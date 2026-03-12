@@ -78,7 +78,7 @@ export const LAYOUT = {
   EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
   EDU_NOTES_OVERHEAD: 0.07,    // .edu-notes margin-top 1px / 14.175px
 
-  MAX_LINES: 66,               // 67.7 raw - 2 safety for browser variance
+  MAX_LINES: 66,               // ~68 raw - 2 safety for browser variance
 }
 
 /**
