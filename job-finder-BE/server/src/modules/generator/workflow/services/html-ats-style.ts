@@ -155,6 +155,13 @@ export const atsCss = `
     margin-bottom: 2px;
   }
 
+  .exp-desc {
+    font-size: 10.5px;
+    color: #333;
+    line-height: 1.35;
+    margin: 1px 0 2px 0;
+  }
+
   .exp-bullets {
     margin: 2px 0 0 16px;
     padding: 0;

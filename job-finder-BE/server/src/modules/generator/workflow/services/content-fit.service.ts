@@ -9,7 +9,8 @@ import type { ResumeContent } from '@shared/types'
  *
  * Letter page: 11in height - 1.0in total margins (0.6in top + 0.4in bottom) = 10.0in usable (960px)
  * Line unit: bullet text 10.5px × 1.35 line-height = 14.175px → 960 / 14.175 ≈ 67.7 raw lines.
- * Safety margin of 2 lines → 66 max.
+ * Safety margin of ~0.7 lines → 67 max. The estimator itself trends conservative,
+ * so minimal additional safety is needed.
  *
  * Constants are derived from actual CSS pixel heights in html-ats-style.ts,
  * converted to the 14.175px line unit. Keep in sync with @page margin and
@@ -66,6 +67,7 @@ export const LAYOUT = {
   // Experience: role(15.5px) + company(14.2px) + gap(2px) = 31.7px → 2.24 lines
   EXP_HEADER_LINES: 2.25,
   EXP_SPACING: 0.85,            // exp-entry margin-bottom 12px / 14.175px ≈ 0.85 lines
+  EXP_DESC_OVERHEAD: 0.14,      // exp-desc margin 2px / 14.175px (margin-collapse with company)
   BULLET_OVERHEAD: 0.07,        // li margin-bottom 1px per bullet = 0.071 lines
 
   // Project name (+ optional inline link): 14.85px + 2px gap = 16.85px → 1.19 lines
@@ -78,7 +80,7 @@ export const LAYOUT = {
   EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
   EDU_NOTES_OVERHEAD: 0.07,    // .edu-notes margin-top 1px / 14.175px
 
-  MAX_LINES: 66,               // ~68 raw - 2 safety for browser variance
+  MAX_LINES: 67,               // ~67.7 raw - 0.7 safety for browser variance
 }
 
 /**
@@ -117,6 +119,9 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
   mainLines += LAYOUT.SECTION_TITLE_LINES
   for (const exp of content.experience || []) {
     mainLines += LAYOUT.EXP_HEADER_LINES
+    if (exp.description) {
+      mainLines += textToLines(exp.description, CHARS_PER_LINE) + LAYOUT.EXP_DESC_OVERHEAD
+    }
     for (const bullet of exp.highlights || []) {
       mainLines += textToLines(bullet, BULLET_CHARS_PER_LINE) + LAYOUT.BULLET_OVERHEAD
     }
@@ -174,11 +179,15 @@ export function estimateContentFit(content: ResumeContent): FitEstimate {
       }
       mainLines += LAYOUT.EDUCATION_SPACING
     }
+    prevMargin = LAYOUT.EDUCATION_SPACING
   }
 
-  // Round to nearest integer for reporting, but use conservative ceiling for fit/overflow.
+  // Trim trailing margin of the last section — in print CSS, bottom margin at
+  // the page boundary doesn't force a page break.
+  mainLines -= prevMargin
+
   const roundedMainLines = Math.round(mainLines)
-  const overflow = Math.ceil(mainLines) - LAYOUT.MAX_LINES
+  const overflow = roundedMainLines - LAYOUT.MAX_LINES
 
   // Suggestions
   if (overflow > 0) {

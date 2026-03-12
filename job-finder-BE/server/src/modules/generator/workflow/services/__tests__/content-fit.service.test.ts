@@ -76,6 +76,24 @@ describe('estimateContentFit', () => {
     expect(withDesc.mainColumnLines).toBeGreaterThan(withoutDesc.mainColumnLines)
   })
 
+  it('counts experience description lines in estimate', () => {
+    const withoutDesc = estimateContentFit(makeResume({
+      experience: [{
+        company: 'Acme', role: 'Dev', startDate: '2020', endDate: '2023',
+        highlights: ['Built features']
+      }]
+    }))
+    const withDesc = estimateContentFit(makeResume({
+      experience: [{
+        company: 'Acme', role: 'Dev', startDate: '2020', endDate: '2023',
+        description: 'Led a cross-functional team to deliver enterprise solutions across multiple product verticals',
+        highlights: ['Built features']
+      }]
+    }))
+
+    expect(withDesc.mainColumnLines).toBeGreaterThan(withoutDesc.mainColumnLines)
+  })
+
   it('returns suggestions when overflowing', () => {
     // 6 entries triggers "Reduce experience entries from 6 to 4"
     const manyEntries = Array.from({ length: 6 }, (_, i) => ({

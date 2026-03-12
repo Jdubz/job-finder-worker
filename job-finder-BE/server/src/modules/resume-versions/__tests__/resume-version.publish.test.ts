@@ -79,6 +79,42 @@ describe('transformItemsToResumeContent', () => {
     expect(result.experience[0].technologies).toEqual(['TypeScript', 'AWS'])
   })
 
+  it('preserves work item description', () => {
+    const items: ResumeItemNode[] = [
+      makeItem({
+        id: '1',
+        aiContext: 'work',
+        title: 'Acme Corp',
+        role: 'Lead Engineer',
+        description: 'Led platform engineering for enterprise clients',
+        startDate: '2022-01',
+        endDate: '2025-03',
+        children: [
+          makeItem({ id: '1a', parentId: '1', aiContext: 'highlight', description: 'Built APIs', orderIndex: 0 })
+        ]
+      })
+    ]
+
+    const result = transformItemsToResumeContent(items, personalInfo)
+    expect(result.experience[0].description).toBe('Led platform engineering for enterprise clients')
+  })
+
+  it('omits description when work item has no description', () => {
+    const items: ResumeItemNode[] = [
+      makeItem({
+        id: '1',
+        aiContext: 'work',
+        title: 'Acme Corp',
+        role: 'Engineer',
+        startDate: '2022-01',
+        children: []
+      })
+    ]
+
+    const result = transformItemsToResumeContent(items, personalInfo)
+    expect(result.experience[0].description).toBeUndefined()
+  })
+
   it('maps project items to projects', () => {
     const items: ResumeItemNode[] = [
       makeItem({

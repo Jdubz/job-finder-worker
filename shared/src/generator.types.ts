@@ -168,6 +168,7 @@ export interface ResumeContent {
     location?: string
     startDate: string
     endDate: string | null
+    description?: string
     highlights: string[]
     technologies?: string[]
   }>
