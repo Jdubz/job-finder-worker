@@ -74,6 +74,7 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
     const payload: PreFilterPolicy = {
       ...values,
       title: {
+        ...config.title,
         requiredKeywords: cleanList(values.title.requiredKeywords ?? []),
         excludedKeywords: cleanList(values.title.excludedKeywords ?? []),
       },
