@@ -7,9 +7,9 @@ import type { ResumeContent } from '@shared/types'
  *   All content flows in one column — header, summary, experience,
  *   skills, projects, education — top to bottom.
  *
- * Letter page: 11in height - 1.2in total margins (0.6in × 2) = 9.8in usable (940.8px)
- * Line unit: bullet text 10.5px × 1.35 line-height = 14.175px → 940.8 / 14.175 ≈ 66 raw lines.
- * Safety margin of 2 lines → 64 max.
+ * Letter page: 11in height - 1.0in total margins (0.6in top + 0.4in bottom) = 10.0in usable (960px)
+ * Line unit: bullet text 10.5px × 1.35 line-height = 14.175px → 960 / 14.175 ≈ 67.7 raw lines.
+ * Safety margin of 2 lines → 66 max.
  *
  * Constants are derived from actual CSS pixel heights in html-ats-style.ts,
  * converted to the 14.175px line unit. Keep in sync with @page margin and
@@ -78,7 +78,7 @@ export const LAYOUT = {
   EDUCATION_SPACING: 0.3,      // 4px margin-bottom per edu-entry ≈ 0.28 lines
   EDU_NOTES_OVERHEAD: 0.07,    // .edu-notes margin-top 1px / 14.175px
 
-  MAX_LINES: 64,               // 66 raw - 2 safety for browser variance
+  MAX_LINES: 66,               // ~68 raw - 2 safety for browser variance
 }
 
 /**

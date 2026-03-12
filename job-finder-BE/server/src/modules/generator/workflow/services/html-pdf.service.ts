@@ -17,7 +17,7 @@ async function createContext(): Promise<BrowserContext> {
   return browser.newContext({ viewport: { width: 1275, height: 1650 } }) // Letter @150dpi
 }
 
-/** Page margins are controlled by @page in html-ats-style.ts (0.6in top/bottom, 0.75in left/right).
+/** Page margins are controlled by @page in html-ats-style.ts (0.6in top, 0.4in bottom, 0.75in left/right).
  *  Do NOT pass margin to Playwright's page.pdf() — it would override the CSS @page rule. */
 const RENDER_TIMEOUT_MS = 30_000
 
