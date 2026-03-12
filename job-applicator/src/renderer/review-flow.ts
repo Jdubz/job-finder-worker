@@ -49,6 +49,7 @@ export interface ReviewFlowDeps {
   renderReviewForm(documentType: "resume" | "coverLetter", content: ResumeContent | CoverLetterContent): void
   collectReviewedContent(): ResumeContent | CoverLetterContent | null
   handleGenerationProgress(progress: GenerationProgress): void
+  onGenerationCleanup?: () => void
   log: {
     info(...args: unknown[]): void
     error(...args: unknown[]): void
@@ -193,6 +194,7 @@ export async function submitReview(
           // Close the modal and restore BrowserView to avoid inconsistent state
           deps.dom.reviewModalOverlay.classList.add("hidden")
           state.currentReviewRequestId = null
+          if (deps.onGenerationCleanup) deps.onGenerationCleanup()
           await deps.api.showBrowserView()
         }
       } else {
