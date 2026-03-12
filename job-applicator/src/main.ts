@@ -128,21 +128,21 @@ const OAUTH_POPUP_TIMEOUT_MS = (() => {
  * @param documentUrl - API path like "/api/generator/artifacts/2025-12-11/file.pdf"
  * @returns Local file path to the downloaded document
  */
-async function downloadDocument(documentUrl: string): Promise<string> {
+async function downloadDocument(documentUrl: string, saveAs?: string): Promise<string> {
   // Ensure temp directory exists
   if (!fs.existsSync(TEMP_DOC_DIR)) {
     fs.mkdirSync(TEMP_DOC_DIR, { recursive: true })
   }
 
-  // Extract and validate filename from URL (prevent path traversal)
-  const filename = path.basename(documentUrl)
+  // Use explicit saveAs name when provided, otherwise derive from URL
+  const filename = saveAs ?? path.basename(documentUrl)
   if (
     !/^[a-zA-Z0-9._-]+$/.test(filename) ||
     filename === "" ||
     filename === "." ||
     filename === ".."
   ) {
-    throw new Error(`Invalid filename extracted from documentUrl: "${filename}"`)
+    throw new Error(`Invalid filename: "${filename}"`)
   }
   const tempPath = path.join(TEMP_DOC_DIR, filename)
 
@@ -1836,7 +1836,7 @@ ipcMain.handle(
           // Convert to relative path for downloadDocument
           const pdfUrlObj = new URL(pdfUrl)
           const relativePath = pdfUrlObj.pathname
-          resumePath = await downloadDocument(relativePath)
+          resumePath = await downloadDocument(relativePath, `${options.resumeVersionSlug}-resume.pdf`)
         }
         if (options.coverLetterUrl) {
           coverLetterPath = await downloadDocument(options.coverLetterUrl)
