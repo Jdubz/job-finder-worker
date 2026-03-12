@@ -149,6 +149,17 @@ export interface PreFilterWorkArrangementConfig {
   treatUnknownAsOnsite?: boolean
 }
 
+/** Country eligibility filtering */
+export interface PreFilterCountryConfig {
+  /**
+   * ISO country codes (or common names) the user is eligible to work in.
+   * Jobs detected outside these countries are rejected.
+   * Empty array disables country filtering.
+   * Examples: ["us"], ["us", "ca"]
+   */
+  allowedCountries: string[]
+}
+
 /** Employment type filtering */
 export interface PreFilterEmploymentTypeConfig {
   /** Allow full-time positions */
@@ -181,6 +192,8 @@ export interface PreFilterPolicy {
   freshness: PreFilterFreshnessConfig
   /** Work arrangement filtering */
   workArrangement: PreFilterWorkArrangementConfig
+  /** Country eligibility filtering */
+  country?: PreFilterCountryConfig
   /** Employment type filtering */
   employmentType: PreFilterEmploymentTypeConfig
   /** Salary floor filtering */
