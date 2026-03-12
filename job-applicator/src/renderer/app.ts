@@ -920,6 +920,14 @@ function cleanupGenerationProgressListener() {
   _isGenerating = false
 }
 
+// Reset generation UI after a failure to start
+function handleGenerationStartFailure(errorMessage: string) {
+  setStatus(errorMessage, "error")
+  generationProgress.classList.add("hidden")
+  cleanupGenerationProgressListener()
+  generateCoverLetterBtn.disabled = false
+}
+
 // Generate a cover letter for the selected job match
 async function generateCoverLetter() {
   if (!selectedJobMatchId) {
@@ -938,27 +946,23 @@ async function generateCoverLetter() {
   setStatus("Generating cover letter...", "loading")
   setWorkflowStep("docs", "active")
 
-  // Subscribe to progress events
+  // Subscribe to progress events — IPC events from main.ts drive all
+  // progress/completion/review updates; the invoke return is only used
+  // to detect transport-level failures that won't emit IPC events.
   unsubscribeGenerationProgress = api.onGenerationProgress((progress) => {
     handleGenerationProgress(progress)
   })
 
   try {
     const result = await api.runGeneration({ jobMatchId: selectedJobMatchId, type: "coverLetter" })
-    if (result.success && result.data) {
-      handleGenerationProgress(result.data)
-    } else {
-      setStatus(result.message || "Failed to start generation", "error")
-      generationProgress.classList.add("hidden")
-      cleanupGenerationProgressListener()
-      generateCoverLetterBtn.disabled = false
+    if (!result.success) {
+      handleGenerationStartFailure(result.message || "Failed to start generation")
     }
+    // On success, IPC events (generation-progress, generation-awaiting-review)
+    // drive the UI — no need to process result.data here to avoid double-handling.
   } catch (err) {
     log.error("Cover letter generation failed:", err)
-    setStatus("Generation failed", "error")
-    generationProgress.classList.add("hidden")
-    cleanupGenerationProgressListener()
-    generateCoverLetterBtn.disabled = false
+    handleGenerationStartFailure("Generation failed")
   }
 }
 
@@ -1009,11 +1013,16 @@ const reviewDeps: ReviewFlowDeps = {
 
 // Handle generation awaiting review — delegates to extracted module
 async function handleGenerationAwaitingReview(progress: GenerationProgress) {
-  await handleGenerationAwaitingReviewImpl(progress, reviewState, reviewDeps)
-  // If impl returned without setting up a review (e.g. fetchDraftContent failed),
-  // clean up generation state so the user isn't deadlocked
-  if (!reviewState.currentReviewDocumentType) {
-    cleanupGenerationProgressListener()
+  try {
+    await handleGenerationAwaitingReviewImpl(progress, reviewState, reviewDeps)
+    // If impl returned without setting up a review (e.g. fetchDraftContent failed),
+    // clean up generation state so the user isn't deadlocked
+    if (!reviewState.currentReviewDocumentType) {
+      cleanupGenerationProgressListener()
+    }
+  } catch (err) {
+    log.error("Error in generation review handler:", err)
+    reviewDeps.onGenerationCleanup?.()
   }
 }
 
