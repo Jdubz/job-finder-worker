@@ -304,6 +304,12 @@ export function isPreFilterPolicy(value: unknown): value is PreFilterPolicy {
     return false
   }
 
+  if (v.country !== undefined) {
+    if (!isObject(v.country)) return false
+    const country = v.country as Record<string, unknown>
+    if (!isStringArray(country.allowedCountries)) return false
+  }
+
   if (!isObject(v.salary)) return false
   const sal = v.salary as Record<string, unknown>
   if (sal.minimum !== null && typeof sal.minimum !== "number") return false

@@ -126,6 +126,26 @@ describe("isPreFilterPolicy", () => {
     expect(isPreFilterPolicy(bad)).toBe(false)
   })
 
+  it("accepts valid country config", () => {
+    const ok = { ...valid, country: { allowedCountries: ["us", "ca"] } }
+    expect(isPreFilterPolicy(ok)).toBe(true)
+  })
+
+  it("accepts missing country config (optional)", () => {
+    const { country: _, ...noCountry } = { ...valid, country: { allowedCountries: ["us"] } }
+    expect(isPreFilterPolicy(noCountry)).toBe(true)
+  })
+
+  it("rejects non-object country config", () => {
+    const bad = { ...valid, country: "us" } as any
+    expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
+  it("rejects non-string-array allowedCountries", () => {
+    const bad = { ...valid, country: { allowedCountries: [123] } } as any
+    expect(isPreFilterPolicy(bad)).toBe(false)
+  })
+
   it("accepts valid synonyms", () => {
     const ok = {
       ...valid,

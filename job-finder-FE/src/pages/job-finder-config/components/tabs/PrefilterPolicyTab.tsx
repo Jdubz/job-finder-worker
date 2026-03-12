@@ -35,6 +35,7 @@ const mapToForm = (config: PreFilterPolicy): PreFilterPolicy => {
       userLocation: config.workArrangement.userLocation,
       maxTimezoneDiffHours: config.workArrangement.maxTimezoneDiffHours,
     },
+    country: config.country ?? { allowedCountries: [] },
     employmentType: {
       allowFullTime: config.employmentType.allowFullTime,
       allowPartTime: config.employmentType.allowPartTime,
@@ -68,9 +69,12 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
 
     form.clearErrors("workArrangement.userLocation")
 
+    const countryCodes = cleanList(values.country?.allowedCountries ?? []).map((c) => c.toLowerCase())
+
     const payload: PreFilterPolicy = {
       ...values,
       title: {
+        ...config.title,
         requiredKeywords: cleanList(values.title.requiredKeywords ?? []),
         excludedKeywords: cleanList(values.title.excludedKeywords ?? []),
       },
@@ -95,6 +99,7 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
             ? undefined
             : Number(values.workArrangement.maxTimezoneDiffHours),
       },
+      country: countryCodes.length > 0 ? { allowedCountries: countryCodes } : undefined,
       employmentType: {
         allowFullTime: Boolean(values.employmentType.allowFullTime),
         allowPartTime: Boolean(values.employmentType.allowPartTime),
@@ -259,6 +264,24 @@ export function PrefilterPolicyTab({ isSaving, config, onSave, onReset }: Prefil
                     description="Hard-reject remote/hybrid roles when job location timezone diff exceeds this. Timezone is derived from your city above."
                   />
                 </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-semibold">Country Eligibility</h3>
+                  <ImpactBadge label="Hard gate" tone="negative" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Restrict jobs to countries where you are eligible to work. Uses ISO country codes or common names
+                  (e.g., "us", "ca"). Leave empty to disable country filtering.
+                </p>
+                <StringListField
+                  control={form.control}
+                  name="country.allowedCountries"
+                  label="Allowed Countries"
+                  placeholder="us"
+                  description="Only jobs in these countries will pass. Worker normalizes aliases (e.g., 'united states' → 'us')."
+                />
               </section>
 
               <section className="space-y-4">

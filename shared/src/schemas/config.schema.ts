@@ -51,6 +51,10 @@ const prefilterEmploymentTypeSchema = z.object({
   allowContract: z.boolean(),
 })
 
+const prefilterCountrySchema = z.object({
+  allowedCountries: z.array(z.string()),
+})
+
 const prefilterSalarySchema = z.object({
   minimum: z.number().nullable(),
 })
@@ -59,6 +63,7 @@ export const prefilterPolicySchema = z.object({
   title: prefilterTitleSchema,
   freshness: prefilterFreshnessSchema,
   workArrangement: prefilterWorkArrangementSchema,
+  country: prefilterCountrySchema.optional(),
   employmentType: prefilterEmploymentTypeSchema,
   salary: prefilterSalarySchema,
 })
