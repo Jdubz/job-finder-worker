@@ -39,6 +39,9 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
   const experiences = (content.experience || [])
     .map((exp) => {
       const dates = `${safeText(formatDate(exp.startDate))} - ${safeText(formatDate(exp.endDate)) || 'Present'}`
+      const descHtml = exp.description
+        ? `<p class="exp-desc">${safeText(exp.description)}</p>`
+        : ''
       const bullets = (exp.highlights || [])
         .map((b) => `<li>${safeText(b)}</li>`)
         .join('')
@@ -49,6 +52,7 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
             <span class="exp-dates">${dates}</span>
           </h3>
           <p class="exp-company">${safeText(exp.company)}${exp.location ? ' - ' + safeText(exp.location) : ''}</p>
+          ${descHtml}
           ${bullets ? `<ul class="exp-bullets">${bullets}</ul>` : ''}
         </div>
       `

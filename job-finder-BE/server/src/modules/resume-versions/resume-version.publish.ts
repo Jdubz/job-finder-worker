@@ -40,6 +40,7 @@ export function transformItemsToResumeContent(
           location: node.location ?? undefined,
           startDate: node.startDate ?? '',
           endDate: node.endDate ?? null,
+          description: node.description ?? undefined,
           highlights: (node.children ?? [])
             .filter((c) => c.aiContext === 'highlight' && c.description)
             .sort((a, b) => a.orderIndex - b.orderIndex)
