@@ -681,8 +681,6 @@ function renderJobSelect() {
 async function selectJobMatch(id: string) {
   selectedJobMatchId = id
   tailoredResumeStatus = "idle"
-  resumeTailorStatus.textContent = "Tailoring..."
-  resumeTailorStatus.className = "tailor-status loading"
   selectedCoverLetterId = null
 
   // Update dropdown selection
@@ -771,7 +769,9 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
 }
 
 // Auto-tailor resume when a job is selected
+let _tailorRequestId = 0
 async function tailorResumeForJob(jobMatchId: string) {
+  const requestId = ++_tailorRequestId
   tailoredResumeStatus = "tailoring"
   resumeTailorStatus.textContent = "Tailoring resume..."
   resumeTailorStatus.className = "tailor-status loading"
@@ -779,6 +779,8 @@ async function tailorResumeForJob(jobMatchId: string) {
 
   try {
     const result = await api.tailorResume(jobMatchId)
+    // Guard against stale response if user selected a different job while tailoring
+    if (requestId !== _tailorRequestId) return
     if (!result.success) {
       throw new Error(result.error || "Tailoring failed")
     }
@@ -787,6 +789,7 @@ async function tailorResumeForJob(jobMatchId: string) {
     resumeTailorStatus.className = "tailor-status ready"
     log.info(`Resume tailored: ${result.cached ? 'cached' : 'generated'}`)
   } catch (err) {
+    if (requestId !== _tailorRequestId) return
     tailoredResumeStatus = "error"
     const message = err instanceof Error ? err.message : String(err)
     resumeTailorStatus.textContent = "Tailoring failed"

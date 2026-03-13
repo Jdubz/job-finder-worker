@@ -14,14 +14,15 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { ResumeContent, ResumeItemNode, ContentFitEstimate } from '@shared/types'
+import { z } from 'zod'
+import type { ResumeContent, ResumeItemNode, ContentFitEstimate, TimestampJson } from '@shared/types'
+import type { JobMatchWithListing } from '@shared/types'
 import { ResumeVersionRepository } from './resume-version.repository'
 import { buildItemTree, transformItemsToResumeContent } from './resume-version.publish'
 import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
 import { HtmlPdfService } from '../generator/workflow/services/html-pdf.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
 import { InferenceClient } from '../generator/ai/inference-client'
-import type { JobMatchWithListing } from '@shared/types'
 import { JobMatchRepository } from '../job-matches/job-match.repository'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
@@ -49,7 +50,7 @@ export interface TailorResult {
   pdfPath: string | null
   reasoning: string | null
   selectedItemIds: string[]
-  createdAt: string
+  createdAt: TimestampJson
   cached: boolean
 }
 
@@ -79,17 +80,30 @@ export class ResumeSelectionService {
     if (!force) {
       const cached = this.repo.getCachedTailoredResume(jobMatchId)
       if (cached) {
-        logger.info({ jobMatchId }, 'Returning cached tailored resume')
-        const fitEstimate = cached.contentFit as ContentFitEstimate | null
-        return {
-          id: cached.id,
-          jobMatchId: cached.jobMatchId,
-          contentFit: fitEstimate,
-          pdfPath: cached.pdfPath,
-          reasoning: cached.reasoning,
-          selectedItemIds: cached.selectedItems,
-          createdAt: cached.createdAt,
-          cached: true
+        // Verify cached PDF still exists on disk
+        let pdfValid = false
+        if (cached.pdfPath) {
+          const absPath = path.join(artifactsRoot, cached.pdfPath)
+          try {
+            await fs.access(absPath)
+            pdfValid = true
+          } catch {
+            logger.warn({ jobMatchId, pdfPath: cached.pdfPath }, 'Cached tailored PDF missing from disk, regenerating')
+          }
+        }
+        if (pdfValid) {
+          logger.info({ jobMatchId }, 'Returning cached tailored resume')
+          const fitEstimate = cached.contentFit as ContentFitEstimate | null
+          return {
+            id: cached.id,
+            jobMatchId: cached.jobMatchId,
+            contentFit: fitEstimate,
+            pdfPath: cached.pdfPath,
+            reasoning: cached.reasoning,
+            selectedItemIds: cached.selectedItems,
+            createdAt: cached.createdAt,
+            cached: true
+          }
         }
       }
     }
@@ -260,7 +274,7 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
 
     switch (ctx) {
       case 'narrative':
-        lines.push(`${indent}${idTag} NARRATIVE: "${node.description?.slice(0, 200)}..."`)
+        lines.push(`${indent}${idTag} NARRATIVE: "${node.description ? node.description.slice(0, 200) + '...' : '(empty)'}"`)
         break
       case 'work':
         lines.push(`${indent}${idTag} WORK: ${node.title} / ${node.role} (${node.startDate}–${node.endDate ?? 'Present'})`)
@@ -269,7 +283,7 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
         if (node.children?.length) {
           for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
             if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  ${`[${child.id}]`} HIGHLIGHT: ${child.description?.slice(0, 150)}`)
+              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description?.slice(0, 150) ?? '(no description)'}`)
             }
           }
         }
@@ -281,7 +295,7 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
         if (node.children?.length) {
           for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
             if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  ${`[${child.id}]`} HIGHLIGHT: ${child.description?.slice(0, 150)}`)
+              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description?.slice(0, 150) ?? '(no description)'}`)
             }
           }
         }
@@ -310,6 +324,16 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
 
 // ─── Response Parsing ───────────────────────────────────────────
 
+const selectionSchema = z.object({
+  narrative_id: z.string().min(1, 'narrative_id is required'),
+  experience_ids: z.array(z.string()).min(1, 'At least one experience_id is required'),
+  highlight_selections: z.record(z.string(), z.array(z.string())).default({}),
+  skill_ids: z.array(z.string()).default([]),
+  project_ids: z.array(z.string()).default([]),
+  education_ids: z.array(z.string()).default([]),
+  reasoning: z.string().default('')
+})
+
 function parseSelectionResponse(output: string): SelectionResult {
   // Strip markdown fences if present
   let cleaned = output.trim()
@@ -317,32 +341,22 @@ function parseSelectionResponse(output: string): SelectionResult {
     cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
   }
 
+  let parsed: unknown
   try {
-    const parsed = JSON.parse(cleaned)
-
-    if (!parsed.narrative_id || typeof parsed.narrative_id !== 'string') {
-      throw new Error('Missing or invalid narrative_id in AI selection response')
-    }
-    if (!Array.isArray(parsed.experience_ids) || parsed.experience_ids.length === 0) {
-      throw new Error('Missing or empty experience_ids in AI selection response')
-    }
-
-    return {
-      narrative_id: parsed.narrative_id,
-      experience_ids: parsed.experience_ids,
-      highlight_selections: parsed.highlight_selections ?? {},
-      skill_ids: parsed.skill_ids ?? [],
-      project_ids: parsed.project_ids ?? [],
-      education_ids: parsed.education_ids ?? [],
-      reasoning: parsed.reasoning ?? ''
-    }
-  } catch (err) {
-    if (err instanceof SyntaxError) {
-      logger.error({ output: output.slice(0, 500) }, 'Failed to parse AI selection response as JSON')
-      throw new Error('AI returned invalid JSON for resume selection')
-    }
-    throw err
+    parsed = JSON.parse(cleaned)
+  } catch {
+    logger.error({ output: output.slice(0, 500) }, 'Failed to parse AI selection response as JSON')
+    throw new Error('AI returned invalid JSON for resume selection')
   }
+
+  const result = selectionSchema.safeParse(parsed)
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
+    logger.error({ issues, output: output.slice(0, 500) }, 'AI selection response failed validation')
+    throw new Error(`AI selection response invalid: ${issues}`)
+  }
+
+  return result.data
 }
 
 // ─── Tree Filtering ─────────────────────────────────────────────

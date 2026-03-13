@@ -1,4 +1,5 @@
 import type { ResumeVersion, ResumeItem, ResumeItemNode, CreateResumeItemData, UpdateResumeItemData, CreateResumeVersionData } from '../resume-version.types'
+import type { TimestampJson } from '../schemas/timestamp.schema'
 
 // --- Content fit estimation ---
 
@@ -95,7 +96,7 @@ export interface TailorResumeResponse {
   pdfPath: string | null
   reasoning: string | null
   selectedItemIds: string[]
-  createdAt: string
+  createdAt: TimestampJson
   cached: boolean
 }
 

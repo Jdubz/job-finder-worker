@@ -1,4 +1,6 @@
 import type { ContentItemAIContext } from './content-item.types'
+import type { ResumeContent } from './generator.types'
+import type { ContentFitEstimate } from './api/resume-version.types'
 import type { TimestampJson } from './schemas/timestamp.schema'
 
 export type ResumeVersionSlug = string
@@ -65,12 +67,12 @@ export interface CreateResumeVersionData {
 export interface TailoredResume {
   id: string
   jobMatchId: string
-  resumeContent: unknown // ResumeContent JSON
+  resumeContent: ResumeContent
   selectedItems: string[] // pool item IDs
   pdfPath: string | null
   pdfSizeBytes: number | null
-  contentFit: unknown | null // ContentFitEstimate JSON
+  contentFit: ContentFitEstimate | null
   reasoning: string | null
-  createdAt: string
-  expiresAt: string
+  createdAt: TimestampJson
+  expiresAt: TimestampJson
 }

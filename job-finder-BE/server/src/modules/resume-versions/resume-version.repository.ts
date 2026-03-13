@@ -402,7 +402,7 @@ export class ResumeVersionRepository {
     const row = this.db
       .prepare(
         `SELECT * FROM tailored_resumes
-         WHERE job_match_id = ? AND expires_at > datetime('now')`
+         WHERE job_match_id = ? AND datetime(expires_at) > datetime('now')`
       )
       .get(jobMatchId) as TailoredResumeRow | undefined
     return row ? parseTailoredRow(row) : null
@@ -456,13 +456,27 @@ export class ResumeVersionRepository {
   }
 
   invalidateAllTailoredResumes(): number {
+    // Collect PDF paths before deletion so caller can clean up files
+    const rows = this.db
+      .prepare('SELECT pdf_path FROM tailored_resumes WHERE pdf_path IS NOT NULL')
+      .all() as Array<{ pdf_path: string }>
     const result = this.db.prepare('DELETE FROM tailored_resumes').run()
+    this._orphanedPdfPaths = rows.map((r) => r.pdf_path)
     return result.changes
+  }
+
+  /** PDF paths orphaned by the last invalidateAllTailoredResumes() call. */
+  _orphanedPdfPaths: string[] = []
+
+  getOrphanedPdfPaths(): string[] {
+    const paths = this._orphanedPdfPaths
+    this._orphanedPdfPaths = []
+    return paths
   }
 
   getTailoredResumePdfPath(jobMatchId: string): string | null {
     const row = this.db
-      .prepare('SELECT pdf_path FROM tailored_resumes WHERE job_match_id = ? AND expires_at > datetime(\'now\')')
+      .prepare('SELECT pdf_path FROM tailored_resumes WHERE job_match_id = ? AND datetime(expires_at) > datetime(\'now\')')
       .get(jobMatchId) as { pdf_path: string | null } | undefined
     return row?.pdf_path ?? null
   }

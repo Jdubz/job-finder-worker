@@ -20,19 +20,17 @@ describe('ResumeVersionRepository', () => {
   // ── Version queries ────────────────────────────────────────────
 
   describe('versions', () => {
-    it('lists all seeded versions', () => {
+    it('lists the pool version (created by migration 063)', () => {
       const versions = repo.listVersions()
-      expect(versions).toHaveLength(5)
-      const slugs = versions.map((v) => v.slug).sort()
-      expect(slugs).toEqual(['ai', 'backend', 'frontend', 'fullstack', 'solution-engineer'])
+      expect(versions.length).toBeGreaterThanOrEqual(1)
+      const slugs = versions.map((v) => v.slug)
+      expect(slugs).toContain('pool')
     })
 
     it('gets version by slug', () => {
-      const version = repo.getVersionBySlug('frontend')
+      const version = repo.getVersionBySlug('pool')
       expect(version).not.toBeNull()
-      expect(version!.name).toBe('Frontend Engineer')
-      expect(version!.pdfPath).toBeNull()
-      expect(version!.publishedAt).toBeNull()
+      expect(version!.name).toBe('Resume Pool')
     })
 
     it('returns null for unknown slug', () => {
@@ -40,8 +38,8 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('updates publish state', () => {
-      const updated = repo.updateVersionPublish('backend', 'resumes/backend.pdf', 12345, 'admin@test.com')
-      expect(updated.pdfPath).toBe('resumes/backend.pdf')
+      const updated = repo.updateVersionPublish('pool', 'resumes/pool.pdf', 12345, 'admin@test.com')
+      expect(updated.pdfPath).toBe('resumes/pool.pdf')
       expect(updated.pdfSizeBytes).toBe(12345)
       expect(updated.publishedBy).toBe('admin@test.com')
       expect(updated.publishedAt).not.toBeNull()
@@ -57,7 +55,7 @@ describe('ResumeVersionRepository', () => {
 
   describe('items', () => {
     it('creates an item and retrieves it', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const item = repo.createItem(version.id, {
         title: 'Experience',
         aiContext: 'section',
@@ -72,7 +70,7 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('auto-increments order for siblings', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const a = repo.createItem(version.id, { title: 'A', userEmail: baseUser })
       const b = repo.createItem(version.id, { title: 'B', userEmail: baseUser })
       const c = repo.createItem(version.id, { title: 'C', userEmail: baseUser })
@@ -83,7 +81,7 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('creates nested items (parent-child)', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const parent = repo.createItem(version.id, {
         title: 'AWS',
         aiContext: 'work',
@@ -102,23 +100,27 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('lists items for a version', () => {
-      const frontend = repo.getVersionBySlug('frontend')!
-      const backend = repo.getVersionBySlug('backend')!
+      const pool = repo.getVersionBySlug('pool')!
 
-      repo.createItem(frontend.id, { title: 'FE Item', userEmail: baseUser })
-      repo.createItem(backend.id, { title: 'BE Item', userEmail: baseUser })
+      // Create a temporary second version for isolation testing
+      const testVersion = repo.createVersion({ name: 'Test Version', slug: 'test-items' })
 
-      const feItems = repo.listItems(frontend.id)
-      expect(feItems).toHaveLength(1)
-      expect(feItems[0].title).toBe('FE Item')
+      repo.createItem(pool.id, { title: 'Pool Item', userEmail: baseUser })
+      repo.createItem(testVersion.id, { title: 'Test Item', userEmail: baseUser })
 
-      const beItems = repo.listItems(backend.id)
-      expect(beItems).toHaveLength(1)
-      expect(beItems[0].title).toBe('BE Item')
+      const poolItems = repo.listItems(pool.id)
+      expect(poolItems).toHaveLength(1)
+      expect(poolItems[0].title).toBe('Pool Item')
+
+      const testItems = repo.listItems(testVersion.id)
+      expect(testItems).toHaveLength(1)
+      expect(testItems[0].title).toBe('Test Item')
+
+      repo.deleteVersion('test-items')
     })
 
     it('counts items for a version', () => {
-      const version = repo.getVersionBySlug('ai')!
+      const version = repo.getVersionBySlug('pool')!
       expect(repo.countItems(version.id)).toBe(0)
 
       repo.createItem(version.id, { title: 'Item 1', userEmail: baseUser })
@@ -127,7 +129,7 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('updates an item', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const item = repo.createItem(version.id, {
         title: 'Original',
         aiContext: 'work',
@@ -153,7 +155,7 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('deletes an item', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const item = repo.createItem(version.id, { title: 'To Delete', userEmail: baseUser })
       repo.deleteItem(item.id)
       expect(repo.getItemById(item.id)).toBeNull()
@@ -168,7 +170,7 @@ describe('ResumeVersionRepository', () => {
 
   describe('reorder', () => {
     it('reorders siblings', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       repo.createItem(version.id, { title: 'A', userEmail: baseUser })
       repo.createItem(version.id, { title: 'B', userEmail: baseUser })
       const c = repo.createItem(version.id, { title: 'C', userEmail: baseUser })
@@ -181,7 +183,7 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('moves item to a new parent', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const parent = repo.createItem(version.id, { title: 'Parent', aiContext: 'section', userEmail: baseUser })
       const orphan = repo.createItem(version.id, { title: 'Orphan', userEmail: baseUser })
 
@@ -192,7 +194,7 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('throws when reparenting to non-existent parent', () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const item = repo.createItem(version.id, { title: 'Item', userEmail: baseUser })
 
       expect(() => repo.reorderItem(item.id, 'missing-parent', 0, baseUser))
@@ -200,13 +202,16 @@ describe('ResumeVersionRepository', () => {
     })
 
     it('throws when reparenting across versions', () => {
-      const frontend = repo.getVersionBySlug('frontend')!
-      const backend = repo.getVersionBySlug('backend')!
-      const feItem = repo.createItem(frontend.id, { title: 'FE Item', userEmail: baseUser })
-      const beParent = repo.createItem(backend.id, { title: 'BE Parent', userEmail: baseUser })
+      const pool = repo.getVersionBySlug('pool')!
+      const testVersion = repo.createVersion({ name: 'Test Cross', slug: 'test-cross' })
 
-      expect(() => repo.reorderItem(feItem.id, beParent.id, 0, baseUser))
+      const poolItem = repo.createItem(pool.id, { title: 'Pool Item', userEmail: baseUser })
+      const testParent = repo.createItem(testVersion.id, { title: 'Test Parent', userEmail: baseUser })
+
+      expect(() => repo.reorderItem(poolItem.id, testParent.id, 0, baseUser))
         .toThrow(ResumeItemInvalidParentError)
+
+      repo.deleteVersion('test-cross')
     })
 
     it('throws when reordering non-existent item', () => {

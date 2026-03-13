@@ -401,7 +401,18 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   function invalidatePoolCacheIfNeeded(slug: string) {
     if (slug === 'pool') {
       const count = repo.invalidateAllTailoredResumes()
-      if (count > 0) logger.info({ count }, 'Invalidated tailored resume cache due to pool edit')
+      if (count > 0) {
+        logger.info({ count }, 'Invalidated tailored resume cache due to pool edit')
+        // Clean up orphaned PDF files in background
+        const orphanedPaths = repo.getOrphanedPdfPaths()
+        if (orphanedPaths.length > 0) {
+          const defaultArtifactsDir = path.resolve('/data/artifacts')
+          const root = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : defaultArtifactsDir
+          for (const pdfPath of orphanedPaths) {
+            fs.unlink(path.join(root, pdfPath)).catch(() => {})
+          }
+        }
+      }
     }
   }
 

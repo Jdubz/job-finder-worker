@@ -89,8 +89,8 @@ export function ResumeVersionsPage() {
   useEffect(() => {
     resumeVersionsClient.getPoolHealth()
       .then(setPoolHealth)
-      .catch(() => {}) // non-critical
-  }, [items])
+      .catch((err) => console.error("Failed to load pool health:", err))
+  }, [items.length])
 
   const handleCreateRoot = async (values: ContentItemFormValues) => {
     try {
@@ -315,7 +315,7 @@ function TestTailoringCard() {
             }))
         )
       })
-      .catch(() => {})
+      .catch((err) => console.error("Failed to load job matches for tailoring test:", err))
       .finally(() => setLoadingMatches(false))
   }, [])
 
