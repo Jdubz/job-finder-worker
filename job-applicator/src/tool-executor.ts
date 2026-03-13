@@ -8,7 +8,7 @@
 import type { BrowserView } from "electron"
 import * as crypto from "crypto"
 import { logger } from "./logger.js"
-import { fetchResumeVersions } from "./api-client.js"
+// fetchResumeVersions no longer needed — resume is auto-tailored
 
 // ============================================================================
 // Types
@@ -2086,26 +2086,19 @@ function handleGetJobContext(): ToolResult {
 }
 
 /**
- * Get available resume versions for the agent to select the most appropriate one
+ * Get resume status. The resume is auto-tailored from the pool — agent just needs to upload it.
  */
 async function handleGetResumeVersions(): Promise<ToolResult> {
-  try {
-    const versions = await fetchResumeVersions()
-    const published = versions
-      .filter((v) => v.pdfPath)
-      .map((v) => ({
-        slug: v.slug,
-        name: v.name,
-        description: v.description,
-        publishedAt: v.publishedAt ?? null,
-      }))
-
-    logger.info(`[ToolExecutor] Returning ${published.length} resume versions`)
-    return { success: true, data: { versions: published } }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    logger.error(`[ToolExecutor] Failed to fetch resume versions: ${message}`)
-    return { success: false, error: `Failed to fetch resume versions: ${message}` }
+  const hasResume = documentPaths?.resumePath ? true : false
+  logger.info(`[ToolExecutor] Resume status: ${hasResume ? 'ready (auto-tailored)' : 'not available'}`)
+  return {
+    success: true,
+    data: {
+      message: hasResume
+        ? "A tailored resume PDF has been auto-generated for this job application and is ready for upload. Use upload_file with type 'resume' to upload it."
+        : "No resume is available for this session.",
+      resumeReady: hasResume
+    }
   }
 }
 

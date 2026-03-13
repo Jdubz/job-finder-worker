@@ -316,6 +316,7 @@ interface ElectronAPI {
 
   // Resume Versions
   getResumeVersions: () => Promise<Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }>>
+  tailorResume: (jobMatchId: string, force?: boolean) => Promise<{ success: boolean; pdfUrl?: string; reasoning?: string; error?: string; cached?: boolean }>
 
   // Documents (cover letters)
   getDocuments: (jobMatchId: string) => Promise<{
@@ -406,11 +407,11 @@ const api = window.electronAPI
 // State
 let _currentUser: { email: string; name?: string } | null = null
 let selectedJobMatchId: string | null = null
-let selectedResumeVersionSlug: string | null = null
+// selectedResumeVersionSlug removed — resume is now auto-tailored from pool
 let selectedCoverLetterId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
-let resumeVersions: Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }> = []
+let tailoredResumeStatus: "idle" | "tailoring" | "ready" | "error" = "idle"
 const workflowState: WorkflowState = {
   job: "pending",
   docs: "pending",
@@ -454,7 +455,7 @@ const newTabBtn = getElement<HTMLButtonElement>("newTabBtn")
 
 // DOM elements - Sidebar
 const jobSelect = getElement<HTMLSelectElement>("jobSelect")
-const resumeVersionSelect = getElement<HTMLSelectElement>("resumeVersionSelect")
+const resumeTailorStatus = getElement<HTMLSpanElement>("resumeTailorStatus")
 const coverLetterSelect = getElement<HTMLSelectElement>("coverLetterSelect")
 const generateCoverLetterBtn = getElement<HTMLButtonElement>("generateCoverLetterBtn")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
@@ -679,7 +680,9 @@ function renderJobSelect() {
 // Select a job match
 async function selectJobMatch(id: string) {
   selectedJobMatchId = id
-  selectedResumeVersionSlug = null
+  tailoredResumeStatus = "idle"
+  resumeTailorStatus.textContent = "Tailoring..."
+  resumeTailorStatus.className = "tailor-status loading"
   selectedCoverLetterId = null
 
   // Update dropdown selection
@@ -706,8 +709,6 @@ async function selectJobMatch(id: string) {
   // Load the job URL in BrowserView — prefer direct apply URL over aggregator listing
   const targetUrl = match.listing.applyUrl || match.listing.url
   setStatus("Loading job listing...", "loading")
-  // Note: navigate always returns {success, message?, aborted?} but we use optional chaining
-  // as defensive programming for the IPC boundary edge cases
   const navResult = await api.navigate(targetUrl)
   if (navResult.success) {
     urlInput.value = targetUrl
@@ -715,6 +716,9 @@ async function selectJobMatch(id: string) {
   } else {
     setStatus(navResult.message || "Failed to load job listing", "error")
   }
+
+  // Auto-tailor resume for this job (runs in background)
+  tailorResumeForJob(id)
 
   // Load cover letter documents for this job match
   await loadDocuments(id)
@@ -766,48 +770,35 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
   }
 }
 
-// Load resume versions from API (called once on startup)
-async function loadResumeVersions() {
-  resumeVersionSelect.disabled = true
+// Auto-tailor resume when a job is selected
+async function tailorResumeForJob(jobMatchId: string) {
+  tailoredResumeStatus = "tailoring"
+  resumeTailorStatus.textContent = "Tailoring resume..."
+  resumeTailorStatus.className = "tailor-status loading"
+  updateUploadButtonsState()
+
   try {
-    const versions = await api.getResumeVersions()
-    resumeVersions = versions
-      .filter((v) => v.pdfPath)
-      .map((v) => ({ slug: v.slug, name: v.name, pdfPath: v.pdfPath, publishedAt: v.publishedAt }))
-
-    if (resumeVersions.length > 0) {
-      resumeVersionSelect.innerHTML = resumeVersions.map((v) => {
-        const pubDate = v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : ""
-        return `<option value="${escapeAttr(v.slug)}">${escapeHtml(v.name)}${pubDate ? ` (${escapeHtml(pubDate)})` : ""}</option>`
-      }).join("")
-
-      // Auto-select first version if none selected
-      if (!selectedResumeVersionSlug) {
-        selectedResumeVersionSlug = resumeVersions[0].slug
-      }
-      resumeVersionSelect.value = selectedResumeVersionSlug
-      resumeVersionSelect.disabled = false
-    } else {
-      resumeVersionSelect.innerHTML = '<option value="">-- No published resumes --</option>'
+    const result = await api.tailorResume(jobMatchId)
+    if (!result.success) {
+      throw new Error(result.error || "Tailoring failed")
     }
-    updateUploadButtonsState()
+    tailoredResumeStatus = "ready"
+    resumeTailorStatus.textContent = result.cached ? "Tailored (cached)" : "Tailored"
+    resumeTailorStatus.className = "tailor-status ready"
+    log.info(`Resume tailored: ${result.cached ? 'cached' : 'generated'}`)
   } catch (err) {
+    tailoredResumeStatus = "error"
     const message = err instanceof Error ? err.message : String(err)
-    log.error("Failed to load resume versions:", message)
-    resumeVersionSelect.innerHTML = '<option value="">-- Error loading --</option>'
-    updateUploadButtonsState()
+    resumeTailorStatus.textContent = "Tailoring failed"
+    resumeTailorStatus.className = "tailor-status error"
+    log.error("Resume tailoring failed:", message)
   }
+  updateUploadButtonsState()
 }
 
-// Get the selected resume version slug
-function getSelectedResumeVersionSlug(): string | null {
-  return selectedResumeVersionSlug
-}
-
-// Check if selected resume version has a published PDF
+// Check if a tailored resume is ready
 function hasSelectedResumeVersion(): boolean {
-  if (!selectedResumeVersionSlug) return false
-  return resumeVersions.some((v) => v.slug === selectedResumeVersionSlug && v.pdfPath)
+  return tailoredResumeStatus === "ready"
 }
 
 // Get the selected cover letter document
@@ -1404,7 +1395,6 @@ async function checkUrlForJobMatch(url: string) {
       }
       // Auto-select the match (but don't navigate again)
       selectedJobMatchId = match.id ?? null
-      selectedResumeVersionSlug = null
       selectedCoverLetterId = null
       jobSelect.value = match.id ?? ""
 
@@ -1612,15 +1602,14 @@ async function fillFormWithAgent() {
   agentOutputParser.reset()
   agentOutput.innerHTML = '<div class="loading-placeholder">Starting form fill...</div>'
 
-  // Get selected document info for the agent to upload
-  const resumeSlug = getSelectedResumeVersionSlug()
+  // Get selected cover letter (resume is auto-tailored by main process)
   const coverLetterDoc = getSelectedCoverLetter()
 
   log.info("Calling api.fillForm for job:", selectedJobMatchId)
   const result = await api.fillForm({
     jobMatchId: selectedJobMatchId,
     jobContext,
-    resumeVersionSlug: resumeSlug || undefined,
+    // No resumeVersionSlug — main process auto-tailors from pool
     coverLetterUrl: coverLetterDoc?.coverLetterUrl,
   })
   log.info("api.fillForm returned:", result)
@@ -1714,18 +1703,17 @@ function cleanupAgentListeners() {
   }
 }
 
-// Upload document (resume version PDF or cover letter)
+// Upload document (tailored resume PDF or cover letter)
 async function uploadDocument(type: "resume" | "coverLetter") {
   let documentUrl: string | undefined
 
   if (type === "resume") {
-    const slug = getSelectedResumeVersionSlug()
-    if (!slug) {
-      setStatus("Select a resume version first", "error")
+    if (!selectedJobMatchId || tailoredResumeStatus !== "ready") {
+      setStatus("Resume not yet tailored — select a job first", "error")
       return
     }
-    // Use the resume version PDF endpoint
-    documentUrl = `/api/resume-versions/${slug}/pdf`
+    // Use the tailored resume PDF endpoint
+    documentUrl = `/api/resume-versions/pool/tailor/${selectedJobMatchId}/pdf`
   } else {
     const doc = getSelectedCoverLetter()
     documentUrl = doc?.coverLetterUrl
@@ -1775,12 +1763,11 @@ async function previewDocument(type: "resume" | "coverLetter") {
   const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
 
   if (type === "resume") {
-    const slug = getSelectedResumeVersionSlug()
-    if (!slug) {
-      setStatus("No resume version selected", "error")
+    if (!selectedJobMatchId || tailoredResumeStatus !== "ready") {
+      setStatus("No tailored resume ready", "error")
       return
     }
-    url = `/api/resume-versions/${slug}/pdf`
+    url = `/api/resume-versions/pool/tailor/${selectedJobMatchId}/pdf`
   } else {
     const doc = getSelectedCoverLetter()
     url = doc?.coverLetterUrl
@@ -1932,7 +1919,9 @@ function initializeApp() {
     } else {
       // Deselected - clear state
       selectedJobMatchId = null
-      selectedResumeVersionSlug = null
+      tailoredResumeStatus = "idle"
+      resumeTailorStatus.textContent = "Select a job to tailor"
+      resumeTailorStatus.className = "tailor-status"
       selectedCoverLetterId = null
       jobActionsSection.classList.add("hidden")
       generateCoverLetterBtn.disabled = true
@@ -1949,10 +1938,6 @@ function initializeApp() {
   generateCoverLetterBtn.addEventListener("click", generateCoverLetter)
 
   // Event listeners - Document dropdowns
-  resumeVersionSelect.addEventListener("change", () => {
-    selectedResumeVersionSlug = resumeVersionSelect.value || null
-    updateUploadButtonsState()
-  })
   coverLetterSelect.addEventListener("change", () => {
     selectedCoverLetterId = coverLetterSelect.value || null
     updateUploadButtonsState()
@@ -2010,8 +1995,7 @@ async function init() {
   // Initialize upload button state
   updateUploadButtonsState()
 
-  // Load resume versions (available to all users, not auth-gated)
-  loadResumeVersions()
+  // Resume tailoring happens automatically when a job is selected
 
   // Check auth state on startup
   try {

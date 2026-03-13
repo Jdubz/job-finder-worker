@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3'
 import type {
   ResumeVersion,
   ResumeItem,
+  TailoredResume,
   CreateResumeItemData,
   CreateResumeVersionData,
   UpdateResumeItemData,
@@ -387,5 +388,112 @@ export class ResumeVersionRepository {
     ids.forEach((siblingId, idx) => {
       stmt.run(idx, siblingId)
     })
+  }
+
+  // ── Pool helpers ────────────────────────────────────────────────
+
+  getPoolVersion(): ResumeVersion | null {
+    return this.getVersionBySlug('pool')
+  }
+
+  // ── Tailored resume cache ──────────────────────────────────────
+
+  getCachedTailoredResume(jobMatchId: string): TailoredResume | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM tailored_resumes
+         WHERE job_match_id = ? AND expires_at > datetime('now')`
+      )
+      .get(jobMatchId) as TailoredResumeRow | undefined
+    return row ? parseTailoredRow(row) : null
+  }
+
+  saveTailoredResume(data: {
+    jobMatchId: string
+    resumeContent: unknown
+    selectedItems: string[]
+    pdfPath: string | null
+    pdfSizeBytes: number | null
+    contentFit: unknown | null
+    reasoning: string | null
+  }): TailoredResume {
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
+
+    // Upsert: update in place if same job_match_id exists (preserves original id)
+    this.db
+      .prepare(
+        `INSERT INTO tailored_resumes (
+          id, job_match_id, resume_content, selected_items,
+          pdf_path, pdf_size_bytes, content_fit, reasoning,
+          created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(job_match_id) DO UPDATE SET
+          resume_content = excluded.resume_content,
+          selected_items = excluded.selected_items,
+          pdf_path = excluded.pdf_path,
+          pdf_size_bytes = excluded.pdf_size_bytes,
+          content_fit = excluded.content_fit,
+          reasoning = excluded.reasoning,
+          created_at = excluded.created_at,
+          expires_at = excluded.expires_at`
+      )
+      .run(
+        id,
+        data.jobMatchId,
+        JSON.stringify(data.resumeContent),
+        JSON.stringify(data.selectedItems),
+        data.pdfPath,
+        data.pdfSizeBytes,
+        data.contentFit ? JSON.stringify(data.contentFit) : null,
+        data.reasoning,
+        now,
+        expiresAt
+      )
+
+    return this.getCachedTailoredResume(data.jobMatchId)!
+  }
+
+  invalidateAllTailoredResumes(): number {
+    const result = this.db.prepare('DELETE FROM tailored_resumes').run()
+    return result.changes
+  }
+
+  getTailoredResumePdfPath(jobMatchId: string): string | null {
+    const row = this.db
+      .prepare('SELECT pdf_path FROM tailored_resumes WHERE job_match_id = ? AND expires_at > datetime(\'now\')')
+      .get(jobMatchId) as { pdf_path: string | null } | undefined
+    return row?.pdf_path ?? null
+  }
+}
+
+// ─── Tailored resume row types ───────────────────────────────────
+
+type TailoredResumeRow = {
+  id: string
+  job_match_id: string
+  resume_content: string
+  selected_items: string
+  pdf_path: string | null
+  pdf_size_bytes: number | null
+  content_fit: string | null
+  reasoning: string | null
+  created_at: string
+  expires_at: string
+}
+
+function parseTailoredRow(row: TailoredResumeRow): TailoredResume {
+  return {
+    id: row.id,
+    jobMatchId: row.job_match_id,
+    resumeContent: JSON.parse(row.resume_content),
+    selectedItems: JSON.parse(row.selected_items),
+    pdfPath: row.pdf_path,
+    pdfSizeBytes: row.pdf_size_bytes,
+    contentFit: row.content_fit ? JSON.parse(row.content_fit) : null,
+    reasoning: row.reasoning,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at
   }
 }

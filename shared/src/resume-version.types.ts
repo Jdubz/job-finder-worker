@@ -61,3 +61,16 @@ export interface CreateResumeVersionData {
   slug: string
   description?: string | null
 }
+
+export interface TailoredResume {
+  id: string
+  jobMatchId: string
+  resumeContent: unknown // ResumeContent JSON
+  selectedItems: string[] // pool item IDs
+  pdfPath: string | null
+  pdfSizeBytes: number | null
+  contentFit: unknown | null // ContentFitEstimate JSON
+  reasoning: string | null
+  createdAt: string
+  expiresAt: string
+}

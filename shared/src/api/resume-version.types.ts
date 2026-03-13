@@ -81,3 +81,30 @@ export interface ReorderResumeItemRequest {
 export interface ReorderResumeItemResponse {
   item: ResumeItem
 }
+
+// --- Tailored resume endpoints ---
+
+export interface TailorResumeRequest {
+  jobMatchId: string
+}
+
+export interface TailorResumeResponse {
+  id: string
+  jobMatchId: string
+  contentFit: ContentFitEstimate | null
+  pdfPath: string | null
+  reasoning: string | null
+  selectedItemIds: string[]
+  createdAt: string
+  cached: boolean
+}
+
+export interface PoolHealthSummary {
+  narratives: number
+  experiences: number
+  highlights: number
+  skillCategories: number
+  projects: number
+  education: number
+  totalItems: number
+}
