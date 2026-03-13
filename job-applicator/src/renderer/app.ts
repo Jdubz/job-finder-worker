@@ -718,7 +718,7 @@ async function selectJobMatch(id: string) {
 
   // Load cover letter documents for this job match
   await loadDocuments(id)
-  generateCoverLetterBtn.disabled = false
+  generateCoverLetterBtn.disabled = _isGenerating
 }
 
 // Load resume versions (once on startup) and cover letter documents (per job match)
@@ -1022,7 +1022,12 @@ async function handleGenerationAwaitingReview(progress: GenerationProgress) {
     }
   } catch (err) {
     log.error("Error in generation review handler:", err)
+    setStatus("Generation review failed", "error")
+    generationProgress.classList.add("hidden")
+    reviewModalOverlay.classList.add("hidden")
     reviewDeps.onGenerationCleanup?.()
+    // Restore BrowserView in case it was hidden for the review modal
+    api.showBrowserView().catch(() => {})
   }
 }
 
@@ -1418,7 +1423,7 @@ async function checkUrlForJobMatch(url: string) {
       // Load cover letter documents only when we have an id
       if (match.id) {
         await loadDocuments(match.id)
-        generateCoverLetterBtn.disabled = false
+        generateCoverLetterBtn.disabled = _isGenerating
         setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
       } else {
         log.warn("No match.id found; skipping document load")

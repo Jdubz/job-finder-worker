@@ -146,8 +146,10 @@ async function downloadDocument(documentUrl: string, saveAs?: string): Promise<s
   }
   const tempPath = path.join(TEMP_DOC_DIR, filename)
 
-  // If already downloaded, return cached path
-  if (fs.existsSync(tempPath)) {
+  // If already downloaded, return cached path — but skip cache when saveAs
+  // is provided since the URL is stable (e.g. /resume-versions/:slug/pdf)
+  // and content may have been re-published.
+  if (!saveAs && fs.existsSync(tempPath)) {
     logger.info(`[Download] Using cached document: ${tempPath}`)
     return tempPath
   }
