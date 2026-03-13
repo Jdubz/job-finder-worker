@@ -456,7 +456,7 @@ const newTabBtn = getElement<HTMLButtonElement>("newTabBtn")
 const jobSelect = getElement<HTMLSelectElement>("jobSelect")
 const resumeVersionSelect = getElement<HTMLSelectElement>("resumeVersionSelect")
 const coverLetterSelect = getElement<HTMLSelectElement>("coverLetterSelect")
-// generateBtn and generateTypeSelect removed — resume generation replaced by curated versions
+const generateCoverLetterBtn = getElement<HTMLButtonElement>("generateCoverLetterBtn")
 const jobActionsSection = getElement<HTMLDivElement>("jobActionsSection")
 const markAppliedBtn = getElement<HTMLButtonElement>("markAppliedBtn")
 const markIgnoredBtn = getElement<HTMLButtonElement>("markIgnoredBtn")
@@ -718,6 +718,7 @@ async function selectJobMatch(id: string) {
 
   // Load cover letter documents for this job match
   await loadDocuments(id)
+  generateCoverLetterBtn.disabled = _isGenerating
 }
 
 // Load resume versions (once on startup) and cover letter documents (per job match)
@@ -893,14 +894,17 @@ function handleGenerationProgress(progress: GenerationProgress) {
     setWorkflowStep("fill", "active")
     // Clean up the listener now that generation is complete
     cleanupGenerationProgressListener()
+    generateCoverLetterBtn.disabled = false
     // Reload documents and auto-select the newly generated one
     if (selectedJobMatchId) {
       loadDocuments(selectedJobMatchId, progress.requestId)
     }
   } else if (progress.status === "failed") {
     setStatus(progress.error || "Generation failed", "error")
+    generationProgress.classList.add("hidden")
     // Clean up the listener on failure too
     cleanupGenerationProgressListener()
+    generateCoverLetterBtn.disabled = false
   } else if (progress.status === "awaiting_review") {
     // Delegate to the review handler
     handleGenerationAwaitingReview(progress)
@@ -914,6 +918,52 @@ function cleanupGenerationProgressListener() {
     unsubscribeGenerationProgress = null
   }
   _isGenerating = false
+}
+
+// Reset generation UI after a failure to start
+function handleGenerationStartFailure(errorMessage: string) {
+  setStatus(errorMessage, "error")
+  generationProgress.classList.add("hidden")
+  cleanupGenerationProgressListener()
+  generateCoverLetterBtn.disabled = false
+}
+
+// Generate a cover letter for the selected job match
+async function generateCoverLetter() {
+  if (!selectedJobMatchId) {
+    setStatus("Select a job match first", "error")
+    return
+  }
+  if (_isGenerating) {
+    setStatus("Generation already in progress", "error")
+    return
+  }
+
+  _isGenerating = true
+  generateCoverLetterBtn.disabled = true
+  generationProgress.classList.remove("hidden")
+  generationSteps.innerHTML = '<div class="empty-placeholder">Starting...</div>'
+  setStatus("Generating cover letter...", "loading")
+  setWorkflowStep("docs", "active")
+
+  // Subscribe to progress events — IPC events from main.ts drive all
+  // progress/completion/review updates; the invoke return is only used
+  // to detect transport-level failures that won't emit IPC events.
+  unsubscribeGenerationProgress = api.onGenerationProgress((progress) => {
+    handleGenerationProgress(progress)
+  })
+
+  try {
+    const result = await api.runGeneration({ jobMatchId: selectedJobMatchId, type: "coverLetter" })
+    if (!result.success) {
+      handleGenerationStartFailure(result.message || "Failed to start generation")
+    }
+    // On success, IPC events (generation-progress, generation-awaiting-review)
+    // drive the UI — no need to process result.data here to avoid double-handling.
+  } catch (err) {
+    log.error("Cover letter generation failed:", err)
+    handleGenerationStartFailure("Generation failed")
+  }
 }
 
 // ============================================================================
@@ -948,17 +998,37 @@ const reviewDeps: ReviewFlowDeps = {
     reviewFeedbackArea,
     reviewFeedbackInput,
     generationProgress,
+    generateBtn: generateCoverLetterBtn,
   },
   setStatus,
   renderReviewForm,
   collectReviewedContent,
   handleGenerationProgress,
+  onGenerationCleanup: () => {
+    cleanupGenerationProgressListener()
+    generateCoverLetterBtn.disabled = false
+  },
   log,
 }
 
 // Handle generation awaiting review — delegates to extracted module
 async function handleGenerationAwaitingReview(progress: GenerationProgress) {
-  return handleGenerationAwaitingReviewImpl(progress, reviewState, reviewDeps)
+  try {
+    await handleGenerationAwaitingReviewImpl(progress, reviewState, reviewDeps)
+    // If impl returned without setting up a review (e.g. fetchDraftContent failed),
+    // clean up generation state so the user isn't deadlocked
+    if (!reviewState.currentReviewDocumentType) {
+      cleanupGenerationProgressListener()
+    }
+  } catch (err) {
+    log.error("Error in generation review handler:", err)
+    setStatus("Generation review failed", "error")
+    generationProgress.classList.add("hidden")
+    reviewModalOverlay.classList.add("hidden")
+    reviewDeps.onGenerationCleanup?.()
+    // Restore BrowserView in case it was hidden for the review modal
+    api.showBrowserView().catch(() => {})
+  }
 }
 
 // Render the review form based on document type
@@ -1203,6 +1273,7 @@ async function cancelReview() {
   reviewFeedbackInput.value = ""
   rejectReviewBtn.textContent = "Reject & Retry"
   cleanupGenerationProgressListener()
+  generateCoverLetterBtn.disabled = false
   // Reset workflow step to allow retry
   setWorkflowStep("docs", "active")
   setStatus("Review cancelled", "")
@@ -1352,6 +1423,7 @@ async function checkUrlForJobMatch(url: string) {
       // Load cover letter documents only when we have an id
       if (match.id) {
         await loadDocuments(match.id)
+        generateCoverLetterBtn.disabled = _isGenerating
         setStatus(`Matched: ${match.listing.title} at ${match.listing.companyName}`, "success")
       } else {
         log.warn("No match.id found; skipping document load")
@@ -1863,6 +1935,7 @@ function initializeApp() {
       selectedResumeVersionSlug = null
       selectedCoverLetterId = null
       jobActionsSection.classList.add("hidden")
+      generateCoverLetterBtn.disabled = true
       updateUploadButtonsState()
       updateAgentStatusUI(_agentSessionState)
     }
@@ -1873,6 +1946,7 @@ function initializeApp() {
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
   rescanBtn.addEventListener("click", checkForFileInput)
   refreshJobsBtn.addEventListener("click", refreshJobMatches)
+  generateCoverLetterBtn.addEventListener("click", generateCoverLetter)
 
   // Event listeners - Document dropdowns
   resumeVersionSelect.addEventListener("change", () => {
