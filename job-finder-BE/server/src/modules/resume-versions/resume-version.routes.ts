@@ -29,7 +29,7 @@ import {
   ResumeItemInvalidParentError
 } from './resume-version.repository'
 import { buildItemTree, transformItemsToResumeContent, publishResumeVersion, getResumePdfAbsolutePath } from './resume-version.publish'
-import { ResumeSelectionService } from './resume-selection.service'
+import { ResumeSelectionService, PoolNotFoundError, JobMatchNotFoundError, PersonalInfoMissingError, AISelectionError } from './resume-selection.service'
 import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
 import { env } from '../../config/env'
@@ -160,7 +160,7 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // These MUST be before /:slug routes to avoid being caught by the slug param.
 
   const tailorRequestSchema = z.object({
-    jobMatchId: z.string().min(1)
+    jobMatchId: z.string().uuid('jobMatchId must be a valid UUID')
   })
 
   // POST /pool/tailor — trigger AI tailoring for a job match (auth only, not admin)
@@ -188,9 +188,22 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
         res.json(success(response))
       } catch (err) {
         if (handleRouteError(err, res)) return
+        if (err instanceof PoolNotFoundError || err instanceof JobMatchNotFoundError) {
+          res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
+          return
+        }
+        if (err instanceof PersonalInfoMissingError) {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
+          return
+        }
+        if (err instanceof AISelectionError) {
+          logger.error({ err }, 'AI selection failed during tailoring')
+          res.status(502).json(failure(ApiErrorCode.INTERNAL_ERROR, 'AI selection failed. Please try again.'))
+          return
+        }
         if (err instanceof Error) {
           logger.error({ err }, 'Tailoring failed')
-          res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, err.message))
+          res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Resume tailoring failed'))
           return
         }
         throw err
@@ -198,9 +211,10 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
     })
   )
 
-  // GET /pool/tailor/:jobMatchId/pdf — serve cached tailored PDF
+  // GET /pool/tailor/:jobMatchId/pdf — serve cached tailored PDF (auth required)
   router.get(
     '/pool/tailor/:jobMatchId/pdf',
+    ...authMiddleware,
     asyncHandler(async (req, res) => {
       const jobMatchId = req.params.jobMatchId
       const pdfPath = repo.getTailoredResumePdfPath(jobMatchId)

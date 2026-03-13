@@ -31,6 +31,36 @@ const defaultArtifactsDir = path.resolve('/data/artifacts')
 const artifactsRoot = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : defaultArtifactsDir
 const TAILORED_DIR = 'resumes/tailored'
 
+// ─── Error classes ──────────────────────────────────────────────
+
+export class PoolNotFoundError extends Error {
+  constructor(message = 'Resume pool not found. Run migration 063.') {
+    super(message)
+    this.name = 'PoolNotFoundError'
+  }
+}
+
+export class JobMatchNotFoundError extends Error {
+  constructor(jobMatchId: string) {
+    super(`Job match not found: ${jobMatchId}`)
+    this.name = 'JobMatchNotFoundError'
+  }
+}
+
+export class PersonalInfoMissingError extends Error {
+  constructor(message = 'Personal info not configured.') {
+    super(message)
+    this.name = 'PersonalInfoMissingError'
+  }
+}
+
+export class AISelectionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AISelectionError'
+  }
+}
+
 // ─── Types ──────────────────────────────────────────────────────
 
 interface SelectionResult {
@@ -110,21 +140,21 @@ export class ResumeSelectionService {
 
     // Load pool
     const pool = this.repo.getPoolVersion()
-    if (!pool) throw new Error('Resume pool not found. Run migration 063.')
+    if (!pool) throw new PoolNotFoundError()
 
     const items = this.repo.listItems(pool.id)
-    if (items.length === 0) throw new Error('Resume pool has no items.')
+    if (items.length === 0) throw new PoolNotFoundError('Resume pool has no items.')
 
     const tree = buildItemTree(items)
 
     // Load job match data
     const match = this.jobMatchRepo.getByIdWithListing(jobMatchId)
-    if (!match) throw new Error(`Job match not found: ${jobMatchId}`)
+    if (!match) throw new JobMatchNotFoundError(jobMatchId)
 
     // Load personal info
     const personalInfoStore = new PersonalInfoStore()
     const personalInfo = await personalInfoStore.get()
-    if (!personalInfo) throw new Error('Personal info not configured.')
+    if (!personalInfo) throw new PersonalInfoMissingError()
 
     // Run AI selection
     const prompt = buildSelectionPrompt(tree, match)
@@ -334,7 +364,7 @@ const selectionSchema = z.object({
   reasoning: z.string().default('')
 })
 
-function parseSelectionResponse(output: string): SelectionResult {
+export function parseSelectionResponse(output: string): SelectionResult {
   // Strip markdown fences if present
   let cleaned = output.trim()
   if (cleaned.startsWith('```')) {
@@ -346,14 +376,14 @@ function parseSelectionResponse(output: string): SelectionResult {
     parsed = JSON.parse(cleaned)
   } catch {
     logger.error({ output: output.slice(0, 500) }, 'Failed to parse AI selection response as JSON')
-    throw new Error('AI returned invalid JSON for resume selection')
+    throw new AISelectionError('AI returned invalid JSON for resume selection')
   }
 
   const result = selectionSchema.safeParse(parsed)
   if (!result.success) {
     const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
     logger.error({ issues, output: output.slice(0, 500) }, 'AI selection response failed validation')
-    throw new Error(`AI selection response invalid: ${issues}`)
+    throw new AISelectionError(`AI selection response invalid: ${issues}`)
   }
 
   return result.data
@@ -361,7 +391,7 @@ function parseSelectionResponse(output: string): SelectionResult {
 
 // ─── Tree Filtering ─────────────────────────────────────────────
 
-function filterTreeToSelection(
+export function filterTreeToSelection(
   tree: ResumeItemNode[],
   selection: SelectionResult
 ): ResumeItemNode[] {
@@ -424,7 +454,7 @@ function filterTreeToSelection(
 
 // ─── Trim Loop ──────────────────────────────────────────────────
 
-function trimToFit(content: ResumeContent): ResumeContent {
+export function trimToFit(content: ResumeContent): ResumeContent {
   let result = { ...content }
 
   // Phase 1: Remove oldest experience entries (keep max 4)

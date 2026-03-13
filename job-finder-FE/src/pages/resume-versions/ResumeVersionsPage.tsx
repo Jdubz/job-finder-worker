@@ -75,6 +75,7 @@ export function ResumeVersionsPage() {
     contentFit: _contentFit,
     loading: versionLoading,
     error: versionError,
+    mutationCount,
     createItem,
     updateItem,
     deleteItem,
@@ -85,12 +86,12 @@ export function ResumeVersionsPage() {
   const sortedItems = useMemo(() => sortNodesByOrder(items), [items])
   const contentItems = useMemo(() => sortedItems.map(toContentItemNode), [sortedItems])
 
-  // Load pool health stats
+  // Load pool health stats (refetch on mount and after any mutation)
   useEffect(() => {
     resumeVersionsClient.getPoolHealth()
       .then(setPoolHealth)
       .catch((err) => console.error("Failed to load pool health:", err))
-  }, [items.length])
+  }, [mutationCount])
 
   const handleCreateRoot = async (values: ContentItemFormValues) => {
     try {

@@ -1,17 +1,8 @@
-import type { ResumeVersion, ResumeItem, ResumeItemNode, CreateResumeItemData, UpdateResumeItemData, CreateResumeVersionData } from '../resume-version.types'
+import type { ResumeVersion, ResumeItem, ResumeItemNode, CreateResumeItemData, UpdateResumeItemData, CreateResumeVersionData, ContentFitEstimate } from '../resume-version.types'
 import type { TimestampJson } from '../schemas/timestamp.schema'
 
-// --- Content fit estimation ---
-
-export interface ContentFitEstimate {
-  mainColumnLines: number
-  maxLines: number
-  usagePercent: number    // 0–100+
-  pageCount: number       // 1 if fits, 2+ if overflow
-  fits: boolean
-  overflow: number        // negative = room to spare, positive = overflow lines
-  suggestions: string[]
-}
+// Re-export ContentFitEstimate for consumers that import from this module
+export type { ContentFitEstimate } from '../resume-version.types'
 
 // --- Version endpoints ---
 
