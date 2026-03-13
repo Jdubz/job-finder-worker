@@ -19,7 +19,9 @@ import type {
   PublishResumeVersionResponse,
   CreateResumeVersionRequest,
   CreateResumeVersionResponse,
-  DeleteResumeVersionResponse
+  DeleteResumeVersionResponse,
+  TailorResumeResponse,
+  PoolHealthSummary
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
@@ -117,6 +119,26 @@ export class ResumeVersionsClient extends BaseApiClient {
 
   getPdfUrl(slug: string): string {
     return `${this.baseUrl}/resume-versions/${slug}/pdf`
+  }
+
+  async tailorResume(jobMatchId: string, force = false): Promise<TailorResumeResponse> {
+    const params = force ? '?force=true' : ''
+    const response = await this.post<ApiSuccessResponse<TailorResumeResponse>>(
+      `/resume-versions/pool/tailor${params}`,
+      { jobMatchId }
+    )
+    return response.data
+  }
+
+  getTailoredPdfUrl(jobMatchId: string): string {
+    return `${this.baseUrl}/resume-versions/pool/tailor/${jobMatchId}/pdf`
+  }
+
+  async getPoolHealth(): Promise<PoolHealthSummary> {
+    const response = await this.get<ApiSuccessResponse<PoolHealthSummary>>(
+      '/resume-versions/pool/health'
+    )
+    return response.data
   }
 }
 

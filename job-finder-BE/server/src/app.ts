@@ -121,9 +121,10 @@ export function buildApp() {
   const contentItemMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
   app.use('/api/content-items', buildContentItemRouter({ mutationsMiddleware: contentItemMutationGuards }))
 
-  // Resume versions — public read, admin mutations + publish
+  // Resume versions — public read, admin mutations + publish, auth-only for tailoring
   const resumeVersionMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
-  app.use('/api/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: resumeVersionMutationGuards }))
+  const resumeVersionAuthGuards: RequestHandler[] = [verifyFirebaseAuth]
+  app.use('/api/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: resumeVersionMutationGuards, authMiddleware: resumeVersionAuthGuards }))
 
   // Chat widget - public endpoint for visitor interactions
   app.use('/api/chat', buildChatWidgetRouter())

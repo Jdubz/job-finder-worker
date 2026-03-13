@@ -1,21 +1,25 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Plus, Download, Upload, FileText, Trash2, X } from "lucide-react"
+import { Loader2, Plus, FileText, Sparkles, Download, CheckCircle } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
-import { useResumeVersions } from "./hooks/useResumeVersions"
 import { useResumeVersion } from "@/hooks/useResumeVersion"
-import type { ContentFitEstimate } from "@shared/types"
 import { resumeVersionsClient } from "@/api"
+import { jobMatchesClient } from "@/api"
 import { ContentItemForm } from "../content-items/components/ContentItemForm"
 import { ContentItemCard } from "../content-items/components/ContentItemCard"
 import type { ContentItemFormValues } from "@/types/content-items"
-import type { ContentItemNode } from "@shared/types"
-import type { ResumeVersion, ResumeVersionSlug, ResumeItemNode } from "@shared/types"
+import type {
+  ContentItemNode,
+  ContentFitEstimate,
+  ResumeItemNode,
+  PoolHealthSummary,
+  TailorResumeResponse
+} from "@shared/types"
 import { cn } from "@/lib/utils"
 
 /** Map a ResumeItemNode to a ContentItemNode by picking only the shared fields. */
@@ -57,18 +61,10 @@ interface AlertState {
 
 export function ResumeVersionsPage() {
   const { user, isOwner } = useAuth()
-  const {
-    versions,
-    loading: versionsLoading,
-    error: versionsError,
-    createVersion,
-    deleteVersion
-  } = useResumeVersions()
-  const [selectedSlug, setSelectedSlug] = useState<ResumeVersionSlug>("frontend")
   const [editMode, setEditMode] = useState(false)
   const [showRootForm, setShowRootForm] = useState(false)
-  const [showNewVersionForm, setShowNewVersionForm] = useState(false)
   const [alert, setAlert] = useState<AlertState | null>(null)
+  const [poolHealth, setPoolHealth] = useState<PoolHealthSummary | null>(null)
 
   const isAdmin = Boolean(user?.email && isOwner)
   const canEdit = isAdmin && editMode
@@ -76,19 +72,26 @@ export function ResumeVersionsPage() {
   const {
     version,
     items,
-    contentFit,
+    contentFit: _contentFit,
     loading: versionLoading,
     error: versionError,
-    publishing,
+    mutationCount,
     createItem,
     updateItem,
     deleteItem,
     reorderItem,
-    publish,
-  } = useResumeVersion(selectedSlug)
+    refetch: _refetch,
+  } = useResumeVersion("pool")
 
   const sortedItems = useMemo(() => sortNodesByOrder(items), [items])
   const contentItems = useMemo(() => sortedItems.map(toContentItemNode), [sortedItems])
+
+  // Load pool health stats (refetch on mount and after any mutation)
+  useEffect(() => {
+    resumeVersionsClient.getPoolHealth()
+      .then(setPoolHealth)
+      .catch((err) => console.error("Failed to load pool health:", err))
+  }, [mutationCount])
 
   const handleCreateRoot = async (values: ContentItemFormValues) => {
     try {
@@ -132,45 +135,7 @@ export function ResumeVersionsPage() {
     }
   }
 
-  const handlePublish = async () => {
-    try {
-      await publish()
-      setAlert({ type: "success", message: `Resume "${version?.name}" published successfully` })
-    } catch (err) {
-      setAlert({ type: "error", message: (err as Error).message })
-    }
-  }
-
-  const handleCreateVersion = async (name: string, slug: string, description: string) => {
-    try {
-      const version = await createVersion({ name, slug, description: description || null })
-      setSelectedSlug(version.slug)
-      setShowNewVersionForm(false)
-      setAlert({ type: "success", message: `Version "${version.name}" created` })
-    } catch (err) {
-      setAlert({ type: "error", message: (err as Error).message })
-    }
-  }
-
-  const handleDeleteVersion = async (slug: string) => {
-    try {
-      await deleteVersion(slug)
-      if (selectedSlug === slug) {
-        const remaining = versions.filter((v) => v.slug !== slug)
-        setSelectedSlug(remaining.length > 0 ? remaining[0].slug : "")
-      }
-      setAlert({ type: "success", message: `Version "${slug}" deleted` })
-    } catch (err) {
-      setAlert({ type: "error", message: (err as Error).message })
-    }
-  }
-
-  const handleDownload = () => {
-    if (!selectedSlug) return
-    window.open(resumeVersionsClient.getPdfUrl(selectedSlug), "_blank", "noopener,noreferrer")
-  }
-
-  if (versionsLoading) {
+  if (versionLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -178,10 +143,10 @@ export function ResumeVersionsPage() {
     )
   }
 
-  if (versionsError) {
+  if (versionError) {
     return (
       <Alert variant="destructive">
-        <AlertDescription>Failed to load resume versions: {versionsError.message}</AlertDescription>
+        <AlertDescription>Failed to load resume pool: {versionError.message}</AlertDescription>
       </Alert>
     )
   }
@@ -190,9 +155,9 @@ export function ResumeVersionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Resume Versions</h1>
+          <h1 className="text-2xl font-bold">Resume Pool</h1>
           <p className="text-muted-foreground">
-            Manage role-targeted resume versions. Each version renders to a single PDF.
+            Curated pool of resume content. AI selects the best subset per job application.
           </p>
         </div>
         {isAdmin && (
@@ -212,93 +177,16 @@ export function ResumeVersionsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        {/* Version sidebar */}
-        <div className="space-y-2">
-          {versions.map((v) => (
-            <VersionCard
-              key={v.slug}
-              version={v}
-              isSelected={v.slug === selectedSlug}
-              canEdit={canEdit}
-              onClick={() => setSelectedSlug(v.slug)}
-              onDelete={() => handleDeleteVersion(v.slug)}
-            />
-          ))}
-          {canEdit && (
-            showNewVersionForm ? (
-              <NewVersionForm
-                onSubmit={handleCreateVersion}
-                onCancel={() => setShowNewVersionForm(false)}
-              />
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setShowNewVersionForm(true)}
-              >
-                <Plus className="mr-1 h-4 w-4" /> Add Version
-              </Button>
-            )
-          )}
+        {/* Pool sidebar */}
+        <div className="space-y-4">
+          {poolHealth && <PoolHealthCard health={poolHealth} />}
+          {isAdmin && <TestTailoringCard />}
         </div>
 
-        {/* Version detail panel */}
+        {/* Pool content editor */}
         <div className="space-y-4">
-          {versionError ? (
-            <Alert variant="destructive">
-              <AlertDescription>Failed to load version: {versionError.message}</AlertDescription>
-            </Alert>
-          ) : versionLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : version ? (
+          {version ? (
             <>
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>{version.name}</CardTitle>
-                      <CardDescription>{version.description}</CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      {version.pdfPath && (
-                        <Button variant="outline" size="sm" onClick={handleDownload}>
-                          <Download className="mr-1 h-4 w-4" /> Download PDF
-                        </Button>
-                      )}
-                      {canEdit && (
-                        <Button
-                          size="sm"
-                          onClick={handlePublish}
-                          disabled={publishing || sortedItems.length === 0}
-                        >
-                          {publishing ? (
-                            <>
-                              <Loader2 className="mr-1 h-4 w-4 animate-spin" /> Publishing...
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="mr-1 h-4 w-4" /> Publish
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {version.publishedAt && (
-                    <p className="text-xs text-muted-foreground">
-                      Published {new Date(String(version.publishedAt)).toLocaleDateString()}{" "}
-                      by {version.publishedBy}
-                    </p>
-                  )}
-                </CardHeader>
-              </Card>
-
-              {/* Content fit indicator */}
-              {contentFit && <ContentFitIndicator fit={contentFit} />}
-
               {/* Items tree */}
               <div className="space-y-4">
                 {canEdit && (
@@ -329,7 +217,7 @@ export function ResumeVersionsPage() {
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <FileText className="mb-3 h-10 w-10" />
-                      <p>No content yet for this resume version.</p>
+                      <p>No content in the pool yet.</p>
                       {canEdit && (
                         <p className="text-sm">Click "Add Section" to start building.</p>
                       )}
@@ -354,11 +242,188 @@ export function ResumeVersionsPage() {
               </div>
             </>
           ) : (
-            <p className="text-muted-foreground">Select a resume version.</p>
+            <Alert>
+              <AlertDescription>
+                Resume pool not found. Run migration 063 to create it.
+              </AlertDescription>
+            </Alert>
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+function PoolHealthCard({ health }: { health: PoolHealthSummary }) {
+  const stats = [
+    { label: "Narratives", count: health.narratives, min: 3 },
+    { label: "Experience", count: health.experiences, min: 3 },
+    { label: "Highlights", count: health.highlights, min: 10 },
+    { label: "Skill Groups", count: health.skillCategories, min: 3 },
+    { label: "Projects", count: health.projects, min: 1 },
+    { label: "Education", count: health.education, min: 1 },
+  ]
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Pool Health</CardTitle>
+        <CardDescription className="text-xs">{health.totalItems} total items</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1.5">
+        {stats.map(({ label, count, min }) => (
+          <div key={label} className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">{label}</span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-xs",
+                count >= min
+                  ? "text-green-600 border-green-200"
+                  : "text-amber-600 border-amber-200"
+              )}
+            >
+              {count}
+            </Badge>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function TestTailoringCard() {
+  const [jobMatchId, setJobMatchId] = useState("")
+  const [tailoring, setTailoring] = useState(false)
+  const [result, setResult] = useState<TailorResumeResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [jobMatches, setJobMatches] = useState<Array<{ id: string; title: string; company: string }>>([])
+  const [loadingMatches, setLoadingMatches] = useState(false)
+
+  // Load recent job matches for the dropdown
+  useEffect(() => {
+    setLoadingMatches(true)
+    jobMatchesClient
+      .listMatches({ limit: 20, sortBy: "updated", sortOrder: "desc", status: "active" })
+      .then((matches) => {
+        setJobMatches(
+          matches
+            .filter((m): m is typeof m & { id: string } => !!m.id)
+            .map((m) => ({
+              id: m.id,
+              title: m.listing?.title || "Unknown",
+              company: m.listing?.companyName || "Unknown"
+            }))
+        )
+      })
+      .catch((err) => console.error("Failed to load job matches for tailoring test:", err))
+      .finally(() => setLoadingMatches(false))
+  }, [])
+
+  const handleTailor = async () => {
+    if (!jobMatchId) return
+    setTailoring(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await resumeVersionsClient.tailorResume(jobMatchId)
+      setResult(res)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setTailoring(false)
+    }
+  }
+
+  const handleDownload = () => {
+    if (!result?.jobMatchId) return
+    window.open(
+      resumeVersionsClient.getTailoredPdfUrl(result.jobMatchId),
+      "_blank",
+      "noopener,noreferrer"
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4" /> Test Tailoring
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Preview AI selection for a job match
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label htmlFor="test-job-match" className="text-xs">Job Match</Label>
+          {loadingMatches ? (
+            <div className="text-xs text-muted-foreground py-1">Loading...</div>
+          ) : jobMatches.length > 0 ? (
+            <select
+              id="test-job-match"
+              value={jobMatchId}
+              onChange={(e) => setJobMatchId(e.target.value)}
+              className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+            >
+              <option value="">Select a job...</option>
+              {jobMatches.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title} @ {m.company}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Input
+              id="test-job-match"
+              placeholder="Job match ID"
+              value={jobMatchId}
+              onChange={(e) => setJobMatchId(e.target.value)}
+              className="h-8 text-sm font-mono"
+            />
+          )}
+        </div>
+
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={!jobMatchId || tailoring}
+          onClick={handleTailor}
+        >
+          {tailoring ? (
+            <>
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" /> Tailoring...
+            </>
+          ) : (
+            "Run Tailoring"
+          )}
+        </Button>
+
+        {error && (
+          <p className="text-xs text-destructive">{error}</p>
+        )}
+
+        {result && (
+          <div className="space-y-2 border-t pt-2">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+              <span className="text-xs font-medium">
+                {result.cached ? "Cached" : "Generated"} — {result.selectedItemIds.length} items
+              </span>
+            </div>
+            {result.contentFit && (
+              <ContentFitIndicator fit={result.contentFit} />
+            )}
+            {result.reasoning && (
+              <p className="text-xs text-muted-foreground italic">{result.reasoning}</p>
+            )}
+            <Button variant="outline" size="sm" className="w-full" onClick={handleDownload}>
+              <Download className="mr-1 h-3.5 w-3.5" /> Download PDF
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -383,191 +448,17 @@ function ContentFitIndicator({ fit }: { fit: ContentFitEstimate }) {
     : `${fit.usagePercent}% — overflows to ${fit.pageCount} pages`
 
   return (
-    <Card>
-      <CardContent className="py-3 px-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-muted-foreground">Page Usage</span>
-              <span className={cn("text-xs font-semibold", textColor)}>{label}</span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-              <div
-                className={cn("h-full rounded-full transition-all", barColor)}
-                style={{ width: `${Math.min(fit.usagePercent, 100)}%` }}
-              />
-            </div>
-          </div>
-          <span className={cn("text-lg font-bold tabular-nums", textColor)}>
-            {fit.pageCount}p
-          </span>
-        </div>
-        {fit.suggestions.length > 0 && (
-          <ul className="mt-2 space-y-0.5">
-            {fit.suggestions.map((s, i) => (
-              <li key={i} className="text-xs text-muted-foreground">
-                &bull; {s}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function VersionCard({
-  version,
-  isSelected,
-  canEdit,
-  onClick,
-  onDelete
-}: {
-  version: ResumeVersion
-  isSelected: boolean
-  canEdit: boolean
-  onClick: () => void
-  onDelete: () => void
-}) {
-  const [confirming, setConfirming] = useState(false)
-
-  return (
-    <div
-      className={cn(
-        "relative w-full rounded-lg border p-3 text-left transition-colors",
-        isSelected
-          ? "border-primary bg-primary/5 shadow-sm"
-          : "border-border hover:bg-muted/50"
-      )}
-    >
-      <button type="button" onClick={onClick} className="w-full text-left">
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-sm">{version.name}</span>
-          {version.pdfPath ? (
-            <Badge variant="outline" className="text-xs text-green-600 border-green-200">
-              Published
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
-              Draft
-            </Badge>
-          )}
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{version.description}</p>
-        {version.publishedAt && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {new Date(String(version.publishedAt)).toLocaleDateString()}
-          </p>
-        )}
-      </button>
-      {canEdit && (
-        confirming ? (
-          <div className="mt-2 flex items-center gap-1">
-            <span className="text-xs text-destructive">Delete?</span>
-            <Button variant="destructive" size="sm" className="h-6 px-2 text-xs" onClick={onDelete}>
-              Yes
-            </Button>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(false)}>
-              No
-            </Button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="absolute top-2 right-2 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            aria-label="Delete version"
-            title="Delete version"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )
-      )}
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium text-muted-foreground">Page Usage</span>
+        <span className={cn("text-xs font-semibold", textColor)}>{label}</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", barColor)}
+          style={{ width: `${Math.min(fit.usagePercent, 100)}%` }}
+        />
+      </div>
     </div>
-  )
-}
-
-function NewVersionForm({
-  onSubmit,
-  onCancel
-}: {
-  onSubmit: (name: string, slug: string, description: string) => void
-  onCancel: () => void
-}) {
-  const [name, setName] = useState("")
-  const [slug, setSlug] = useState("")
-  const [description, setDescription] = useState("")
-  const [slugTouched, setSlugTouched] = useState(false)
-
-  const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-  const isSlugValid = slug.trim() !== "" && slugPattern.test(slug.trim())
-
-  const handleNameChange = (value: string) => {
-    setName(value)
-    if (!slugTouched) {
-      setSlug(
-        value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-      )
-    }
-  }
-
-  return (
-    <Card>
-      <CardContent className="pt-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">New Version</span>
-          <button type="button" onClick={onCancel} className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <Label htmlFor="version-name" className="text-xs">Name</Label>
-            <Input
-              id="version-name"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="e.g. DevOps Engineer"
-              className="h-8 text-sm"
-            />
-          </div>
-          <div>
-            <Label htmlFor="version-slug" className="text-xs">Slug</Label>
-            <Input
-              id="version-slug"
-              value={slug}
-              onChange={(e) => { setSlug(e.target.value); setSlugTouched(true) }}
-              placeholder="e.g. devops"
-              pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              className="h-8 text-sm font-mono"
-            />
-            {slug && !isSlugValid && (
-              <p className="text-xs text-destructive mt-1">Lowercase letters, numbers, and hyphens only</p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="version-desc" className="text-xs">Description</Label>
-            <Input
-              id="version-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description"
-              className="h-8 text-sm"
-            />
-          </div>
-        </div>
-        <Button
-          size="sm"
-          className="w-full"
-          disabled={!name.trim() || !isSlugValid}
-          onClick={() => onSubmit(name.trim(), slug.trim(), description.trim())}
-        >
-          Create Version
-        </Button>
-      </CardContent>
-    </Card>
   )
 }

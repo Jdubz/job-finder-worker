@@ -1,5 +1,19 @@
 import type { ContentItemAIContext } from './content-item.types'
+import type { ResumeContent } from './generator.types'
 import type { TimestampJson } from './schemas/timestamp.schema'
+
+// --- Content fit estimation ---
+// Defined here (core entity) to avoid circular dependency with api/resume-version.types.ts
+
+export interface ContentFitEstimate {
+  mainColumnLines: number
+  maxLines: number
+  usagePercent: number    // 0–100+
+  pageCount: number       // 1 if fits, 2+ if overflow
+  fits: boolean
+  overflow: number        // negative = room to spare, positive = overflow lines
+  suggestions: string[]
+}
 
 export type ResumeVersionSlug = string
 
@@ -60,4 +74,17 @@ export interface CreateResumeVersionData {
   name: string
   slug: string
   description?: string | null
+}
+
+export interface TailoredResume {
+  id: string
+  jobMatchId: string
+  resumeContent: ResumeContent
+  selectedItems: string[] // pool item IDs
+  pdfPath: string | null
+  pdfSizeBytes: number | null
+  contentFit: ContentFitEstimate | null
+  reasoning: string | null
+  createdAt: TimestampJson
+  expiresAt: TimestampJson
 }

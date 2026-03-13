@@ -24,6 +24,7 @@ import type {
   DraftContentResponse,
   ListResumeVersionsResponse,
   ResumeVersion,
+  TailorResumeResponse,
 } from "@shared/types"
 import { fetchWithRetry, parseApiError } from "./utils.js"
 import { logger } from "./logger.js"
@@ -530,6 +531,36 @@ export async function fetchResumeVersions(): Promise<ResumeVersion[]> {
  */
 export function getResumeVersionPdfUrl(slug: string): string {
   return `${getApiUrl()}/resume-versions/${slug}/pdf`
+}
+
+/**
+ * Trigger AI tailoring for a job match. Returns tailored resume metadata.
+ */
+export async function tailorResume(jobMatchId: string, force = false): Promise<TailorResumeResponse> {
+  const params = force ? '?force=true' : ''
+  const res = await fetchWithRetry(
+    `${getApiUrl()}/resume-versions/pool/tailor${params}`,
+    fetchOptions({
+      method: "POST",
+      body: JSON.stringify({ jobMatchId }),
+    }),
+    { maxRetries: 1, timeoutMs: 120000 } // AI selection can take 30-60s
+  )
+
+  if (!res.ok) {
+    const errorMsg = await parseApiError(res)
+    throw new Error(`Tailoring failed: ${errorMsg}`)
+  }
+
+  const data: ApiSuccessResponse<TailorResumeResponse> = await res.json()
+  return data.data
+}
+
+/**
+ * Get the PDF download URL for a tailored resume.
+ */
+export function getTailoredResumePdfUrl(jobMatchId: string): string {
+  return `${getApiUrl()}/resume-versions/pool/tailor/${jobMatchId}/pdf`
 }
 
 // ============================================================================

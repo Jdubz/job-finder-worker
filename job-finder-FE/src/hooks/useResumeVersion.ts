@@ -17,6 +17,7 @@ interface UseResumeVersionResult {
   loading: boolean
   error: Error | null
   publishing: boolean
+  mutationCount: number
   createItem: (data: CreateResumeItemData) => Promise<ResumeItem>
   updateItem: (id: string, data: UpdateResumeItemData) => Promise<void>
   deleteItem: (id: string) => Promise<void>
@@ -34,6 +35,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [mutationCount, setMutationCount] = useState(0)
 
   const fetchData = useCallback(async () => {
     if (!slug) {
@@ -71,6 +73,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
       ensureAuth()
       const created = await resumeVersionsClient.createItem(slug, data)
       await fetchData()
+      setMutationCount((c) => c + 1)
       return created
     },
     [slug, ensureAuth, fetchData]
@@ -81,6 +84,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
       ensureAuth()
       await resumeVersionsClient.updateItem(slug, id, data)
       await fetchData()
+      setMutationCount((c) => c + 1)
     },
     [slug, ensureAuth, fetchData]
   )
@@ -90,6 +94,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
       ensureAuth()
       await resumeVersionsClient.deleteItem(slug, id)
       await fetchData()
+      setMutationCount((c) => c + 1)
     },
     [slug, ensureAuth, fetchData]
   )
@@ -99,6 +104,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
       ensureAuth()
       await resumeVersionsClient.reorderItem(slug, id, parentId, orderIndex)
       await fetchData()
+      setMutationCount((c) => c + 1)
     },
     [slug, ensureAuth, fetchData]
   )
@@ -126,6 +132,7 @@ export function useResumeVersion(slug: string): UseResumeVersionResult {
     loading,
     error,
     publishing,
+    mutationCount,
     createItem,
     updateItem,
     deleteItem,

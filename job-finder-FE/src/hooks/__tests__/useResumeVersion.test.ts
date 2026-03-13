@@ -12,9 +12,9 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 const mockVersion: ResumeVersion = {
   id: "v-1",
-  slug: "frontend",
-  name: "Frontend Engineer",
-  description: "Frontend-focused resume",
+  slug: "pool",
+  name: "Resume Pool",
+  description: "Master pool of curated resume content",
   pdfPath: null,
   pdfSizeBytes: null,
   publishedAt: null,
@@ -67,12 +67,12 @@ describe("useResumeVersion", () => {
   })
 
   it("fetches version data on mount", async () => {
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
 
     expect(result.current.loading).toBe(true)
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    expect(resumeVersionsClient.getVersion).toHaveBeenCalledWith("frontend")
+    expect(resumeVersionsClient.getVersion).toHaveBeenCalledWith("pool")
     expect(result.current.version).toEqual(mockVersion)
     expect(result.current.items).toEqual(mockItems)
     expect(result.current.error).toBeNull()
@@ -82,7 +82,7 @@ describe("useResumeVersion", () => {
     const error = new Error("Network error")
     vi.mocked(resumeVersionsClient.getVersion).mockRejectedValue(error)
 
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.error).toEqual(error)
@@ -93,15 +93,15 @@ describe("useResumeVersion", () => {
   it("refetches when slug changes", async () => {
     const { result, rerender } = renderHook(
       ({ slug }) => useResumeVersion(slug),
-      { initialProps: { slug: "frontend" } }
+      { initialProps: { slug: "pool" } }
     )
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(resumeVersionsClient.getVersion).toHaveBeenCalledWith("frontend")
+    expect(resumeVersionsClient.getVersion).toHaveBeenCalledWith("pool")
 
-    rerender({ slug: "backend" })
+    rerender({ slug: "other-version" })
     await waitFor(() =>
-      expect(resumeVersionsClient.getVersion).toHaveBeenCalledWith("backend")
+      expect(resumeVersionsClient.getVersion).toHaveBeenCalledWith("other-version")
     )
   })
 
@@ -109,14 +109,14 @@ describe("useResumeVersion", () => {
     const mockCreated = { id: "new-1" }
     vi.mocked(resumeVersionsClient.createItem).mockResolvedValue(mockCreated as never)
 
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
       await result.current.createItem({ title: "New Section", parentId: null })
     })
 
-    expect(resumeVersionsClient.createItem).toHaveBeenCalledWith("frontend", {
+    expect(resumeVersionsClient.createItem).toHaveBeenCalledWith("pool", {
       title: "New Section",
       parentId: null
     })
@@ -125,7 +125,7 @@ describe("useResumeVersion", () => {
   })
 
   it("updates an item and refetches", async () => {
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
@@ -133,7 +133,7 @@ describe("useResumeVersion", () => {
     })
 
     expect(resumeVersionsClient.updateItem).toHaveBeenCalledWith(
-      "frontend",
+      "pool",
       "item-1",
       { title: "Updated" }
     )
@@ -141,25 +141,25 @@ describe("useResumeVersion", () => {
   })
 
   it("deletes an item and refetches", async () => {
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
       await result.current.deleteItem("item-1")
     })
 
-    expect(resumeVersionsClient.deleteItem).toHaveBeenCalledWith("frontend", "item-1")
+    expect(resumeVersionsClient.deleteItem).toHaveBeenCalledWith("pool", "item-1")
     expect(resumeVersionsClient.getVersion).toHaveBeenCalledTimes(2)
   })
 
   it("publishes and updates version state", async () => {
-    const publishedVersion = { ...mockVersion, pdfPath: "resumes/frontend.pdf" }
+    const publishedVersion = { ...mockVersion, pdfPath: "resumes/pool.pdf" }
     vi.mocked(resumeVersionsClient.publish).mockResolvedValue({
       version: publishedVersion,
       message: "Published"
     })
 
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.publishing).toBe(false)
@@ -168,12 +168,12 @@ describe("useResumeVersion", () => {
       await result.current.publish()
     })
 
-    expect(resumeVersionsClient.publish).toHaveBeenCalledWith("frontend")
+    expect(resumeVersionsClient.publish).toHaveBeenCalledWith("pool")
     expect(result.current.publishing).toBe(false)
   })
 
   it("reorders an item and refetches", async () => {
-    const { result } = renderHook(() => useResumeVersion("frontend"))
+    const { result } = renderHook(() => useResumeVersion("pool"))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
@@ -181,7 +181,7 @@ describe("useResumeVersion", () => {
     })
 
     expect(resumeVersionsClient.reorderItem).toHaveBeenCalledWith(
-      "frontend",
+      "pool",
       "item-1",
       null,
       2

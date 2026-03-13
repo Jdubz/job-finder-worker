@@ -36,27 +36,27 @@ describe('resume-version routes contract', () => {
   // ── Version endpoints ──────────────────────────────────────────
 
   describe('GET /resume-versions', () => {
-    it('returns all 5 seeded versions', async () => {
+    it('returns the pool version (seeded by migration 063)', async () => {
       const res = await request(app).get('/resume-versions')
       expect(res.status).toBe(200)
-      expect(res.body.data.versions).toHaveLength(5)
+      expect(res.body.data.versions.length).toBeGreaterThanOrEqual(1)
 
-      const slugs = res.body.data.versions.map((v: any) => v.slug).sort()
-      expect(slugs).toEqual(['ai', 'backend', 'frontend', 'fullstack', 'solution-engineer'])
+      const slugs = res.body.data.versions.map((v: any) => v.slug)
+      expect(slugs).toContain('pool')
     })
   })
 
   describe('GET /resume-versions/:slug', () => {
-    it('returns version detail with empty items tree', async () => {
-      const res = await request(app).get('/resume-versions/frontend')
+    it('returns version detail with items tree', async () => {
+      const res = await request(app).get('/resume-versions/pool')
       expect(res.status).toBe(200)
-      expect(res.body.data.version.slug).toBe('frontend')
-      expect(res.body.data.version.name).toBe('Frontend Engineer')
+      expect(res.body.data.version.slug).toBe('pool')
+      expect(res.body.data.version.name).toBe('Resume Pool')
       expect(res.body.data.items).toEqual([])
     })
 
     it('returns version with nested items tree', async () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const section = repo.createItem(version.id, {
         title: 'Experience',
         aiContext: 'section',
@@ -70,7 +70,7 @@ describe('resume-version routes contract', () => {
         userEmail
       })
 
-      const res = await request(app).get('/resume-versions/frontend')
+      const res = await request(app).get('/resume-versions/pool')
       expect(res.status).toBe(200)
       expect(res.body.data.items).toHaveLength(1) // 1 root
       expect(res.body.data.items[0].title).toBe('Experience')
@@ -86,11 +86,11 @@ describe('resume-version routes contract', () => {
 
   describe('GET /resume-versions/:slug/items', () => {
     it('returns items tree with total count', async () => {
-      const version = repo.getVersionBySlug('backend')!
+      const version = repo.getVersionBySlug('pool')!
       repo.createItem(version.id, { title: 'Item A', userEmail })
       repo.createItem(version.id, { title: 'Item B', userEmail })
 
-      const res = await request(app).get('/resume-versions/backend/items')
+      const res = await request(app).get('/resume-versions/pool/items')
       expect(res.status).toBe(200)
       expect(res.body.data.items).toHaveLength(2)
       expect(res.body.data.total).toBe(2)
@@ -125,7 +125,7 @@ describe('resume-version routes contract', () => {
     it('returns 409 for duplicate slug', async () => {
       const res = await request(app)
         .post('/resume-versions')
-        .send({ name: 'Dupe', slug: 'frontend' })
+        .send({ name: 'Dupe', slug: 'pool' })
 
       expect(res.status).toBe(409)
       expect(res.body.error.code).toBe('ALREADY_EXISTS')
@@ -175,7 +175,7 @@ describe('resume-version routes contract', () => {
   describe('POST /resume-versions/:slug/items', () => {
     it('creates a root item', async () => {
       const res = await request(app)
-        .post('/resume-versions/frontend/items')
+        .post('/resume-versions/pool/items')
         .send({ itemData: { title: 'Skills', aiContext: 'section' } })
 
       expect(res.status).toBe(201)
@@ -185,11 +185,11 @@ describe('resume-version routes contract', () => {
     })
 
     it('creates a child item', async () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const parent = repo.createItem(version.id, { title: 'Exp', aiContext: 'section', userEmail })
 
       const res = await request(app)
-        .post('/resume-versions/frontend/items')
+        .post('/resume-versions/pool/items')
         .send({
           itemData: {
             parentId: parent.id,
@@ -217,7 +217,7 @@ describe('resume-version routes contract', () => {
 
     it('returns 400 for invalid date format', async () => {
       const res = await request(app)
-        .post('/resume-versions/frontend/items')
+        .post('/resume-versions/pool/items')
         .send({
           itemData: { title: 'Bad Date', startDate: '2023-13-01' }
         })
@@ -228,11 +228,11 @@ describe('resume-version routes contract', () => {
 
   describe('PATCH /resume-versions/:slug/items/:id', () => {
     it('updates an item', async () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const item = repo.createItem(version.id, { title: 'Original', userEmail })
 
       const res = await request(app)
-        .patch(`/resume-versions/frontend/items/${item.id}`)
+        .patch(`/resume-versions/pool/items/${item.id}`)
         .send({ itemData: { title: 'Updated', description: 'New desc' } })
 
       expect(res.status).toBe(200)
@@ -242,7 +242,7 @@ describe('resume-version routes contract', () => {
 
     it('returns 404 for unknown item', async () => {
       const res = await request(app)
-        .patch('/resume-versions/frontend/items/missing-id')
+        .patch('/resume-versions/pool/items/missing-id')
         .send({ itemData: { title: 'X' } })
 
       expect(res.status).toBe(404)
@@ -251,54 +251,54 @@ describe('resume-version routes contract', () => {
 
   describe('DELETE /resume-versions/:slug/items/:id', () => {
     it('deletes an item', async () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const item = repo.createItem(version.id, { title: 'To Delete', userEmail })
 
       const res = await request(app)
-        .delete(`/resume-versions/frontend/items/${item.id}`)
+        .delete(`/resume-versions/pool/items/${item.id}`)
 
       expect(res.status).toBe(200)
       expect(res.body.data.deleted).toBe(true)
 
       // Verify deleted
-      const get = await request(app).get('/resume-versions/frontend/items')
+      const get = await request(app).get('/resume-versions/pool/items')
       expect(get.body.data.items).toHaveLength(0)
     })
 
     it('returns 404 for unknown item', async () => {
       const res = await request(app)
-        .delete('/resume-versions/frontend/items/missing')
+        .delete('/resume-versions/pool/items/missing')
       expect(res.status).toBe(404)
     })
   })
 
   describe('POST /resume-versions/:slug/items/:id/reorder', () => {
     it('reorders items', async () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       repo.createItem(version.id, { title: 'A', userEmail })
       repo.createItem(version.id, { title: 'B', userEmail })
       const c = repo.createItem(version.id, { title: 'C', userEmail })
 
       // Move C to position 0
       const res = await request(app)
-        .post(`/resume-versions/frontend/items/${c.id}/reorder`)
+        .post(`/resume-versions/pool/items/${c.id}/reorder`)
         .send({ orderIndex: 0 })
 
       expect(res.status).toBe(200)
 
       // Verify new order
-      const list = await request(app).get('/resume-versions/frontend/items')
+      const list = await request(app).get('/resume-versions/pool/items')
       const titles = list.body.data.items.map((i: any) => i.title)
       expect(titles).toEqual(['C', 'A', 'B'])
     })
 
     it('moves item to a parent', async () => {
-      const version = repo.getVersionBySlug('frontend')!
+      const version = repo.getVersionBySlug('pool')!
       const parent = repo.createItem(version.id, { title: 'Parent', aiContext: 'section', userEmail })
       const child = repo.createItem(version.id, { title: 'Orphan', userEmail })
 
       const res = await request(app)
-        .post(`/resume-versions/frontend/items/${child.id}/reorder`)
+        .post(`/resume-versions/pool/items/${child.id}/reorder`)
         .send({ parentId: parent.id, orderIndex: 0 })
 
       expect(res.status).toBe(200)
@@ -310,7 +310,7 @@ describe('resume-version routes contract', () => {
 
   describe('GET /resume-versions/:slug/pdf', () => {
     it('returns 404 when not published', async () => {
-      const res = await request(app).get('/resume-versions/frontend/pdf')
+      const res = await request(app).get('/resume-versions/pool/pdf')
       expect(res.status).toBe(404)
       expect(res.body.error.message).toContain('not been published')
     })

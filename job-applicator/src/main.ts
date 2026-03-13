@@ -98,6 +98,8 @@ import {
   submitJobToQueue,
   fetchResumeVersions,
   getResumeVersionPdfUrl,
+  tailorResume,
+  getTailoredResumePdfUrl,
   getApiUrl,
 } from "./api-client.js"
 
@@ -1261,6 +1263,33 @@ ipcMain.handle(
   }
 )
 
+// Tailor resume for a specific job match (AI selection from pool)
+ipcMain.handle(
+  "tailor-resume",
+  async (
+    _event: IpcMainInvokeEvent,
+    jobMatchId: string,
+    force?: boolean
+  ): Promise<{ success: boolean; pdfUrl?: string; reasoning?: string; error?: string; cached?: boolean }> => {
+    try {
+      logger.info(`[tailor-resume] Tailoring resume for job match: ${jobMatchId}`)
+      const result = await tailorResume(jobMatchId, force)
+      const pdfUrl = getTailoredResumePdfUrl(jobMatchId)
+      logger.info(`[tailor-resume] Tailoring ${result.cached ? 'cached' : 'completed'}: ${result.selectedItemIds.length} items selected`)
+      return {
+        success: true,
+        pdfUrl,
+        reasoning: result.reasoning ?? undefined,
+        cached: result.cached
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`[tailor-resume] Failed: ${message}`)
+      return { success: false, error: message }
+    }
+  }
+)
+
 // Get job matches from backend using typed API client
 ipcMain.handle(
   "get-job-matches",
@@ -1831,14 +1860,20 @@ ipcMain.handle(
       let coverLetterPath: string | undefined
       try {
         if (options.resumeVersionSlug) {
-          // Download resume version PDF from the backend API
+          // Legacy: download a specific static version
           const pdfUrl = getResumeVersionPdfUrl(options.resumeVersionSlug)
-          // downloadDocument expects a relative path like /api/...
-          // getResumeVersionPdfUrl returns full URL like http://localhost:3000/api/resume-versions/slug/pdf
-          // Convert to relative path for downloadDocument
           const pdfUrlObj = new URL(pdfUrl)
           const relativePath = pdfUrlObj.pathname
           resumePath = await downloadDocument(relativePath, `${options.resumeVersionSlug}-resume.pdf`)
+        } else {
+          // Auto-tailor: trigger AI selection from pool, then download the tailored PDF
+          logger.info(`[FillForm] Auto-tailoring resume for job match: ${options.jobMatchId}`)
+          const tailorResult = await tailorResume(options.jobMatchId)
+          logger.info(`[FillForm] Tailoring ${tailorResult.cached ? 'cached' : 'completed'}: ${tailorResult.selectedItemIds.length} items`)
+
+          const tailoredPdfUrl = getTailoredResumePdfUrl(options.jobMatchId)
+          const tailoredUrlObj = new URL(tailoredPdfUrl)
+          resumePath = await downloadDocument(tailoredUrlObj.pathname, `tailored-${options.jobMatchId}.pdf`)
         }
         if (options.coverLetterUrl) {
           coverLetterPath = await downloadDocument(options.coverLetterUrl)

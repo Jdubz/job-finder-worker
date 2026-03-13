@@ -102,6 +102,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Resume Versions
   getResumeVersions: () => ipcRenderer.invoke("get-resume-versions"),
+  tailorResume: (jobMatchId: string, force?: boolean) => ipcRenderer.invoke("tailor-resume", jobMatchId, force),
 
   // Documents
   getDocuments: (jobMatchId: string) => ipcRenderer.invoke("get-documents", jobMatchId),

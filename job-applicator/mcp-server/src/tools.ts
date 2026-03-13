@@ -228,9 +228,8 @@ export const tools: Tool[] = [
   {
     name: "get_resume_versions",
     description:
-      "Get the list of available resume versions (e.g., frontend, fullstack, backend, AI, solution-engineer). " +
-      "Each version is a curated, role-targeted resume. Returns slug, name, and whether a published PDF exists. " +
-      "Use this to select the most appropriate resume version for the job being applied to.",
+      "Get resume status. A tailored resume has been auto-generated for this job application from a curated content pool. " +
+      "The resume PDF is already pre-downloaded and ready for upload. You do NOT need to select a version — just use upload_file with type 'resume'.",
     inputSchema: {
       type: "object",
       properties: {},

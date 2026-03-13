@@ -567,6 +567,30 @@ select:focus {
   min-width: 0;
 }
 
+.tailor-status {
+  flex: 1;
+  padding: 8px 10px;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  font-size: 12px;
+}
+
+.tailor-status.loading {
+  color: #60a5fa;
+}
+
+.tailor-status.ready {
+  color: #4ade80;
+  border-color: #166534;
+}
+
+.tailor-status.error {
+  color: #f87171;
+  border-color: #7f1d1d;
+}
+
 .btn-preview {
   padding: 6px 8px;
   font-size: 14px;
