@@ -31,6 +31,8 @@ describe('resume-version routes contract', () => {
 
   beforeEach(() => {
     db.prepare('DELETE FROM resume_items').run()
+    // Reset pool publish state (may be modified by repository tests sharing this DB)
+    db.prepare('UPDATE resume_versions SET pdf_path = NULL, pdf_size_bytes = NULL, published_at = NULL, published_by = NULL WHERE slug = ?').run('pool')
   })
 
   // ── Version endpoints ──────────────────────────────────────────

@@ -2,6 +2,12 @@
 -- The pool intentionally contains MORE content than fits on 1 page.
 -- AI selects the best subset per job application.
 
+-- Defer foreign key checks until COMMIT so that step 3 can insert child items
+-- whose parents were deduped, and step 4 can fix them before validation runs.
+PRAGMA defer_foreign_keys = ON;
+
+BEGIN;
+
 -- 1. Create the pool version
 INSERT INTO resume_versions (id, slug, name, description, created_at, updated_at)
 VALUES (
@@ -37,6 +43,8 @@ WHERE resume_version_id = 'rv-fullstack';
 --    Dedup: skip items where (ai_context, title, role, description) already exists in pool.
 --    Only copies items that are NOT already represented.
 --    Uses 'pool-' || id for deterministic remapping.
+--    NOTE: Some child items may temporarily have invalid parent_ids (pointing to deduped parents).
+--    Step 4 fixes these before COMMIT triggers FK validation (defer_foreign_keys = ON).
 INSERT OR IGNORE INTO resume_items (
   id, resume_version_id, parent_id, order_index, ai_context,
   title, role, location, website, start_date, end_date,
@@ -107,3 +115,5 @@ CREATE TABLE tailored_resumes (
 
 CREATE UNIQUE INDEX idx_tailored_resumes_job_match ON tailored_resumes(job_match_id);
 CREATE INDEX idx_tailored_resumes_expires ON tailored_resumes(expires_at);
+
+COMMIT;
