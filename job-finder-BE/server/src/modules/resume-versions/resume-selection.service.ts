@@ -102,6 +102,54 @@ export class ResumeSelectionService {
   }
 
   /**
+   * Select content from the pool for a specific job match (no PDF generation).
+   * Used by the generator workflow to produce ResumeContent for review.
+   */
+  async selectContent(jobMatchId: string): Promise<ResumeContent> {
+    // Load pool
+    const pool = this.repo.getPoolVersion()
+    if (!pool) throw new PoolNotFoundError()
+
+    const items = this.repo.listItems(pool.id)
+    if (items.length === 0) throw new PoolNotFoundError('Resume pool has no items.')
+
+    const tree = buildItemTree(items)
+
+    // Load job match data
+    const match = this.jobMatchRepo.getByIdWithListing(jobMatchId)
+    if (!match) throw new JobMatchNotFoundError(jobMatchId)
+
+    // Load personal info
+    const personalInfoStore = new PersonalInfoStore()
+    const personalInfo = await personalInfoStore.get()
+    if (!personalInfo) throw new PersonalInfoMissingError()
+
+    // Run AI selection
+    const prompt = buildSelectionPrompt(tree, match)
+    const systemPrompt = SYSTEM_PROMPT
+    const result = await this.inferenceClient.execute('document', prompt, undefined, {
+      systemPrompt,
+      temperature: 0.3,
+      max_tokens: 4096
+    })
+
+    const selection = parseSelectionResponse(result.output)
+    logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
+
+    // Filter pool to selected items
+    const selectedTree = filterTreeToSelection(tree, selection)
+    let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo)
+
+    // Validate fit and trim if needed
+    const fit = estimateContentFit(resumeContent)
+    if (!fit.fits) {
+      resumeContent = trimToFit(resumeContent)
+    }
+
+    return resumeContent
+  }
+
+  /**
    * Tailor the pool resume for a specific job match.
    * Returns cached result if available, otherwise runs AI selection.
    */

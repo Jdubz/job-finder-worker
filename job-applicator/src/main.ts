@@ -96,7 +96,6 @@ import {
   submitDocumentReview,
   rejectDocumentReview,
   submitJobToQueue,
-  fetchResumeVersions,
   getResumeVersionPdfUrl,
   tailorResume,
   getTailoredResumePdfUrl,
@@ -1273,53 +1272,6 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   logger.info("[check-file-input] No file inputs found")
   return { hasFileInput: false }
 })
-
-// Get resume versions from backend
-ipcMain.handle(
-  "get-resume-versions",
-  async (): Promise<Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }>> => {
-    try {
-      const versions = await fetchResumeVersions()
-      return versions.map((v) => ({
-        slug: v.slug,
-        name: v.name,
-        pdfPath: v.pdfPath ?? null,
-        publishedAt: v.publishedAt ? String(v.publishedAt) : null,
-      }))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error(`Failed to fetch resume versions: ${message}`)
-      return []
-    }
-  }
-)
-
-// Tailor resume for a specific job match (AI selection from pool)
-ipcMain.handle(
-  "tailor-resume",
-  async (
-    _event: IpcMainInvokeEvent,
-    jobMatchId: string,
-    force?: boolean
-  ): Promise<{ success: boolean; pdfUrl?: string; reasoning?: string; error?: string; cached?: boolean }> => {
-    try {
-      logger.info(`[tailor-resume] Tailoring resume for job match: ${jobMatchId}`)
-      const result = await tailorResume(jobMatchId, force)
-      const pdfUrl = getTailoredResumePdfUrl(jobMatchId)
-      logger.info(`[tailor-resume] Tailoring ${result.cached ? 'cached' : 'completed'}: ${result.selectedItemIds.length} items selected`)
-      return {
-        success: true,
-        pdfUrl,
-        reasoning: result.reasoning ?? undefined,
-        cached: result.cached
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error(`[tailor-resume] Failed: ${message}`)
-      return { success: false, error: message }
-    }
-  }
-)
 
 // Get job matches from backend using typed API client
 ipcMain.handle(
