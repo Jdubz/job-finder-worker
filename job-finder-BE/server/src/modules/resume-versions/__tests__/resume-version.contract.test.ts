@@ -31,6 +31,8 @@ describe('resume-version routes contract', () => {
 
   beforeEach(() => {
     db.prepare('DELETE FROM resume_items').run()
+    // Reset pool publish state (may be modified by repository tests sharing this DB)
+    repo.unpublishVersion('pool')
   })
 
   // ── Version endpoints ──────────────────────────────────────────
