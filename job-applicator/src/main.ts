@@ -205,7 +205,8 @@ async function getResumeFilename(): Promise<string> {
       }
     }
   } catch (err) {
-    logger.warn(`[Download] Could not fetch personal info for filename: ${err}`)
+    const message = err instanceof Error ? err.message : String(err)
+    logger.warn(`[Download] Could not fetch personal info for filename: ${message}`)
   }
   return "Resume.pdf"
 }
@@ -2195,9 +2196,11 @@ ipcMain.handle("auth-login", async (): Promise<{
 ipcMain.handle("auth-logout", async (): Promise<{ success: boolean }> => {
   try {
     await logout()
+    _cachedResumeFilename = null
     return { success: true }
   } catch (err) {
     logger.error(`[Auth] Logout failed:`, err)
+    _cachedResumeFilename = null
     return { success: true } // Always clear local state even if API call fails
   }
 })

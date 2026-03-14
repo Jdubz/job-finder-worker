@@ -149,6 +149,7 @@ class PreFilter:
         "pa": "Panama",
         "uy": "Uruguay",
         "cr": "Costa Rica",
+        "_region": "Non-US Region",
     }
 
     # Maps common country representations → canonical two-letter code
@@ -743,15 +744,9 @@ class PreFilter:
                 match = pattern.match(location.strip())
                 if match:
                     extracted = match.group(1).strip().lower()
-                    # For ambiguous 2-letter codes ("CO (remote)" could be
-                    # Colorado or Colombia), check _COUNTRY_ALIASES first —
-                    # "us" is both a state code AND a valid country alias.
+                    # Skip ambiguous 2-letter codes that overlap with US state
+                    # abbreviations ("CO (remote)" could be Colorado or Colombia).
                     if len(extracted) == 2 and extracted in self._US_STATE_CODES:
-                        # If it's also a known country alias, use it (e.g., "us")
-                        code = self._COUNTRY_ALIASES.get(extracted)
-                        if code == "us":
-                            return "us"
-                        # Otherwise skip — genuinely ambiguous
                         continue
                     code = self._COUNTRY_ALIASES.get(extracted)
                     if code:
@@ -773,19 +768,20 @@ class PreFilter:
 
             # 6. Leading country word — catches "Brazil Sao Paulo - Remote",
             #    "India Home Office - Gurugram", "United States Remote", etc.
-            first_word = loc_lower.split()[0] if loc_lower.split() else None
-            if first_word and len(first_word) > 2:
-                code = self._COUNTRY_ALIASES.get(first_word)
-                if code:
-                    return code
-            # Also try two-word prefix: "United States ...", "South America ...",
-            # "Costa Rica ...", "Latin America ..."
             words = loc_lower.split()
-            if len(words) >= 2:
-                two_word = f"{words[0]} {words[1]}"
-                code = self._COUNTRY_ALIASES.get(two_word)
-                if code:
-                    return code
+            if words:
+                first_word = words[0]
+                if len(first_word) > 2:
+                    code = self._COUNTRY_ALIASES.get(first_word)
+                    if code:
+                        return code
+                # Also try two-word prefix: "United States ...", "South America ...",
+                # "Costa Rica ...", "Latin America ..."
+                if len(words) >= 2:
+                    two_word = f"{words[0]} {words[1]}"
+                    code = self._COUNTRY_ALIASES.get(two_word)
+                    if code:
+                        return code
 
         return None
 

@@ -1448,10 +1448,13 @@ class TestPreFilterCountryCheck:
             assert result.passed is True, f"Expected pass for '{loc}'"
 
     def test_semicolon_separated_locations(self, config_us_only):
-        """Semicolon-separated location strings should parse correctly."""
+        """Comma- and semicolon-separated location strings should parse correctly."""
         pf = PreFilter(config_us_only)
         result = pf.filter({"title": "Engineer", "location": "Toronto, ON, CAN"})
         assert result.passed is False, "Toronto, ON, CAN should be detected as Canada"
+
+        result_semi = pf.filter({"title": "Engineer", "location": "Toronto; ON; CAN"})
+        assert result_semi.passed is False, "Semicolon-separated location should also be detected"
 
     def test_parenthetical_stripped_from_state(self, config_us_only):
         """Parentheticals like (Hybrid) should be stripped before state check."""

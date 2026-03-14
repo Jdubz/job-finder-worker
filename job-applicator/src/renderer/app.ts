@@ -721,6 +721,7 @@ async function selectJobMatch(id: string) {
   resumeTailorStatus.textContent = "Click Generate Resume"
   resumeTailorStatus.className = "tailor-status"
   generateResumeBtn.disabled = false
+  updateUploadButtonsState()
 
   // Load cover letter documents for this job match
   await loadDocuments(id)
