@@ -488,6 +488,7 @@ const uploadStatusText = getElement<HTMLSpanElement>("uploadStatusText")
 const uploadStatus = getElement<HTMLDivElement>("uploadStatus")
 const rescanBtn = getElement<HTMLButtonElement>("rescanBtn")
 const refreshJobsBtn = getElement<HTMLButtonElement>("refreshJobsBtn")
+const generateResumeBtn = getElement<HTMLButtonElement>("generateResumeBtn")
 const previewResumeBtn = getElement<HTMLButtonElement>("previewResumeBtn")
 const previewCoverLetterBtn = getElement<HTMLButtonElement>("previewCoverLetterBtn")
 
@@ -715,8 +716,11 @@ async function selectJobMatch(id: string) {
     setStatus(navResult.message || "Failed to load job listing", "error")
   }
 
-  // Auto-tailor resume for this job (runs in background)
-  tailorResumeForJob(id)
+  // Reset resume status — user must manually trigger tailoring
+  tailoredResumeStatus = "idle"
+  resumeTailorStatus.textContent = "Click Generate Resume"
+  resumeTailorStatus.className = "tailor-status"
+  generateResumeBtn.disabled = false
 
   // Load cover letter documents for this job match
   await loadDocuments(id)
@@ -768,7 +772,21 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
   }
 }
 
-// Auto-tailor resume when a job is selected
+// Generate tailored resume on button click
+async function generateResume() {
+  if (!selectedJobMatchId) {
+    setStatus("Select a job match first", "error")
+    return
+  }
+  if (tailoredResumeStatus === "tailoring") {
+    setStatus("Resume tailoring already in progress", "error")
+    return
+  }
+  generateResumeBtn.disabled = true
+  tailorResumeForJob(selectedJobMatchId)
+}
+
+// Tailor resume for a specific job match
 let _tailorRequestId = 0
 async function tailorResumeForJob(jobMatchId: string) {
   const requestId = ++_tailorRequestId
@@ -787,6 +805,7 @@ async function tailorResumeForJob(jobMatchId: string) {
     tailoredResumeStatus = "ready"
     resumeTailorStatus.textContent = result.cached ? "Tailored (cached)" : "Tailored"
     resumeTailorStatus.className = "tailor-status ready"
+    generateResumeBtn.disabled = false
     log.info(`Resume tailored: ${result.cached ? 'cached' : 'generated'}`)
   } catch (err) {
     if (requestId !== _tailorRequestId) return
@@ -794,6 +813,7 @@ async function tailorResumeForJob(jobMatchId: string) {
     const message = err instanceof Error ? err.message : String(err)
     resumeTailorStatus.textContent = "Tailoring failed"
     resumeTailorStatus.className = "tailor-status error"
+    generateResumeBtn.disabled = false
     log.error("Resume tailoring failed:", message)
   }
   updateUploadButtonsState()
@@ -1923,10 +1943,11 @@ function initializeApp() {
       // Deselected - clear state
       selectedJobMatchId = null
       tailoredResumeStatus = "idle"
-      resumeTailorStatus.textContent = "Select a job to tailor"
+      resumeTailorStatus.textContent = "Select a job first"
       resumeTailorStatus.className = "tailor-status"
       selectedCoverLetterId = null
       jobActionsSection.classList.add("hidden")
+      generateResumeBtn.disabled = true
       generateCoverLetterBtn.disabled = true
       updateUploadButtonsState()
       updateAgentStatusUI(_agentSessionState)
@@ -1938,6 +1959,7 @@ function initializeApp() {
   uploadCoverBtn.addEventListener("click", uploadCoverLetterFile)
   rescanBtn.addEventListener("click", checkForFileInput)
   refreshJobsBtn.addEventListener("click", refreshJobMatches)
+  generateResumeBtn.addEventListener("click", generateResume)
   generateCoverLetterBtn.addEventListener("click", generateCoverLetter)
 
   // Event listeners - Document dropdowns
