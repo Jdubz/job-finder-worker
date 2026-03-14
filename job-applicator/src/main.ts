@@ -100,6 +100,7 @@ import {
   getResumeVersionPdfUrl,
   tailorResume,
   getTailoredResumePdfUrl,
+  fetchPersonalInfo,
   getApiUrl,
 } from "./api-client.js"
 
@@ -180,6 +181,34 @@ async function downloadDocument(documentUrl: string, saveAs?: string): Promise<s
 
   logger.info(`[Download] Saved document to: ${tempPath} (${buffer.length} bytes)`)
   return tempPath
+}
+
+/**
+ * Build an ATS-friendly resume filename from personal info.
+ * Format: FirstName-LastName-Resume.pdf (no spaces, no special chars)
+ * Falls back to "Resume.pdf" if name is unavailable.
+ */
+let _cachedResumeFilename: string | null = null
+async function getResumeFilename(): Promise<string> {
+  if (_cachedResumeFilename) return _cachedResumeFilename
+  try {
+    const info = await fetchPersonalInfo()
+    if (info.name) {
+      // "John Doe" → "John-Doe-Resume.pdf"
+      const sanitized = info.name
+        .trim()
+        .replace(/[^a-zA-Z\s-]/g, "")
+        .replace(/\s+/g, "-")
+      if (sanitized.length > 0) {
+        _cachedResumeFilename = `${sanitized}-Resume.pdf`
+        return _cachedResumeFilename
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.warn(`[Download] Could not fetch personal info for filename: ${message}`)
+  }
+  return "Resume.pdf"
 }
 
 // Layout constants
@@ -1075,7 +1104,9 @@ ipcMain.handle(
         return { success: false, message: "No document URL provided" }
       }
 
-      resolvedPath = await downloadDocument(options.documentUrl)
+      // Use a professional ATS-friendly filename for resumes
+      const saveAs = targetType === "resume" ? await getResumeFilename() : undefined
+      resolvedPath = await downloadDocument(options.documentUrl, saveAs)
       const fileInputSelector = found.result
       const frameUrl = found.frameUrl
       logger.info(`[Upload] Found file input for ${targetType}: ${fileInputSelector} (frame: ${sanitizeFrameUrl(frameUrl)})`)
@@ -1873,7 +1904,8 @@ ipcMain.handle(
 
           const tailoredPdfUrl = getTailoredResumePdfUrl(options.jobMatchId)
           const tailoredUrlObj = new URL(tailoredPdfUrl)
-          resumePath = await downloadDocument(tailoredUrlObj.pathname, `tailored-${options.jobMatchId}.pdf`)
+          const resumeFilename = await getResumeFilename()
+          resumePath = await downloadDocument(tailoredUrlObj.pathname, resumeFilename)
         }
         if (options.coverLetterUrl) {
           coverLetterPath = await downloadDocument(options.coverLetterUrl)
@@ -2164,9 +2196,11 @@ ipcMain.handle("auth-login", async (): Promise<{
 ipcMain.handle("auth-logout", async (): Promise<{ success: boolean }> => {
   try {
     await logout()
+    _cachedResumeFilename = null
     return { success: true }
   } catch (err) {
     logger.error(`[Auth] Logout failed:`, err)
+    _cachedResumeFilename = null
     return { success: true } // Always clear local state even if API call fails
   }
 })

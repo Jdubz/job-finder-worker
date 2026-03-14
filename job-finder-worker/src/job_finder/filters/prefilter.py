@@ -149,6 +149,7 @@ class PreFilter:
         "pa": "Panama",
         "uy": "Uruguay",
         "cr": "Costa Rica",
+        "_region": "Non-US Region",
     }
 
     # Maps common country representations → canonical two-letter code
@@ -236,6 +237,16 @@ class PreFilter:
         "uruguay": "uy",
         "cr": "cr",
         "costa rica": "cr",
+        "can": "ca",
+        # Region names that unambiguously indicate non-US positions.
+        # Map to a synthetic "_region" code so _check_country rejects them
+        # without needing to enumerate every country in the region.
+        "latam": "_region",
+        "latin america": "_region",
+        "south america": "_region",
+        "emea": "_region",
+        "apac": "_region",
+        "asia pacific": "_region",
     }
 
     # Maps well-known non-US cities to their country code.
@@ -685,15 +696,19 @@ class PreFilter:
 
         return PreFilterResult(passed=True)
 
+    # Strip parenthetical suffixes like "(Hybrid)", "(Remote)", "(Flexible)"
+    _PAREN_SUFFIX_RE = re.compile(r"\s*\([^)]*\)\s*$")
+
     def _extract_country(self, job_data: Dict[str, Any]) -> Optional[str]:
         """Extract canonical two-letter country code from job data.
 
         Priority:
         1. Structured ``country`` field (most reliable — Greenhouse, Lever, Ashby APIs)
-        2. Last comma-separated segment of ``location`` string ("London, UK" → "uk")
+        2. Last comma/semicolon segment of ``location`` string ("London, UK" → "uk")
         3. Remote location patterns ("Germany (remote)" → "de", "Remote Canada" → "ca")
         4. Full location string as country name ("Germany" → "de")
         5. City → country lookup ("Bogota" → "co", "Mexico City" → "mx")
+        6. Leading country word ("Brazil Sao Paulo - Remote" → "br")
 
         Returns None if no country can be determined (job passes).
         """
@@ -705,15 +720,16 @@ class PreFilter:
             if code:
                 return code
 
-        # 2-5. Location string strategies
+        # 2-6. Location string strategies
         location = job_data.get("location")
         if isinstance(location, str) and location.strip():
             loc_lower = location.strip().lower()
 
-            # 2. Last comma-separated segment ("London, UK" → "UK")
-            parts = [p.strip() for p in location.split(",")]
+            # 2. Last comma-or-semicolon segment ("London, UK" → "UK")
+            #    Also strips parenthetical suffixes: "NY (Hybrid)" → "NY"
+            parts = [p.strip() for p in re.split(r"[,;]", location)]
             if len(parts) >= 2:
-                candidate = parts[-1].lower()
+                candidate = self._PAREN_SUFFIX_RE.sub("", parts[-1]).strip().lower()
                 if candidate:
                     # "City, CA" is ambiguous — CA=California or CA=Canada.
                     # If the last segment is a 2-letter US state code, assume US.
@@ -728,8 +744,8 @@ class PreFilter:
                 match = pattern.match(location.strip())
                 if match:
                     extracted = match.group(1).strip().lower()
-                    # Skip ambiguous 2-letter codes ("CO (remote)" could be
-                    # Colorado or Colombia). Same logic as step 4.
+                    # Skip ambiguous 2-letter codes that overlap with US state
+                    # abbreviations ("CO (remote)" could be Colorado or Colombia).
                     if len(extracted) == 2 and extracted in self._US_STATE_CODES:
                         continue
                     code = self._COUNTRY_ALIASES.get(extracted)
@@ -749,6 +765,23 @@ class PreFilter:
             code = self._CITY_COUNTRY_MAP.get(loc_lower)
             if code:
                 return code
+
+            # 6. Leading country word — catches "Brazil Sao Paulo - Remote",
+            #    "India Home Office - Gurugram", "United States Remote", etc.
+            words = loc_lower.split()
+            if words:
+                first_word = words[0]
+                if len(first_word) > 2:
+                    code = self._COUNTRY_ALIASES.get(first_word)
+                    if code:
+                        return code
+                # Also try two-word prefix: "United States ...", "South America ...",
+                # "Costa Rica ...", "Latin America ..."
+                if len(words) >= 2:
+                    two_word = f"{words[0]} {words[1]}"
+                    code = self._COUNTRY_ALIASES.get(two_word)
+                    if code:
+                        return code
 
         return None
 
