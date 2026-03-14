@@ -162,6 +162,21 @@ export class ResumeVersionRepository {
     return this.getVersionBySlug(slug) as ResumeVersion
   }
 
+  unpublishVersion(slug: string): void {
+    const now = new Date().toISOString()
+    const result = this.db
+      .prepare(
+        `UPDATE resume_versions
+         SET pdf_path = NULL, pdf_size_bytes = NULL, published_at = NULL, published_by = NULL, updated_at = ?
+         WHERE slug = ?`
+      )
+      .run(now, slug)
+
+    if (result.changes === 0) {
+      throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
+    }
+  }
+
   createVersion(data: CreateResumeVersionData): ResumeVersion {
     const id = randomUUID()
     const now = new Date().toISOString()
