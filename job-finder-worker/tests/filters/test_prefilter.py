@@ -1404,6 +1404,67 @@ class TestPreFilterCountryCheck:
         assert result.passed is False
         assert "Location not in allowed countries" in result.reason
 
+    def test_rejects_region_names(self, config_us_only):
+        """Region names like LatAm, EMEA, APAC should be rejected."""
+        pf = PreFilter(config_us_only)
+        for loc in ["LatAm", "EMEA", "APAC", "South America", "Latin America"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is False, f"Expected rejection for region='{loc}'"
+
+    def test_rejects_region_remote_patterns(self, config_us_only):
+        """Remote + region patterns should be rejected."""
+        pf = PreFilter(config_us_only)
+        for loc in [
+            "Remote - LATAM",
+            "Remote - EMEA",
+            "Remote (APAC)",
+            "Latam (Remote)",
+            "LATAM - Remote",
+        ]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is False, f"Expected rejection for '{loc}'"
+
+    def test_rejects_leading_country_compound(self, config_us_only):
+        """Compound locations starting with a country name should be rejected."""
+        pf = PreFilter(config_us_only)
+        for loc in ["Brazil Sao Paulo - Remote", "Brazil Remote", "India Home Office - Gurugram"]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is False, f"Expected rejection for '{loc}'"
+
+    def test_passes_us_remote_patterns(self, config_us_only):
+        """US Remote patterns should pass."""
+        pf = PreFilter(config_us_only)
+        for loc in [
+            "US Remote",
+            "Remote US",
+            "Remote - US",
+            "Remote, US",
+            "US - Remote",
+            "United States Remote",
+            "Remote - United States",
+            "Remote U.S.",
+        ]:
+            result = pf.filter({"title": "Engineer", "location": loc})
+            assert result.passed is True, f"Expected pass for '{loc}'"
+
+    def test_semicolon_separated_locations(self, config_us_only):
+        """Semicolon-separated location strings should parse correctly."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "Toronto, ON, CAN"})
+        assert result.passed is False, "Toronto, ON, CAN should be detected as Canada"
+
+    def test_parenthetical_stripped_from_state(self, config_us_only):
+        """Parentheticals like (Hybrid) should be stripped before state check."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "New York, NY (Hybrid)"})
+        assert result.passed is True
+
+    def test_united_states_remote_opportunity(self, config_us_only):
+        """'United States - Remote Opportunity' should detect US via leading words."""
+        pf = PreFilter(config_us_only)
+        result = pf.filter({"title": "Engineer", "location": "United States - Remote Opportunity"})
+        assert result.passed is True
+
 
 class TestPreFilterCountryOnlyLocationRemote:
     """Tests that country-only locations are inferred as remote."""
