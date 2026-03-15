@@ -503,11 +503,18 @@ export class GeneratorWorkflowService {
       } else if (result?.urlField === 'coverLetterUrl') {
         repoUpdate.coverLetterUrl = result.url ?? null
       }
+
+      // If no more pending steps, mark the request as completed
+      const hasMoreSteps = updated.some((s) => s.status === 'pending')
+      const finalStatus = hasMoreSteps ? currentStatus : 'completed'
+      if (!hasMoreSteps) {
+        repoUpdate.status = 'completed'
+      }
       this.workflowRepo.updateRequest(requestId, repoUpdate)
 
       return this.buildStepResult(
         requestId,
-        currentStatus,
+        finalStatus,
         updated,
         stepId,
         result ? { urlField: result.urlField, url: result.url } : undefined
