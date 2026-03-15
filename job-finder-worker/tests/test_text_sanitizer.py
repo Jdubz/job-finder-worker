@@ -56,7 +56,7 @@ def test_sanitize_deeply_nested_divs():
     """Test that nested div soup produces readable output."""
     html = (
         '<div><div><div><p style="text-align:left"><b>Job Title</b></p></div></div></div>'
-        '<div><div><p>We are looking for engineers.</p>'
+        "<div><div><p>We are looking for engineers.</p>"
         "<p>Requirements:</p>"
         "<ul><li>Python</li><li>AWS</li></ul>"
         "</div></div>"
@@ -153,7 +153,7 @@ def test_sanitize_preserves_paragraph_breaks():
     """Test that block elements create proper paragraph separation."""
     html = "<div>Paragraph one.</div><div>Paragraph two.</div><div>Paragraph three.</div>"
     result = sanitize_html_description(html)
-    lines = [l for l in result.split("\n") if l.strip()]
+    lines = [line for line in result.split("\n") if line.strip()]
     assert len(lines) == 3
     assert "Paragraph one." in lines[0]
     assert "Paragraph two." in lines[1]

@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 def main():
     parser = argparse.ArgumentParser(description="Re-sanitize job listing descriptions")
     parser.add_argument("--db-path", help="Path to SQLite database")
-    parser.add_argument("--apply", action="store_true", help="Actually write changes (default is dry-run)")
+    parser.add_argument(
+        "--apply", action="store_true", help="Actually write changes (default is dry-run)"
+    )
     parser.add_argument("--batch-size", type=int, default=500, help="Commit batch size")
     args = parser.parse_args()
 
@@ -73,7 +75,7 @@ def main():
     if args.apply and updates:
         logger.info("Applying %d updates in batches of %d...", len(updates), args.batch_size)
         for i in range(0, len(updates), args.batch_size):
-            batch = updates[i:i + args.batch_size]
+            batch = updates[i : i + args.batch_size]
             conn.executemany(
                 "UPDATE job_listings SET description = ? WHERE id = ?",
                 batch,

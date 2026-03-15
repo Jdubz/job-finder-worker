@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ResumeItemNode, PersonalInfo } from '@shared/types'
-import { transformItemsToResumeContent, buildItemTree } from '../resume-version.publish'
+import { transformItemsToResumeContent, buildItemTree, generalizeTitle } from '../resume-version.publish'
 
 const personalInfo: PersonalInfo = {
   name: 'Josh Wentworth',
@@ -206,6 +206,19 @@ describe('transformItemsToResumeContent', () => {
     expect(result.personalInfo.contact.github).toBe('https://github.com/jdubz')
   })
 
+  it('uses generalized job title when personalInfo.title is empty', () => {
+    const noTitle = { ...personalInfo, title: undefined }
+    const items: ResumeItemNode[] = []
+    const result = transformItemsToResumeContent(items, noTitle, 'Software Engineer - React/Node.js')
+    expect(result.personalInfo.title).toBe('Software Engineer')
+  })
+
+  it('prefers personalInfo.title over job title', () => {
+    const items: ResumeItemNode[] = []
+    const result = transformItemsToResumeContent(items, personalInfo, 'Backend Engineer')
+    expect(result.personalInfo.title).toBe('Senior Software Engineer')
+  })
+
   it('handles a full resume structure in order', () => {
     const items: ResumeItemNode[] = [
       makeItem({ id: 'summary', aiContext: 'narrative', description: 'Full-stack engineer.', orderIndex: 0 }),
@@ -262,5 +275,32 @@ describe('buildItemTree', () => {
 
   it('handles empty array', () => {
     expect(buildItemTree([])).toEqual([])
+  })
+})
+
+describe('generalizeTitle', () => {
+  it('strips tech stack after separator', () => {
+    expect(generalizeTitle('Software Engineer - React/Node.js')).toBe('Software Engineer')
+  })
+
+  it('strips parenthetical qualifiers', () => {
+    expect(generalizeTitle('Backend Engineer (Remote - US)')).toBe('Backend Engineer')
+  })
+
+  it('strips trailing comma clauses with team names', () => {
+    expect(generalizeTitle('Senior Staff Backend Engineer, Platform')).toBe('Senior Staff Backend Engineer')
+  })
+
+  it('preserves simple titles', () => {
+    expect(generalizeTitle('Software Engineer')).toBe('Software Engineer')
+    expect(generalizeTitle('Senior Software Engineer')).toBe('Senior Software Engineer')
+  })
+
+  it('handles pipe separators', () => {
+    expect(generalizeTitle('Full Stack Engineer | San Francisco')).toBe('Full Stack Engineer')
+  })
+
+  it('strips location after dash', () => {
+    expect(generalizeTitle('Software Engineer - Remote')).toBe('Software Engineer')
   })
 })

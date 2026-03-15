@@ -121,8 +121,18 @@ def sanitize_html_description(html_text: str) -> str:
 
     # Block-level elements that start new paragraphs (closing tag = double newline)
     # These create visual separation in the browser
-    text = re.sub(r"</(?:p|div|section|article|header|footer|main|aside|blockquote)>", "\n\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<(?:p|div|section|article|header|footer|main|aside|blockquote)[^>]*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"</(?:p|div|section|article|header|footer|main|aside|blockquote)>",
+        "\n\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"<(?:p|div|section|article|header|footer|main|aside|blockquote)[^>]*>",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
 
     # Headers: double newline before, single after
     text = re.sub(r"<h[1-6][^>]*>", "\n\n", text, flags=re.IGNORECASE)
