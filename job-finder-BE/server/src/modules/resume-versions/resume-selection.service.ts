@@ -15,7 +15,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
-import type { ResumeContent, ResumeItemNode, ContentFitEstimate, TimestampJson } from '@shared/types'
+import type { ResumeContent, ResumeItemNode, ContentFitEstimate, TimestampJson, PersonalInfo } from '@shared/types'
 import type { JobMatchWithListing } from '@shared/types'
 import { ResumeVersionRepository } from './resume-version.repository'
 import { buildItemTree, transformItemsToResumeContent } from './resume-version.publish'
@@ -106,7 +106,21 @@ export class ResumeSelectionService {
    * Used by the generator workflow to produce ResumeContent for review.
    */
   async selectContent(jobMatchId: string): Promise<ResumeContent> {
-    // Load pool
+    const { resumeContent } = await this.buildSelectedContent(jobMatchId)
+    return resumeContent
+  }
+
+  /**
+   * Core pipeline: load pool, run AI selection, filter tree, validate fit.
+   * Shared by selectContent (review workflow) and tailor (auto-tailor + cache).
+   */
+  private async buildSelectedContent(jobMatchId: string): Promise<{
+    resumeContent: ResumeContent
+    personalInfo: PersonalInfo
+    selection: SelectionResult
+    selectedTree: ResumeItemNode[]
+    fit: ReturnType<typeof estimateContentFit>
+  }> {
     const pool = this.repo.getPoolVersion()
     if (!pool) throw new PoolNotFoundError()
 
@@ -115,20 +129,16 @@ export class ResumeSelectionService {
 
     const tree = buildItemTree(items)
 
-    // Load job match data
     const match = this.jobMatchRepo.getByIdWithListing(jobMatchId)
     if (!match) throw new JobMatchNotFoundError(jobMatchId)
 
-    // Load personal info
     const personalInfoStore = new PersonalInfoStore()
     const personalInfo = await personalInfoStore.get()
     if (!personalInfo) throw new PersonalInfoMissingError()
 
-    // Run AI selection
     const prompt = buildSelectionPrompt(tree, match)
-    const systemPrompt = SYSTEM_PROMPT
     const result = await this.inferenceClient.execute('document', prompt, undefined, {
-      systemPrompt,
+      systemPrompt: SYSTEM_PROMPT,
       temperature: 0.3,
       max_tokens: 4096
     })
@@ -136,17 +146,16 @@ export class ResumeSelectionService {
     const selection = parseSelectionResponse(result.output)
     logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
 
-    // Filter pool to selected items
     const selectedTree = filterTreeToSelection(tree, selection)
     let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo)
 
-    // Validate fit and trim if needed
-    const fit = estimateContentFit(resumeContent)
+    let fit = estimateContentFit(resumeContent)
     if (!fit.fits) {
       resumeContent = trimToFit(resumeContent)
+      fit = estimateContentFit(resumeContent)
     }
 
-    return resumeContent
+    return { resumeContent, personalInfo, selection, selectedTree, fit }
   }
 
   /**
@@ -186,46 +195,7 @@ export class ResumeSelectionService {
       }
     }
 
-    // Load pool
-    const pool = this.repo.getPoolVersion()
-    if (!pool) throw new PoolNotFoundError()
-
-    const items = this.repo.listItems(pool.id)
-    if (items.length === 0) throw new PoolNotFoundError('Resume pool has no items.')
-
-    const tree = buildItemTree(items)
-
-    // Load job match data
-    const match = this.jobMatchRepo.getByIdWithListing(jobMatchId)
-    if (!match) throw new JobMatchNotFoundError(jobMatchId)
-
-    // Load personal info
-    const personalInfoStore = new PersonalInfoStore()
-    const personalInfo = await personalInfoStore.get()
-    if (!personalInfo) throw new PersonalInfoMissingError()
-
-    // Run AI selection
-    const prompt = buildSelectionPrompt(tree, match)
-    const systemPrompt = SYSTEM_PROMPT
-    const result = await this.inferenceClient.execute('document', prompt, undefined, {
-      systemPrompt,
-      temperature: 0.3,
-      max_tokens: 4096
-    })
-
-    const selection = parseSelectionResponse(result.output)
-    logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
-
-    // Filter pool to selected items
-    const selectedTree = filterTreeToSelection(tree, selection)
-    let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo)
-
-    // Validate fit and trim if needed
-    let fit = estimateContentFit(resumeContent)
-    if (!fit.fits) {
-      resumeContent = trimToFit(resumeContent)
-      fit = estimateContentFit(resumeContent)
-    }
+    const { resumeContent, personalInfo, selection, selectedTree, fit } = await this.buildSelectedContent(jobMatchId)
 
     const fitEstimate: ContentFitEstimate = {
       mainColumnLines: fit.mainColumnLines,

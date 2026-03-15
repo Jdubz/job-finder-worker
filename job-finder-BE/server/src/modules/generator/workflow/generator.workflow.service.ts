@@ -80,7 +80,8 @@ export class GeneratorWorkflowService {
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
     private readonly log: Logger = logger,
-    private readonly documentCache = new SemanticDocumentCache(logger)
+    private readonly documentCache = new SemanticDocumentCache(logger),
+    private readonly resumeSelectionService = new ResumeSelectionService()
   ) {
     this.agentManager = new InferenceClient(this.log)
   }
@@ -538,8 +539,7 @@ export class GeneratorWorkflowService {
     // Falls back to legacy full AI generation only for manual/non-match invocations.
     if (payload.jobMatchId) {
       this.log.info({ jobMatchId: payload.jobMatchId }, 'Using pool-based resume selection')
-      const selectionService = new ResumeSelectionService()
-      resume = await selectionService.selectContent(payload.jobMatchId)
+      resume = await this.resumeSelectionService.selectContent(payload.jobMatchId)
     } else {
       resume = await this.buildResumeContent(payload, personalInfo)
     }

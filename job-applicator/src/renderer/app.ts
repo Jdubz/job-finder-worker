@@ -920,13 +920,7 @@ function handleGenerationProgress(progress: GenerationProgress) {
     cleanupGenerationProgressListener()
     generateCoverLetterBtn.disabled = false
     generateResumeBtn.disabled = false
-    // Reset resume status on failure
-    if (tailoredResumeStatus === "tailoring") {
-      tailoredResumeStatus = "idle"
-      resumeTailorStatus.textContent = "Click Generate Resume"
-      resumeTailorStatus.className = "tailor-status"
-      updateUploadButtonsState()
-    }
+    resetResumeGenerationState()
   } else if (progress.status === "awaiting_review") {
     // Delegate to the review handler
     handleGenerationAwaitingReview(progress)
@@ -942,6 +936,16 @@ function cleanupGenerationProgressListener() {
   _isGenerating = false
 }
 
+// Reset resume generation UI state (used by failure, cancel, and cleanup paths)
+function resetResumeGenerationState() {
+  if (tailoredResumeStatus === "tailoring") {
+    tailoredResumeStatus = "idle"
+    resumeTailorStatus.textContent = "Click Generate Resume"
+    resumeTailorStatus.className = "tailor-status"
+    updateUploadButtonsState()
+  }
+}
+
 // Reset generation UI after a failure to start
 function handleGenerationStartFailure(errorMessage: string) {
   setStatus(errorMessage, "error")
@@ -949,13 +953,7 @@ function handleGenerationStartFailure(errorMessage: string) {
   cleanupGenerationProgressListener()
   generateCoverLetterBtn.disabled = false
   generateResumeBtn.disabled = false
-  // Reset resume status if it was in tailoring state
-  if (tailoredResumeStatus === "tailoring") {
-    tailoredResumeStatus = "idle"
-    resumeTailorStatus.textContent = "Click Generate Resume"
-    resumeTailorStatus.className = "tailor-status"
-    updateUploadButtonsState()
-  }
+  resetResumeGenerationState()
 }
 
 // Generate a cover letter for the selected job match
@@ -971,6 +969,7 @@ async function generateCoverLetter() {
 
   _isGenerating = true
   generateCoverLetterBtn.disabled = true
+  generateResumeBtn.disabled = true
   generationProgress.classList.remove("hidden")
   generationSteps.innerHTML = '<div class="empty-placeholder">Starting...</div>'
   setStatus("Generating cover letter...", "loading")
@@ -1305,13 +1304,7 @@ async function cancelReview() {
   cleanupGenerationProgressListener()
   generateCoverLetterBtn.disabled = false
   generateResumeBtn.disabled = false
-  // Reset resume status if it was being reviewed
-  if (tailoredResumeStatus === "tailoring") {
-    tailoredResumeStatus = "idle"
-    resumeTailorStatus.textContent = "Click Generate Resume"
-    resumeTailorStatus.className = "tailor-status"
-    updateUploadButtonsState()
-  }
+  resetResumeGenerationState()
   // Reset workflow step to allow retry
   setWorkflowStep("docs", "active")
   setStatus("Review cancelled", "")
