@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Set, get_args
 from job_finder.exceptions import DuplicateQueueItemError
 from job_finder.job_queue.manager import QueueManager
 from job_finder.job_queue.models import JobQueueItem, QueueItemType, QueueSource
+from job_finder.scrapers.text_sanitizer import sanitize_html_description
 from job_finder.utils.company_name_utils import clean_company_name
 from job_finder.utils.apply_url_resolver import resolve_apply_url
 from job_finder.utils.url_utils import (
@@ -188,7 +189,7 @@ class ScraperIntake:
                 url=normalized_url,
                 title=job.get("title", ""),
                 company_name=job.get("company", ""),
-                description=job.get("description", ""),
+                description=sanitize_html_description(job.get("description", "")),
                 source_id=source_id,
                 company_id=company_id,
                 location=job.get("location"),
