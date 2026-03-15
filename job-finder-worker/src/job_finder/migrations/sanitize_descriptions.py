@@ -20,10 +20,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# Add project root to path so we can import job_finder
-project_root = Path(__file__).resolve().parents[3]
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# Add src directory to path so we can import job_finder
+src_dir = Path(__file__).resolve().parents[2]
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from job_finder.scrapers.text_sanitizer import sanitize_html_description
 from job_finder.storage.sqlite_client import resolve_db_path
@@ -48,42 +48,46 @@ def main():
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
+    total = conn.execute("SELECT COUNT(*) FROM job_listings").fetchone()[0]
     cursor = conn.execute("SELECT id, description FROM job_listings")
-    rows = cursor.fetchall()
 
-    total = len(rows)
     changed = 0
-    updates = []
+    batch = []
 
-    for row in rows:
-        listing_id = row["id"]
-        original = row["description"] or ""
-        sanitized = sanitize_html_description(original)
+    while True:
+        rows = cursor.fetchmany(args.batch_size)
+        if not rows:
+            break
 
-        if sanitized != original:
-            changed += 1
-            updates.append((sanitized, listing_id))
+        for row in rows:
+            listing_id = row["id"]
+            original = row["description"] or ""
+            sanitized = sanitize_html_description(original)
 
-            if changed <= 5:
-                logger.info("\n--- Example %d (id=%s) ---", changed, listing_id[:8])
-                logger.info("BEFORE (first 200): %s", repr(original[:200]))
-                logger.info("AFTER  (first 200): %s", repr(sanitized[:200]))
+            if sanitized != original:
+                changed += 1
 
-    logger.info("\nTotal listings: %d", total)
-    logger.info("Would change: %d (%.1f%%)", changed, (changed / total * 100) if total else 0)
+                if changed <= 5:
+                    logger.info("\n--- Example %d (id=%s) ---", changed, listing_id[:8])
+                    logger.info("BEFORE (first 200): %s", repr(original[:200]))
+                    logger.info("AFTER  (first 200): %s", repr(sanitized[:200]))
 
-    if args.apply and updates:
-        logger.info("Applying %d updates in batches of %d...", len(updates), args.batch_size)
-        for i in range(0, len(updates), args.batch_size):
-            batch = updates[i : i + args.batch_size]
+                if args.apply:
+                    batch.append((sanitized, listing_id))
+
+        if args.apply and batch:
             conn.executemany(
                 "UPDATE job_listings SET description = ? WHERE id = ?",
                 batch,
             )
             conn.commit()
-            logger.info("  Committed batch %d-%d", i + 1, min(i + args.batch_size, len(updates)))
-        logger.info("Done. %d descriptions updated.", len(updates))
-    elif not args.apply and updates:
+            logger.info("  Committed batch of %d updates", len(batch))
+            batch = []
+
+    logger.info("\nTotal listings: %d", total)
+    logger.info("Would change: %d (%.1f%%)", changed, (changed / total * 100) if total else 0)
+
+    if not args.apply and changed:
         logger.info("\nRe-run with --apply to write changes.")
 
     conn.close()

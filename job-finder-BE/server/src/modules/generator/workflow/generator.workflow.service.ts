@@ -508,7 +508,7 @@ export class GeneratorWorkflowService {
       const hasMoreSteps = updated.some((s) => s.status === 'pending')
       const finalStatus = hasMoreSteps ? currentStatus : 'completed'
       if (!hasMoreSteps) {
-        repoUpdate.status = 'completed'
+        repoUpdate.status = finalStatus
       }
       this.workflowRepo.updateRequest(requestId, repoUpdate)
 
