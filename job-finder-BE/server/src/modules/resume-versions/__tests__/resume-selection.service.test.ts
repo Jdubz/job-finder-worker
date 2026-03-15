@@ -1,4 +1,47 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { ResumeItemNode, ResumeContent } from '@shared/types'
+
+// ─── Top-level mocks (Vitest hoists vi.mock to module scope) ────
+
+vi.mock('../../generator/personal-info.store', () => ({
+  PersonalInfoStore: vi.fn().mockImplementation(() => ({
+    get: vi.fn().mockResolvedValue({
+      name: 'Test User',
+      email: 'test@example.com',
+      applicationInfo: 'Test'
+    })
+  }))
+}))
+
+vi.mock('../resume-version.publish', async (importOriginal) => {
+  const original = await importOriginal() as any
+  return {
+    ...original,
+    // Keep real buildItemTree, mock transformItemsToResumeContent
+    transformItemsToResumeContent: vi.fn().mockReturnValue({
+      personalInfo: { name: 'Test User', title: 'Software Engineer', summary: 'Summary', contact: { email: 'test@example.com' } },
+      professionalSummary: 'A professional summary',
+      experience: [{ company: 'AWS', role: 'Solutions Architect', startDate: '2022-01', endDate: null, highlights: ['Led migration', 'Built CI/CD'] }],
+      skills: [{ category: 'Languages', items: ['TypeScript', 'Python'] }],
+      education: [{ institution: 'State University', degree: 'B.S.', field: 'Computer Science' }]
+    } satisfies ResumeContent)
+  }
+})
+
+vi.mock('../../generator/workflow/services/content-fit.service', async (importOriginal) => {
+  const original = await importOriginal() as any
+  return {
+    ...original,
+    estimateContentFit: vi.fn().mockReturnValue({
+      mainColumnLines: 40,
+      maxLines: 56,
+      fits: true,
+      overflow: 0,
+      suggestions: []
+    })
+  }
+})
+
 import {
   parseSelectionResponse,
   filterTreeToSelection,
@@ -9,7 +52,6 @@ import {
   JobMatchNotFoundError,
   PersonalInfoMissingError
 } from '../resume-selection.service'
-import type { ResumeItemNode, ResumeContent } from '@shared/types'
 
 // ─── parseSelectionResponse ─────────────────────────────────────
 
@@ -299,7 +341,17 @@ describe('trimToFit', () => {
     expect(result.experience).toEqual([])
   })
 
-  it('trims skill categories to 3 when still overflowing after project removal', () => {
+  it('trims skill categories to 3 when still overflowing after project removal', async () => {
+    // Force estimateContentFit to return fits: false so all trim phases run
+    const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 70,
+      maxLines: 56,
+      fits: false,
+      overflow: 14,
+      suggestions: []
+    })
+
     const manyHighlights = Array.from({ length: 8 }, (_, i) => `Bullet ${i + 1}`)
     const content: ResumeContent = {
       ...baseContent,
@@ -316,11 +368,7 @@ describe('trimToFit', () => {
     }
 
     const result = trimToFit(content)
-    // After all phases, skills should be trimmed
-    if (result.skills && result.skills.length > 3) {
-      // Phase 5 trims to 3 — but only if still overflowing
-      expect(result.skills.length).toBeLessThanOrEqual(8)
-    }
+    expect(result.skills!.length).toBeLessThanOrEqual(3)
   })
 })
 
@@ -555,46 +603,8 @@ describe('ResumeSelectionService', () => {
     }
   }
 
-  // Mock PersonalInfoStore before each test
   beforeEach(() => {
-    vi.mock('../../generator/personal-info.store', () => ({
-      PersonalInfoStore: vi.fn().mockImplementation(() => ({
-        get: vi.fn().mockResolvedValue({
-          name: 'Test User',
-          email: 'test@example.com',
-          applicationInfo: 'Test'
-        })
-      }))
-    }))
-
-    vi.mock('../resume-version.publish', async (importOriginal) => {
-      const original = await importOriginal() as any
-      return {
-        ...original,
-        // Keep real buildItemTree, mock transformItemsToResumeContent
-        transformItemsToResumeContent: vi.fn().mockReturnValue({
-          personalInfo: { name: 'Test User', title: 'Software Engineer', summary: 'Summary', contact: { email: 'test@example.com' } },
-          professionalSummary: 'A professional summary',
-          experience: [{ company: 'AWS', role: 'Solutions Architect', startDate: '2022-01', endDate: null, highlights: ['Led migration', 'Built CI/CD'] }],
-          skills: [{ category: 'Languages', items: ['TypeScript', 'Python'] }],
-          education: [{ institution: 'State University', degree: 'B.S.', field: 'Computer Science' }]
-        } satisfies ResumeContent)
-      }
-    })
-
-    vi.mock('../../generator/workflow/services/content-fit.service', async (importOriginal) => {
-      const original = await importOriginal() as any
-      return {
-        ...original,
-        estimateContentFit: vi.fn().mockReturnValue({
-          mainColumnLines: 40,
-          maxLines: 56,
-          fits: true,
-          overflow: 0,
-          suggestions: []
-        })
-      }
-    })
+    vi.clearAllMocks()
   })
 
   describe('selectContent', () => {

@@ -738,8 +738,6 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
 
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
-      log.info(`loadDocuments: ${documents.length} documents loaded for ${jobMatchId}`)
-      log.info(`loadDocuments: statuses = ${documents.map((d) => `${d.status}/${d.resumeUrl ? "hasResume" : "noResume"}`).join(", ")}`)
       const coverLetters = documents.filter((d) => d.coverLetterUrl)
 
       // Restore cover letter dropdown
@@ -764,21 +762,17 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
       // regardless of overall request status (may be "processing" if backend completion
       // fix isn't deployed, or "awaiting_review" if second doc is still being reviewed)
       const resumeDoc = documents.find((d) => d.resumeUrl)
-      log.info(`loadDocuments: resumeDoc found = ${!!resumeDoc}, status = ${resumeDoc?.status ?? "n/a"}, url = ${resumeDoc?.resumeUrl ?? "none"}`)
       if (resumeDoc?.resumeUrl) {
         tailoredResumeStatus = "ready"
         tailoredResumeUrl = resumeDoc.resumeUrl
         resumeTailorStatus.textContent = "Tailored"
         resumeTailorStatus.className = "tailor-status ready"
-        log.info("loadDocuments: resume state set to ready")
       } else {
         resetResumeStateUI()
-        log.info("loadDocuments: no completed resume found, reset to idle")
       }
 
       updateUploadButtonsState()
     } else {
-      log.info(`loadDocuments: API returned success=${result.success}, data is array=${Array.isArray(result.data)}, data=${JSON.stringify(result.data)?.slice(0, 200)}`)
       documents = []
       selectedCoverLetterId = null
       resetResumeStateUI()
