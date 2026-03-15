@@ -1404,9 +1404,6 @@ const mockCoverLetterContent = {
         selectContent: vi.fn().mockResolvedValue(mockResumeContent)
       }
 
-      // Restore the buildResumeContent spy so the real code runs
-      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent?.mockRestore?.()
-
       const service = new GeneratorWorkflowService(
         htmlPdfService as any,
         repo as unknown as GeneratorWorkflowRepository,

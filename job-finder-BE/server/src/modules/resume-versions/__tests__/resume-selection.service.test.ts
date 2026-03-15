@@ -344,13 +344,14 @@ describe('trimToFit', () => {
   it('trims skill categories to 3 when still overflowing after project removal', async () => {
     // Force estimateContentFit to return fits: false so all trim phases run
     const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
-    vi.mocked(estimateContentFit).mockReturnValue({
+    const overflowResult = {
       mainColumnLines: 70,
       sidebarLines: 20,
       fits: false,
       overflow: 14,
       suggestions: []
-    })
+    }
+    vi.mocked(estimateContentFit).mockReturnValue(overflowResult)
 
     const manyHighlights = Array.from({ length: 8 }, (_, i) => `Bullet ${i + 1}`)
     const content: ResumeContent = {
@@ -369,6 +370,15 @@ describe('trimToFit', () => {
 
     const result = trimToFit(content)
     expect(result.skills!.length).toBeLessThanOrEqual(3)
+
+    // Restore default mock so later tests aren't affected
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 40,
+      sidebarLines: 10,
+      fits: true,
+      overflow: 0,
+      suggestions: []
+    })
   })
 })
 
@@ -384,12 +394,11 @@ describe('parseSelectionResponse — additional edge cases', () => {
     expect(result.narrative_id).toBe('n-1')
   })
 
-  it('handles nested markdown fences with extra text before', () => {
+  it('handles markdown fences with json language tag', () => {
     const json = JSON.stringify({
       narrative_id: 'n-1',
       experience_ids: ['w-1']
     })
-    // Some models prefix with "Here is my selection:" before the fence
     const fenced = '```json\n' + json + '\n```'
     const result = parseSelectionResponse(fenced)
     expect(result.narrative_id).toBe('n-1')
