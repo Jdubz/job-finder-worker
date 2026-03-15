@@ -1057,4 +1057,372 @@ const mockCoverLetterContent = {
       expect(mockDocumentCache.storeResumeBody).toHaveBeenCalledOnce()
     })
   })
+
+  describe('status transitions — executeStep completion detection', () => {
+    it('marks request completed when render-pdf is the last step (resume)', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      const result = await service.runNextStep(requestId) // render-pdf
+
+      // render-pdf is the last step — request should be completed
+      expect(result?.status).toBe('completed')
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('completed')
+    })
+
+    it('marks request completed when render-pdf is the last step (coverLetter)', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+
+      const result = await service.runNextStep(requestId) // render-pdf
+
+      expect(result?.status).toBe('completed')
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('completed')
+    })
+
+    it('marks request completed when render-pdf is the last step (both)', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'both' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+
+      const result = await service.runNextStep(requestId) // render-pdf
+
+      expect(result?.status).toBe('completed')
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('completed')
+    })
+
+    it('does not mark completed when pending steps remain after generate-resume', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+
+      const result = await service.runNextStep(requestId) // generate-resume
+
+      // review-resume and render-pdf still pending
+      expect(result?.status).not.toBe('completed')
+      const request = repo.getRequest(requestId)
+      expect(request?.status).not.toBe('completed')
+    })
+  })
+
+  describe('resumeUrl and coverLetterUrl propagation', () => {
+    it('render-pdf returns resumeUrl in step result', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      const result = await service.runNextStep(requestId) // render-pdf
+
+      expect(result?.resumeUrl).toBeDefined()
+      expect(typeof result?.resumeUrl).toBe('string')
+    })
+
+    it('render-pdf returns coverLetterUrl in step result', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+
+      const result = await service.runNextStep(requestId) // render-pdf
+
+      expect(result?.coverLetterUrl).toBeDefined()
+      expect(typeof result?.coverLetterUrl).toBe('string')
+    })
+
+    it('render-pdf for both docs returns resumeUrl (first rendered)', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'both' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+
+      const result = await service.runNextStep(requestId) // render-pdf
+
+      // The executeStep action returns only one urlField — check that at least resumeUrl is set
+      expect(result?.resumeUrl).toBeDefined()
+    })
+
+    it('resumeUrl is persisted in db after render-pdf', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+      await service.runNextStep(requestId) // render-pdf
+
+      const request = repo.getRequest(requestId)
+      expect(request?.resumeUrl).toBeDefined()
+      expect(request?.resumeUrl).not.toBeNull()
+    })
+
+    it('coverLetterUrl is persisted in db after render-pdf', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+      await service.submitReview(requestId, 'coverLetter', mockCoverLetterContent)
+      await service.runNextStep(requestId) // render-pdf
+
+      const request = repo.getRequest(requestId)
+      expect(request?.coverLetterUrl).toBeDefined()
+      expect(request?.coverLetterUrl).not.toBeNull()
+    })
+  })
+
+  describe('personal info validation', () => {
+    it('throws UserFacingError when personal info is missing', async () => {
+      const emptyPersonalInfoStore = {
+        get: vi.fn().mockResolvedValue(null),
+        update: vi.fn()
+      }
+
+      const service = new GeneratorWorkflowService(
+        htmlPdfService as any,
+        repo as unknown as GeneratorWorkflowRepository,
+        emptyPersonalInfoStore as unknown as PersonalInfoStore,
+        contentItemRepo as unknown as ContentItemRepository,
+        fakeJobMatchRepo,
+        mockLog as unknown as any
+      )
+
+      const { requestId } = await service.createRequest(payload)
+      // collect-data triggers personalInfo check
+      await expect(service.runNextStep(requestId)).rejects.toThrow(/Personal info is not configured/)
+
+      // Request should be marked as failed
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('failed')
+    })
+  })
+
+  describe('createRequest', () => {
+    it('returns requestId and steps for resume type', async () => {
+      const service = createService()
+      const { requestId, steps, nextStep } = await service.createRequest(payload)
+
+      expect(requestId).toBeTruthy()
+      expect(steps).toHaveLength(4) // collect-data, generate-resume, review-resume, render-pdf
+      expect(nextStep).toBe('collect-data')
+    })
+
+    it('returns correct steps for coverLetter type', async () => {
+      const service = createService()
+      const { steps, nextStep } = await service.createRequest({ ...payload, generateType: 'coverLetter' })
+
+      expect(steps).toHaveLength(4)
+      expect(steps.map((s) => s.id)).toContain('generate-cover-letter')
+      expect(nextStep).toBe('collect-data')
+    })
+
+    it('returns correct steps for both type', async () => {
+      const service = createService()
+      const { steps } = await service.createRequest({ ...payload, generateType: 'both' })
+
+      expect(steps).toHaveLength(6) // includes both generate + review steps
+      expect(steps.map((s) => s.id)).toContain('generate-resume')
+      expect(steps.map((s) => s.id)).toContain('generate-cover-letter')
+    })
+
+    it('stores request in repository with processing status', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      const request = repo.getRequest(requestId)
+      expect(request).toBeTruthy()
+      expect(request?.status).toBe('processing')
+      expect(request?.generateType).toBe('resume')
+      expect(request?.job).toEqual(payload.job)
+    })
+
+    it('stores jobMatchId when provided', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, jobMatchId: 'match-123' })
+
+      const request = repo.getRequest(requestId)
+      expect(request?.jobMatchId).toBe('match-123')
+    })
+
+    it('sets jobMatchId to null when not provided', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      const request = repo.getRequest(requestId)
+      expect(request?.jobMatchId).toBeNull()
+    })
+  })
+
+  describe('getDraftContent — both generation type', () => {
+    it('returns resume draft when resume review is pending in both mode', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'both' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+
+      const draft = service.getDraftContent(requestId)
+      expect(draft?.documentType).toBe('resume')
+      expect(draft?.content).toEqual(mockResumeContent)
+    })
+
+    it('returns cover letter draft after resume approved in both mode', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest({ ...payload, generateType: 'both' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+      await service.runNextStep(requestId) // review-resume
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+      await service.runNextStep(requestId) // generate-cover-letter
+      await service.runNextStep(requestId) // review-cover-letter
+
+      const draft = service.getDraftContent(requestId)
+      expect(draft?.documentType).toBe('coverLetter')
+      expect(draft?.content).toEqual(mockCoverLetterContent)
+    })
+  })
+
+  describe('runNextStep — completed/failed terminal states', () => {
+    it('calling runNextStep on already-completed request returns completed', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId)
+      await service.runNextStep(requestId)
+      await service.runNextStep(requestId)
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+      await service.runNextStep(requestId)
+
+      // Request is now completed. Call runNextStep again.
+      const result = await service.runNextStep(requestId)
+      expect(result?.status).toBe('completed')
+      expect(result?.stepCompleted).toBe('completed')
+    })
+
+    it('step failure marks the step as failed and preserves error info', async () => {
+      vi.mocked(GeneratorWorkflowService.prototype as any).buildResumeContent.mockRejectedValue(
+        new Error('AI provider unavailable')
+      )
+
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+      await service.runNextStep(requestId) // collect-data
+      const result = await service.runNextStep(requestId) // generate-resume fails
+
+      expect(result?.status).toBe('failed')
+      const failedStep = result?.steps.find((s) => s.id === 'generate-resume')
+      expect(failedStep?.status).toBe('failed')
+      expect(failedStep?.error?.message).toBeDefined()
+
+      const request = repo.getRequest(requestId)
+      expect(request?.status).toBe('failed')
+    })
+
+    it('auto-transitions non-completed request with no pending steps to completed', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      // Manually complete all steps to simulate edge case
+      const request = repo.getRequest(requestId)!
+      const allCompleted = (request.steps ?? []).map((s) => ({
+        ...s,
+        status: 'completed' as const
+      }))
+      repo.updateRequest(requestId, { steps: allCompleted, status: 'processing' })
+
+      const result = await service.runNextStep(requestId)
+      expect(result?.status).toBe('completed')
+
+      const updated = repo.getRequest(requestId)
+      expect(updated?.status).toBe('completed')
+    })
+  })
+
+  describe('step status tracking through full workflow', () => {
+    it('tracks all step statuses through resume workflow', async () => {
+      const service = createService()
+      const { requestId } = await service.createRequest(payload)
+
+      // After collect-data
+      let result = await service.runNextStep(requestId)
+      expect(result?.steps.find((s) => s.id === 'collect-data')?.status).toBe('completed')
+      expect(result?.steps.find((s) => s.id === 'generate-resume')?.status).toBe('pending')
+
+      // After generate-resume
+      result = await service.runNextStep(requestId)
+      expect(result?.steps.find((s) => s.id === 'generate-resume')?.status).toBe('completed')
+      expect(result?.steps.find((s) => s.id === 'review-resume')?.status).toBe('pending')
+
+      // After review-resume (pauses at awaiting_review)
+      result = await service.runNextStep(requestId)
+      expect(result?.status).toBe('awaiting_review')
+      expect(result?.steps.find((s) => s.id === 'review-resume')?.status).toBe('completed')
+      expect(result?.steps.find((s) => s.id === 'render-pdf')?.status).toBe('pending')
+
+      // Submit review
+      await service.submitReview(requestId, 'resume', mockResumeContent)
+
+      // After render-pdf
+      result = await service.runNextStep(requestId)
+      expect(result?.steps.find((s) => s.id === 'render-pdf')?.status).toBe('completed')
+
+      // All steps completed
+      const allCompleted = result?.steps.every((s) => s.status === 'completed')
+      expect(allCompleted).toBe(true)
+    })
+  })
+
+  describe('pool-based resume selection', () => {
+    it('uses ResumeSelectionService when jobMatchId is provided', async () => {
+      const mockSelectionService = {
+        selectContent: vi.fn().mockResolvedValue(mockResumeContent)
+      }
+
+      const service = new GeneratorWorkflowService(
+        htmlPdfService as any,
+        repo as unknown as GeneratorWorkflowRepository,
+        personalInfoStore as unknown as PersonalInfoStore,
+        contentItemRepo as unknown as ContentItemRepository,
+        fakeJobMatchRepo,
+        mockLog as unknown as any,
+        undefined,
+        mockSelectionService as any
+      )
+
+      const { requestId } = await service.createRequest({ ...payload, jobMatchId: 'match-456' })
+      await service.runNextStep(requestId) // collect-data
+      await service.runNextStep(requestId) // generate-resume
+
+      expect(mockSelectionService.selectContent).toHaveBeenCalledWith('match-456')
+
+      const request = repo.getRequest(requestId)
+      expect(request?.intermediateResults?.resumeContent).toEqual(mockResumeContent)
+    })
+  })
 })

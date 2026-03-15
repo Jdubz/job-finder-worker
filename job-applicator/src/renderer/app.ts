@@ -758,8 +758,10 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
       coverLetterSelect.value = selectedCoverLetterId || ""
       coverLetterSelect.disabled = coverLetters.length === 0
 
-      // Restore resume state from the most recent completed document with a resumeUrl
-      const resumeDoc = documents.find((d) => d.resumeUrl && d.status === "completed")
+      // Restore resume state — if a resumeUrl exists, the PDF was rendered successfully
+      // regardless of overall request status (may be "processing" if backend completion
+      // fix isn't deployed, or "awaiting_review" if second doc is still being reviewed)
+      const resumeDoc = documents.find((d) => d.resumeUrl)
       if (resumeDoc?.resumeUrl) {
         tailoredResumeStatus = "ready"
         tailoredResumeUrl = resumeDoc.resumeUrl
