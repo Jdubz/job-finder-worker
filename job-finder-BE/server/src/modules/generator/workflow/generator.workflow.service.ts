@@ -26,6 +26,7 @@ import {
   buildAdaptPrompt, buildCoverLetterFramingPrompt, buildResumeFramingPrompt
 } from './prompts'
 import { InferenceClient, InferenceError } from '../ai/inference-client'
+import { ResumeSelectionService } from '../../resume-versions/resume-selection.service'
 import { validateResumeContent, validateCoverLetterContent, validateCoverLetterFraming, validateResumeFraming } from './services/ai-output-schema'
 import { estimateContentFit, getContentBudget } from './services/content-fit.service'
 import { normalizeTechList } from './services/tech-taxonomy'
@@ -79,7 +80,8 @@ export class GeneratorWorkflowService {
     private readonly contentItemRepo = new ContentItemRepository(),
     private readonly jobMatchRepo = new JobMatchRepository(),
     private readonly log: Logger = logger,
-    private readonly documentCache = new SemanticDocumentCache(logger)
+    private readonly documentCache = new SemanticDocumentCache(logger),
+    private readonly resumeSelectionService = new ResumeSelectionService()
   ) {
     this.agentManager = new InferenceClient(this.log)
   }
@@ -531,7 +533,17 @@ export class GeneratorWorkflowService {
     requestId: string,
     personalInfo: PersonalInfo
   ): Promise<void> {
-    const resume = await this.buildResumeContent(payload, personalInfo)
+    let resume: ResumeContent
+
+    // Use pool-based AI selection when a job match is available (the standard path).
+    // Falls back to legacy full AI generation only for manual/non-match invocations.
+    if (payload.jobMatchId) {
+      this.log.info({ jobMatchId: payload.jobMatchId }, 'Using pool-based resume selection')
+      resume = await this.resumeSelectionService.selectContent(payload.jobMatchId)
+    } else {
+      resume = await this.buildResumeContent(payload, personalInfo)
+    }
+
     // Store content for review
     const request = this.workflowRepo.getRequest(requestId)
     this.workflowRepo.updateRequest(requestId, {

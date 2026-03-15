@@ -100,10 +100,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   updateJobMatchStatus: (options: { id: string; status: "active" | "ignored" | "applied" }) =>
     ipcRenderer.invoke("update-job-match-status", options),
 
-  // Resume Versions
-  getResumeVersions: () => ipcRenderer.invoke("get-resume-versions"),
-  tailorResume: (jobMatchId: string, force?: boolean) => ipcRenderer.invoke("tailor-resume", jobMatchId, force),
-
   // Documents
   getDocuments: (jobMatchId: string) => ipcRenderer.invoke("get-documents", jobMatchId),
   openDocument: (documentPath: string) => ipcRenderer.invoke("open-document", documentPath),

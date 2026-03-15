@@ -38,13 +38,13 @@ function createDeps(overrides: Partial<ReviewFlowDeps> = {}): ReviewFlowDeps {
       reviewFeedbackArea: { classList: { add: vi.fn() } },
       reviewFeedbackInput: { value: "" },
       generationProgress: { classList: { add: vi.fn(), remove: vi.fn() } },
-      generateBtn: { disabled: false },
       ...overrides.dom,
     },
     setStatus: vi.fn(),
     renderReviewForm: vi.fn(),
     collectReviewedContent: vi.fn().mockReturnValue(null),
     handleGenerationProgress: vi.fn(),
+    onGenerationCleanup: vi.fn(),
     log: { info: vi.fn(), error: vi.fn() },
     ...overrides,
   }
@@ -129,7 +129,7 @@ describe("handleGenerationAwaitingReview", () => {
 
     expect(deps.setStatus).toHaveBeenCalledWith("Network error", "error")
     expect(deps.dom.generationProgress.classList.add).toHaveBeenCalledWith("hidden")
-    expect(deps.dom.generateBtn.disabled).toBe(false)
+    expect(deps.onGenerationCleanup).toHaveBeenCalled()
     // State should not be set
     expect(state.currentReviewRequestId).toBeNull()
   })

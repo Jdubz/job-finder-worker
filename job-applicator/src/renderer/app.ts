@@ -314,11 +314,7 @@ interface ElectronAPI {
     status: "active" | "ignored" | "applied"
   }) => Promise<{ success: boolean; message?: string }>
 
-  // Resume Versions
-  getResumeVersions: () => Promise<Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }>>
-  tailorResume: (jobMatchId: string, force?: boolean) => Promise<{ success: boolean; pdfUrl?: string; reasoning?: string; error?: string; cached?: boolean }>
-
-  // Documents (cover letters)
+  // Documents
   getDocuments: (jobMatchId: string) => Promise<{
     success: boolean
     data?: DocumentInfo[]
@@ -407,11 +403,11 @@ const api = window.electronAPI
 // State
 let _currentUser: { email: string; name?: string } | null = null
 let selectedJobMatchId: string | null = null
-// selectedResumeVersionSlug removed — resume is now auto-tailored from pool
 let selectedCoverLetterId: string | null = null
 let jobMatches: JobMatchListItem[] = []
 let documents: DocumentInfo[] = []
 let tailoredResumeStatus: "idle" | "tailoring" | "ready" | "error" = "idle"
+let tailoredResumeUrl: string | null = null
 const workflowState: WorkflowState = {
   job: "pending",
   docs: "pending",
@@ -718,6 +714,7 @@ async function selectJobMatch(id: string) {
 
   // Reset resume status — user must manually trigger tailoring
   tailoredResumeStatus = "idle"
+  tailoredResumeUrl = null
   resumeTailorStatus.textContent = "Click Generate Resume"
   resumeTailorStatus.className = "tailor-status"
   generateResumeBtn.disabled = false
@@ -773,51 +770,44 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
   }
 }
 
-// Generate tailored resume on button click
+// Generate tailored resume using the same workflow as cover letters
+// (AI selection → review modal → approve → PDF render)
 async function generateResume() {
   if (!selectedJobMatchId) {
     setStatus("Select a job match first", "error")
     return
   }
-  if (tailoredResumeStatus === "tailoring") {
-    setStatus("Resume tailoring already in progress", "error")
+  if (_isGenerating) {
+    setStatus("Generation already in progress", "error")
     return
   }
-  generateResumeBtn.disabled = true
-  tailorResumeForJob(selectedJobMatchId)
-}
 
-// Tailor resume for a specific job match
-let _tailorRequestId = 0
-async function tailorResumeForJob(jobMatchId: string) {
-  const requestId = ++_tailorRequestId
+  _isGenerating = true
+  generateResumeBtn.disabled = true
+  generateCoverLetterBtn.disabled = true
   tailoredResumeStatus = "tailoring"
-  resumeTailorStatus.textContent = "Tailoring resume..."
+  resumeTailorStatus.textContent = "Selecting content..."
   resumeTailorStatus.className = "tailor-status loading"
+  generationProgress.classList.remove("hidden")
+  generationSteps.innerHTML = '<div class="empty-placeholder">Starting...</div>'
+  setStatus("Generating tailored resume...", "loading")
+  setWorkflowStep("docs", "active")
   updateUploadButtonsState()
+
+  // Subscribe to progress events — same pattern as cover letter
+  unsubscribeGenerationProgress = api.onGenerationProgress((progress) => {
+    handleGenerationProgress(progress)
+  })
 
   try {
-    const result = await api.tailorResume(jobMatchId)
-    // Guard against stale response if user selected a different job while tailoring
-    if (requestId !== _tailorRequestId) return
+    const result = await api.runGeneration({ jobMatchId: selectedJobMatchId, type: "resume" })
     if (!result.success) {
-      throw new Error(result.error || "Tailoring failed")
+      handleGenerationStartFailure(result.message || "Failed to start resume generation")
     }
-    tailoredResumeStatus = "ready"
-    resumeTailorStatus.textContent = result.cached ? "Tailored (cached)" : "Tailored"
-    resumeTailorStatus.className = "tailor-status ready"
-    generateResumeBtn.disabled = false
-    log.info(`Resume tailored: ${result.cached ? 'cached' : 'generated'}`)
   } catch (err) {
-    if (requestId !== _tailorRequestId) return
-    tailoredResumeStatus = "error"
-    const message = err instanceof Error ? err.message : String(err)
-    resumeTailorStatus.textContent = "Tailoring failed"
-    resumeTailorStatus.className = "tailor-status error"
-    generateResumeBtn.disabled = false
-    log.error("Resume tailoring failed:", message)
+    log.error("Resume generation failed:", err)
+    handleGenerationStartFailure("Resume generation failed")
   }
-  updateUploadButtonsState()
 }
 
 // Check if a tailored resume is ready
@@ -910,6 +900,15 @@ function handleGenerationProgress(progress: GenerationProgress) {
     // Clean up the listener now that generation is complete
     cleanupGenerationProgressListener()
     generateCoverLetterBtn.disabled = false
+    generateResumeBtn.disabled = false
+    // If a resume was generated, mark it as ready and store URL for upload
+    if (progress.resumeUrl) {
+      tailoredResumeStatus = "ready"
+      tailoredResumeUrl = progress.resumeUrl
+      resumeTailorStatus.textContent = "Tailored"
+      resumeTailorStatus.className = "tailor-status ready"
+      updateUploadButtonsState()
+    }
     // Reload documents and auto-select the newly generated one
     if (selectedJobMatchId) {
       loadDocuments(selectedJobMatchId, progress.requestId)
@@ -920,6 +919,8 @@ function handleGenerationProgress(progress: GenerationProgress) {
     // Clean up the listener on failure too
     cleanupGenerationProgressListener()
     generateCoverLetterBtn.disabled = false
+    generateResumeBtn.disabled = false
+    resetResumeGenerationState()
   } else if (progress.status === "awaiting_review") {
     // Delegate to the review handler
     handleGenerationAwaitingReview(progress)
@@ -935,12 +936,24 @@ function cleanupGenerationProgressListener() {
   _isGenerating = false
 }
 
+// Reset resume generation UI state (used by failure, cancel, and cleanup paths)
+function resetResumeGenerationState() {
+  if (tailoredResumeStatus === "tailoring") {
+    tailoredResumeStatus = "idle"
+    resumeTailorStatus.textContent = "Click Generate Resume"
+    resumeTailorStatus.className = "tailor-status"
+    updateUploadButtonsState()
+  }
+}
+
 // Reset generation UI after a failure to start
 function handleGenerationStartFailure(errorMessage: string) {
   setStatus(errorMessage, "error")
   generationProgress.classList.add("hidden")
   cleanupGenerationProgressListener()
   generateCoverLetterBtn.disabled = false
+  generateResumeBtn.disabled = false
+  resetResumeGenerationState()
 }
 
 // Generate a cover letter for the selected job match
@@ -956,6 +969,7 @@ async function generateCoverLetter() {
 
   _isGenerating = true
   generateCoverLetterBtn.disabled = true
+  generateResumeBtn.disabled = true
   generationProgress.classList.remove("hidden")
   generationSteps.innerHTML = '<div class="empty-placeholder">Starting...</div>'
   setStatus("Generating cover letter...", "loading")
@@ -1013,7 +1027,6 @@ const reviewDeps: ReviewFlowDeps = {
     reviewFeedbackArea,
     reviewFeedbackInput,
     generationProgress,
-    generateBtn: generateCoverLetterBtn,
   },
   setStatus,
   renderReviewForm,
@@ -1022,6 +1035,7 @@ const reviewDeps: ReviewFlowDeps = {
   onGenerationCleanup: () => {
     cleanupGenerationProgressListener()
     generateCoverLetterBtn.disabled = false
+    generateResumeBtn.disabled = false
   },
   log,
 }
@@ -1289,6 +1303,8 @@ async function cancelReview() {
   rejectReviewBtn.textContent = "Reject & Retry"
   cleanupGenerationProgressListener()
   generateCoverLetterBtn.disabled = false
+  generateResumeBtn.disabled = false
+  resetResumeGenerationState()
   // Reset workflow step to allow retry
   setWorkflowStep("docs", "active")
   setStatus("Review cancelled", "")
@@ -1732,12 +1748,11 @@ async function uploadDocument(type: "resume" | "coverLetter") {
   let documentUrl: string | undefined
 
   if (type === "resume") {
-    if (!selectedJobMatchId || tailoredResumeStatus !== "ready") {
-      setStatus("Resume not yet tailored — select a job first", "error")
+    if (!tailoredResumeUrl || tailoredResumeStatus !== "ready") {
+      setStatus("Resume not yet generated — click Generate Resume first", "error")
       return
     }
-    // Use the tailored resume PDF endpoint
-    documentUrl = `/api/resume-versions/pool/tailor/${selectedJobMatchId}/pdf`
+    documentUrl = tailoredResumeUrl
   } else {
     const doc = getSelectedCoverLetter()
     documentUrl = doc?.coverLetterUrl
@@ -1787,11 +1802,11 @@ async function previewDocument(type: "resume" | "coverLetter") {
   const typeLabel = type === "coverLetter" ? "cover letter" : "resume"
 
   if (type === "resume") {
-    if (!selectedJobMatchId || tailoredResumeStatus !== "ready") {
+    if (!tailoredResumeUrl || tailoredResumeStatus !== "ready") {
       setStatus("No tailored resume ready", "error")
       return
     }
-    url = `/api/resume-versions/pool/tailor/${selectedJobMatchId}/pdf`
+    url = tailoredResumeUrl
   } else {
     const doc = getSelectedCoverLetter()
     url = doc?.coverLetterUrl
@@ -1944,6 +1959,7 @@ function initializeApp() {
       // Deselected - clear state
       selectedJobMatchId = null
       tailoredResumeStatus = "idle"
+      tailoredResumeUrl = null
       resumeTailorStatus.textContent = "Select a job first"
       resumeTailorStatus.className = "tailor-status"
       selectedCoverLetterId = null
@@ -2020,8 +2036,6 @@ async function init() {
 
   // Initialize upload button state
   updateUploadButtonsState()
-
-  // Resume tailoring happens automatically when a job is selected
 
   // Check auth state on startup
   try {

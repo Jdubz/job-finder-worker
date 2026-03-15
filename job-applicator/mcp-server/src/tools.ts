@@ -228,8 +228,8 @@ export const tools: Tool[] = [
   {
     name: "get_resume_versions",
     description:
-      "Get resume status. A tailored resume has been auto-generated for this job application from a curated content pool. " +
-      "The resume PDF is already pre-downloaded and ready for upload. You do NOT need to select a version — just use upload_file with type 'resume'.",
+      "Get resume status. Check if a tailored resume PDF is available for upload. " +
+      "If ready, use upload_file with type 'resume' to upload it.",
     inputSchema: {
       type: "object",
       properties: {},

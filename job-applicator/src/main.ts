@@ -96,7 +96,6 @@ import {
   submitDocumentReview,
   rejectDocumentReview,
   submitJobToQueue,
-  fetchResumeVersions,
   getResumeVersionPdfUrl,
   tailorResume,
   getTailoredResumePdfUrl,
@@ -747,122 +746,11 @@ ipcMain.handle("get-tabs", async (): Promise<TabInfo[]> => {
 
 type PageFrameTreeNode = { frame: { id: string; url: string }; childFrames?: PageFrameTreeNode[] }
 
-const MIN_FRAME_URL_MATCH_SCORE = 40
-
-function scoreFrameUrlMatch(candidateUrl: string, targetUrl: string): number {
-  try {
-    const candidate = new URL(candidateUrl)
-    const target = new URL(targetUrl)
-
-    // Exact match (including query) is best.
-    if (candidate.href === target.href) return 100
-
-    // Same origin is a strong signal.
-    if (candidate.origin === target.origin) {
-      if (candidate.pathname === target.pathname) return 90
-      if (candidate.pathname.startsWith(target.pathname) || target.pathname.startsWith(candidate.pathname)) return 80
-      return 70
-    }
-
-    // Weak match: same hostname and overlapping path.
-    if (
-      candidate.hostname === target.hostname &&
-      (candidate.pathname.includes(target.pathname) || target.pathname.includes(candidate.pathname))
-    ) {
-      return 40
-    }
-  } catch {
-    // ignore URL parse errors
-  }
-
-  return 0
-}
-
-async function findCdpFrameIdForUrl(debugger_: Electron.Debugger, frameUrl: string): Promise<{
-  mainFrameId: string | null
-  frameId: string | null
-}> {
-  const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as { frameTree: PageFrameTreeNode }
-
-  const mainFrameId = frameTree?.frame?.id || null
-  let bestId: string | null = null
-  let bestScore = 0
-
-  // Use an explicit stack so TS can see mutations (avoids relying on nested function analysis).
-  const stack: PageFrameTreeNode[] = frameTree ? [frameTree] : []
-
-  while (stack.length > 0) {
-    const node = stack.pop()!
-    const score = scoreFrameUrlMatch(node.frame.url, frameUrl)
-    if (score > bestScore) {
-      bestScore = score
-      bestId = node.frame.id
-    }
-    for (const child of node.childFrames || []) stack.push(child)
-  }
-
-  const frameId = bestScore >= MIN_FRAME_URL_MATCH_SCORE ? bestId : null
-  return { mainFrameId, frameId }
-}
-
-// Fallback: walk every CDP frame and try querySelector in each frame's content document.
-// Used when URL-based frame matching fails to locate the file input.
-async function querySelectorInAllFrames(
-  debugger_: Electron.Debugger,
-  selector: string
-): Promise<number> {
-  try {
-    const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as { frameTree: PageFrameTreeNode }
-    const mainFrameId = frameTree?.frame?.id
-
-    // Collect all non-main frame IDs
-    const frameIds: string[] = []
-    const walk = (node: PageFrameTreeNode) => {
-      if (node.frame.id !== mainFrameId) frameIds.push(node.frame.id)
-      for (const child of node.childFrames || []) walk(child)
-    }
-    if (frameTree) walk(frameTree)
-
-    for (const frameId of frameIds) {
-      try {
-        const owner = await debugger_.sendCommand("DOM.getFrameOwner", { frameId }) as {
-          backendNodeId?: number
-          nodeId?: number
-        }
-        const describeParams = typeof owner.nodeId === "number"
-          ? { nodeId: owner.nodeId }
-          : typeof owner.backendNodeId === "number"
-            ? { backendNodeId: owner.backendNodeId }
-            : null
-        if (!describeParams) continue
-
-        const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
-          node: { contentDocument?: { nodeId: number } }
-        }
-        const contentDocNodeId = described.node?.contentDocument?.nodeId
-        if (typeof contentDocNodeId !== "number") continue
-
-        const result = await debugger_.sendCommand("DOM.querySelector", {
-          nodeId: contentDocNodeId,
-          selector,
-        }) as { nodeId: number }
-        if (result.nodeId) {
-          logger.info(`[Upload] Found "${selector}" in iframe (frameId=${frameId}) via frame-walk fallback`)
-          return result.nodeId
-        }
-      } catch {
-        // Frame may not be accessible (cross-origin, detached) — skip
-      }
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    logger.warn(`[Upload] Frame-walk fallback failed: ${message}`)
-  }
-  return 0
-}
-
-// Helper function to set files on a file input using Electron's debugger API.
-// Supports file inputs within cross-origin iframes by targeting the correct subframe document.
+// Set files on a file input using CDP's Runtime.evaluate + objectId approach.
+// This reliably handles cross-origin iframes by evaluating querySelector in each
+// frame's execution context (via Page.createIsolatedWorld), then passing the live
+// object reference to DOM.setFileInputFiles — avoiding the fragile DOM.querySelector
+// + nodeId approach which fails when contentDocument nodeIds aren't pushed to the client.
 async function setFileInputFiles(
   webContents: WebContents,
   selector: string,
@@ -881,76 +769,91 @@ async function setFileInputFiles(
   }
 
   try {
-    // Always start from the main document node; we may swap to a subframe document below.
-    const { root } = await debugger_.sendCommand("DOM.getDocument", {}) as { root: { nodeId: number } }
-    let queryRootNodeId = root.nodeId
+    // Enable DOM domain (required for setFileInputFiles)
+    await debugger_.sendCommand("DOM.getDocument", {})
 
-    // If we know (or can infer) the frame URL for the selector, query within that frame's document.
+    // Collect all frames from the page tree
+    const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as {
+      frameTree: PageFrameTreeNode
+    }
+    const frames: { id: string; url: string }[] = []
+    const walk = (node: PageFrameTreeNode) => {
+      frames.push({ id: node.frame.id, url: node.frame.url })
+      for (const child of node.childFrames || []) walk(child)
+    }
+    walk(frameTree)
+
+    // If we have a frameUrl hint, try matching frames first
     if (frameUrl) {
+      frames.sort((a, b) => {
+        const scoreA = scoreFrameUrlMatch(a.url, frameUrl)
+        const scoreB = scoreFrameUrlMatch(b.url, frameUrl)
+        return scoreB - scoreA
+      })
+    }
+
+    // Try each frame: create an isolated world, evaluate querySelector, set files via objectId
+    const selectorJson = JSON.stringify(selector)
+    for (const frame of frames) {
       try {
-        const { mainFrameId, frameId } = await findCdpFrameIdForUrl(debugger_, frameUrl)
-        if (frameId && mainFrameId && frameId !== mainFrameId) {
-          const owner = await debugger_.sendCommand("DOM.getFrameOwner", { frameId }) as {
-            backendNodeId?: number
-            nodeId?: number
-          }
+        const { executionContextId } = await debugger_.sendCommand(
+          "Page.createIsolatedWorld",
+          { frameId: frame.id, worldName: "jf-upload", grantUniveralAccess: true }
+        ) as { executionContextId: number }
 
-          let describeParams: { nodeId?: number; backendNodeId?: number } | null = null
-          if (typeof owner.nodeId === "number") {
-            describeParams = { nodeId: owner.nodeId }
-          } else if (typeof owner.backendNodeId === "number") {
-            describeParams = { backendNodeId: owner.backendNodeId }
-          }
+        const evalResult = await debugger_.sendCommand("Runtime.evaluate", {
+          expression: `document.querySelector(${selectorJson})`,
+          contextId: executionContextId,
+          returnByValue: false,
+        }) as { result: { objectId?: string; type: string; subtype?: string } }
 
-          if (!describeParams) {
-            logger.warn(
-              `[Upload] Frame owner for selector "${selector}" (frameUrl=${frameUrl}) has no valid nodeId or backendNodeId`,
-            )
-          } else {
-            const described = await debugger_.sendCommand("DOM.describeNode", describeParams) as {
-              node: { contentDocument?: { nodeId: number } }
-            }
-
-            const contentDocumentNodeId = described.node?.contentDocument?.nodeId
-            if (typeof contentDocumentNodeId === "number") {
-              queryRootNodeId = contentDocumentNodeId
-            }
-          }
+        if (!evalResult.result?.objectId || evalResult.result.subtype === "null") {
+          continue
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn(`[Upload] Failed to resolve frame for selector "${selector}" (frameUrl=${frameUrl}): ${message}`)
+
+        // Found the element — set files using the live object reference
+        await debugger_.sendCommand("DOM.setFileInputFiles", {
+          objectId: evalResult.result.objectId,
+          files: filePaths,
+        })
+
+        logger.info(`[Upload] Set files on "${selector}" in frame (url=${sanitizeFrameUrl(frame.url)})`)
+        return
+      } catch {
+        // Frame not accessible (cross-origin, detached, etc.) — try next
       }
     }
 
-    // Find the file input element (within chosen document root)
-    let { nodeId } = await debugger_.sendCommand("DOM.querySelector", {
-      nodeId: queryRootNodeId,
-      selector,
-    }) as { nodeId: number }
-
-    if (!nodeId) {
-      // Fallback: walk all CDP frames and try querySelector in each
-      nodeId = await querySelectorInAllFrames(debugger_, selector)
-    }
-
-    if (!nodeId) {
-      throw new Error(`File input not found: ${selector}`)
-    }
-
-    // Set the files on the input
-    await debugger_.sendCommand("DOM.setFileInputFiles", {
-      nodeId: nodeId,
-      files: filePaths,
-    })
+    throw new Error(`File input not found: ${selector}`)
   } finally {
     try {
       debugger_.detach()
     } catch (err) {
-      // Log detach errors for debugging (may be expected if target is already closed)
       logger.warn("Failed to detach debugger, this may be expected:", err)
     }
   }
+}
+
+function scoreFrameUrlMatch(candidateUrl: string, targetUrl: string): number {
+  try {
+    const candidate = new URL(candidateUrl)
+    const target = new URL(targetUrl)
+    if (candidate.href === target.href) return 100
+    if (candidate.origin === target.origin) {
+      if (candidate.pathname === target.pathname) return 90
+      if (candidate.pathname.startsWith(target.pathname) || target.pathname.startsWith(candidate.pathname)) return 80
+      return 70
+    }
+    if (
+      candidate.hostname === target.hostname &&
+      (candidate.pathname.includes(target.pathname) || target.pathname.includes(candidate.pathname))
+    ) {
+      return 40
+    }
+  } catch {
+    // ignore URL parse errors
+  }
+  return 0
 }
 
 // Helper function to find the appropriate file input based on document type
@@ -1273,53 +1176,6 @@ ipcMain.handle("check-file-input", async (): Promise<{ hasFileInput: boolean; se
   logger.info("[check-file-input] No file inputs found")
   return { hasFileInput: false }
 })
-
-// Get resume versions from backend
-ipcMain.handle(
-  "get-resume-versions",
-  async (): Promise<Array<{ slug: string; name: string; pdfPath: string | null; publishedAt: string | null }>> => {
-    try {
-      const versions = await fetchResumeVersions()
-      return versions.map((v) => ({
-        slug: v.slug,
-        name: v.name,
-        pdfPath: v.pdfPath ?? null,
-        publishedAt: v.publishedAt ? String(v.publishedAt) : null,
-      }))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error(`Failed to fetch resume versions: ${message}`)
-      return []
-    }
-  }
-)
-
-// Tailor resume for a specific job match (AI selection from pool)
-ipcMain.handle(
-  "tailor-resume",
-  async (
-    _event: IpcMainInvokeEvent,
-    jobMatchId: string,
-    force?: boolean
-  ): Promise<{ success: boolean; pdfUrl?: string; reasoning?: string; error?: string; cached?: boolean }> => {
-    try {
-      logger.info(`[tailor-resume] Tailoring resume for job match: ${jobMatchId}`)
-      const result = await tailorResume(jobMatchId, force)
-      const pdfUrl = getTailoredResumePdfUrl(jobMatchId)
-      logger.info(`[tailor-resume] Tailoring ${result.cached ? 'cached' : 'completed'}: ${result.selectedItemIds.length} items selected`)
-      return {
-        success: true,
-        pdfUrl,
-        reasoning: result.reasoning ?? undefined,
-        cached: result.cached
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      logger.error(`[tailor-resume] Failed: ${message}`)
-      return { success: false, error: message }
-    }
-  }
-)
 
 // Get job matches from backend using typed API client
 ipcMain.handle(
