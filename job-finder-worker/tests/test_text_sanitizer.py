@@ -52,6 +52,114 @@ def test_sanitize_html_description():
     assert "<li>" not in result
 
 
+def test_sanitize_deeply_nested_divs():
+    """Test that nested div soup produces readable output."""
+    html = (
+        '<div><div><div><p style="text-align:left"><b>Job Title</b></p></div></div></div>'
+        "<div><div><p>We are looking for engineers.</p>"
+        "<p>Requirements:</p>"
+        "<ul><li>Python</li><li>AWS</li></ul>"
+        "</div></div>"
+    )
+    result = sanitize_html_description(html)
+    assert "Job Title" in result
+    assert "We are looking for engineers." in result
+    assert "* Python" in result
+    assert "* AWS" in result
+    assert "<div>" not in result
+    assert "<p" not in result
+
+
+def test_sanitize_inline_styles():
+    """Test that style attributes are stripped."""
+    html = '<p style="text-align:inherit"></p><p style="color:red">Important text</p>'
+    result = sanitize_html_description(html)
+    assert "Important text" in result
+    assert "style=" not in result
+
+
+def test_sanitize_span_tags():
+    """Test that span tags are removed but content preserved."""
+    html = "<span><span><span><b>Clearance Level</b></span></span></span>"
+    result = sanitize_html_description(html)
+    assert result == "Clearance Level"
+
+
+def test_sanitize_script_and_style_blocks():
+    """Test that script and style content is fully removed."""
+    html = '<style>.foo { color: red; }</style><p>Hello</p><script>alert("x")</script>'
+    result = sanitize_html_description(html)
+    assert result == "Hello"
+    assert "color" not in result
+    assert "alert" not in result
+
+
+def test_sanitize_html_entities_in_descriptions():
+    """Test &nbsp; and other entities in descriptions."""
+    html = "First&nbsp;section.&nbsp; Second section.&amp;More."
+    result = sanitize_html_description(html)
+    assert "First section." in result
+    assert "Second section.&More." in result
+    assert "&nbsp;" not in result
+
+
+def test_sanitize_table_structure():
+    """Test table-based layouts produce readable output."""
+    html = "<table><tr><th>Role</th><td>Engineer</td></tr><tr><th>Level</th><td>Senior</td></tr></table>"
+    result = sanitize_html_description(html)
+    assert "Role" in result
+    assert "Engineer" in result
+    assert "Level" in result
+    assert "Senior" in result
+    assert "<table>" not in result
+
+
+def test_sanitize_definition_lists():
+    """Test dl/dt/dd structure."""
+    html = "<dl><dt>Location</dt><dd>Remote</dd><dt>Salary</dt><dd>$150k</dd></dl>"
+    result = sanitize_html_description(html)
+    assert "Location" in result
+    assert "Remote" in result
+    assert "Salary" in result
+    assert "$150k" in result
+
+
+def test_sanitize_hr_tags():
+    """Test horizontal rule conversion."""
+    html = "<p>Section 1</p><hr/><p>Section 2</p>"
+    result = sanitize_html_description(html)
+    assert "Section 1" in result
+    assert "---" in result
+    assert "Section 2" in result
+
+
+def test_sanitize_plain_text_passthrough():
+    """Test that plain text without HTML passes through cleanly."""
+    text = "This is plain text.\n\nWith paragraphs.\n\n* And bullets."
+    result = sanitize_html_description(text)
+    assert result == text
+
+
+def test_sanitize_html_comments():
+    """Test that HTML comments are removed."""
+    html = "<p>Visible</p><!-- hidden comment --><p>Also visible</p>"
+    result = sanitize_html_description(html)
+    assert "Visible" in result
+    assert "Also visible" in result
+    assert "hidden" not in result
+
+
+def test_sanitize_preserves_paragraph_breaks():
+    """Test that block elements create proper paragraph separation."""
+    html = "<div>Paragraph one.</div><div>Paragraph two.</div><div>Paragraph three.</div>"
+    result = sanitize_html_description(html)
+    lines = [line for line in result.split("\n") if line.strip()]
+    assert len(lines) == 3
+    assert "Paragraph one." in lines[0]
+    assert "Paragraph two." in lines[1]
+    assert "Paragraph three." in lines[2]
+
+
 def test_sanitize_title():
     """Test job title sanitization."""
     # Test with trailing punctuation

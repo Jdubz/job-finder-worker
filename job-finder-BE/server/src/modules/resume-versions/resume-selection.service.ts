@@ -65,6 +65,7 @@ export class AISelectionError extends Error {
 
 interface SelectionResult {
   narrative_id: string
+  resume_title: string // Generalized job title for the resume header (e.g. "Software Engineer")
   experience_ids: string[]
   highlight_selections: Record<string, string[]> // work ID → highlight IDs
   skill_ids: string[]
@@ -148,7 +149,8 @@ export class ResumeSelectionService {
     logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
 
     const selectedTree = filterTreeToSelection(tree, selection)
-    let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo)
+    const jobTitle = selection.resume_title || match.listing?.title
+    let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo, jobTitle)
 
     let fit = estimateContentFit(resumeContent)
     if (!fit.fits) {
@@ -256,6 +258,7 @@ const SYSTEM_PROMPT = `You are a resume content selector. Your ONLY job is to se
 CRITICAL RULES:
 - You MUST only return IDs of items that exist in the pool. NEVER generate, edit, or rephrase any text.
 - Select content that best matches the job requirements.
+- For resume_title: provide a short, generalized job title for the resume header (e.g. "Software Engineer" not "Software Engineer - React/Node.js"). Strip technologies, locations, team names, and parenthetical qualifiers.
 - Your response must be valid JSON only — no markdown fences, no commentary outside the JSON.
 
 CONTENT BUDGET (must fit on 1 page):
@@ -304,6 +307,7 @@ Select the best items from the pool for this specific job. Return JSON:
 
 {
   "narrative_id": "<id of best matching narrative>",
+  "resume_title": "<generalized job title for resume header, e.g. 'Software Engineer'>",
   "experience_ids": ["<work item ids in display order>"],
   "highlight_selections": {
     "<work_id>": ["<highlight ids for that work entry>"]
@@ -377,6 +381,7 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
 
 const selectionSchema = z.object({
   narrative_id: z.string().min(1, 'narrative_id is required'),
+  resume_title: z.string().default(''),
   experience_ids: z.array(z.string()).min(1, 'At least one experience_id is required'),
   highlight_selections: z.record(z.string(), z.array(z.string())).default({}),
   skill_ids: z.array(z.string()).default([]),

@@ -14,9 +14,37 @@ const RESUMES_DIR = 'resumes'
  * Transform a nested tree of ResumeItemNodes into the ResumeContent structure
  * expected by the existing HTML/PDF pipeline.
  */
+/**
+ * Generalize a specific job title to a broader role title suitable for a resume.
+ * e.g. "Software Engineer - React/Node.js" → "Software Engineer"
+ *      "Senior Staff Backend Engineer, Platform (Remote - US)" → "Senior Staff Backend Engineer"
+ */
+export function generalizeTitle(rawTitle: string): string {
+  let title = rawTitle.trim()
+
+  // Remove parenthetical qualifiers: (Remote), (US), (Contract), etc.
+  title = title.replace(/\s*\([^)]*\)\s*/g, ' ')
+
+  // Remove everything after common separators when followed by tech/location qualifiers
+  // Matches: " - React/Node.js", " | San Francisco, CA", " — Python/Go"
+  title = title.replace(/\s*[-|—–]\s*(?=[A-Z]?[a-z]*[\/,]|(?:Remote|Hybrid|Onsite|US|UK|EU|EMEA|APAC|San|New|Los|Mountain)\b).*$/i, '')
+
+  // Remove trailing comma clauses: "Backend Engineer, Platform" → "Backend Engineer"
+  title = title.replace(/,\s*(?:Platform|Infrastructure|Core|Growth|Security|Data|Cloud|Mobile|Web|DevOps|SRE|ML|AI)\b.*$/i, '')
+
+  // Clean up whitespace
+  title = title.replace(/\s+/g, ' ').trim()
+
+  // Remove trailing punctuation
+  title = title.replace(/[,;:\-|]+$/, '').trim()
+
+  return title
+}
+
 export function transformItemsToResumeContent(
   items: ResumeItemNode[],
-  personalInfo: PersonalInfo
+  personalInfo: PersonalInfo,
+  jobTitle?: string
 ): ResumeContent {
   const experience: ResumeContent['experience'] = []
   const projects: NonNullable<ResumeContent['projects']> = []
@@ -103,7 +131,7 @@ export function transformItemsToResumeContent(
   return {
     personalInfo: {
       name: personalInfo.name,
-      title: personalInfo.title ?? '',
+      title: personalInfo.title || (jobTitle ? generalizeTitle(jobTitle) : ''),
       summary: professionalSummary,
       contact: {
         email: personalInfo.email,

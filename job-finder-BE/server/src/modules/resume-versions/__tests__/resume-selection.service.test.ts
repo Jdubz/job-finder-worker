@@ -11,7 +11,7 @@ import type { ResumeItemNode, ResumeContent } from '@shared/types'
 
 describe('parseSelectionResponse', () => {
   const validResponse = {
-    narrative_id: 'n-1',
+    narrative_id: 'n-1', resume_title: 'Software Engineer',
     experience_ids: ['w-1', 'w-2'],
     highlight_selections: { 'w-1': ['h-1', 'h-2'] },
     skill_ids: ['s-1'],
@@ -43,6 +43,7 @@ describe('parseSelectionResponse', () => {
   it('applies defaults for optional fields', () => {
     const minimal = { narrative_id: 'n-1', experience_ids: ['w-1'] }
     const result = parseSelectionResponse(JSON.stringify(minimal))
+    expect(result.resume_title).toBe('')
     expect(result.highlight_selections).toEqual({})
     expect(result.skill_ids).toEqual([])
     expect(result.project_ids).toEqual([])
@@ -69,7 +70,7 @@ describe('parseSelectionResponse', () => {
 
   it('throws AISelectionError when highlight_selections has non-array values', () => {
     const invalid = {
-      narrative_id: 'n-1',
+      narrative_id: 'n-1', resume_title: 'Software Engineer',
       experience_ids: ['w-1'],
       highlight_selections: { 'w-1': 'not-an-array' }
     }
@@ -124,7 +125,7 @@ describe('filterTreeToSelection', () => {
 
   it('filters tree to only selected items', () => {
     const selection = {
-      narrative_id: 'n-1',
+      narrative_id: 'n-1', resume_title: 'Software Engineer',
       experience_ids: ['w-1'],
       highlight_selections: { 'w-1': ['h-1', 'h-3'] },
       skill_ids: ['s-1'],
@@ -163,7 +164,7 @@ describe('filterTreeToSelection', () => {
 
   it('removes section containers when no children survive', () => {
     const selection = {
-      narrative_id: 'n-1',
+      narrative_id: 'n-1', resume_title: 'Software Engineer',
       experience_ids: ['w-1'],
       highlight_selections: { 'w-1': ['h-1'] },
       skill_ids: [],
@@ -181,6 +182,7 @@ describe('filterTreeToSelection', () => {
   it('returns empty array when nothing selected matches', () => {
     const selection = {
       narrative_id: 'nonexistent',
+      resume_title: 'Engineer',
       experience_ids: ['nonexistent'],
       highlight_selections: {},
       skill_ids: [],

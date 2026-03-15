@@ -11,7 +11,7 @@ def sanitize_text(text: Optional[str], max_length: Optional[int] = None) -> str:
     Comprehensive text sanitization for scraped content.
 
     Handles:
-    - HTML entity decoding (e.g., &amp; → &, &#8217; → ')
+    - HTML entity decoding (e.g., &amp; -> &, &#8217; -> ')
     - HTML tag removal
     - Unicode normalization
     - Smart quotes and special characters
@@ -91,15 +91,16 @@ def sanitize_text(text: Optional[str], max_length: Optional[int] = None) -> str:
 
 def sanitize_html_description(html_text: str) -> str:
     """
-    Sanitize HTML job descriptions while preserving some structure.
+    Sanitize HTML job descriptions while preserving readable structure.
 
     Converts HTML to plain text while:
-    - Preserving paragraph breaks
+    - Preserving paragraph breaks from block-level elements
     - Converting lists to bullet points
-    - Removing excessive formatting
+    - Handling deeply nested divs, spans, tables
+    - Removing style/script content entirely
 
     Args:
-        html_text: HTML content
+        html_text: HTML content (or plain text — safe to call on either)
 
     Returns:
         Clean plain text with preserved structure
@@ -107,20 +108,62 @@ def sanitize_html_description(html_text: str) -> str:
     if not html_text:
         return ""
 
-    # Convert <br> and <p> tags to newlines before removing tags
-    text = re.sub(r"<br\s*/?>", "\n", html_text, flags=re.IGNORECASE)
-    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<p[^>]*>", "", text, flags=re.IGNORECASE)
+    text = html_text
 
-    # Convert list items to bullets
-    text = re.sub(r"<li[^>]*>", "\n* ", text, flags=re.IGNORECASE)
-    text = re.sub(r"</li>", "", text, flags=re.IGNORECASE)
+    # Remove script and style blocks entirely (content + tags)
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", text, flags=re.IGNORECASE | re.DOTALL)
 
-    # Convert headers to emphasized text with newlines
+    # Remove HTML comments
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+
+    # Convert <br> to newline
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+
+    # Block-level elements that start new paragraphs (closing tag = double newline)
+    # These create visual separation in the browser
+    text = re.sub(
+        r"</(?:p|div|section|article|header|footer|main|aside|blockquote)>",
+        "\n\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"<(?:p|div|section|article|header|footer|main|aside|blockquote)[^>]*>",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Headers: double newline before, single after
     text = re.sub(r"<h[1-6][^>]*>", "\n\n", text, flags=re.IGNORECASE)
     text = re.sub(r"</h[1-6]>", "\n", text, flags=re.IGNORECASE)
 
-    # Now apply standard sanitization
+    # List items to bullets
+    text = re.sub(r"<li[^>]*>", "\n* ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</li>", "", text, flags=re.IGNORECASE)
+
+    # List containers: just add spacing
+    text = re.sub(r"</?(?:ul|ol|dl)[^>]*>", "\n", text, flags=re.IGNORECASE)
+
+    # Definition lists
+    text = re.sub(r"<dt[^>]*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<dd[^>]*>", "\n  ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(?:dt|dd)>", "", text, flags=re.IGNORECASE)
+
+    # Table structure: rows get newlines, cells get spacing
+    text = re.sub(r"</?table[^>]*>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?(?:thead|tbody|tfoot)[^>]*>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<tr[^>]*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</tr>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?(?:td|th)[^>]*>", " ", text, flags=re.IGNORECASE)
+
+    # <hr> to visual separator
+    text = re.sub(r"<hr[^>]*/?>", "\n---\n", text, flags=re.IGNORECASE)
+
+    # Inline elements: just remove tags, keep content
+    # (strong, em, b, i, u, a, span, etc. — handled by sanitize_text's tag removal)
+
+    # Now apply standard sanitization (strips remaining tags, entities, whitespace)
     return sanitize_text(text)
 
 
