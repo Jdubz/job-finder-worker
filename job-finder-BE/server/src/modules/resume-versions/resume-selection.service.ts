@@ -120,6 +120,7 @@ export class ResumeSelectionService {
     selection: SelectionResult
     selectedTree: ResumeItemNode[]
     fit: ReturnType<typeof estimateContentFit>
+    match: JobMatchWithListing
   }> {
     const pool = this.repo.getPoolVersion()
     if (!pool) throw new PoolNotFoundError()
@@ -155,7 +156,7 @@ export class ResumeSelectionService {
       fit = estimateContentFit(resumeContent)
     }
 
-    return { resumeContent, personalInfo, selection, selectedTree, fit }
+    return { resumeContent, personalInfo, selection, selectedTree, fit, match }
   }
 
   /**
@@ -195,7 +196,7 @@ export class ResumeSelectionService {
       }
     }
 
-    const { resumeContent, personalInfo, selection, selectedTree, fit } = await this.buildSelectedContent(jobMatchId)
+    const { resumeContent, personalInfo, selection, selectedTree, fit, match } = await this.buildSelectedContent(jobMatchId)
 
     const fitEstimate: ContentFitEstimate = {
       mainColumnLines: fit.mainColumnLines,
@@ -214,7 +215,14 @@ export class ResumeSelectionService {
     const tailoredDir = path.join(artifactsRoot, TAILORED_DIR)
     await fs.mkdir(tailoredDir, { recursive: true })
 
-    const filename = `${jobMatchId}.pdf`
+    // Build a human-readable filename: Name_Company_Role_Resume.pdf
+    const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const namePart = sanitize(personalInfo.name || 'Resume')
+    const companyPart = sanitize(match.company?.name || '')
+    const rolePart = sanitize(match.listing?.title || '')
+    const shortId = jobMatchId.slice(0, 8)
+    const slug = [namePart, companyPart, rolePart, 'Resume'].filter(Boolean).join('_')
+    const filename = `${slug}_${shortId}.pdf`
     const relativePath = `${TAILORED_DIR}/${filename}`
     const absolutePath = path.join(tailoredDir, filename)
     await fs.writeFile(absolutePath, pdfBuffer)
