@@ -3,6 +3,7 @@ import type { BrowserView, WebContents, RenderProcessGoneDetails } from "electro
 import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
+import * as fsPromises from "fs/promises"
 import * as os from "os"
 
 // Load .env file if it exists (simple loader, no external dependency)
@@ -780,8 +781,10 @@ async function trySetFilesCDP(
 ): Promise<boolean> {
   const debugger_ = webContents.debugger
 
+  let weAttached = false
   try {
     debugger_.attach("1.3")
+    weAttached = true
   } catch (err) {
     if (!(err instanceof Error && err.message.includes("Already attached"))) {
       throw err
@@ -837,10 +840,12 @@ async function trySetFilesCDP(
 
     return false
   } finally {
-    try {
-      debugger_.detach()
-    } catch (err) {
-      logger.warn("Failed to detach debugger, this may be expected:", err)
+    if (weAttached) {
+      try {
+        debugger_.detach()
+      } catch (err) {
+        logger.warn("Failed to detach debugger, this may be expected:", err)
+      }
     }
   }
 }
@@ -866,9 +871,10 @@ async function trySetFilesDataTransfer(
   }
   visit(root)
 
-  // Read file and encode as base64
+  // Read file and encode as base64 (only single-file uploads are supported)
   const filePath = filePaths[0]
-  const fileBuffer = fs.readFileSync(filePath)
+  if (!filePath) return false
+  const fileBuffer = await fsPromises.readFile(filePath)
   const base64 = fileBuffer.toString("base64")
   const filename = path.basename(filePath)
   const mimeType = filename.endsWith(".pdf") ? "application/pdf" : "application/octet-stream"

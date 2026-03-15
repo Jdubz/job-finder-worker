@@ -712,10 +712,21 @@ async function selectJobMatch(id: string) {
     setStatus(navResult.message || "Failed to load job listing", "error")
   }
 
+  // Clear stale state while documents load (prevents acting on previous job's docs)
+  resetResumeStateUI()
+  updateUploadButtonsState()
+
   // Load documents for this job match (restores both resume and cover letter state)
   await loadDocuments(id)
   generateResumeBtn.disabled = _isGenerating
   generateCoverLetterBtn.disabled = _isGenerating
+}
+
+function resetResumeStateUI() {
+  tailoredResumeStatus = "idle"
+  tailoredResumeUrl = null
+  resumeTailorStatus.textContent = "Click Generate Resume"
+  resumeTailorStatus.className = "tailor-status"
 }
 
 // Load documents for a job match — restores both resume and cover letter state
@@ -755,30 +766,21 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
         resumeTailorStatus.textContent = "Tailored"
         resumeTailorStatus.className = "tailor-status ready"
       } else {
-        tailoredResumeStatus = "idle"
-        tailoredResumeUrl = null
-        resumeTailorStatus.textContent = "Click Generate Resume"
-        resumeTailorStatus.className = "tailor-status"
+        resetResumeStateUI()
       }
 
       updateUploadButtonsState()
     } else {
       documents = []
       selectedCoverLetterId = null
-      tailoredResumeStatus = "idle"
-      tailoredResumeUrl = null
-      resumeTailorStatus.textContent = "Click Generate Resume"
-      resumeTailorStatus.className = "tailor-status"
+      resetResumeStateUI()
       coverLetterSelect.innerHTML = '<option value="">-- No cover letters --</option>'
       updateUploadButtonsState()
     }
   } catch (err) {
     documents = []
     selectedCoverLetterId = null
-    tailoredResumeStatus = "idle"
-    tailoredResumeUrl = null
-    resumeTailorStatus.textContent = "Click Generate Resume"
-    resumeTailorStatus.className = "tailor-status"
+    resetResumeStateUI()
     const message = err instanceof Error ? err.message : String(err)
     log.error("Failed to load documents:", message)
     coverLetterSelect.innerHTML = '<option value="">-- Error loading --</option>'
