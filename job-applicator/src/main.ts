@@ -3,6 +3,7 @@ import type { BrowserView, WebContents, RenderProcessGoneDetails } from "electro
 import { spawn } from "child_process"
 import * as path from "path"
 import * as fs from "fs"
+import * as fsPromises from "fs/promises"
 import * as os from "os"
 
 // Load .env file if it exists (simple loader, no external dependency)
@@ -746,33 +747,53 @@ ipcMain.handle("get-tabs", async (): Promise<TabInfo[]> => {
 
 type PageFrameTreeNode = { frame: { id: string; url: string }; childFrames?: PageFrameTreeNode[] }
 
-// Set files on a file input using CDP's Runtime.evaluate + objectId approach.
-// This reliably handles cross-origin iframes by evaluating querySelector in each
-// frame's execution context (via Page.createIsolatedWorld), then passing the live
-// object reference to DOM.setFileInputFiles — avoiding the fragile DOM.querySelector
-// + nodeId approach which fails when contentDocument nodeIds aren't pushed to the client.
+// Set files on a file input. Tries CDP first, falls back to DataTransfer via
+// Electron's frame API (which can reach frames CDP sometimes can't).
 async function setFileInputFiles(
   webContents: WebContents,
   selector: string,
   filePaths: string[],
   frameUrl?: string | null
 ): Promise<void> {
+  // Try 1: CDP approach (most reliable for form submission)
+  try {
+    const success = await trySetFilesCDP(webContents, selector, filePaths, frameUrl)
+    if (success) return
+  } catch (err) {
+    logger.warn(`[Upload] CDP approach failed for "${selector}": ${err instanceof Error ? err.message : err}`)
+  }
+
+  // Try 2: DataTransfer via Electron frame API (reaches frames CDP can't access)
+  logger.info(`[Upload] Trying DataTransfer fallback for "${selector}"`)
+  const success = await trySetFilesDataTransfer(webContents, selector, filePaths)
+  if (success) return
+
+  throw new Error(`File input not found: ${selector}`)
+}
+
+// CDP approach: walk frames via Page.getFrameTree, evaluate querySelector
+// in each frame's isolated world, set files via objectId
+async function trySetFilesCDP(
+  webContents: WebContents,
+  selector: string,
+  filePaths: string[],
+  frameUrl?: string | null
+): Promise<boolean> {
   const debugger_ = webContents.debugger
 
+  let weAttached = false
   try {
     debugger_.attach("1.3")
+    weAttached = true
   } catch (err) {
-    // Already attached is fine
     if (!(err instanceof Error && err.message.includes("Already attached"))) {
       throw err
     }
   }
 
   try {
-    // Enable DOM domain (required for setFileInputFiles)
     await debugger_.sendCommand("DOM.getDocument", {})
 
-    // Collect all frames from the page tree
     const { frameTree } = await debugger_.sendCommand("Page.getFrameTree", {}) as {
       frameTree: PageFrameTreeNode
     }
@@ -783,16 +804,10 @@ async function setFileInputFiles(
     }
     walk(frameTree)
 
-    // If we have a frameUrl hint, try matching frames first
     if (frameUrl) {
-      frames.sort((a, b) => {
-        const scoreA = scoreFrameUrlMatch(a.url, frameUrl)
-        const scoreB = scoreFrameUrlMatch(b.url, frameUrl)
-        return scoreB - scoreA
-      })
+      frames.sort((a, b) => scoreFrameUrlMatch(b.url, frameUrl) - scoreFrameUrlMatch(a.url, frameUrl))
     }
 
-    // Try each frame: create an isolated world, evaluate querySelector, set files via objectId
     const selectorJson = JSON.stringify(selector)
     for (const frame of frames) {
       try {
@@ -811,27 +826,92 @@ async function setFileInputFiles(
           continue
         }
 
-        // Found the element — set files using the live object reference
         await debugger_.sendCommand("DOM.setFileInputFiles", {
           objectId: evalResult.result.objectId,
           files: filePaths,
         })
 
-        logger.info(`[Upload] Set files on "${selector}" in frame (url=${sanitizeFrameUrl(frame.url)})`)
-        return
+        logger.info(`[Upload] Set files on "${selector}" via CDP (frame: ${sanitizeFrameUrl(frame.url)})`)
+        return true
       } catch {
-        // Frame not accessible (cross-origin, detached, etc.) — try next
+        // Frame not accessible — try next
       }
     }
 
-    throw new Error(`File input not found: ${selector}`)
+    return false
   } finally {
-    try {
-      debugger_.detach()
-    } catch (err) {
-      logger.warn("Failed to detach debugger, this may be expected:", err)
+    if (weAttached) {
+      try {
+        debugger_.detach()
+      } catch (err) {
+        logger.warn("Failed to detach debugger, this may be expected:", err)
+      }
     }
   }
+}
+
+// DataTransfer approach: uses Electron's frame.executeJavaScript (which can
+// reach cross-origin iframes that CDP sometimes can't) to read the file via
+// base64 and set it on the input using the DataTransfer API.
+async function trySetFilesDataTransfer(
+  webContents: WebContents,
+  selector: string,
+  filePaths: string[]
+): Promise<boolean> {
+  type FrameLike = { executeJavaScript?: (code: string) => Promise<unknown>; frames?: FrameLike[]; url?: string }
+  const wc = webContents as unknown as { mainFrame?: FrameLike }
+  const root = wc.mainFrame
+
+  if (!root || typeof root.executeJavaScript !== "function") return false
+
+  const allFrames: FrameLike[] = []
+  const visit = (frame: FrameLike) => {
+    allFrames.push(frame)
+    for (const child of (frame.frames || []) as FrameLike[]) visit(child)
+  }
+  visit(root)
+
+  // Read file and encode as base64 (only single-file uploads are supported)
+  const filePath = filePaths[0]
+  if (!filePath) return false
+  const fileBuffer = await fsPromises.readFile(filePath)
+  const base64 = fileBuffer.toString("base64")
+  const filename = path.basename(filePath)
+  const mimeType = filename.endsWith(".pdf") ? "application/pdf" : "application/octet-stream"
+
+  const selectorJson = JSON.stringify(selector)
+  const filenameJson = JSON.stringify(filename)
+  const mimeJson = JSON.stringify(mimeType)
+
+  for (const frame of allFrames) {
+    if (typeof frame.executeJavaScript !== "function") continue
+    try {
+      const result = await frame.executeJavaScript(`
+        (() => {
+          const input = document.querySelector(${selectorJson});
+          if (!input) return false;
+          const binary = atob(${JSON.stringify(base64)});
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const file = new File([bytes], ${filenameJson}, { type: ${mimeJson} });
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        })()
+      `)
+      if (result) {
+        logger.info(`[Upload] Set files on "${selector}" via DataTransfer (frame: ${sanitizeFrameUrl(frame.url)})`)
+        return true
+      }
+    } catch {
+      // Frame not accessible — try next
+    }
+  }
+
+  return false
 }
 
 function scoreFrameUrlMatch(candidateUrl: string, targetUrl: string): number {

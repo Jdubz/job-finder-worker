@@ -120,6 +120,7 @@ export class ResumeSelectionService {
     selection: SelectionResult
     selectedTree: ResumeItemNode[]
     fit: ReturnType<typeof estimateContentFit>
+    match: JobMatchWithListing
   }> {
     const pool = this.repo.getPoolVersion()
     if (!pool) throw new PoolNotFoundError()
@@ -155,7 +156,7 @@ export class ResumeSelectionService {
       fit = estimateContentFit(resumeContent)
     }
 
-    return { resumeContent, personalInfo, selection, selectedTree, fit }
+    return { resumeContent, personalInfo, selection, selectedTree, fit, match }
   }
 
   /**
@@ -214,7 +215,9 @@ export class ResumeSelectionService {
     const tailoredDir = path.join(artifactsRoot, TAILORED_DIR)
     await fs.mkdir(tailoredDir, { recursive: true })
 
-    const filename = `${jobMatchId}.pdf`
+    // ATS-friendly filename: Firstname-Lastname-Resume_<id>.pdf
+    const namePart = (personalInfo.name || 'Resume').replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '-')
+    const filename = `${namePart}-Resume_${jobMatchId}.pdf`
     const relativePath = `${TAILORED_DIR}/${filename}`
     const absolutePath = path.join(tailoredDir, filename)
     await fs.writeFile(absolutePath, pdfBuffer)

@@ -712,31 +712,35 @@ async function selectJobMatch(id: string) {
     setStatus(navResult.message || "Failed to load job listing", "error")
   }
 
-  // Reset resume status — user must manually trigger tailoring
+  // Clear stale state while documents load (prevents acting on previous job's docs)
+  resetResumeStateUI()
+  updateUploadButtonsState()
+
+  // Load documents for this job match (restores both resume and cover letter state)
+  await loadDocuments(id)
+  generateResumeBtn.disabled = _isGenerating
+  generateCoverLetterBtn.disabled = _isGenerating
+}
+
+function resetResumeStateUI() {
   tailoredResumeStatus = "idle"
   tailoredResumeUrl = null
   resumeTailorStatus.textContent = "Click Generate Resume"
   resumeTailorStatus.className = "tailor-status"
-  generateResumeBtn.disabled = false
-  updateUploadButtonsState()
-
-  // Load cover letter documents for this job match
-  await loadDocuments(id)
-  generateCoverLetterBtn.disabled = _isGenerating
 }
 
-// Load resume versions (once on startup) and cover letter documents (per job match)
+// Load documents for a job match — restores both resume and cover letter state
 async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
   coverLetterSelect.disabled = true
 
   try {
-    // Load cover letters from generator (per job match)
     const result = await api.getDocuments(jobMatchId)
 
     if (result.success && Array.isArray(result.data)) {
       documents = result.data
       const coverLetters = documents.filter((d) => d.coverLetterUrl)
 
+      // Restore cover letter dropdown
       coverLetterSelect.innerHTML = '<option value="">-- Select Cover Letter --</option>' +
         coverLetters.map((doc) => {
           const date = new Date(doc.createdAt).toLocaleDateString()
@@ -753,16 +757,30 @@ async function loadDocuments(jobMatchId: string, autoSelectId?: string) {
 
       coverLetterSelect.value = selectedCoverLetterId || ""
       coverLetterSelect.disabled = coverLetters.length === 0
+
+      // Restore resume state from the most recent completed document with a resumeUrl
+      const resumeDoc = documents.find((d) => d.resumeUrl && d.status === "completed")
+      if (resumeDoc?.resumeUrl) {
+        tailoredResumeStatus = "ready"
+        tailoredResumeUrl = resumeDoc.resumeUrl
+        resumeTailorStatus.textContent = "Tailored"
+        resumeTailorStatus.className = "tailor-status ready"
+      } else {
+        resetResumeStateUI()
+      }
+
       updateUploadButtonsState()
     } else {
       documents = []
       selectedCoverLetterId = null
+      resetResumeStateUI()
       coverLetterSelect.innerHTML = '<option value="">-- No cover letters --</option>'
       updateUploadButtonsState()
     }
   } catch (err) {
     documents = []
     selectedCoverLetterId = null
+    resetResumeStateUI()
     const message = err instanceof Error ? err.message : String(err)
     log.error("Failed to load documents:", message)
     coverLetterSelect.innerHTML = '<option value="">-- Error loading --</option>'
