@@ -34,7 +34,7 @@ vi.mock('../../generator/workflow/services/content-fit.service', async (importOr
     ...original,
     estimateContentFit: vi.fn().mockReturnValue({
       mainColumnLines: 40,
-      maxLines: 56,
+      sidebarLines: 10,
       fits: true,
       overflow: 0,
       suggestions: []
@@ -346,7 +346,7 @@ describe('trimToFit', () => {
     const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
     vi.mocked(estimateContentFit).mockReturnValue({
       mainColumnLines: 70,
-      maxLines: 56,
+      sidebarLines: 20,
       fits: false,
       overflow: 14,
       suggestions: []
