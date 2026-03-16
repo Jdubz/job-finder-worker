@@ -191,9 +191,7 @@ class TestPaginationEarlyStop:
 
         scraper._fetch_single_page = mock_fetch_single_page
 
-        known_urls = {
-            f"https://example.com/old/{i}" for i in range(1, 10)
-        }
+        known_urls = {f"https://example.com/old/{i}" for i in range(1, 10)}
 
         results = scraper._fetch_paginated(known_urls=known_urls)
 
@@ -242,8 +240,7 @@ class TestPaginationEarlyStop:
 
         # Build seen_hashes for pages 1 and 2
         seen_hashes = {
-            SeenUrlsStorage.hash_url(f"https://example.com/seen/{i}")
-            for i in range(1, 7)
+            SeenUrlsStorage.hash_url(f"https://example.com/seen/{i}") for i in range(1, 7)
         }
 
         results = scraper._fetch_paginated(known_urls=None, seen_hashes=seen_hashes)
