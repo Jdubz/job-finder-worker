@@ -515,12 +515,11 @@ class GenericScraper:
         """
         Decide whether to follow the detail page/API for enrichment.
 
-        Rules:
-        - For API sources: only if config.follow_detail is True (avoid thousands of detail hits)
-        - For HTML/RSS: if config.follow_detail OR description is missing/too short OR posted_date is missing
+        Enriches when follow_detail is True, or when description is
+        missing/too short, or when posted_date is missing.  The
+        _MAX_DETAIL_ENRICHMENTS cap (checked by caller) prevents
+        runaway fetches for large sources.
         """
-        if self.config.type == "api":
-            return self.config.follow_detail
         desc = (job.get("description") or "").strip()
         return (
             self.config.follow_detail
@@ -756,6 +755,7 @@ class GenericScraper:
         delay = get_fetch_delay_seconds()
         hit_max_pages = True
         early_stopped = False
+        consecutive_known_pages = 0
 
         for page_num in range(self.config.max_pages):
             # Build URL for this page
@@ -773,8 +773,9 @@ class GenericScraper:
 
             results.extend(items)
 
-            # Early-stop: if most URLs on this page are already known,
-            # we've reached "old" territory — no need to keep paginating.
+            # Early-stop: require 2+ consecutive pages with >=80% known URLs
+            # before stopping.  A single high-known page may just be a cluster
+            # of old jobs with new ones on the next page.
             has_known_set = known_urls or seen_hashes
             if has_known_set and page_num > 0:
                 page_urls = []
@@ -792,18 +793,29 @@ class GenericScraper:
                             known_count += 1
                     known_ratio = known_count / len(page_urls)
                     if known_ratio >= 0.8:
-                        logger.info(
-                            "early_stop: page %d has %.0f%% known URLs (%d/%d); "
-                            "stopping pagination for %s",
-                            page_num + 1,
-                            known_ratio * 100,
-                            known_count,
-                            len(page_urls),
-                            self.config.url,
-                        )
-                        early_stopped = True
-                        hit_max_pages = False
-                        break
+                        consecutive_known_pages += 1
+                        if consecutive_known_pages >= 2:
+                            logger.info(
+                                "early_stop: %d consecutive pages with >=80%% "
+                                "known URLs; stopping pagination for %s",
+                                consecutive_known_pages,
+                                self.config.url,
+                            )
+                            early_stopped = True
+                            hit_max_pages = False
+                            break
+                        else:
+                            logger.info(
+                                "early_stop_candidate: page %d has %.0f%% known "
+                                "URLs (%d/%d); continuing to confirm for %s",
+                                page_num + 1,
+                                known_ratio * 100,
+                                known_count,
+                                len(page_urls),
+                                self.config.url,
+                            )
+                    else:
+                        consecutive_known_pages = 0
 
             # Stop if fewer items than page_size (last page)
             if self.config.page_size and len(items) < self.config.page_size:

@@ -120,23 +120,57 @@ class ScraperIntake:
         except Exception:
             return False
 
+    @staticmethod
+    def _looks_like_job_id(segment: str) -> bool:
+        """Return True if a path segment looks like a job identifier."""
+        # Pure numeric IDs (e.g. "12345")
+        if segment.isdigit():
+            return True
+        # Slugified titles with numeric IDs (e.g. "Senior-Engineer_R12345")
+        if re.search(r"\d{3,}", segment):
+            return True
+        # UUIDs or hex identifiers
+        if re.match(r"^[0-9a-f-]{8,}$", segment):
+            return True
+        return False
+
     def _is_likely_board_path(self, url: str) -> bool:
         """Check if URL is likely a job board/collection page (not a specific job listing).
 
         Uses both path-based heuristics and database-driven domain checking.
+        Board pages end at a listing token (/careers, /jobs, /job-board) or
+        have only a single non-ID segment after it (like /jobs/engineering).
+        URLs with 2+ segments after the token, or a segment containing a job
+        identifier, are treated as detail pages.
         """
         # Check domain against database-driven aggregator list
         if self._is_aggregator_domain(url):
             return True
 
-        # Path-based heuristics for board/collection pages
-        lower = url.lower()
-        board_path_tokens = [
-            "/careers",
-            "/jobs",
-            "/job-board",
-        ]
-        return any(token in lower for token in board_path_tokens)
+        from urllib.parse import urlparse
+
+        path = urlparse(url.lower()).path.rstrip("/")
+
+        board_path_tokens = ["/careers", "/jobs", "/job-board"]
+        for token in board_path_tokens:
+            idx = path.rfind(token)
+            if idx == -1:
+                continue
+            after_token = path[idx + len(token) :]
+            # Path ends at token (e.g. /careers, /jobs) — board page
+            if not after_token or after_token == "/":
+                return True
+            segments = [s for s in after_token.split("/") if s]
+            # 2+ segments after token (e.g. /Careers/job/Title_ID) — detail page
+            if len(segments) >= 2:
+                return False
+            # Single segment: board-like if it's a category (/jobs/engineering),
+            # but detail if it looks like a job ID (/jobs/12345)
+            if segments and self._looks_like_job_id(segments[0]):
+                return False
+            return True
+
+        return False
 
     def _has_linkedin_suppression_tag(self, job: Dict[str, Any]) -> Optional[str]:
         """Return suppression tag (#LI-DNI or #LI-DNP) if present in description."""

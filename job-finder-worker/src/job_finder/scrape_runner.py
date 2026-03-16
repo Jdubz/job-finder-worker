@@ -185,6 +185,7 @@ class ScrapeRunner:
             "total_jobs_found": 0,
             "jobs_submitted": 0,
             "total_duplicates": 0,
+            "total_known_skips": 0,
             "total_prefiltered": 0,
             "errors": [],
         }
@@ -207,6 +208,7 @@ class ScrapeRunner:
                     "jobs_found": 0,
                     "jobs_submitted": 0,
                     "duplicates": 0,
+                    "known_skips": 0,
                     "prefiltered": 0,
                     "filter_reasons": {},
                     "error": None,
@@ -235,11 +237,15 @@ class ScrapeRunner:
                     )
                     self._reset_consecutive_failures(source["id"])
 
-                    # Capture per-source stats from intake
+                    # Capture per-source stats from intake.
+                    # known_skips is persisted per-source inside the source_details
+                    # JSON blob (stored by complete_report); the aggregate
+                    # total_known_skips is logged but not a separate DB column.
                     submit_stats = self.scraper_intake.last_submit_stats or {}
                     source_detail["jobs_found"] = source_stats["jobs_found"]
                     source_detail["jobs_submitted"] = source_stats["jobs_submitted"]
                     source_detail["duplicates"] = submit_stats.get("duplicates", 0)
+                    source_detail["known_skips"] = submit_stats.get("known_skips", 0)
                     source_detail["prefiltered"] = submit_stats.get("prefiltered", 0)
                     source_detail["filter_reasons"] = submit_stats.get("filter_reasons", {})
 
@@ -247,6 +253,7 @@ class ScrapeRunner:
                     stats["total_jobs_found"] += source_stats["jobs_found"]
                     stats["jobs_submitted"] += source_stats["jobs_submitted"]
                     stats["total_duplicates"] += source_detail["duplicates"]
+                    stats["total_known_skips"] += source_detail["known_skips"]
                     stats["total_prefiltered"] += source_detail["prefiltered"]
                     potential_matches += source_stats["jobs_submitted"]
 
@@ -385,6 +392,7 @@ class ScrapeRunner:
         logger.info(f"  Total jobs found: {stats['total_jobs_found']}")
         logger.info(f"  Jobs submitted to queue: {stats['jobs_submitted']}")
         logger.info(f"  Duplicates skipped: {stats['total_duplicates']}")
+        logger.info(f"  Known-URL skips: {stats['total_known_skips']}")
         logger.info(f"  Pre-filtered: {stats['total_prefiltered']}")
 
         if aggregate_filter_reasons:
@@ -418,6 +426,14 @@ class ScrapeRunner:
                 logger.info(f"  Scrape report saved: {report_id}")
             except Exception as e:
                 logger.warning("Failed to save scrape report: %s", e)
+
+        # Expire old seen_urls entries so stale hashes don't suppress
+        # jobs that reappear with changed content or after filter updates.
+        if self.seen_urls_storage:
+            try:
+                self.seen_urls_storage.cleanup_expired()
+            except Exception as e:
+                logger.warning("Failed to clean up seen_urls: %s", e)
 
         # Periodically re-test disabled sources for recovery
         # Only on full scheduled runs (no explicit source_ids)
