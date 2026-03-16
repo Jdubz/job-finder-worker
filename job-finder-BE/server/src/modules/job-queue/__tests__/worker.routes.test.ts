@@ -47,7 +47,7 @@ describe('Worker Routes', () => {
     })
 
     it('returns pending commands when available', async () => {
-      const commands = [{ command: 'cancel', itemId: 'item-1' }]
+      const commands = [{ command: 'cancel' as const, itemId: 'item-1', workerId: 'default', ts: '2024-01-01T00:00:00Z' }]
       vi.mocked(takePendingCommands).mockReturnValue(commands)
 
       const res = await request(app).get('/worker/commands')
