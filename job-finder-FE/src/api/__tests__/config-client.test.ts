@@ -51,7 +51,7 @@ describe("ConfigClient", () => {
       const policy = { maxDaysOld: 14 }
       mockFetch.mockResolvedValue(mockSuccess({ config: { payload: policy } }))
 
-      await client.updatePrefilterPolicy(policy as PreFilterPolicy)
+      await client.updatePrefilterPolicy(policy as unknown as PreFilterPolicy)
 
       expect(mockFetch).toHaveBeenCalledWith(
         "https://api.test.com/config/prefilter-policy",
@@ -107,7 +107,7 @@ describe("ConfigClient", () => {
       await client.updateWorkerSettings({
         scraping: { maxPages: 20 },
         runtime: { concurrency: 4 },
-      } as Partial<WorkerSettings>)
+      } as unknown as Partial<WorkerSettings>)
 
       const putBody = JSON.parse(mockFetch.mock.calls[1][1].body)
       // scraping should be merged, not replaced
