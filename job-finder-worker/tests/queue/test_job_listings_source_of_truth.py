@@ -93,9 +93,10 @@ def queue_manager(temp_db):
 
 
 @pytest.fixture
-def mock_config_loader():
+def mock_config_loader(temp_db):
     """Create mock config loader with minimal config."""
     config_loader = MagicMock()
+    config_loader.db_path = temp_db
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],
         "excludedKeywords": [],

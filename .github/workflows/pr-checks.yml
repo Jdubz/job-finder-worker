@@ -269,11 +269,7 @@ jobs:
         working-directory: job-finder-worker
         env:
           PYTHONPATH: src
-        run: |
-          pytest \
-            tests/test_search_orchestrator.py \
-            tests/queue/test_job_pipeline_comprehensive.py \
-            tests/queue/test_scraper_intake.py
+        run: pytest tests/ --maxfail=5 -q
 
   # Worker Python linting - Black
   worker-black:

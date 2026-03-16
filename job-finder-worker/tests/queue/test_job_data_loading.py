@@ -7,6 +7,8 @@ These tests ensure:
 4. Save validates structure and fails fast on corruption
 """
 
+import os
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +21,8 @@ def mock_dependencies():
     """Create mock dependencies for JobProcessor."""
     queue_manager = MagicMock()
     config_loader = MagicMock()
+    # db_path is resolved via SQLITE_DB_PATH env var (set by queue conftest)
+    config_loader.db_path = os.environ.get("SQLITE_DB_PATH")
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],
         "excludedKeywords": [],

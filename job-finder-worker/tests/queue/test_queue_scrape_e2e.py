@@ -129,7 +129,27 @@ def test_queue_scrape_end_to_end(temp_db):
 
         # Seed configs to satisfy fail-loud loader (new hybrid scoring format)
         conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
+                "worker-settings",
+                json.dumps(
+                    {
+                        "scraping": {"maxPages": 5, "timeout": 30},
+                        "textLimits": {"maxLength": 5000},
+                        "runtime": {
+                            "isProcessingEnabled": True,
+                            "useLocalModels": False,
+                            "pollIntervalSeconds": 5,
+                            "processingTimeoutSeconds": 300,
+                            "taskDelaySeconds": 1,
+                        },
+                    }
+                ),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "prefilter-policy",
                 json.dumps(
@@ -158,7 +178,7 @@ def test_queue_scrape_end_to_end(temp_db):
             ),
         )
         conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "match-policy",
                 json.dumps(
@@ -247,7 +267,7 @@ def test_queue_scrape_end_to_end(temp_db):
             ),
         )
         conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "ai-settings",
                 json.dumps(MOCK_AI_SETTINGS),
