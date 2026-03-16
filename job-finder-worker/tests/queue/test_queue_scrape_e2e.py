@@ -71,128 +71,6 @@ class DummyMatcher:
 def temp_db(tmp_path):
     db_path = tmp_path / "queue_e2e.db"
     _apply_migrations(db_path)
-    # Seed minimal config entries required by ConfigLoader
-    import json
-
-    with sqlite3.connect(str(db_path)) as conn:
-        for config_id, payload in [
-            (
-                "worker-settings",
-                {
-                    "scraping": {"maxPages": 5, "timeout": 30},
-                    "textLimits": {"maxLength": 5000},
-                    "runtime": {
-                        "isProcessingEnabled": True,
-                        "useLocalModels": False,
-                        "concurrency": 1,
-                        "pollInterval": 5,
-                    },
-                },
-            ),
-            (
-                "prefilter-policy",
-                {
-                    "title": {
-                        "requiredKeywords": ["engineer", "developer", "software"],
-                        "excludedKeywords": [],
-                    },
-                    "freshness": {"maxAgeDays": 60},
-                    "workArrangement": {
-                        "allowRemote": True,
-                        "allowHybrid": True,
-                        "allowOnsite": True,
-                        "willRelocate": True,
-                        "userLocation": "Portland, OR",
-                    },
-                    "employmentType": {
-                        "allowFullTime": True,
-                        "allowPartTime": True,
-                        "allowContract": True,
-                    },
-                    "salary": {"minimum": None},
-                },
-            ),
-            (
-                "match-policy",
-                {
-                    "minScore": 60,
-                    "seniority": {
-                        "preferred": ["senior"],
-                        "acceptable": ["mid"],
-                        "rejected": ["junior"],
-                        "preferredScore": 15,
-                        "acceptableScore": 0,
-                        "rejectedScore": -100,
-                    },
-                    "location": {
-                        "allowRemote": True,
-                        "allowHybrid": True,
-                        "allowOnsite": False,
-                        "userTimezone": -8,
-                        "maxTimezoneDiffHours": 4,
-                        "perHourScore": -3,
-                        "hybridSameCityScore": 10,
-                        "remoteScore": 5,
-                        "relocationScore": -50,
-                        "unknownTimezoneScore": -5,
-                    },
-                    "skillMatch": {
-                        "baseMatchScore": 1,
-                        "yearsMultiplier": 0.5,
-                        "maxYearsBonus": 5,
-                        "missingScore": -1,
-                        "analogScore": 0,
-                        "maxBonus": 25,
-                        "maxPenalty": -15,
-                        "missingIgnore": [],
-                    },
-                    "skills": {"bonusPerSkill": 2, "maxSkillBonus": 15},
-                    "salary": {
-                        "minimum": None,
-                        "target": None,
-                        "belowTargetScore": -2,
-                        "belowTargetMaxPenalty": -20,
-                        "missingSalaryScore": 0,
-                        "meetsTargetScore": 0,
-                        "equityScore": 0,
-                        "contractScore": 0,
-                    },
-                    "experience": {"maxRequired": 15, "overqualifiedScore": -5},
-                    "freshness": {
-                        "freshDays": 2,
-                        "freshScore": 10,
-                        "staleDays": 3,
-                        "staleScore": -10,
-                        "veryStaleDays": 12,
-                        "veryStaleScore": -20,
-                        "repostScore": -5,
-                    },
-                    "roleFit": {
-                        "preferred": ["backend"],
-                        "acceptable": ["fullstack"],
-                        "penalized": ["frontend"],
-                        "rejected": [],
-                        "preferredScore": 5,
-                        "penalizedScore": -5,
-                    },
-                    "company": {
-                        "preferredCityScore": 20,
-                        "preferredCity": "Portland",
-                        "remoteFirstScore": 15,
-                        "aiMlFocusScore": 10,
-                        "largeCompanyScore": 10,
-                        "smallCompanyScore": -5,
-                        "largeCompanyThreshold": 10000,
-                        "smallCompanyThreshold": 100,
-                        "startupScore": 0,
-                    },
-                },
-            ),
-        ]:
-            conn.execute(
-                "INSERT OR REPLACE INTO job_finder_config (id, payload_json) VALUES (?, ?)",
-                (config_id, json.dumps(payload)),
-            )
     return db_path
 
 
@@ -251,7 +129,7 @@ def test_queue_scrape_end_to_end(temp_db):
 
         # Seed configs to satisfy fail-loud loader (new hybrid scoring format)
         conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "prefilter-policy",
                 json.dumps(
@@ -280,7 +158,7 @@ def test_queue_scrape_end_to_end(temp_db):
             ),
         )
         conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "match-policy",
                 json.dumps(
@@ -369,7 +247,7 @@ def test_queue_scrape_end_to_end(temp_db):
             ),
         )
         conn.execute(
-            "INSERT INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
                 "ai-settings",
                 json.dumps(MOCK_AI_SETTINGS),
