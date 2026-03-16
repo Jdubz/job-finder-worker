@@ -11,7 +11,7 @@ describe('CompanyRepository', () => {
   })
 
   const createTestCompany = (overrides: Record<string, unknown> = {}) => {
-    return repo.create({
+    const company = repo.create({
       name: 'Acme Corp',
       website: 'https://acme.com',
       about: 'A test company',
@@ -19,6 +19,8 @@ describe('CompanyRepository', () => {
       industry: 'Technology',
       ...overrides
     } as any)
+    // repo.create always returns a company with an id
+    return company as typeof company & { id: string }
   }
 
   describe('create', () => {
