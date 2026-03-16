@@ -139,8 +139,9 @@ def test_queue_scrape_end_to_end(temp_db):
                         "runtime": {
                             "isProcessingEnabled": True,
                             "useLocalModels": False,
-                            "concurrency": 1,
-                            "pollInterval": 5,
+                            "pollIntervalSeconds": 5,
+                            "processingTimeoutSeconds": 300,
+                            "taskDelaySeconds": 1,
                         },
                     }
                 ),
