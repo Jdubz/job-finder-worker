@@ -58,9 +58,13 @@ class SeenUrlsStorage:
             return {row["url_hash"] for row in rows}
 
     def record_urls(self, urls: list[str], source_id: Optional[str]) -> int:
-        """Bulk-insert URLs into ``seen_urls`` (ignores duplicates).
+        """Bulk-upsert URLs into ``seen_urls``.
 
-        Returns the number of newly inserted rows.
+        New URLs are inserted; existing URLs get their ``first_seen_at``
+        refreshed so the TTL cleanup only removes URLs that are no longer
+        returned by the source (i.e. delisted jobs).
+
+        Returns the number of rows affected (inserts + updates).
         """
         if not urls:
             return 0
@@ -71,10 +75,35 @@ class SeenUrlsStorage:
             hashes_to_insert = [(_url_hash(url), source_id) for url in urls]
             before = conn.total_changes
             conn.executemany(
-                "INSERT OR IGNORE INTO seen_urls (url_hash, source_id) VALUES (?, ?)",
+                "INSERT INTO seen_urls (url_hash, source_id) VALUES (?, ?) "
+                "ON CONFLICT (source_id, url_hash) DO UPDATE "
+                "SET first_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
                 hashes_to_insert,
             )
             return conn.total_changes - before
+
+    def cleanup_expired(self, max_age_days: int = 14) -> int:
+        """Delete entries older than *max_age_days*.
+
+        Returns the number of deleted rows.
+        """
+        with sqlite_connection(self.db_path) as conn:
+            if not self._ensure_table(conn):
+                return 0
+            before = conn.total_changes
+            conn.execute(
+                "DELETE FROM seen_urls "
+                "WHERE first_seen_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
+                (f"-{max_age_days} days",),
+            )
+            deleted = conn.total_changes - before
+            if deleted > 0:
+                logger.info(
+                    "seen_urls cleanup: removed %d entries older than %d days",
+                    deleted,
+                    max_age_days,
+                )
+            return deleted
 
     @staticmethod
     def hash_url(url: str) -> str:

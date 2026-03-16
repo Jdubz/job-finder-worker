@@ -28,11 +28,11 @@ def _make_scraper(config: SourceConfig) -> GenericScraper:
 
 class TestPaginationEarlyStop:
     def test_stops_when_most_urls_known(self):
-        """Pagination should stop when ≥80% of page URLs are known."""
+        """Pagination should stop after 2 consecutive pages with ≥80% known URLs."""
         config = _make_config()
         scraper = _make_scraper(config)
 
-        # Simulate 3 pages: page 0 = all new, page 1 = all known → stop
+        # page 0 = all new, pages 1+2 = all known → stop after page 2
         page_items = [
             # Page 0: fresh items
             [
@@ -40,13 +40,19 @@ class TestPaginationEarlyStop:
                 {"title": "New Job 2", "url": "https://example.com/new/2"},
                 {"title": "New Job 3", "url": "https://example.com/new/3"},
             ],
-            # Page 1: all known → should trigger early stop
+            # Page 1: all known → 1st consecutive candidate, continues
             [
                 {"title": "Old Job 1", "url": "https://example.com/old/1"},
                 {"title": "Old Job 2", "url": "https://example.com/old/2"},
                 {"title": "Old Job 3", "url": "https://example.com/old/3"},
             ],
-            # Page 2: should never be reached
+            # Page 2: all known → 2nd consecutive → triggers early stop
+            [
+                {"title": "Old Job 4", "url": "https://example.com/old/4"},
+                {"title": "Old Job 5", "url": "https://example.com/old/5"},
+                {"title": "Old Job 6", "url": "https://example.com/old/6"},
+            ],
+            # Page 3: should never be reached
             [
                 {"title": "More 1", "url": "https://example.com/more/1"},
             ],
@@ -67,13 +73,16 @@ class TestPaginationEarlyStop:
             "https://example.com/old/1",
             "https://example.com/old/2",
             "https://example.com/old/3",
+            "https://example.com/old/4",
+            "https://example.com/old/5",
+            "https://example.com/old/6",
         }
 
         results = scraper._fetch_paginated(known_urls=known_urls)
 
-        # Should have fetched pages 0 and 1 (6 items), stopped before page 2
-        assert len(results) == 6
-        assert call_count[0] == 2
+        # Fetched pages 0, 1, and 2 (9 items), stopped before page 3
+        assert len(results) == 9
+        assert call_count[0] == 3
 
     def test_continues_when_urls_mostly_new(self):
         """Pagination should continue when most URLs on a page are new."""
@@ -149,22 +158,27 @@ class TestPaginationEarlyStop:
         assert len(results) == 6
 
     def test_early_stop_skips_page_zero(self):
-        """Early-stop should not trigger on page 0 (always fetch first page)."""
+        """Early-stop should not trigger on page 0 and needs 2 consecutive."""
         config = _make_config()
         scraper = _make_scraper(config)
 
-        # Page 0 is ALL known URLs, but we should still fetch page 1
+        # Page 0 all known (no check), page 1 all known (1st candidate),
+        # page 2 all known (2nd consecutive → triggers stop)
         page_items = [
             [
                 {"title": "Old 1", "url": "https://example.com/old/1"},
                 {"title": "Old 2", "url": "https://example.com/old/2"},
                 {"title": "Old 3", "url": "https://example.com/old/3"},
             ],
-            # Page 1: also all known → now trigger early stop
             [
                 {"title": "Old 4", "url": "https://example.com/old/4"},
                 {"title": "Old 5", "url": "https://example.com/old/5"},
                 {"title": "Old 6", "url": "https://example.com/old/6"},
+            ],
+            [
+                {"title": "Old 7", "url": "https://example.com/old/7"},
+                {"title": "Old 8", "url": "https://example.com/old/8"},
+                {"title": "Old 9", "url": "https://example.com/old/9"},
             ],
         ]
 
@@ -178,22 +192,17 @@ class TestPaginationEarlyStop:
         scraper._fetch_single_page = mock_fetch_single_page
 
         known_urls = {
-            "https://example.com/old/1",
-            "https://example.com/old/2",
-            "https://example.com/old/3",
-            "https://example.com/old/4",
-            "https://example.com/old/5",
-            "https://example.com/old/6",
+            f"https://example.com/old/{i}" for i in range(1, 10)
         }
 
         results = scraper._fetch_paginated(known_urls=known_urls)
 
-        # Fetched page 0 (no early-stop check) and page 1 (triggers early-stop)
-        assert call_count[0] == 2
-        assert len(results) == 6
+        # Fetched pages 0, 1, 2 (page 0 no check, pages 1+2 = 2 consecutive)
+        assert call_count[0] == 3
+        assert len(results) == 9
 
     def test_early_stop_via_seen_hashes(self):
-        """Early-stop should also trigger when URLs match seen_hashes."""
+        """Early-stop should trigger after 2 consecutive pages matching seen_hashes."""
         config = _make_config()
         scraper = _make_scraper(config)
 
@@ -203,11 +212,17 @@ class TestPaginationEarlyStop:
                 {"title": "New 2", "url": "https://example.com/new/2"},
                 {"title": "New 3", "url": "https://example.com/new/3"},
             ],
-            # Page 1: all URLs in seen_hashes → should trigger early stop
+            # Page 1: all in seen_hashes → 1st consecutive candidate
             [
                 {"title": "Seen 1", "url": "https://example.com/seen/1"},
                 {"title": "Seen 2", "url": "https://example.com/seen/2"},
                 {"title": "Seen 3", "url": "https://example.com/seen/3"},
+            ],
+            # Page 2: all in seen_hashes → 2nd consecutive → triggers stop
+            [
+                {"title": "Seen 4", "url": "https://example.com/seen/4"},
+                {"title": "Seen 5", "url": "https://example.com/seen/5"},
+                {"title": "Seen 6", "url": "https://example.com/seen/6"},
             ],
             [
                 {"title": "More 1", "url": "https://example.com/more/1"},
@@ -225,18 +240,17 @@ class TestPaginationEarlyStop:
 
         scraper._fetch_single_page = mock_fetch_single_page
 
-        # Build seen_hashes from the URLs on page 1
+        # Build seen_hashes for pages 1 and 2
         seen_hashes = {
-            SeenUrlsStorage.hash_url("https://example.com/seen/1"),
-            SeenUrlsStorage.hash_url("https://example.com/seen/2"),
-            SeenUrlsStorage.hash_url("https://example.com/seen/3"),
+            SeenUrlsStorage.hash_url(f"https://example.com/seen/{i}")
+            for i in range(1, 7)
         }
 
-        # No known_urls, only seen_hashes
         results = scraper._fetch_paginated(known_urls=None, seen_hashes=seen_hashes)
 
-        assert len(results) == 6
-        assert call_count[0] == 2
+        # Fetched pages 0, 1, 2 (9 items); stopped before page 3
+        assert len(results) == 9
+        assert call_count[0] == 3
 
 
 class TestEnrichmentSkip:
