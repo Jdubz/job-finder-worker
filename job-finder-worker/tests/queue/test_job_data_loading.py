@@ -15,10 +15,11 @@ from job_finder.job_queue.processors.job_processor import JobProcessor, Pipeline
 
 
 @pytest.fixture
-def mock_dependencies():
+def mock_dependencies(ci_db_path):
     """Create mock dependencies for JobProcessor."""
     queue_manager = MagicMock()
     config_loader = MagicMock()
+    config_loader.db_path = ci_db_path
     config_loader.get_title_filter.return_value = {
         "requiredKeywords": [],
         "excludedKeywords": [],
