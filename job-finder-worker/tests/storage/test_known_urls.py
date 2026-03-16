@@ -58,6 +58,7 @@ def _create_tables(db_path: str) -> None:
             url_hash      TEXT NOT NULL,
             source_id     TEXT NOT NULL,
             first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            last_seen_at  TEXT,
             PRIMARY KEY (source_id, url_hash)
         );
         """)
@@ -219,3 +220,64 @@ class TestSeenUrlsStorage:
 
         storage = SeenUrlsStorage(db_path=db_path)
         assert storage.get_seen_urls_for_source("src-1") == set()
+
+    def test_record_urls_guards_empty_source_id(self, tmp_db):
+        """record_urls should return 0 when source_id is None or empty."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        assert storage.record_urls(["https://example.com/a"], source_id=None) == 0
+        assert storage.record_urls(["https://example.com/a"], source_id="") == 0
+
+
+class TestCleanupExpired:
+    def test_removes_old_entries(self, tmp_db):
+        """Entries older than max_age_days should be deleted."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        conn = sqlite3.connect(tmp_db)
+        # Insert an entry with last_seen_at 30 days ago
+        conn.execute(
+            "INSERT INTO seen_urls (url_hash, source_id, first_seen_at, last_seen_at) "
+            "VALUES (?, ?, ?, ?)",
+            (
+                _url_hash("https://old.com"),
+                "src-1",
+                "2020-01-01T00:00:00.000Z",
+                "2020-01-01T00:00:00.000Z",
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        deleted = storage.cleanup_expired(max_age_days=14)
+        assert deleted == 1
+        assert len(storage.get_seen_urls_for_source("src-1")) == 0
+
+    def test_preserves_recent_entries(self, tmp_db):
+        """Entries seen recently should not be deleted."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        storage.record_urls(["https://fresh.com"], source_id="src-1")
+
+        deleted = storage.cleanup_expired(max_age_days=14)
+        assert deleted == 0
+        assert len(storage.get_seen_urls_for_source("src-1")) == 1
+
+    def test_falls_back_to_first_seen_at(self, tmp_db):
+        """Entries without last_seen_at should use first_seen_at for TTL."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        conn = sqlite3.connect(tmp_db)
+        # Insert entry with no last_seen_at (legacy row)
+        conn.execute(
+            "INSERT INTO seen_urls (url_hash, source_id, first_seen_at) " "VALUES (?, ?, ?)",
+            (_url_hash("https://legacy.com"), "src-1", "2020-01-01T00:00:00.000Z"),
+        )
+        conn.commit()
+        conn.close()
+
+        deleted = storage.cleanup_expired(max_age_days=14)
+        assert deleted == 1
+
+    def test_returns_zero_when_nothing_expired(self, tmp_db):
+        """Should return 0 when no entries are old enough."""
+        storage = SeenUrlsStorage(db_path=tmp_db)
+        storage.record_urls(["https://a.com", "https://b.com"], source_id="src-1")
+
+        assert storage.cleanup_expired(max_age_days=14) == 0

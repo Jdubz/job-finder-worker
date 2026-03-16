@@ -805,7 +805,7 @@ class GenericScraper:
                             hit_max_pages = False
                             break
                         else:
-                            logger.debug(
+                            logger.info(
                                 "early_stop_candidate: page %d has %.0f%% known "
                                 "URLs (%d/%d); continuing to confirm for %s",
                                 page_num + 1,

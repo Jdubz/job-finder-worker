@@ -237,7 +237,10 @@ class ScrapeRunner:
                     )
                     self._reset_consecutive_failures(source["id"])
 
-                    # Capture per-source stats from intake
+                    # Capture per-source stats from intake.
+                    # known_skips is persisted per-source inside the source_details
+                    # JSON blob (stored by complete_report); the aggregate
+                    # total_known_skips is logged but not a separate DB column.
                     submit_stats = self.scraper_intake.last_submit_stats or {}
                     source_detail["jobs_found"] = source_stats["jobs_found"]
                     source_detail["jobs_submitted"] = source_stats["jobs_submitted"]

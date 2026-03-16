@@ -33,7 +33,13 @@ class SeenUrlsStorage:
         row = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='seen_urls'"
         ).fetchone()
-        return row is not None
+        if not row:
+            return False
+        # Add last_seen_at column if missing (zero-downtime migration).
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(seen_urls)").fetchall()}
+        if "last_seen_at" not in cols:
+            conn.execute("ALTER TABLE seen_urls ADD COLUMN last_seen_at TEXT")
+        return True
 
     def get_seen_urls_for_source(self, source_id: str) -> Set[str]:
         """Return all url_hash values recorded for *source_id*.
@@ -58,32 +64,47 @@ class SeenUrlsStorage:
             return {row["url_hash"] for row in rows}
 
     def record_urls(self, urls: list[str], source_id: Optional[str]) -> int:
-        """Bulk-upsert URLs into ``seen_urls``.
+        """Bulk-insert URLs into ``seen_urls`` and refresh ``last_seen_at``.
 
-        New URLs are inserted; existing URLs get their ``first_seen_at``
-        refreshed so the TTL cleanup only removes URLs that are no longer
-        returned by the source (i.e. delisted jobs).
+        New URLs are inserted; all encountered URLs (new and existing) get
+        their ``last_seen_at`` refreshed so the TTL cleanup only removes
+        URLs that are no longer returned by the source (i.e. delisted jobs).
+        ``first_seen_at`` remains immutable.
 
-        Returns the number of rows affected (inserts + updates).
+        Returns the number of newly inserted rows.
         """
-        if not urls:
+        if not urls or not source_id:
             return 0
 
         with sqlite_connection(self.db_path) as conn:
             if not self._ensure_table(conn):
                 return 0
-            hashes_to_insert = [(_url_hash(url), source_id) for url in urls]
+            hashes = [(_url_hash(url), source_id) for url in urls]
+
+            # Insert new rows (ignore existing) — gives accurate insert count.
             before = conn.total_changes
             conn.executemany(
-                "INSERT INTO seen_urls (url_hash, source_id) VALUES (?, ?) "
-                "ON CONFLICT (source_id, url_hash) DO UPDATE "
-                "SET first_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-                hashes_to_insert,
+                "INSERT OR IGNORE INTO seen_urls (url_hash, source_id, last_seen_at) "
+                "VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                hashes,
             )
-            return conn.total_changes - before
+            inserted = conn.total_changes - before
+
+            # Refresh last_seen_at for ALL encountered URLs (including
+            # existing ones) so the TTL only expires truly unseen URLs.
+            conn.executemany(
+                "UPDATE seen_urls "
+                "SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
+                "WHERE source_id = ? AND url_hash = ?",
+                [(sid, h) for h, sid in hashes],
+            )
+            return inserted
 
     def cleanup_expired(self, max_age_days: int = 14) -> int:
-        """Delete entries older than *max_age_days*.
+        """Delete entries not seen in *max_age_days*.
+
+        Uses ``last_seen_at`` (falling back to ``first_seen_at`` for
+        rows that predate the column).
 
         Returns the number of deleted rows.
         """
@@ -93,7 +114,8 @@ class SeenUrlsStorage:
             before = conn.total_changes
             conn.execute(
                 "DELETE FROM seen_urls "
-                "WHERE first_seen_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
+                "WHERE COALESCE(last_seen_at, first_seen_at) "
+                "< strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
                 (f"-{max_age_days} days",),
             )
             deleted = conn.total_changes - before
