@@ -131,6 +131,25 @@ def test_queue_scrape_end_to_end(temp_db):
         conn.execute(
             "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
             (
+                "worker-settings",
+                json.dumps(
+                    {
+                        "scraping": {"maxPages": 5, "timeout": 30},
+                        "textLimits": {"maxLength": 5000},
+                        "runtime": {
+                            "isProcessingEnabled": True,
+                            "useLocalModels": False,
+                            "concurrency": 1,
+                            "pollInterval": 5,
+                        },
+                    }
+                ),
+                now_iso,
+            ),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO job_finder_config (id, payload_json, updated_at) VALUES (?, ?, ?)",
+            (
                 "prefilter-policy",
                 json.dumps(
                     {
