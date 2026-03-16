@@ -388,12 +388,16 @@ def test_should_enrich_rules(monkeypatch):
         }
     )
     scraper = GenericScraper(cfg)
-    # API sources only enrich when follow_detail is True
-    assert scraper._should_enrich({"description": "", "posted_date": None}) is False
-    # With description and posted_date -> still no enrichment for API without follow_detail
-    assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is False
+    long_desc = "d" * 200  # meets _MIN_DESCRIPTION_LENGTH
+    # Enriches when description is empty (below min length)
+    assert scraper._should_enrich({"description": "", "posted_date": "2025-01-01"}) is True
+    # Enriches when posted_date is missing
+    assert scraper._should_enrich({"description": long_desc, "posted_date": None}) is True
+    # No enrichment when description is sufficient and posted_date present
+    assert scraper._should_enrich({"description": long_desc, "posted_date": "2025-01-01"}) is False
+    # Always enriches when follow_detail is True
     scraper.config.follow_detail = True
-    assert scraper._should_enrich({"description": "d", "posted_date": "2025-01-01"}) is True
+    assert scraper._should_enrich({"description": long_desc, "posted_date": "2025-01-01"}) is True
 
 
 class TestShouldEnrichDescriptionQualityGate:
