@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { CompanyRepository } from '../company.repository'
+import type { CreateCompanyInput } from '../company.repository'
 import { getDb } from '../../../db/sqlite'
 
 describe('CompanyRepository', () => {
@@ -10,7 +11,7 @@ describe('CompanyRepository', () => {
     db.prepare('DELETE FROM companies').run()
   })
 
-  const createTestCompany = (overrides: Record<string, unknown> = {}) => {
+  const createTestCompany = (overrides: Partial<CreateCompanyInput> = {}) => {
     const company = repo.create({
       name: 'Acme Corp',
       website: 'https://acme.com',
@@ -18,7 +19,7 @@ describe('CompanyRepository', () => {
       techStack: ['TypeScript', 'React'],
       industry: 'Technology',
       ...overrides
-    } as any)
+    })
     // repo.create always returns a company with an id
     return company as typeof company & { id: string }
   }
@@ -42,7 +43,7 @@ describe('CompanyRepository', () => {
         name: 'Custom Co',
         website: '',
         techStack: []
-      } as any)
+      })
 
       expect(company.id).toBe('custom-id')
     })
@@ -142,7 +143,7 @@ describe('CompanyRepository', () => {
 
     it('clears fields when set to null', () => {
       const company = createTestCompany({ about: 'Some info' })
-      const updated = repo.update(company.id, { about: null } as any)
+      const updated = repo.update(company.id, { about: null })
 
       expect(updated!.about).toBeNull()
     })

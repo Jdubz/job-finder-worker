@@ -64,9 +64,14 @@ describe("useAIPrompts", () => {
     const { result } = renderHook(() => useAIPrompts())
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    const newPrompts = { systemPrompt: "Updated prompt", matchPrompt: "Updated match" }
+    const newPrompts = {
+      resumeGeneration: "Updated prompt",
+      coverLetterGeneration: "Updated",
+      jobScraping: "Updated",
+      jobMatching: "Updated",
+    }
     await act(async () => {
-      await result.current.savePrompts(newPrompts as any)
+      await result.current.savePrompts(newPrompts)
     })
 
     expect(promptsClient.savePrompts).toHaveBeenCalledWith(newPrompts, "test@example.com")
@@ -78,7 +83,10 @@ describe("useAIPrompts", () => {
     vi.mocked(promptsClient.getPrompts).mockResolvedValue(mockPrompts as any)
     let resolvePromise: () => void
     vi.mocked(promptsClient.savePrompts).mockImplementation(
-      () => new Promise<void>((resolve) => { resolvePromise = resolve })
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePromise = resolve
+        })
     )
 
     const { result } = renderHook(() => useAIPrompts())
@@ -86,7 +94,12 @@ describe("useAIPrompts", () => {
 
     let savePromise: Promise<void>
     act(() => {
-      savePromise = result.current.savePrompts({ systemPrompt: "x" } as any)
+      savePromise = result.current.savePrompts({
+        resumeGeneration: "x",
+        coverLetterGeneration: "x",
+        jobScraping: "x",
+        jobMatching: "x",
+      })
     })
 
     expect(result.current.saving).toBe(true)
@@ -109,7 +122,12 @@ describe("useAIPrompts", () => {
     let caughtError: Error | undefined
     await act(async () => {
       try {
-        await result.current.savePrompts({ systemPrompt: "x" } as any)
+        await result.current.savePrompts({
+          resumeGeneration: "x",
+          coverLetterGeneration: "x",
+          jobScraping: "x",
+          jobMatching: "x",
+        })
       } catch (e) {
         caughtError = e as Error
       }

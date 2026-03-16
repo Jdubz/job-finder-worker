@@ -74,7 +74,7 @@ describe("useCompanies", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
-      await result.current.updateCompany("1", { name: "Acme Updated" } as any)
+      await result.current.updateCompany("1", { name: "Acme Updated" })
     })
 
     expect(companiesClient.updateCompany).toHaveBeenCalledWith("1", { name: "Acme Updated" })
@@ -99,7 +99,10 @@ describe("useCompanies", () => {
   it("refetches when called", async () => {
     vi.mocked(companiesClient.listCompanies)
       .mockResolvedValueOnce(mockResponse as any)
-      .mockResolvedValueOnce({ items: [], pagination: { limit: 50, offset: 0, total: 0, hasMore: false } } as any)
+      .mockResolvedValueOnce({
+        items: [],
+        pagination: { limit: 50, offset: 0, total: 0, hasMore: false },
+      } as any)
 
     const { result } = renderHook(() => useCompanies())
     await waitFor(() => expect(result.current.loading).toBe(false))
@@ -123,9 +126,6 @@ describe("useCompanies", () => {
       result.current.setFilters({ search: "acme" })
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    // Should have been called at least twice (initial + filter change)
-    expect(companiesClient.listCompanies).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(companiesClient.listCompanies).toHaveBeenCalledTimes(2))
   })
 })

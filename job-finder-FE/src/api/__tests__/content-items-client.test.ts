@@ -1,23 +1,23 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { ContentItemsClient, ROOT_PARENT_SENTINEL } from '../content-items-client'
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { ContentItemsClient, ROOT_PARENT_SENTINEL } from "../content-items-client"
 
-vi.mock('@/config/api', () => ({
-  API_CONFIG: { baseUrl: 'https://api.test.com' }
+vi.mock("@/config/api", () => ({
+  API_CONFIG: { baseUrl: "https://api.test.com" },
 }))
 
-vi.mock('@/lib/api-error-handler', () => ({
-  handleApiError: vi.fn((e: unknown) => e)
+vi.mock("@/lib/api-error-handler", () => ({
+  handleApiError: vi.fn((e: unknown) => e),
 }))
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 
-describe('ContentItemsClient', () => {
+describe("ContentItemsClient", () => {
   let client: ContentItemsClient
 
   beforeEach(() => {
     vi.clearAllMocks()
-    client = new ContentItemsClient('https://api.test.com')
+    client = new ContentItemsClient("https://api.test.com")
   })
 
   afterEach(() => {
@@ -26,21 +26,21 @@ describe('ContentItemsClient', () => {
 
   const mockSuccess = (data: unknown) => ({
     ok: true,
-    headers: { get: () => 'application/json' },
-    json: () => Promise.resolve({ data })
+    headers: { get: () => "application/json" },
+    json: () => Promise.resolve({ data }),
   })
 
-  describe('list', () => {
-    it('fetches content items with default limit of 100', async () => {
+  describe("list", () => {
+    it("fetches content items with default limit of 100", async () => {
       mockFetch.mockResolvedValue(mockSuccess({ items: [] }))
 
       await client.list()
 
       const url = mockFetch.mock.calls[0][0] as string
-      expect(url).toContain('limit=100')
+      expect(url).toContain("limit=100")
     })
 
-    it('uses ROOT_PARENT_SENTINEL for null parentId', async () => {
+    it("uses ROOT_PARENT_SENTINEL for null parentId", async () => {
       mockFetch.mockResolvedValue(mockSuccess({ items: [] }))
 
       await client.list({ parentId: null })
@@ -49,86 +49,85 @@ describe('ContentItemsClient', () => {
       expect(url).toContain(`parentId=${ROOT_PARENT_SENTINEL}`)
     })
 
-    it('passes parentId for non-null values', async () => {
+    it("passes parentId for non-null values", async () => {
       mockFetch.mockResolvedValue(mockSuccess({ items: [] }))
 
-      await client.list({ parentId: 'parent-123' })
+      await client.list({ parentId: "parent-123" })
 
       const url = mockFetch.mock.calls[0][0] as string
-      expect(url).toContain('parentId=parent-123')
+      expect(url).toContain("parentId=parent-123")
     })
   })
 
-  describe('getContentItem', () => {
-    it('fetches a single content item', async () => {
-      const item = { id: '1', title: 'Experience' }
+  describe("getContentItem", () => {
+    it("fetches a single content item", async () => {
+      const item = { id: "1", title: "Experience" }
       mockFetch.mockResolvedValue(mockSuccess({ item }))
 
-      const result = await client.getContentItem('1')
+      const result = await client.getContentItem("1")
 
       expect(result).toEqual(item)
     })
   })
 
-  describe('createContentItem', () => {
-    it('sends itemData and userEmail', async () => {
-      const item = { id: 'new', title: 'Skills' }
+  describe("createContentItem", () => {
+    it("sends itemData and userEmail", async () => {
+      const item = { id: "new", title: "Skills" }
       mockFetch.mockResolvedValue(mockSuccess({ item }))
 
-      const result = await client.createContentItem('user@test.com', {
-        title: 'Skills',
-        type: 'section'
-      } as any)
+      const result = await client.createContentItem("user@test.com", {
+        title: "Skills",
+      })
 
       expect(result).toEqual(item)
       const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-      expect(body.userEmail).toBe('user@test.com')
-      expect(body.itemData.title).toBe('Skills')
+      expect(body.userEmail).toBe("user@test.com")
+      expect(body.itemData.title).toBe("Skills")
     })
   })
 
-  describe('updateContentItem', () => {
-    it('patches content item with userEmail', async () => {
-      const item = { id: '1', title: 'Updated' }
+  describe("updateContentItem", () => {
+    it("patches content item with userEmail", async () => {
+      const item = { id: "1", title: "Updated" }
       mockFetch.mockResolvedValue(mockSuccess({ item }))
 
-      const result = await client.updateContentItem('1', 'user@test.com', {
-        title: 'Updated'
-      } as any)
+      const result = await client.updateContentItem("1", "user@test.com", {
+        title: "Updated",
+      })
 
       expect(result).toEqual(item)
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.test.com/content-items/1',
-        expect.objectContaining({ method: 'PATCH' })
+        "https://api.test.com/content-items/1",
+        expect.objectContaining({ method: "PATCH" })
       )
     })
   })
 
-  describe('deleteContentItem', () => {
-    it('deletes content item', async () => {
+  describe("deleteContentItem", () => {
+    it("deletes content item", async () => {
       mockFetch.mockResolvedValue(mockSuccess({ deleted: true }))
 
-      await client.deleteContentItem('1')
+      await client.deleteContentItem("1")
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.test.com/content-items/1',
-        expect.objectContaining({ method: 'DELETE' })
+        "https://api.test.com/content-items/1",
+        expect.objectContaining({ method: "DELETE" })
       )
     })
   })
 
-  describe('reorderContentItem', () => {
-    it('posts reorder with parentId and orderIndex', async () => {
-      const item = { id: '1', orderIndex: 2 }
+  describe("reorderContentItem", () => {
+    it("posts reorder with parentId and orderIndex", async () => {
+      const item = { id: "1", orderIndex: 2 }
       mockFetch.mockResolvedValue(mockSuccess({ item }))
 
-      const result = await client.reorderContentItem('1', 'user@test.com', 'parent-1', 2)
+      const result = await client.reorderContentItem("1", "user@test.com", "parent-1", 2)
 
       expect(result).toEqual(item)
       const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-      expect(body.parentId).toBe('parent-1')
+      expect(body.parentId).toBe("parent-1")
       expect(body.orderIndex).toBe(2)
-      expect(body.userEmail).toBe('user@test.com')
+      expect(body.userEmail).toBe("user@test.com")
     })
   })
 })

@@ -25,17 +25,13 @@ describe("useRestartPersistedState", () => {
   })
 
   it("initializes with provided initial state", () => {
-    const { result } = renderHook(() =>
-      useRestartPersistedState("test-state", "initial")
-    )
+    const { result } = renderHook(() => useRestartPersistedState("test-state", "initial"))
 
     expect(result.current[0]).toBe("initial")
   })
 
   it("initializes with factory function", () => {
-    const { result } = renderHook(() =>
-      useRestartPersistedState("test-state", () => 42)
-    )
+    const { result } = renderHook(() => useRestartPersistedState("test-state", () => 42))
 
     expect(result.current[0]).toBe(42)
   })
@@ -43,9 +39,7 @@ describe("useRestartPersistedState", () => {
   it("uses saved state when available", () => {
     mockConsume.mockReturnValue("saved-value")
 
-    const { result } = renderHook(() =>
-      useRestartPersistedState("test-state", "initial")
-    )
+    const { result } = renderHook(() => useRestartPersistedState("test-state", "initial"))
 
     expect(result.current[0]).toBe("saved-value")
     expect(mockConsume).toHaveBeenCalledWith("test-state")
@@ -63,9 +57,7 @@ describe("useRestartPersistedState", () => {
   })
 
   it("updates state via setState", () => {
-    const { result } = renderHook(() =>
-      useRestartPersistedState("test-state", "initial")
-    )
+    const { result } = renderHook(() => useRestartPersistedState("test-state", "initial"))
 
     act(() => {
       result.current[1]("updated")
@@ -75,9 +67,7 @@ describe("useRestartPersistedState", () => {
   })
 
   it("supports functional setState updates", () => {
-    const { result } = renderHook(() =>
-      useRestartPersistedState("counter", 0)
-    )
+    const { result } = renderHook(() => useRestartPersistedState("counter", 0))
 
     act(() => {
       result.current[1]((prev) => prev + 1)
@@ -89,9 +79,7 @@ describe("useRestartPersistedState", () => {
   it("passes custom version to provider", () => {
     renderHook(() => useRestartPersistedState("versioned", "data", 3))
 
-    expect(mockRegister).toHaveBeenCalledWith(
-      expect.objectContaining({ version: 3 })
-    )
+    expect(mockRegister).toHaveBeenCalledWith(expect.objectContaining({ version: 3 }))
   })
 
   it("serialize returns current state", () => {

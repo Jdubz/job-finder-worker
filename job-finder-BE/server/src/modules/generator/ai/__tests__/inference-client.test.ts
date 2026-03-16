@@ -216,7 +216,7 @@ describe('InferenceClient', () => {
       expect(result.output).toBe('')
     })
 
-    it('strips /v1 suffix from base URL', () => {
+    it('strips /v1 suffix from base URL', async () => {
       vi.stubEnv('LITELLM_BASE_URL', 'http://localhost:4000/v1/')
       const c = new InferenceClient()
 
@@ -228,7 +228,7 @@ describe('InferenceClient', () => {
         })
       })
 
-      c.execute('chat', 'hi')
+      await c.execute('chat', 'hi')
 
       expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:4000/v1/chat/completions')
     })

@@ -71,7 +71,7 @@ describe("useJobSources", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
-      await result.current.updateSource("s1", { status: "paused" } as any)
+      await result.current.updateSource("s1", { status: "paused" })
     })
 
     expect(result.current.sources[0].status).toBe("paused")
@@ -119,8 +119,6 @@ describe("useJobSources", () => {
       result.current.setFilters({ search: "greenhouse" })
     })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(jobSourcesClient.listJobSources).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(jobSourcesClient.listJobSources).toHaveBeenCalledTimes(2))
   })
 })
