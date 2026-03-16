@@ -446,8 +446,8 @@ class TestShouldEnrichDescriptionQualityGate:
         scraper = GenericScraper(cfg)
         assert scraper._should_enrich({"description": "", "posted_date": "2026-01-01"}) is True
 
-    def test_api_ignores_description_quality(self):
-        """API sources should NOT auto-enrich based on description length."""
+    def test_api_enriches_short_description(self):
+        """All sources (including API) enrich when description is below min length."""
         cfg = SourceConfig.from_dict(
             {
                 "type": "api",
@@ -457,10 +457,9 @@ class TestShouldEnrichDescriptionQualityGate:
             }
         )
         scraper = GenericScraper(cfg)
-        # Short description on API source should NOT trigger enrichment
+        # Short description triggers enrichment regardless of source type
         assert (
-            scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"})
-            is False
+            scraper._should_enrich({"description": "- R63172", "posted_date": "2026-01-01"}) is True
         )
 
 

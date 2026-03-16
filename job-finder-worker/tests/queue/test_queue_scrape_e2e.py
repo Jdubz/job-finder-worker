@@ -190,7 +190,7 @@ def temp_db(tmp_path):
             ),
         ]:
             conn.execute(
-                "INSERT INTO job_finder_config (id, payload_json) VALUES (?, ?)",
+                "INSERT OR REPLACE INTO job_finder_config (id, payload_json) VALUES (?, ?)",
                 (config_id, json.dumps(payload)),
             )
     return db_path
