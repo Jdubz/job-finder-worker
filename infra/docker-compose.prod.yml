@@ -180,7 +180,8 @@ services:
       - ollama
     volumes:
       - ./infra/litellm-config.yaml:/app/config.yaml
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
+      - ./infra/resolve-models.sh:/app/resolve-models.sh:ro
+    entrypoint: ["/bin/bash", "-c", "bash /app/resolve-models.sh /app/config.yaml; exec litellm --config /app/config.yaml --port 4000"]
     networks:
       - jobfinder
     # No watchtower label — LiteLLM updates should be deliberate, not automatic.

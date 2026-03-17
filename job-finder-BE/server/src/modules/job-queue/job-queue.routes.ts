@@ -36,7 +36,7 @@ import {
   triggerLogRotation,
   triggerSessionCleanup
 } from '../../scheduler/cron'
-import { getLocalCliHealth } from '../../services/cli-health.service'
+import { getLocalCliHealth, getLitellmModelHealth } from '../../services/cli-health.service'
 
 const submitJobSchema = z.object({
   url: z.string().url(),
@@ -468,12 +468,13 @@ export function buildJobQueueRouter() {
     '/cli/health',
     requireRole('admin'),
     asyncHandler(async (_req, res) => {
-      const [backend, worker] = await Promise.all([
+      const [backend, worker, models] = await Promise.all([
         getLocalCliHealth(),
-        getWorkerCliHealth()
+        getWorkerCliHealth(),
+        getLitellmModelHealth()
       ])
 
-      res.json(success({ backend, worker }))
+      res.json(success({ backend, worker, models }))
     })
   )
 
