@@ -136,7 +136,7 @@ async function probeWorkingClaudeModel(
           model_name: 'claude-document',
           litellm_params: {
             model: `anthropic/${workingModel}`,
-            api_key: anthropicApiKey,
+            // Omit api_key — LiteLLM uses its own ANTHROPIC_API_KEY from env
           },
         }),
         signal: AbortSignal.timeout(10_000),
@@ -224,8 +224,7 @@ export class InferenceClient {
     // Detect silent fallback: requested Claude alias, got Gemini back.
     // Probe Anthropic directly for a working model and register it in LiteLLM.
     // Respects cooldown to avoid hammering on sustained Claude outages.
-    const requestedAlias = (modelOverride || getModelForTask(taskType, this.useLocalModels)) === 'claude-document'
-    if (requestedAlias && this.isGeminiModel(result.model)) {
+    if (model === 'claude-document' && this.isGeminiModel(result.model)) {
       this.log.warn(
         { requestedModel: model, actualModel: result.model, taskType },
         'Claude request silently fell back to Gemini'

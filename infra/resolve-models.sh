@@ -41,17 +41,16 @@ if [ -z "$TEST_RESPONSE" ]; then
   exit 0
 fi
 
-# Check response type
+# Check response — any error (invalid model, permission denied, auth failure, etc.)
+# triggers probing. Only a successful response or unreachable API skips it.
 ERROR_TYPE=$(echo "$TEST_RESPONSE" | python -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
     if 'content' in d or d.get('type') == 'message':
         print('ok')
-    elif d.get('error', {}).get('type') in ('invalid_request_error', 'not_found_error'):
-        print('invalid_model')
     else:
-        print('other:' + d.get('error', {}).get('type', 'unknown'))
+        print('error:' + d.get('error', {}).get('type', 'unknown'))
 except:
     print('parse_error')
 " 2>/dev/null || echo "parse_error")
@@ -61,12 +60,12 @@ if [ "$ERROR_TYPE" = "ok" ]; then
   exit 0
 fi
 
-if [ "$ERROR_TYPE" != "invalid_model" ]; then
-  echo "[resolve-models] Unexpected response ($ERROR_TYPE), using existing config"
+if [ "$ERROR_TYPE" = "parse_error" ]; then
+  echo "[resolve-models] Could not parse Anthropic response, using existing config"
   exit 0
 fi
 
-echo "[resolve-models] WARNING: Model anthropic/$CURRENT_MODEL is invalid/retired/inaccessible"
+echo "[resolve-models] WARNING: Model anthropic/$CURRENT_MODEL failed ($ERROR_TYPE)"
 echo "[resolve-models] Probing known Claude model IDs..."
 
 # Probe Claude models from newest to oldest: Sonnet (preferred for quality),

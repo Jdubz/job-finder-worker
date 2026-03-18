@@ -364,6 +364,7 @@ describe('InferenceClient', () => {
       const registerBody = JSON.parse(registerCall[1].body)
       expect(registerBody.model_name).toBe('claude-document')
       expect(registerBody.litellm_params.model).toBe('anthropic/claude-sonnet-4-6')
+      expect(registerBody.litellm_params).not.toHaveProperty('api_key')
     })
 
     it('subsequent calls still use claude-document alias (LiteLLM routes to registered model)', async () => {

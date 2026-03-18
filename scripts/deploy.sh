@@ -28,7 +28,7 @@ OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
 LITELLM_CONFIG_CHANGED=false
 
 # Verify source files exist
-for src in "${COMPOSE_SRC}" "${LITELLM_CFG_SRC}"; do
+for src in "${COMPOSE_SRC}" "${LITELLM_CFG_SRC}" "${RESOLVE_SRC}"; do
   if [[ ! -f "${src}" ]]; then
     echo "[deploy] ERROR: ${src} not found" >&2
     exit 1
