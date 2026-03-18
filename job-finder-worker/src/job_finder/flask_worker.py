@@ -650,8 +650,8 @@ def start_worker():
 
     if queue_manager is None or processor is None or config_loader is None:
         config = load_config()
-        queue_manager, processor, config_loader, _, scrape_report_storage = (
-            initialize_components(config)
+        queue_manager, processor, config_loader, _, scrape_report_storage = initialize_components(
+            config
         )
 
     # Startup recovery: return stuck processing items to pending

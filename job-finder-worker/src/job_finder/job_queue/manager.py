@@ -82,11 +82,13 @@ class QueueManager:
                 conn.execute("ALTER TABLE job_queue ADD COLUMN dedupe_key TEXT;")
             if "user_id" not in cols:
                 conn.execute("ALTER TABLE job_queue ADD COLUMN user_id TEXT;")
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_dedupe_active
                 ON job_queue(dedupe_key)
                 WHERE dedupe_key IS NOT NULL AND status IN ('pending','processing');
-                """)
+                """
+            )
 
     def _sanitize_payload(self, obj: Any) -> Any:
         """Trim oversized strings and drop heavy description fields before emitting events."""

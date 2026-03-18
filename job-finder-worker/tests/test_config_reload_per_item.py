@@ -19,7 +19,8 @@ def create_test_db(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
 
     # Create config table
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS job_finder_config (
             id TEXT PRIMARY KEY,
             payload_json TEXT NOT NULL,
@@ -27,7 +28,8 @@ def create_test_db(db_path: str) -> None:
             updated_at TEXT,
             updated_by TEXT
         )
-    """)
+    """
+    )
 
     # Create minimal prefilter-policy
     prefilter_policy = {

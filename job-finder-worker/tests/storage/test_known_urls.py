@@ -13,7 +13,8 @@ from job_finder.storage.seen_urls_storage import SeenUrlsStorage, _url_hash
 def _create_tables(db_path: str) -> None:
     """Create the minimal schema needed for these tests."""
     conn = sqlite3.connect(db_path)
-    conn.executescript("""
+    conn.executescript(
+        """
         CREATE TABLE IF NOT EXISTS job_listings (
             id TEXT PRIMARY KEY,
             url TEXT NOT NULL UNIQUE,
@@ -61,7 +62,8 @@ def _create_tables(db_path: str) -> None:
             last_seen_at  TEXT,
             PRIMARY KEY (source_id, url_hash)
         );
-        """)
+        """
+    )
     conn.close()
 
 
@@ -118,11 +120,13 @@ class TestGetUrlsForSource:
         )
         # Insert directly into archive
         conn = sqlite3.connect(tmp_db)
-        conn.execute("""INSERT INTO job_listings_archive
+        conn.execute(
+            """INSERT INTO job_listings_archive
                (id, url, source_id, title, company_name, description,
                 status, created_at, updated_at)
                VALUES ('arch-1', 'https://example.com/archived', 'src-1',
-                       'Old', 'Co', 'desc', 'archived', '2024-01-01', '2024-01-01')""")
+                       'Old', 'Co', 'desc', 'archived', '2024-01-01', '2024-01-01')"""
+        )
         conn.commit()
         conn.close()
 

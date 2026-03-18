@@ -201,11 +201,13 @@ def run_migration(db_path: str, dry_run: bool = False) -> None:
     cursor = conn.cursor()
 
     # Get all sources
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT id, name, sourceType as source_type, config_json
         FROM job_sources
         WHERE enabled = 1
-        """)
+        """
+    )
 
     sources = []
     for row in cursor.fetchall():

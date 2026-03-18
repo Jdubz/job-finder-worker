@@ -662,7 +662,9 @@ class JobProcessor(BaseProcessor):
 
         # Build per-user AIJobMatcher for match analysis
         try:
-            db_path = self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+            db_path = (
+                self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+            )
             profile_loader = SQLiteProfileLoader(db_path)
             user_profile = profile_loader.load_profile(user_id)
             user_ai_matcher = AIJobMatcher(
@@ -1250,7 +1252,9 @@ class JobProcessor(BaseProcessor):
         )
         taxonomy_repo = SkillTaxonomyRepository(db_path)
         relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
-        profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start, user_id=user_id)
+        profile = load_scoring_profile(
+            db_path, relevant_experience_start=relevant_exp_start, user_id=user_id
+        )
 
         # Merge per-user personal-info into location config for scoring
         personal_info = self.config_loader.get_user_personal_info(user_id)
@@ -1366,7 +1370,9 @@ class JobProcessor(BaseProcessor):
         )
         return score_result
 
-    def _execute_match_analysis(self, ctx: PipelineContext, ai_matcher: Optional[AIJobMatcher] = None) -> Optional[JobMatchResult]:
+    def _execute_match_analysis(
+        self, ctx: PipelineContext, ai_matcher: Optional[AIJobMatcher] = None
+    ) -> Optional[JobMatchResult]:
         """Execute AI match analysis stage."""
         job_data = ctx.job_data
 
