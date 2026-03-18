@@ -256,16 +256,8 @@ def test_single_task_pipeline_spawns_company_enrichment(processor, mock_managers
     assert "waiting_for_company_id" in requeue_call[0][1]
 
 
-def test_single_task_pipeline_completes_to_match(processor, mock_managers, sample_job_item):
-    """Single-task pipeline should complete all stages and save job match."""
-
-    class DummyResult:
-        match_score = 95
-
-        def to_dict(self):
-            return {
-                "match_score": self.match_score,
-            }
+def test_single_task_pipeline_completes_to_fanout(processor, mock_managers, sample_job_item):
+    """System extraction pipeline should complete extraction stages then fan out to per-user scoring."""
 
     complete_company = {
         "id": "comp-1",
@@ -280,9 +272,10 @@ def test_single_task_pipeline_completes_to_match(processor, mock_managers, sampl
     # Data-based check: company has good data
     mock_managers["companies_manager"].get_company.return_value = complete_company
     mock_managers["companies_manager"].has_good_company_data.return_value = True
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
-    mock_managers["job_storage"].save_job_match.return_value = "match-456"
     mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-456", True)
+
+    # Mock config_loader to return users with match-policy for fan-out
+    mock_managers["config_loader"].get_users_with_config.return_value = ["user-1", "user-2"]
 
     # Provide scraped_data so we skip the scrape stage
     sample_job_item.scraped_data = {
@@ -295,18 +288,19 @@ def test_single_task_pipeline_completes_to_match(processor, mock_managers, sampl
 
     processor.job_processor.process_job(sample_job_item)
 
-    # AI analysis should be called
-    processor.job_processor.ai_matcher.analyze_job.assert_called_once()
-    # Job match should be saved (single-task completes to save)
-    mock_managers["job_storage"].save_job_match.assert_called_once()
-    # Queue should be updated to SUCCESS
+    # System extraction should NOT call ai_matcher.analyze_job (that's per-user now)
+    processor.job_processor.ai_matcher.analyze_job.assert_not_called()
+    # Should NOT save a job match directly (per-user items do that)
+    mock_managers["job_storage"].save_job_match.assert_not_called()
+    # Should fan out: spawn per-user scoring items
+    assert mock_managers["queue_manager"].spawn_item_safely.call_count == 2  # one per user
+    # Queue should be updated to SUCCESS after fan-out
     success_calls = [
         call
         for call in mock_managers["queue_manager"].update_status.call_args_list
         if call[0][1] == QueueStatus.SUCCESS
     ]
     assert len(success_calls) == 1
-    assert "match-456" in success_calls[0][0][2] or "95" in success_calls[0][0][2]
 
 
 def test_single_task_pipeline_handles_aggregator_source_name(
