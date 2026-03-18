@@ -50,6 +50,7 @@ services:
       - "0.0.0.0:3000:8080"
     env_file:
       - /srv/job-finder/secrets/api.env
+      - /srv/job-finder/secrets/worker.env  # ANTHROPIC_API_KEY for runtime model auto-resolution probe
     environment:
       NODE_ENV: production
       PORT: 8080
