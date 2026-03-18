@@ -334,18 +334,20 @@ def test_single_task_pipeline_handles_aggregator_source_name(
                 "match_score": self.match_score,
             }
 
-    processor.job_processor.ai_matcher.analyze_job = MagicMock(return_value=DummyResult())
-    mock_managers["job_storage"].save_job_match.return_value = "match-789"
     mock_managers["job_listing_storage"].get_or_create_listing.return_value = ("listing-789", True)
+    # Mock config_loader to return users for fan-out
+    mock_managers["config_loader"].get_users_with_config.return_value = ["user-1"]
 
     processor.job_processor.process_job(sample_job_item)
 
-    # AI analysis should proceed even without company data
-    processor.job_processor.ai_matcher.analyze_job.assert_called_once()
+    # System path should fan out (not call analyze_job directly)
+    processor.job_processor.ai_matcher.analyze_job.assert_not_called()
     # Should NOT create company stub for source names
     mock_managers["companies_manager"].create_company_stub.assert_not_called()
     # Should not try to update company_id on listing
     mock_managers["job_listing_storage"].update_company_id.assert_not_called()
+    # Should fan out to per-user scoring
+    assert mock_managers["queue_manager"].spawn_item_safely.called
 
 
 def test_single_task_pipeline_spawns_company_for_real_company_from_aggregator(
