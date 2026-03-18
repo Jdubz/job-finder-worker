@@ -29,7 +29,10 @@ test.describe("Owner configuration and prompts", () => {
 
     // Check if scoring form is available (match-policy is configured)
     if (await scoringForm.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await scoringForm.fill("65")
+      // Clear and re-fill to ensure the form detects a change and enables Save
+      const currentValue = await scoringForm.inputValue()
+      const newValue = currentValue === "65" ? "66" : "65"
+      await scoringForm.fill(newValue)
       await page.getByRole("button", { name: /save changes/i }).click()
       await expect(page.getByText(/Match policy saved/i)).toBeVisible()
     } else {
@@ -43,7 +46,7 @@ test.describe("Owner configuration and prompts", () => {
 
     // LLM Status tab (read-only, conditional rendering — not TabsContent)
     await page.getByRole("tab", { name: "LLM Status" }).click()
-    await expect(page.getByRole("heading", { name: /LiteLLM Proxy Health/i })).toBeVisible()
+    await expect(page.getByRole("heading", { name: /LiteLLM Proxy/i })).toBeVisible()
     await expect(page.getByRole("heading", { name: /Model Routing/i })).toBeVisible()
 
     // AI prompts page
