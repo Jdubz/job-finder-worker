@@ -177,7 +177,9 @@ export class SelectionCacheRepository {
   }
 
   /**
-   * Store a selection cache entry, replacing any existing entry with the same fingerprint.
+   * Store a selection cache entry, replacing any existing entry with the same
+   * tech fingerprint (Tier 1 dedup). Entries with the same broad fingerprint
+   * but different tech fingerprints are kept as separate rows.
    * Evicts oldest entries if at capacity. Runs in a transaction.
    */
   store(params: SelectionCacheStoreParams): void {

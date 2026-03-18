@@ -19,8 +19,8 @@ if [ -z "$ANTHROPIC_API_KEY" ]; then
   exit 0
 fi
 
-# Extract current model ID from config
-CURRENT_MODEL=$(grep -oP '(?<=model: anthropic/)[^\s]+' "$CONFIG_FILE" | head -1 || echo "")
+# Extract current model ID from config (portable — no PCRE dependency)
+CURRENT_MODEL=$(sed -n 's/.*model: anthropic\/\([^ ]*\).*/\1/p' "$CONFIG_FILE" | head -1)
 if [ -z "$CURRENT_MODEL" ]; then
   echo "[resolve-models] No anthropic model found in config, skipping"
   exit 0
@@ -102,7 +102,7 @@ except:
 
   if [ "$PROBE_TYPE" = "ok" ]; then
     echo "[resolve-models] Found working model: anthropic/$CANDIDATE"
-    sed -i "s|model: anthropic/.*|model: anthropic/$CANDIDATE|" "$CONFIG_FILE"
+    sed -i "s|model: anthropic/$CURRENT_MODEL|model: anthropic/$CANDIDATE|" "$CONFIG_FILE"
     echo "[resolve-models] Config updated: anthropic/$CURRENT_MODEL -> anthropic/$CANDIDATE"
     exit 0
   fi

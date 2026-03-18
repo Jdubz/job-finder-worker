@@ -82,7 +82,7 @@ export class SelectionCacheService {
    * Gracefully degrades to miss on any error.
    */
   async lookup(match: JobMatchWithListing, poolItemsHash: string): Promise<SelectionCacheLookupResult> {
-    if (!CACHE_ENABLED || !isVecAvailable()) return { tier: 'miss' }
+    if (!CACHE_ENABLED) return { tier: 'miss' }
 
     try {
       return await this.lookupInternal(match, poolItemsHash)
@@ -165,6 +165,9 @@ export class SelectionCacheService {
     roleNormalized: string,
     canonicalTechs: string[]
   ): Promise<SelectionCacheLookupResult> {
+    // Tier 2 requires sqlite-vec for embedding search
+    if (!isVecAvailable()) return { tier: 'miss' }
+
     const extraction = match.listing.filterResult?.extraction as
       | { technologies?: string[] }
       | undefined

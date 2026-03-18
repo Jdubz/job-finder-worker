@@ -37,16 +37,19 @@ function getModelForTask(taskType: string, useLocal = true): string {
 
 /**
  * Process-wide resolved Claude model ID. Once we discover the correct model,
- * all InferenceClient instances in this process use it. Reset to null on
- * probe failure so we retry next time.
+ * all InferenceClient instances in this process use it. Cleared on probe
+ * failure so the next fallback triggers a fresh probe after the cooldown.
  */
 let resolvedClaudeModel: string | null = null
 let resolveInProgress: Promise<string | null> | null = null
+let lastProbeAtMs = 0
+const PROBE_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
 
 /** @internal Reset resolved model state (for tests only) */
 export function _resetResolvedModel(): void {
   resolvedClaudeModel = null
   resolveInProgress = null
+  lastProbeAtMs = 0
 }
 
 /**
@@ -171,21 +174,32 @@ export class InferenceClient {
 
     const result = await this.callLitellm(model, taskType, prompt, options)
 
-    // Detect silent fallback: requested Claude, got Gemini
-    if (this.isClaudeModel(model) && this.isGeminiModel(result.model)) {
+    // Detect silent fallback: requested Claude alias, got Gemini.
+    // Only probe when using the 'claude-document' alias — if we already resolved
+    // a direct model and it's still falling back, the resolved model is also stale
+    // so clear it. Respect cooldown to avoid hammering on sustained Claude outages.
+    const requestedAlias = (modelOverride || getModelForTask(taskType, this.useLocalModels)) === 'claude-document'
+    if (requestedAlias && this.isGeminiModel(result.model)) {
       this.log.warn(
         { requestedModel: model, actualModel: result.model, taskType },
-        'Claude request silently fell back to Gemini — attempting model resolution'
+        'Claude request silently fell back to Gemini'
       )
 
-      // Probe for the correct model (non-blocking for this request — the Gemini
-      // result is still valid, just lower quality)
-      probeLatestSonnet(this.baseUrl, this.apiKey, this.log).then(resolved => {
-        if (resolved) {
-          resolvedClaudeModel = resolved
-          this.log.info({ resolvedModel: resolved }, 'Future Claude requests will use resolved model')
-        }
-      }).catch(() => { /* non-fatal */ })
+      // Clear stale resolved model if it was being used
+      if (resolvedClaudeModel) {
+        resolvedClaudeModel = null
+      }
+
+      const now = Date.now()
+      if (now - lastProbeAtMs >= PROBE_COOLDOWN_MS) {
+        lastProbeAtMs = now
+        probeLatestSonnet(this.baseUrl, this.apiKey, this.log).then(resolved => {
+          if (resolved) {
+            resolvedClaudeModel = resolved
+            this.log.info({ resolvedModel: resolved }, 'Future Claude requests will use resolved model')
+          }
+        }).catch(() => { /* non-fatal */ })
+      }
     }
 
     return result
