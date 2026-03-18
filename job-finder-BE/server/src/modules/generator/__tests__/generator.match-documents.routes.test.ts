@@ -3,11 +3,24 @@ import request from 'supertest'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildGeneratorWorkflowRouter } from '../generator.workflow.routes'
 import { GeneratorWorkflowRepository } from '../generator.workflow.repository'
+import type { AuthenticatedRequest } from '../../../middleware/auth'
 import { getDb } from '../../../db/sqlite'
+
+const TEST_USER = 'test-user'
 
 const createApp = () => {
   const app = express()
   app.use(express.json())
+  // Simulate authenticated user
+  app.use((req, _res, next) => {
+    ;(req as AuthenticatedRequest).user = {
+      uid: TEST_USER,
+      email: 'test@example.com',
+      name: 'Test User',
+      roles: ['admin', 'user']
+    }
+    next()
+  })
   app.use('/generator', buildGeneratorWorkflowRouter())
   return app
 }
@@ -27,7 +40,7 @@ describe('GET /job-matches/:id/documents', () => {
     const matchB = 'match-b'
 
     // Seed requests for two matches
-    repo.createRequest({
+    repo.createRequest(TEST_USER, {
       id: 'req-a',
       generateType: 'resume',
       job: { role: 'Engineer', company: 'A' },
@@ -40,7 +53,7 @@ describe('GET /job-matches/:id/documents', () => {
       createdBy: null,
       steps: null
     })
-    repo.createRequest({
+    repo.createRequest(TEST_USER, {
       id: 'req-b',
       generateType: 'resume',
       job: { role: 'Engineer', company: 'B' },

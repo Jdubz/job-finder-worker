@@ -5,12 +5,25 @@ import { jobMatchStatsSchema, jobMatchWithListingSchema } from '@shared/types'
 import { buildJobMatchRouter } from '../job-match.routes'
 import { JobMatchRepository } from '../job-match.repository'
 import { JobListingRepository } from '../../job-listings/job-listing.repository'
+import type { AuthenticatedRequest } from '../../../middleware/auth'
 import { getDb } from '../../../db/sqlite'
 import { buildJobMatchInput } from './fixtures'
+
+const TEST_USER = 'test-user'
 
 const createApp = () => {
   const app = express()
   app.use(express.json())
+  // Simulate authenticated user
+  app.use((req, _res, next) => {
+    ;(req as AuthenticatedRequest).user = {
+      uid: TEST_USER,
+      email: 'test@example.com',
+      name: 'Test User',
+      roles: ['admin', 'user']
+    }
+    next()
+  })
   app.use('/job-matches', buildJobMatchRouter())
   return app
 }
@@ -39,7 +52,7 @@ describe('job match contract', () => {
 
   it('serializes list responses according to shared schema', async () => {
     createTestListing('listing-contract-1')
-    repo.upsert(buildJobMatchInput({
+    repo.upsert(TEST_USER, buildJobMatchInput({
       queueItemId: 'queue-contract-1',
       jobListingId: 'listing-contract-1',
       matchScore: 88,
@@ -57,7 +70,7 @@ describe('job match contract', () => {
 
   it('serializes stats according to shared schema', async () => {
     createTestListing('listing-contract-2')
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-contract-2', jobListingId: 'listing-contract-2', matchScore: 92 }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-contract-2', jobListingId: 'listing-contract-2', matchScore: 92 }))
 
     const res = await request(app).get('/job-matches/stats')
 
@@ -72,7 +85,7 @@ describe('job match contract', () => {
   it('PATCH /job-matches/:id/status returns JobMatchWithListing shape', async () => {
     createTestListing('listing-contract-3')
     const seeded = repo.upsert(
-      buildJobMatchInput({ queueItemId: 'queue-contract-3', jobListingId: 'listing-contract-3', status: 'active' })
+      TEST_USER, buildJobMatchInput({ queueItemId: 'queue-contract-3', jobListingId: 'listing-contract-3', status: 'active' })
     )
 
     const res = await request(app)

@@ -4,13 +4,26 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { buildJobMatchRouter } from '../job-match.routes'
 import { JobMatchRepository } from '../job-match.repository'
 import { JobListingRepository } from '../../job-listings/job-listing.repository'
+import type { AuthenticatedRequest } from '../../../middleware/auth'
 import { getDb } from '../../../db/sqlite'
 import { buildJobMatchInput } from './fixtures'
 import { apiErrorHandler } from '../../../middleware/api-error'
 
+const TEST_USER = 'test-user'
+
 const createApp = () => {
   const app = express()
   app.use(express.json())
+  // Simulate authenticated user
+  app.use((req, _res, next) => {
+    ;(req as AuthenticatedRequest).user = {
+      uid: TEST_USER,
+      email: 'test@example.com',
+      name: 'Test User',
+      roles: ['admin', 'user']
+    }
+    next()
+  })
   app.use('/job-matches', buildJobMatchRouter())
   app.use(apiErrorHandler)
   return app
@@ -41,8 +54,8 @@ describe('job match routes', () => {
   it('lists matches honoring filters', async () => {
     createTestListing('listing-10')
     createTestListing('listing-11')
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-10', jobListingId: 'listing-10', matchScore: 95 }))
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-11', jobListingId: 'listing-11', matchScore: 70 }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-10', jobListingId: 'listing-10', matchScore: 95 }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-11', jobListingId: 'listing-11', matchScore: 70 }))
 
     const response = await request(app).get('/job-matches?minScore=90')
 
@@ -55,7 +68,7 @@ describe('job match routes', () => {
 
   it('returns a single match or 404', async () => {
     createTestListing('listing-12')
-    const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-12', jobListingId: 'listing-12' }))
+    const seeded = repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-12', jobListingId: 'listing-12' }))
 
     const found = await request(app).get(`/job-matches/${seeded.id}`)
     expect(found.status).toBe(200)
@@ -77,7 +90,7 @@ describe('job match routes', () => {
     expect(res.status).toBe(201)
     expect(res.body.data.match.jobListingId).toBe('listing-13')
 
-    const stored = repo.getById(res.body.data.match.id)
+    const stored = repo.getById(TEST_USER, res.body.data.match.id)
     expect(stored?.jobListingId).toBe('listing-13')
   })
 
@@ -99,12 +112,12 @@ describe('job match routes', () => {
 
   it('deletes matches via DELETE', async () => {
     createTestListing('listing-14')
-    const seeded = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-14', jobListingId: 'listing-14' }))
+    const seeded = repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-14', jobListingId: 'listing-14' }))
 
     const res = await request(app).delete(`/job-matches/${seeded.id}`)
     expect(res.status).toBe(200)
     expect(res.body.data.deleted).toBe(true)
-    expect(repo.getById(seeded.id!)).toBeNull()
+    expect(repo.getById(TEST_USER, seeded.id!)).toBeNull()
   })
 
   describe('GET /job-matches/stats', () => {
@@ -116,12 +129,12 @@ describe('job match routes', () => {
       createTestListing('listing-stats-4')
 
       // High score (>=80)
-      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-1', jobListingId: 'listing-stats-1', matchScore: 95 }))
-      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-2', jobListingId: 'listing-stats-2', matchScore: 85 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-stats-1', jobListingId: 'listing-stats-1', matchScore: 95 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-stats-2', jobListingId: 'listing-stats-2', matchScore: 85 }))
       // Medium score (>=50, <80)
-      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-3', jobListingId: 'listing-stats-3', matchScore: 65 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-stats-3', jobListingId: 'listing-stats-3', matchScore: 65 }))
       // Low score (<50)
-      repo.upsert(buildJobMatchInput({ queueItemId: 'queue-stats-4', jobListingId: 'listing-stats-4', matchScore: 30 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-stats-4', jobListingId: 'listing-stats-4', matchScore: 30 }))
 
       const res = await request(app).get('/job-matches/stats')
 
@@ -155,10 +168,10 @@ describe('job match routes', () => {
       createTestListing('listing-ignored')
 
       repo.upsert(
-        buildJobMatchInput({ queueItemId: 'queue-a', jobListingId: 'listing-active', matchScore: 80, status: 'active' as const })
+        TEST_USER, buildJobMatchInput({ queueItemId: 'queue-a', jobListingId: 'listing-active', matchScore: 80, status: 'active' as const })
       )
       repo.upsert(
-        buildJobMatchInput({ queueItemId: 'queue-b', jobListingId: 'listing-ignored', matchScore: 90, status: 'ignored' as const })
+        TEST_USER, buildJobMatchInput({ queueItemId: 'queue-b', jobListingId: 'listing-ignored', matchScore: 90, status: 'ignored' as const })
       )
 
       const defaultList = await request(app).get('/job-matches')
@@ -180,7 +193,7 @@ describe('job match routes', () => {
     it('PATCH /job-matches/:id/status toggles status and returns listing data', async () => {
       createTestListing('listing-toggle')
       const seeded = repo.upsert(
-        buildJobMatchInput({
+        TEST_USER, buildJobMatchInput({
           queueItemId: 'queue-toggle',
           jobListingId: 'listing-toggle',
           status: 'active' as const,
@@ -195,7 +208,7 @@ describe('job match routes', () => {
       expect(res.body.data.match.listing.title).toBeDefined()
       expect(res.body.data.match.matchScore).toBe(75)
 
-      const updated = repo.getById(seeded.id!)
+      const updated = repo.getById(TEST_USER, seeded.id!)
       expect(updated?.status).toBe('ignored')
       expect(updated?.ignoredAt).toBeInstanceOf(Date)
     })
