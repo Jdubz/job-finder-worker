@@ -54,9 +54,13 @@ describe("Routes Configuration", () => {
     it("includes all public routes", () => {
       expect(PUBLIC_ROUTES).toContain(ROUTES.HOME)
       expect(PUBLIC_ROUTES).toContain(ROUTES.HOW_IT_WORKS)
-      expect(PUBLIC_ROUTES).toContain(ROUTES.CONTENT_ITEMS)
       expect(PUBLIC_ROUTES).toContain(ROUTES.AI_PROMPTS)
       expect(PUBLIC_ROUTES).toContain(ROUTES.UNAUTHORIZED)
+    })
+
+    it("does not include per-user routes (now authenticated)", () => {
+      expect(PUBLIC_ROUTES).not.toContain(ROUTES.CONTENT_ITEMS)
+      expect(PUBLIC_ROUTES).not.toContain(ROUTES.RESUMES)
     })
 
     it("does not include admin-only routes", () => {
