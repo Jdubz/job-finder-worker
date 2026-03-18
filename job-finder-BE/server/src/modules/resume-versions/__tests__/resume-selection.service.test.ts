@@ -708,5 +708,81 @@ describe('ResumeSelectionService', () => {
 
       await expect(service.selectContent('match-1')).rejects.toThrow(AISelectionError)
     })
+
+    it('skips AI call on selection cache hit', async () => {
+      const client = createMockInferenceClient()
+      const mockCache = {
+        lookup: vi.fn().mockResolvedValue({
+          tier: 'tech-fingerprint',
+          selection: JSON.parse(validAIResponse),
+        }),
+        store: vi.fn().mockResolvedValue(undefined),
+      }
+
+      const service = new ResumeSelectionService(
+        createMockRepo() as any,
+        createMockJobMatchRepo() as any,
+        client as any,
+        mockCache as any
+      )
+
+      await service.selectContent('match-1')
+
+      expect(client.execute).not.toHaveBeenCalled()
+      expect(mockCache.lookup).toHaveBeenCalled()
+    })
+
+    it('falls back to AI when cached selection produces empty tree', async () => {
+      const client = createMockInferenceClient()
+      const staleSelection = {
+        narrative_id: 'nonexistent-id',
+        resume_title: 'Stale',
+        experience_ids: ['nonexistent-exp'],
+        highlight_selections: {},
+        skill_ids: [],
+        project_ids: [],
+        education_ids: [],
+        reasoning: 'stale',
+      }
+      const mockCache = {
+        lookup: vi.fn().mockResolvedValue({
+          tier: 'tech-fingerprint',
+          selection: staleSelection,
+        }),
+        store: vi.fn().mockResolvedValue(undefined),
+      }
+
+      const service = new ResumeSelectionService(
+        createMockRepo() as any,
+        createMockJobMatchRepo() as any,
+        client as any,
+        mockCache as any
+      )
+
+      await service.selectContent('match-1')
+
+      // Should have called AI as fallback since cached IDs don't match pool
+      expect(client.execute).toHaveBeenCalled()
+    })
+
+    it('calls AI and stores result on cache miss', async () => {
+      const client = createMockInferenceClient()
+      const mockCache = {
+        lookup: vi.fn().mockResolvedValue({ tier: 'miss' }),
+        store: vi.fn().mockResolvedValue(undefined),
+      }
+
+      const service = new ResumeSelectionService(
+        createMockRepo() as any,
+        createMockJobMatchRepo() as any,
+        client as any,
+        mockCache as any
+      )
+
+      await service.selectContent('match-1')
+
+      expect(client.execute).toHaveBeenCalled()
+      expect(mockCache.store).toHaveBeenCalled()
+    })
   })
 })

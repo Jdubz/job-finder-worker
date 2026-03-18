@@ -24,6 +24,7 @@ import { HtmlPdfService } from '../generator/workflow/services/html-pdf.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
 import { InferenceClient } from '../generator/ai/inference-client'
 import { JobMatchRepository } from '../job-matches/job-match.repository'
+import { SelectionCacheService, computePoolItemsHash, type SelectionResult } from './selection-cache.service'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
 
@@ -63,16 +64,7 @@ export class AISelectionError extends Error {
 
 // ─── Types ──────────────────────────────────────────────────────
 
-interface SelectionResult {
-  narrative_id: string
-  resume_title: string // Generalized job title for the resume header (e.g. "Software Engineer")
-  experience_ids: string[]
-  highlight_selections: Record<string, string[]> // work ID → highlight IDs
-  skill_ids: string[]
-  project_ids: string[]
-  education_ids: string[]
-  reasoning: string
-}
+export type { SelectionResult } from './selection-cache.service'
 
 export interface TailorResult {
   id: string
@@ -91,15 +83,18 @@ export class ResumeSelectionService {
   private repo: ResumeVersionRepository
   private jobMatchRepo: JobMatchRepository
   private inferenceClient: InferenceClient
+  private selectionCache: SelectionCacheService
 
   constructor(
     repo?: ResumeVersionRepository,
     jobMatchRepo?: JobMatchRepository,
-    inferenceClient?: InferenceClient
+    inferenceClient?: InferenceClient,
+    selectionCache?: SelectionCacheService
   ) {
     this.repo = repo ?? new ResumeVersionRepository()
     this.jobMatchRepo = jobMatchRepo ?? new JobMatchRepository()
     this.inferenceClient = inferenceClient ?? new InferenceClient()
+    this.selectionCache = selectionCache ?? new SelectionCacheService()
   }
 
   /**
@@ -112,7 +107,8 @@ export class ResumeSelectionService {
   }
 
   /**
-   * Core pipeline: load pool, run AI selection, filter tree, validate fit.
+   * Core pipeline: load pool, check selection cache, run AI selection if needed,
+   * filter tree, validate fit.
    * Shared by selectContent (review workflow) and tailor (auto-tailor + cache).
    */
   private async buildSelectedContent(jobMatchId: string): Promise<{
@@ -138,15 +134,35 @@ export class ResumeSelectionService {
     const personalInfo = await personalInfoStore.get()
     if (!personalInfo) throw new PersonalInfoMissingError()
 
-    const prompt = buildSelectionPrompt(tree, match)
-    const result = await this.inferenceClient.execute('document', prompt, undefined, {
-      systemPrompt: SYSTEM_PROMPT,
-      temperature: 0.3,
-      max_tokens: 4096
-    })
+    // ── Selection cache lookup ──────────────────────────────────
+    const poolItemsHash = computePoolItemsHash(items)
+    const cacheResult = await this.selectionCache.lookup(match, poolItemsHash)
 
-    const selection = parseSelectionResponse(result.output)
-    logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
+    let selection: SelectionResult
+
+    if (cacheResult.tier !== 'miss') {
+      selection = cacheResult.selection
+      logger.info(
+        {
+          jobMatchId,
+          tier: cacheResult.tier,
+          similarity: 'similarity' in cacheResult ? cacheResult.similarity : undefined,
+        },
+        'Selection cache hit — skipping AI call'
+      )
+
+      // Safety check: verify cached selection produces a non-empty tree
+      const testTree = filterTreeToSelection(tree, selection)
+      if (testTree.length === 0) {
+        logger.warn(
+          { jobMatchId, tier: cacheResult.tier },
+          'Cached selection produced empty tree (stale IDs?), falling back to AI'
+        )
+        selection = await this.runAISelection(tree, match, jobMatchId, poolItemsHash)
+      }
+    } else {
+      selection = await this.runAISelection(tree, match, jobMatchId, poolItemsHash, cacheResult.embedding)
+    }
 
     const selectedTree = filterTreeToSelection(tree, selection)
     const jobTitle = selection.resume_title || match.listing?.title
@@ -159,6 +175,31 @@ export class ResumeSelectionService {
     }
 
     return { resumeContent, personalInfo, selection, selectedTree, fit, match }
+  }
+
+  /**
+   * Run AI selection and store the result in the selection cache.
+   */
+  private async runAISelection(
+    tree: ResumeItemNode[],
+    match: JobMatchWithListing,
+    jobMatchId: string,
+    poolItemsHash: string,
+    precomputedEmbedding?: number[]
+  ): Promise<SelectionResult> {
+    const prompt = buildSelectionPrompt(tree, match)
+    const result = await this.inferenceClient.execute('document', prompt, undefined, {
+      systemPrompt: SYSTEM_PROMPT,
+      temperature: 0.3,
+    })
+
+    const selection = parseSelectionResponse(result.output)
+    logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
+
+    // Store in selection cache (fire-and-forget — store() handles its own error logging)
+    this.selectionCache.store(match, poolItemsHash, selection, precomputedEmbedding)
+
+    return selection
   }
 
   /**

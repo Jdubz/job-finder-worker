@@ -6,6 +6,11 @@
  *
  * Exposes the same interface as the old AgentManager so callers can swap
  * with minimal changes.
+ *
+ * Model auto-resolution: When a `claude-document` request silently falls back
+ * to Gemini (indicating a stale/retired model ID), the client detects the
+ * degradation and probes Anthropic for the latest Sonnet model. On success,
+ * subsequent calls use the resolved model directly, bypassing the stale alias.
  */
 
 import type { Logger } from 'pino'
@@ -26,6 +31,91 @@ function getModelForTask(taskType: string, useLocal = true): string {
   const model = TASK_MODEL_MAP[taskType] ?? DEFAULT_MODEL
   if (!useLocal && model.startsWith('local-')) return DEFAULT_MODEL
   return model
+}
+
+// ── Model Resolver ──────────────────────────────────────────────────────────
+
+/**
+ * Process-wide resolved Claude model ID. Once we discover the correct model,
+ * all InferenceClient instances in this process use it. Cleared on probe
+ * failure so the next fallback triggers a fresh probe after the cooldown.
+ */
+let resolvedClaudeModel: string | null = null
+let resolveInProgress: Promise<string | null> | null = null
+let lastProbeAtMs = 0
+const PROBE_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
+
+/** @internal Reset resolved model state (for tests only) */
+export function _resetResolvedModel(): void {
+  resolvedClaudeModel = null
+  resolveInProgress = null
+  lastProbeAtMs = 0
+}
+
+/**
+ * Known generalized Sonnet model IDs, newest first.
+ * These follow Anthropic's naming: claude-sonnet-{major}-{minor}
+ * (no date suffix = latest patch in that family).
+ */
+const SONNET_CANDIDATES = [
+  'claude-sonnet-4-7',
+  'claude-sonnet-4-6',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-0',
+]
+
+/**
+ * Probe LiteLLM for the latest working Sonnet model.
+ * Tries each candidate as a direct anthropic/ prefixed model (bypassing the
+ * claude-document alias) with a minimal 1-token request.
+ *
+ * Returns the working model ID (e.g., "anthropic/claude-sonnet-4-6") or null.
+ * Deduplicates concurrent calls — only one probe runs at a time.
+ */
+async function probeLatestSonnet(baseUrl: string, apiKey: string, log: Logger): Promise<string | null> {
+  // Deduplicate: if a probe is already running, wait for it
+  if (resolveInProgress) return resolveInProgress
+
+  resolveInProgress = (async () => {
+    for (const candidate of SONNET_CANDIDATES) {
+      const model = `anthropic/${candidate}`
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`
+        }
+        const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: '.' }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(15_000),
+        })
+
+        if (response.ok) {
+          log.info({ model }, 'Claude model probe succeeded — resolved latest Sonnet')
+          return model
+        }
+
+        const body = await response.text().catch(() => '')
+        log.debug({ model, status: response.status, body: body.slice(0, 100) }, 'Claude model probe failed')
+      } catch (err) {
+        log.debug({ model, err }, 'Claude model probe error')
+      }
+    }
+
+    log.error('All Sonnet model probes failed — Claude will be unavailable until model ID is updated')
+    return null
+  })()
+
+  try {
+    return await resolveInProgress
+  } finally {
+    resolveInProgress = null
+  }
 }
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -75,7 +165,52 @@ export class InferenceClient {
     modelOverride?: string,
     options: { max_tokens?: number; temperature?: number; systemPrompt?: string } = {}
   ): Promise<AgentExecutionResult> {
-    const model = modelOverride || getModelForTask(taskType, this.useLocalModels)
+    let model = modelOverride || getModelForTask(taskType, this.useLocalModels)
+
+    // If we've already resolved the correct Claude model, use it directly
+    if (model === 'claude-document' && resolvedClaudeModel) {
+      model = resolvedClaudeModel
+    }
+
+    const result = await this.callLitellm(model, taskType, prompt, options)
+
+    // Detect silent fallback: requested Claude alias, got Gemini.
+    // Only probe when using the 'claude-document' alias — if we already resolved
+    // a direct model and it's still falling back, the resolved model is also stale
+    // so clear it. Respect cooldown to avoid hammering on sustained Claude outages.
+    const requestedAlias = (modelOverride || getModelForTask(taskType, this.useLocalModels)) === 'claude-document'
+    if (requestedAlias && this.isGeminiModel(result.model)) {
+      this.log.warn(
+        { requestedModel: model, actualModel: result.model, taskType },
+        'Claude request silently fell back to Gemini'
+      )
+
+      // Clear stale resolved model if it was being used
+      if (resolvedClaudeModel) {
+        resolvedClaudeModel = null
+      }
+
+      const now = Date.now()
+      if (now - lastProbeAtMs >= PROBE_COOLDOWN_MS) {
+        lastProbeAtMs = now
+        probeLatestSonnet(this.baseUrl, this.apiKey, this.log).then(resolved => {
+          if (resolved) {
+            resolvedClaudeModel = resolved
+            this.log.info({ resolvedModel: resolved }, 'Future Claude requests will use resolved model')
+          }
+        }).catch(() => { /* non-fatal */ })
+      }
+    }
+
+    return result
+  }
+
+  private async callLitellm(
+    model: string,
+    taskType: string,
+    prompt: string,
+    options: { max_tokens?: number; temperature?: number; systemPrompt?: string }
+  ): Promise<AgentExecutionResult> {
     const url = `${this.baseUrl}/v1/chat/completions`
 
     const controller = new AbortController()
@@ -149,11 +284,22 @@ export class InferenceClient {
       }
 
       const msg = err instanceof Error ? err.message : 'Unknown error'
-      this.log.error({ err, taskType, model }, 'LiteLLM request failed')
+      this.log.error({ err, model }, 'LiteLLM request failed')
       throw new InferenceError(`AI generation failed: ${msg}`)
     } finally {
       clearTimeout(timeout)
     }
+  }
+
+  private isClaudeModel(model?: string): boolean {
+    if (!model) return false
+    const m = model.toLowerCase()
+    return m === 'claude-document' || m.includes('claude') || m.includes('anthropic')
+  }
+
+  private isGeminiModel(model?: string): boolean {
+    if (!model) return false
+    return model.toLowerCase().includes('gemini')
   }
 
   /**
@@ -166,7 +312,13 @@ export class InferenceClient {
     model?: string,
     options: { max_tokens?: number } = {}
   ): AsyncGenerator<string> {
-    const resolvedModel = model || getModelForTask('chat', this.useLocalModels)
+    let resolvedModel = model || getModelForTask('chat', this.useLocalModels)
+
+    // Use resolved Claude model if available
+    if (resolvedModel === 'claude-document' && resolvedClaudeModel) {
+      resolvedModel = resolvedClaudeModel
+    }
+
     const url = `${this.baseUrl}/v1/chat/completions`
 
     const body: Record<string, unknown> = {

@@ -10,10 +10,10 @@ import type { AgentCliHealth } from "@shared/types"
 
 // Keep in sync with infra/litellm-config.yaml and worker ai/task_router.py TASK_MODEL_MAP
 const TASK_MODEL_MAP = [
-  { task: "extraction", model: "local-extract", provider: "Ollama Llama 3.1", fallback: "gemini, claude" },
-  { task: "analysis", model: "local-extract", provider: "Ollama Llama 3.1", fallback: "gemini, claude" },
-  { task: "document", model: "claude-document", provider: "Claude Sonnet", fallback: "gemini" },
-  { task: "chat", model: "claude-document", provider: "Claude Sonnet", fallback: "gemini" },
+  { task: "extraction", model: "local-extract", provider: "Ollama Gemma3 12B", fallback: "gemini, claude" },
+  { task: "analysis", model: "local-extract", provider: "Ollama Gemma3 12B", fallback: "gemini, claude" },
+  { task: "document", model: "claude-document", provider: "Claude Sonnet 4.6", fallback: "gemini, local" },
+  { task: "chat", model: "claude-document", provider: "Claude Sonnet 4.6", fallback: "gemini, local" },
   { task: "default", model: "gemini-general", provider: "Gemini 2.5 Flash", fallback: "—" },
 ] as const
 
@@ -26,6 +26,17 @@ type LlmStatusTabProps = {
   isSaving: boolean
   onSave: () => void | Promise<void>
   onReset: () => void
+}
+
+/** Map model group to a friendly display name */
+function modelGroupLabel(group: string): string {
+  switch (group) {
+    case "claude-document": return "Claude (Document)"
+    case "gemini-general": return "Gemini (General)"
+    case "local-extract": return "Ollama (Extract)"
+    case "local-embed": return "Ollama (Embed)"
+    default: return group
+  }
 }
 
 export function LlmStatusTab({
@@ -64,6 +75,11 @@ export function LlmStatusTab({
     health?.worker?.providers &&
     Object.values(health.worker.providers).some((s) => s.healthy)
 
+  // Separate healthy and unhealthy models for clear display
+  const models = health?.models ?? []
+  const unhealthyModels = models.filter((m) => !m.healthy)
+  const healthyModels = models.filter((m) => m.healthy)
+
   return (
     <div className="space-y-4">
       <TabCard
@@ -94,13 +110,13 @@ export function LlmStatusTab({
         <CardHeader>
           <CardTitle>LLM Status</CardTitle>
           <CardDescription>
-            Read-only view of LiteLLM proxy health and model routing. Auto-refreshes every 30s.
+            Real-time model health from LiteLLM proxy. Auto-refreshes every 30s.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Proxy health */}
           <div>
-            <h3 className="text-sm font-medium mb-2">LiteLLM Proxy Health</h3>
+            <h3 className="text-sm font-medium mb-2">LiteLLM Proxy</h3>
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             ) : error ? (
@@ -111,6 +127,40 @@ export function LlmStatusTab({
               <Badge variant="destructive">Unhealthy</Badge>
             )}
           </div>
+
+          {/* Per-model health from LiteLLM /health */}
+          {models.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium mb-2">Model Health</h3>
+              <div className="space-y-2">
+                {/* Show unhealthy models first with error details */}
+                {unhealthyModels.map((m) => (
+                  <div key={m.model} className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium">{modelGroupLabel(m.modelGroup)}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{m.model}</span>
+                      </div>
+                      <Badge variant="destructive">Unhealthy</Badge>
+                    </div>
+                    {m.error && (
+                      <p className="text-xs text-destructive mt-1 font-mono">{m.error}</p>
+                    )}
+                  </div>
+                ))}
+                {/* Healthy models */}
+                {healthyModels.map((m) => (
+                  <div key={m.model} className="flex items-center justify-between py-1">
+                    <div>
+                      <span className="text-sm">{modelGroupLabel(m.modelGroup)}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{m.model}</span>
+                    </div>
+                    <Badge variant="default" className="bg-green-600">Healthy</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Model routing table */}
           <div>
@@ -129,6 +179,10 @@ export function LlmStatusTab({
                   {TASK_MODEL_MAP.map((row) => {
                     const isLocalRow = row.model.startsWith("local-")
                     const disabled = isLocalRow && !useLocalModels
+                    // Check if the primary model for this row is unhealthy
+                    const modelUnhealthy = unhealthyModels.some(
+                      (m) => m.modelGroup === row.model
+                    )
                     return (
                       <tr key={row.task} className={disabled ? "opacity-50" : undefined}>
                         <td className="px-3 py-2 font-mono text-xs">{row.task}</td>
@@ -139,7 +193,12 @@ export function LlmStatusTab({
                               <span className="text-muted-foreground">→ gemini-general</span>
                             </span>
                           ) : (
-                            row.model
+                            <span>
+                              {row.model}
+                              {modelUnhealthy && (
+                                <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">down</Badge>
+                              )}
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -152,29 +211,6 @@ export function LlmStatusTab({
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {/* Per-model health */}
-          <div>
-            <h3 className="text-sm font-medium mb-2">Per-Model Health</h3>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : !health?.worker?.providers ? (
-              <p className="text-sm text-muted-foreground">No provider health data available</p>
-            ) : (
-              <div className="space-y-2">
-                {Object.entries(health.worker.providers).map(([provider, status]) => (
-                  <div key={provider} className="flex items-center justify-between">
-                    <span className="text-sm capitalize">{provider}</span>
-                    {status.healthy ? (
-                      <Badge variant="default" className="bg-green-600">Healthy</Badge>
-                    ) : (
-                      <Badge variant="destructive">{status.message || "Unhealthy"}</Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
