@@ -324,47 +324,78 @@ describe('InferenceClient', () => {
       })
     })
 
-    it('detects Claude-to-Gemini fallback and triggers probe', async () => {
-      // First call: requested claude-document, got gemini back (silent fallback)
+    // Anthropic API success response (Messages API format)
+    const anthropicOk = () => ({
+      ok: true,
+      json: () => Promise.resolve({ type: 'message', content: [{ text: '.' }] })
+    })
+
+    it('detects Claude-to-Gemini fallback and probes Anthropic directly', async () => {
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test')
+      client = new InferenceClient()
+
+      // First call (LiteLLM): requested claude-document, got gemini back
       mockFetch.mockResolvedValueOnce(geminiResponse())
-      // Probe call: try anthropic/claude-sonnet-4-7 — fails
+      // Probe: claude-sonnet-4-7 via Anthropic API — fails
       mockFetch.mockResolvedValueOnce({ ok: false, status: 400, text: () => Promise.resolve('') })
-      // Probe call: try anthropic/claude-sonnet-4-6 — succeeds
-      mockFetch.mockResolvedValueOnce(claudeResponse())
+      // Probe: claude-sonnet-4-6 via Anthropic API — succeeds
+      mockFetch.mockResolvedValueOnce(anthropicOk())
+      // LiteLLM /model/new registration
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) })
 
       const result = await client.execute('document', 'write this')
 
-      // The original request still returns the Gemini result
+      // Original request still returns the Gemini result
       expect(result.model).toBe('gemini-2.5-flash')
 
-      // Wait for background probe to complete
+      // Wait for background probe + registration to complete
       await vi.waitFor(() => {
-        // Probe calls: original + 2 probe attempts (4-7 fails, 4-6 succeeds)
-        expect(mockFetch).toHaveBeenCalledTimes(3)
+        expect(mockFetch).toHaveBeenCalledTimes(4)
       })
+
+      // Verify probe called Anthropic API directly (not LiteLLM)
+      const probeCall = mockFetch.mock.calls[1]
+      expect(probeCall[0]).toBe('https://api.anthropic.com/v1/messages')
+      expect(probeCall[1].headers['x-api-key']).toBe('sk-ant-test')
+
+      // Verify LiteLLM /model/new was called to register the working model
+      const registerCall = mockFetch.mock.calls[3]
+      expect(registerCall[0]).toBe('http://localhost:4000/model/new')
+      const registerBody = JSON.parse(registerCall[1].body)
+      expect(registerBody.model_name).toBe('claude-document')
+      expect(registerBody.litellm_params.model).toBe('anthropic/claude-sonnet-4-6')
     })
 
-    it('uses resolved model on subsequent calls', async () => {
+    it('subsequent calls still use claude-document alias (LiteLLM routes to registered model)', async () => {
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test')
+      client = new InferenceClient()
+
       // First call: silent fallback triggers probe
       mockFetch.mockResolvedValueOnce(geminiResponse())
-      // Probe: 4-7 fails, 4-6 succeeds
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 400, text: () => Promise.resolve('') })
-      mockFetch.mockResolvedValueOnce(claudeResponse())
+      // Probe succeeds on first candidate
+      mockFetch.mockResolvedValueOnce(anthropicOk())
+      // LiteLLM registration succeeds
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) })
 
       await client.execute('document', 'write this')
+      await vi.waitFor(() => { expect(mockFetch).toHaveBeenCalledTimes(3) })
 
-      // Wait for probe to complete
-      await vi.waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledTimes(3)
-      })
-
-      // Second call: should use resolved model directly
-      mockFetch.mockResolvedValueOnce(claudeResponse('anthropic/claude-sonnet-4-6'))
-
+      // Second call: should still use claude-document alias (not a direct model name)
+      mockFetch.mockResolvedValueOnce(claudeResponse())
       await client.execute('document', 'write again')
 
       const lastCallBody = JSON.parse(mockFetch.mock.calls[3][1].body)
-      expect(lastCallBody.model).toBe('anthropic/claude-sonnet-4-6')
+      expect(lastCallBody.model).toBe('claude-document')
+    })
+
+    it('skips probe when ANTHROPIC_API_KEY is not set', async () => {
+      // No ANTHROPIC_API_KEY in env (default from beforeEach)
+      mockFetch.mockResolvedValue(geminiResponse())
+
+      await client.execute('document', 'write this')
+
+      // Only the original LiteLLM call, no probes
+      expect(mockFetch).toHaveBeenCalledTimes(1)
     })
 
     it('does not probe when response model matches requested model family', async () => {

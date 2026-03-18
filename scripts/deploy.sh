@@ -20,6 +20,8 @@ COMPOSE_SRC="${REPO_ROOT}/infra/docker-compose.prod.yml"
 COMPOSE_DST="${PROD_DIR}/docker-compose.yml"
 LITELLM_CFG_SRC="${REPO_ROOT}/infra/litellm-config.yaml"
 LITELLM_CFG_DST="${PROD_DIR}/infra/litellm-config.yaml"
+RESOLVE_SRC="${REPO_ROOT}/infra/resolve-models.sh"
+RESOLVE_DST="${PROD_DIR}/infra/resolve-models.sh"
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1:8b}"
 OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
 
@@ -51,6 +53,16 @@ else
   echo "[deploy] Syncing litellm-config.yaml..."
   cp "${LITELLM_CFG_SRC}" "${LITELLM_CFG_DST}"
   echo "[deploy] Synced: ${LITELLM_CFG_SRC} -> ${LITELLM_CFG_DST}"
+fi
+
+# Sync resolve-models.sh (pre-startup model verification, mounted by litellm service)
+if [[ -f "${RESOLVE_DST}" ]] && diff -q "${RESOLVE_SRC}" "${RESOLVE_DST}" >/dev/null 2>&1; then
+  echo "[deploy] resolve-models.sh is already up to date"
+else
+  echo "[deploy] Syncing resolve-models.sh..."
+  cp "${RESOLVE_SRC}" "${RESOLVE_DST}"
+  chmod +x "${RESOLVE_DST}"
+  echo "[deploy] Synced: ${RESOLVE_SRC} -> ${RESOLVE_DST}"
 fi
 
 # Auto-restart LiteLLM when config changed (so it picks up new models/settings)

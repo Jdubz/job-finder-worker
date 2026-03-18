@@ -2,12 +2,12 @@
 # resolve-models.sh — Verify the Anthropic model ID before LiteLLM starts.
 #
 # Makes a minimal test call to the configured Claude model via the Anthropic API.
-# If the model ID is invalid/retired, probes known generalized Sonnet model IDs
-# (newest first) to find one that works, then patches litellm-config.yaml.
+# If the model ID is invalid/retired/inaccessible, probes known Claude model IDs
+# (newest first, Sonnet then Haiku) to find one that works, then patches
+# litellm-config.yaml.
 #
-# This prevents silent fallback to Gemini when Anthropic retires model versions.
-# Falls back gracefully if the API is unreachable or the key is an OAuth token
-# that can't make direct API calls (LiteLLM handles OAuth auth internally).
+# This prevents silent fallback to Gemini when Anthropic retires model versions
+# or when the API key lacks access to the configured model.
 
 set -euo pipefail
 
@@ -28,14 +28,7 @@ fi
 
 echo "[resolve-models] Testing model: anthropic/$CURRENT_MODEL"
 
-# Detect OAuth keys — these can't make direct API calls; LiteLLM handles auth internally.
-# For OAuth keys, we can only verify models after LiteLLM starts (via /health endpoint).
-if [[ "$ANTHROPIC_API_KEY" == sk-ant-oat* ]]; then
-  echo "[resolve-models] OAuth key detected — model verification will run post-startup via /health"
-  exit 0
-fi
-
-# Test the configured model with a minimal request (standard API keys only)
+# Test the configured model with a minimal request
 TEST_RESPONSE=$(curl -sf --max-time 15 \
   https://api.anthropic.com/v1/messages \
   -H "Content-Type: application/json" \
@@ -73,16 +66,19 @@ if [ "$ERROR_TYPE" != "invalid_model" ]; then
   exit 0
 fi
 
-echo "[resolve-models] WARNING: Model anthropic/$CURRENT_MODEL is invalid/retired"
-echo "[resolve-models] Probing known Sonnet model IDs..."
+echo "[resolve-models] WARNING: Model anthropic/$CURRENT_MODEL is invalid/retired/inaccessible"
+echo "[resolve-models] Probing known Claude model IDs..."
 
-# Probe generalized Sonnet names from newest to oldest.
-# These follow Anthropic's naming convention: claude-sonnet-{major}-{minor}
+# Probe Claude models from newest to oldest: Sonnet (preferred for quality),
+# then Haiku (acceptable fallback). Generalized names (no date suffix) resolve
+# to the latest patch in that family.
 for CANDIDATE in \
   "claude-sonnet-4-7" \
   "claude-sonnet-4-6" \
   "claude-sonnet-4-5" \
-  "claude-sonnet-4-0"; do
+  "claude-sonnet-4-0" \
+  "claude-haiku-4-5" \
+  "claude-haiku-4-5-20251001"; do
 
   PROBE=$(curl -sf --max-time 10 \
     https://api.anthropic.com/v1/messages \
@@ -109,5 +105,5 @@ except:
   echo "[resolve-models]   $CANDIDATE: $PROBE_TYPE"
 done
 
-echo "[resolve-models] ERROR: No working Sonnet model found. Claude will be unavailable."
+echo "[resolve-models] ERROR: No working Claude model found. Claude will be unavailable."
 exit 1
