@@ -652,7 +652,6 @@ class JobProcessor(BaseProcessor):
         # Build per-user scoring components
         try:
             user_match_policy = self.config_loader.get_user_match_policy(user_id)
-            user_personal_info = self.config_loader.get_user_personal_info(user_id)
         except Exception as e:
             self._finalize_failed(ctx, f"Failed to load user config for {user_id}: {e}")
             return
