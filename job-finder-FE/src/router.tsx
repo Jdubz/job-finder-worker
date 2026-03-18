@@ -27,6 +27,11 @@ const AIPromptsPage = lazyWithRetry(() =>
     default: m.AIPromptsPage,
   }))
 )
+const UserSettingsPage = lazyWithRetry(() =>
+  import("@/pages/user-settings/UserSettingsPage").then((m) => ({
+    default: m.UserSettingsPage,
+  }))
+)
 const JobApplicationsPage = lazyWithRetry(() =>
   import("@/pages/job-applications/JobApplicationsPage").then((m) => ({
     default: m.JobApplicationsPage,
@@ -95,22 +100,6 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: ROUTES.CONTENT_ITEMS,
-        element: (
-          <LazyPage>
-            <ContentItemsPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.RESUMES,
-        element: (
-          <LazyPage>
-            <ResumeVersionsPage />
-          </LazyPage>
-        ),
-      },
-      {
         path: ROUTES.UNAUTHORIZED,
         element: (
           <LazyPage>
@@ -122,6 +111,30 @@ export const router = createBrowserRouter([
       {
         element: <ProtectedRoute unauthRedirectTo={ROUTES.HOME} />,
         children: [
+          {
+            path: ROUTES.CONTENT_ITEMS,
+            element: (
+              <LazyPage>
+                <ContentItemsPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ROUTES.RESUMES,
+            element: (
+              <LazyPage>
+                <ResumeVersionsPage />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ROUTES.USER_SETTINGS,
+            element: (
+              <LazyPage>
+                <UserSettingsPage />
+              </LazyPage>
+            ),
+          },
           {
             path: ROUTES.JOB_APPLICATIONS,
             element: (

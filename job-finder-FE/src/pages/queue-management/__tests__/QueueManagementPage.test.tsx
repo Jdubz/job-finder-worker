@@ -284,7 +284,7 @@ describe("QueueManagementPage", () => {
       expect(screen.getByText(/sign in/i)).toBeInTheDocument()
     })
 
-    it("shows permission error for non-editors", () => {
+    it("shows permission error for non-admins", () => {
       vi.mocked(useAuth).mockReturnValue({
         user: mockUser as any,
         loading: false,
@@ -295,7 +295,7 @@ describe("QueueManagementPage", () => {
 
       renderWithProvider()
 
-      expect(screen.getByText(/editor permissions/i)).toBeInTheDocument()
+      expect(screen.getByText(/admin permissions/i)).toBeInTheDocument()
     })
   })
 

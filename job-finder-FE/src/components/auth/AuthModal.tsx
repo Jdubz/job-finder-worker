@@ -102,15 +102,15 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                     </Button>
 
                     <Button
-                      onClick={() => handleDevRoleSelect("viewer")}
+                      onClick={() => handleDevRoleSelect("user")}
                       variant="outline"
                       className="w-full justify-start"
                       size="lg"
                     >
                       <Eye className="w-4 h-4 mr-3" />
                       <div className="text-left">
-                        <div className="font-medium">Viewer</div>
-                        <div className="text-xs text-muted-foreground">Authenticated, read-only access</div>
+                        <div className="font-medium">User</div>
+                        <div className="text-xs text-muted-foreground">Authenticated, standard access</div>
                       </div>
                     </Button>
 
@@ -189,7 +189,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                   <p className="font-medium mb-1">Signed in as:</p>
                   <p className="text-muted-foreground">{user.email}</p>
                   <p className="text-muted-foreground mt-2">
-                    Role: <span className="font-medium">{isOwner ? "Owner" : "Viewer"}</span>
+                    Role: <span className="font-medium">{isOwner ? "Admin" : "User"}</span>
                   </p>
                 </div>
               </div>
@@ -197,7 +197,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               {!isOwner && (
                 <div className="bg-muted/50 rounded-lg p-3 text-sm text-muted-foreground">
                   <Info className="w-4 h-4 inline mr-1" />
-                  You have viewer access. Contact an administrator for editor permissions.
+                  You have standard user access. Contact an administrator for admin permissions.
                 </div>
               )}
 

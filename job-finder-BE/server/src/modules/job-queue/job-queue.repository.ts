@@ -12,6 +12,7 @@ type QueueItemRow = {
   url: string | null
   tracking_id: string | null
   parent_item_id: string | null
+  user_id: string | null
   input: string | null
   output: string | null
   created_at: string
@@ -29,6 +30,7 @@ type QueueItemRow = {
 export type NewQueueItem = Omit<QueueItem, 'id' | 'created_at' | 'updated_at'> & {
   created_at?: TimestampInput
   updated_at?: TimestampInput
+  userId?: string
 }
 
 export type QueueItemUpdate = Partial<Omit<QueueItem, 'id' | 'created_at' | 'updated_at'>> & {
@@ -73,6 +75,7 @@ const buildQueueItem = (row: QueueItemRow): QueueItem => {
     url: row.url ?? undefined,
     tracking_id: row.tracking_id && row.tracking_id.length > 0 ? row.tracking_id : undefined,
     parent_item_id: row.parent_item_id ?? undefined,
+    user_id: row.user_id ?? undefined,
     input,
     output,
     // Derived convenience fields for compatibility with existing UI/API consumers
@@ -147,11 +150,11 @@ export class JobQueueRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO job_queue (
-        id, type, status, url, tracking_id, parent_item_id,
+        id, type, status, url, tracking_id, parent_item_id, user_id,
         input, output, result_message, error_details,
         retry_count, max_retries, last_error_category,
         created_at, updated_at, processed_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -161,6 +164,7 @@ export class JobQueueRepository {
       data.url ?? null,
       trackingId,
       data.parent_item_id ?? null,
+      data.userId ?? data.user_id ?? null,
       inputJson,
       outputJson,
       data.result_message ?? null,
@@ -185,6 +189,7 @@ export class JobQueueRepository {
   list(options: {
     status?: QueueStatus | QueueStatus[]
     type?: QueueItem['type']
+    userId?: string
     limit?: number
     offset?: number
   } = {}): QueueItem[] {
@@ -209,6 +214,7 @@ export class JobQueueRepository {
   listWithTotal(options: {
     status?: QueueStatus | QueueStatus[]
     type?: QueueItem['type']
+    userId?: string
     limit?: number
     offset?: number
   } = {}): { items: QueueItem[]; total: number } {
@@ -494,6 +500,7 @@ export class JobQueueRepository {
     status?: QueueStatus | QueueStatus[]
     type?: QueueItem['type']
     source?: QueueItem['source']
+    userId?: string
   }) {
     let whereClause = 'WHERE 1 = 1'
     const params: Array<string | number> = []
@@ -513,6 +520,11 @@ export class JobQueueRepository {
     if (options.source) {
       whereClause += " AND json_extract(input, '$.source') = ?"
       params.push(options.source)
+    }
+
+    if (options.userId) {
+      whereClause += ' AND user_id = ?'
+      params.push(options.userId)
     }
 
     return { whereClause, params }

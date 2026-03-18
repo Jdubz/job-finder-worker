@@ -1,10 +1,13 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import { asyncHandler } from '../utils/async-handler'
 import { success } from '../utils/api-response'
-import { ConfigRepository } from '../modules/config/config.repository'
+import { UserConfigRepository } from '../modules/user-config/user-config.repository'
 import { ContentItemRepository } from '../modules/content-items/content-item.repository'
 import type { PersonalInfo, ContentItem, GetApplicatorProfileResponse } from '@shared/types'
+import { ApiErrorCode } from '@shared/types'
 import { logger } from '../logger'
+import { type AuthenticatedRequest, type AuthenticatedUser } from '../middleware/auth'
+import { ApiHttpError } from '../middleware/api-error'
 
 /**
  * Format date range for work history
@@ -136,9 +139,17 @@ function aggregateSkills(items: ContentItem[]): string {
   return Array.from(allSkills).sort().join(', ')
 }
 
+function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
+  const user = (req as AuthenticatedRequest).user
+  if (!user || !user.email) {
+    throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Missing authenticated user', { status: 401 })
+  }
+  return user as AuthenticatedUser & { email: string }
+}
+
 export function buildApplicatorRouter() {
   const router = Router()
-  const configRepo = new ConfigRepository()
+  const userConfigRepo = new UserConfigRepository()
   const contentRepo = new ContentItemRepository()
 
   /**
@@ -155,25 +166,26 @@ export function buildApplicatorRouter() {
    * - Aggregated skills summary
    *
    * Authentication: Required (session or dev token)
-   *   NOTE: Auth is enforced by middleware in app.ts (firebaseAuthMiddleware).
+   *   NOTE: Auth is enforced by middleware in app.ts (verifyAuth).
    *   This route must be registered after the auth middleware to remain protected.
    * Rate Limiting: None (internal tool usage only)
    */
   router.get(
     '/profile',
-    asyncHandler(async (_req, res) => {
-      logger.info('Fetching applicator profile')
+    asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      logger.info({ userId: user.uid }, 'Fetching applicator profile')
 
-      // Fetch personal info from config
-      const personalInfoConfig = configRepo.get<PersonalInfo>('personal-info')
+      // Fetch personal info from user config
+      const personalInfoConfig = userConfigRepo.get<PersonalInfo>(user.uid, 'personal-info')
       const personalInfo = personalInfoConfig?.payload
 
       if (!personalInfo) {
-        logger.warn('Personal info not configured')
+        logger.warn({ userId: user.uid }, 'Personal info not configured')
       }
 
       // Fetch all content items for work history, education, skills
-      const contentItems = contentRepo.list()
+      const contentItems = contentRepo.list(user.uid)
 
       // Build formatted profile text
       const sections: string[] = []

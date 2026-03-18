@@ -9,7 +9,7 @@ import { getDb } from '../../../db/sqlite'
 const createApp = () => {
   const app = express()
   app.use(express.json())
-  app.use('/content-items', buildContentItemRouter({ mutationsMiddleware: [] }))
+  app.use('/content-items', buildContentItemRouter())
   return app
 }
 

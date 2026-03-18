@@ -16,6 +16,7 @@ import {
   List,
   Activity,
   Files,
+  UserCog,
 } from "lucide-react"
 import { useState } from "react"
 import { AuthIcon } from "@/components/auth/AuthIcon"
@@ -33,26 +34,29 @@ interface NavLink {
 const publicLinks: NavLink[] = [
   { to: ROUTES.HOME, label: "Home", icon: Home },
   { to: ROUTES.HOW_IT_WORKS, label: "How It Works", icon: HelpCircle },
-  { to: ROUTES.CONTENT_ITEMS, label: "Experience", icon: FolderOpen },
-  { to: ROUTES.RESUMES, label: "Resumes", icon: Files },
 ]
 
-const jobFinderLinks: NavLink[] = [
+/** Links visible to any authenticated user */
+const userLinks: NavLink[] = [
+  { to: ROUTES.CONTENT_ITEMS, label: "Experience", icon: FolderOpen },
+  { to: ROUTES.RESUMES, label: "Resumes", icon: Files },
   { to: ROUTES.JOB_LISTINGS, label: "Job Listings", icon: List },
   { to: ROUTES.JOB_APPLICATIONS, label: "Matches", icon: FileText },
   { to: ROUTES.COMPANIES, label: "Companies", icon: Building2 },
   { to: ROUTES.SOURCES, label: "Sources", icon: Rss },
-  { to: ROUTES.QUEUE_MANAGEMENT, label: "Queue Management", icon: ListChecks },
+  { to: ROUTES.USER_SETTINGS, label: "My Settings", icon: UserCog },
 ]
 
-const systemLinks: NavLink[] = [
+/** Links visible only to admin users */
+const adminLinks: NavLink[] = [
+  { to: ROUTES.QUEUE_MANAGEMENT, label: "Queue Management", icon: ListChecks },
   { to: ROUTES.AI_PROMPTS, label: "AI Prompts", icon: Sparkles },
   { to: ROUTES.JOB_FINDER_CONFIG, label: "Configuration", icon: Settings },
   { to: ROUTES.SYSTEM_HEALTH, label: "System Health", icon: Activity },
 ]
 
 export function Navigation() {
-  const { isOwner } = useAuth()
+  const { user, isOwner } = useAuth()
   const location = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
@@ -111,16 +115,16 @@ export function Navigation() {
                       ))}
                     </div>
 
-                    {/* Owner Tools */}
-                    {isOwner && (
+                    {/* Authenticated user links */}
+                    {user && (
                       <>
                         <Separator />
 
                         <div className="space-y-1">
                           <h4 className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            Job Finder Tools
+                            Job Finder
                           </h4>
-                          {jobFinderLinks.map((link) => (
+                          {userLinks.map((link) => (
                             <NavLink
                               key={link.to}
                               link={link}
@@ -128,14 +132,19 @@ export function Navigation() {
                             />
                           ))}
                         </div>
+                      </>
+                    )}
 
+                    {/* Admin-only tools */}
+                    {isOwner && (
+                      <>
                         <Separator />
 
                         <div className="space-y-1">
                           <h4 className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            System
+                            Admin
                           </h4>
-                          {systemLinks.map((link) => (
+                          {adminLinks.map((link) => (
                             <NavLink
                               key={link.to}
                               link={link}

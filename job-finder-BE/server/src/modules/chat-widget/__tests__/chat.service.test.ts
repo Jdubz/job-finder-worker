@@ -31,10 +31,6 @@ vi.mock('@deepgram/sdk', () => ({
 
 // Mock chat prompts
 vi.mock('../chat.prompts', () => ({
-  getChatContext: vi.fn().mockResolvedValue({
-    personalInfo: { name: 'Test User' },
-    contentItems: [],
-  }),
   buildSystemPrompt: vi.fn().mockReturnValue('Test system prompt'),
 }))
 

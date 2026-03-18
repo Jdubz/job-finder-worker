@@ -624,7 +624,7 @@ describe('ResumeSelectionService', () => {
         createMockInferenceClient() as any
       )
 
-      await expect(service.selectContent('match-1')).rejects.toThrow(PoolNotFoundError)
+      await expect(service.selectContent('test-user', 'match-1')).rejects.toThrow(PoolNotFoundError)
     })
 
     it('throws JobMatchNotFoundError when job match does not exist', async () => {
@@ -634,7 +634,7 @@ describe('ResumeSelectionService', () => {
         createMockInferenceClient() as any
       )
 
-      await expect(service.selectContent('nonexistent')).rejects.toThrow(JobMatchNotFoundError)
+      await expect(service.selectContent('test-user', 'nonexistent')).rejects.toThrow(JobMatchNotFoundError)
     })
 
     it('throws PoolNotFoundError when pool has no items', async () => {
@@ -647,7 +647,7 @@ describe('ResumeSelectionService', () => {
         createMockInferenceClient() as any
       )
 
-      await expect(service.selectContent('match-1')).rejects.toThrow(PoolNotFoundError)
+      await expect(service.selectContent('test-user', 'match-1')).rejects.toThrow(PoolNotFoundError)
     })
 
     it('calls inference client with document task type', async () => {
@@ -658,7 +658,7 @@ describe('ResumeSelectionService', () => {
         client as any
       )
 
-      await service.selectContent('match-1')
+      await service.selectContent('test-user', 'match-1')
 
       expect(client.execute).toHaveBeenCalledWith(
         'document',
@@ -676,7 +676,7 @@ describe('ResumeSelectionService', () => {
         client as any
       )
 
-      await service.selectContent('match-1')
+      await service.selectContent('test-user', 'match-1')
 
       const prompt = client.execute.mock.calls[0][1]
       expect(prompt).toContain('Senior Software Engineer')
@@ -691,7 +691,7 @@ describe('ResumeSelectionService', () => {
         createMockInferenceClient() as any
       )
 
-      const result = await service.selectContent('match-1')
+      const result = await service.selectContent('test-user', 'match-1')
 
       expect(result.personalInfo).toBeDefined()
       expect(result.experience).toBeDefined()
@@ -706,7 +706,7 @@ describe('ResumeSelectionService', () => {
         client as any
       )
 
-      await expect(service.selectContent('match-1')).rejects.toThrow(AISelectionError)
+      await expect(service.selectContent('test-user', 'match-1')).rejects.toThrow(AISelectionError)
     })
 
     it('skips AI call on selection cache hit', async () => {
@@ -726,7 +726,7 @@ describe('ResumeSelectionService', () => {
         mockCache as any
       )
 
-      await service.selectContent('match-1')
+      await service.selectContent('test-user', 'match-1')
 
       expect(client.execute).not.toHaveBeenCalled()
       expect(mockCache.lookup).toHaveBeenCalled()
@@ -759,7 +759,7 @@ describe('ResumeSelectionService', () => {
         mockCache as any
       )
 
-      await service.selectContent('match-1')
+      await service.selectContent('test-user', 'match-1')
 
       // Should have called AI as fallback since cached IDs don't match pool
       expect(client.execute).toHaveBeenCalled()
@@ -779,7 +779,7 @@ describe('ResumeSelectionService', () => {
         mockCache as any
       )
 
-      await service.selectContent('match-1')
+      await service.selectContent('test-user', 'match-1')
 
       expect(client.execute).toHaveBeenCalled()
       expect(mockCache.store).toHaveBeenCalled()

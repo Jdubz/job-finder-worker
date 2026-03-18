@@ -56,6 +56,7 @@ export class DocumentCacheRepository {
    * callers must explicitly call recordHit() when they decide to use the result.
    */
   findExact(
+    userId: string,
     fingerprintHash: string,
     contentItemsHash: string,
     documentType: DocumentType
@@ -66,8 +67,9 @@ export class DocumentCacheRepository {
       WHERE job_fingerprint_hash = ?
         AND content_items_hash = ?
         AND document_type = ?
+        AND user_id = ?
       LIMIT 1
-    `).get(fingerprintHash, contentItemsHash, documentType) as {
+    `).get(fingerprintHash, contentItemsHash, documentType, userId) as {
       id: number
       document_content_json: string
       role_normalized: string
@@ -91,6 +93,7 @@ export class DocumentCacheRepository {
    * For resumes, same role + tech stack at a different company should reuse cached content.
    */
   findByRoleFingerprint(
+    userId: string,
     roleFingerprintHash: string,
     contentItemsHash: string,
     documentType: DocumentType
@@ -101,9 +104,10 @@ export class DocumentCacheRepository {
       WHERE role_fingerprint_hash = ?
         AND content_items_hash = ?
         AND document_type = ?
+        AND user_id = ?
       ORDER BY last_hit_at DESC
       LIMIT 1
-    `).get(roleFingerprintHash, contentItemsHash, documentType) as {
+    `).get(roleFingerprintHash, contentItemsHash, documentType, userId) as {
       id: number
       document_content_json: string
       role_normalized: string
@@ -128,6 +132,7 @@ export class DocumentCacheRepository {
    * under the same archetype. Returns null when no match or archetype is null.
    */
   findByArchetypeFingerprint(
+    userId: string,
     archetypeFingerprintHash: string,
     contentItemsHash: string,
     documentType: DocumentType
@@ -138,9 +143,10 @@ export class DocumentCacheRepository {
       WHERE archetype_fingerprint_hash = ?
         AND content_items_hash = ?
         AND document_type = ?
+        AND user_id = ?
       ORDER BY last_hit_at DESC
       LIMIT 1
-    `).get(archetypeFingerprintHash, contentItemsHash, documentType) as {
+    `).get(archetypeFingerprintHash, contentItemsHash, documentType, userId) as {
       id: number
       document_content_json: string
       role_normalized: string
@@ -166,6 +172,7 @@ export class DocumentCacheRepository {
    * Returns top k results with similarity scores.
    */
   findSimilar(
+    userId: string,
     embedding: number[],
     contentItemsHash: string,
     documentType: DocumentType,
@@ -194,7 +201,8 @@ export class DocumentCacheRepository {
       WHERE embedding_rowid IN (${placeholders})
         AND content_items_hash = ?
         AND document_type = ?
-    `).all(...rowids, contentItemsHash, documentType) as Array<{
+        AND user_id = ?
+    `).all(...rowids, contentItemsHash, documentType, userId) as Array<{
       id: number
       embedding_rowid: number
       document_content_json: string
@@ -242,16 +250,16 @@ export class DocumentCacheRepository {
    * Evicts oldest entries if at capacity.
    * Runs in a transaction: remove duplicate → insert embedding → insert document_cache row.
    */
-  store(params: CacheStoreParams): void {
+  store(userId: string, params: CacheStoreParams): void {
     const embeddingBuffer = Buffer.from(new Float32Array(params.embeddingVector).buffer)
 
     const insertTransaction = this.db.transaction(() => {
       // Remove existing entry for the same fingerprint to avoid duplicates
       const existing = this.db.prepare(`
         SELECT id, embedding_rowid FROM document_cache
-        WHERE job_fingerprint_hash = ? AND content_items_hash = ? AND document_type = ?
+        WHERE job_fingerprint_hash = ? AND content_items_hash = ? AND document_type = ? AND user_id = ?
       `).get(
-        params.jobFingerprintHash, params.contentItemsHash, params.documentType
+        params.jobFingerprintHash, params.contentItemsHash, params.documentType, userId
       ) as { id: number; embedding_rowid: number } | undefined
 
       if (existing) {
@@ -271,12 +279,13 @@ export class DocumentCacheRepository {
       // Insert document_cache row
       this.db.prepare(`
         INSERT INTO document_cache (
-          embedding_rowid, document_type, job_fingerprint_hash, content_items_hash,
+          user_id, embedding_rowid, document_type, job_fingerprint_hash, content_items_hash,
           role_normalized, tech_stack_json, document_content_json,
           job_description_text, company_name, model_version, role_fingerprint_hash,
           archetype_fingerprint_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
+        userId,
         embeddingRowid,
         params.documentType,
         params.jobFingerprintHash,
@@ -300,12 +309,13 @@ export class DocumentCacheRepository {
    * Call after any profile mutation (personal info, content items, prompts) to purge stale entries.
    * Returns the number of removed entries.
    */
-  removeStaleEntries(currentContentHash: string): number {
+  removeStaleEntries(userId: string, currentContentHash: string): number {
     const deleteTransaction = this.db.transaction(() => {
       const rows = this.db.prepare(`
         SELECT embedding_rowid FROM document_cache
         WHERE content_items_hash != ?
-      `).all(currentContentHash) as Array<{ embedding_rowid: number }>
+          AND user_id = ?
+      `).all(currentContentHash, userId) as Array<{ embedding_rowid: number }>
 
       if (!rows.length) return 0
 
@@ -314,8 +324,8 @@ export class DocumentCacheRepository {
       this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
 
       this.db.prepare(`
-        DELETE FROM document_cache WHERE content_items_hash != ?
-      `).run(currentContentHash)
+        DELETE FROM document_cache WHERE content_items_hash != ? AND user_id = ?
+      `).run(currentContentHash, userId)
 
       return rows.length
     })
@@ -329,13 +339,19 @@ export class DocumentCacheRepository {
 
   /**
    * Prune entries older than the specified number of days.
+   * When userId is provided, only prunes that user's entries.
+   * When omitted, prunes across all users (for system maintenance).
    */
-  pruneOlderThan(days: number): number {
+  pruneOlderThan(days: number, userId?: string): number {
     return this.db.transaction(() => {
+      const userFilter = userId ? ' AND user_id = ?' : ''
+      const selectParams: unknown[] = [days]
+      if (userId) selectParams.push(userId)
+
       const rows = this.db.prepare(`
         SELECT embedding_rowid FROM document_cache
-        WHERE created_at < datetime('now', '-' || ? || ' days')
-      `).all(days) as Array<{ embedding_rowid: number }>
+        WHERE created_at < datetime('now', '-' || ? || ' days')${userFilter}
+      `).all(...selectParams) as Array<{ embedding_rowid: number }>
 
       if (!rows.length) return 0
 
@@ -343,10 +359,13 @@ export class DocumentCacheRepository {
       const placeholders = rowids.map(() => '?').join(',')
       this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
 
+      const deleteParams: unknown[] = [days]
+      if (userId) deleteParams.push(userId)
+
       this.db.prepare(`
         DELETE FROM document_cache
-        WHERE created_at < datetime('now', '-' || ? || ' days')
-      `).run(days)
+        WHERE created_at < datetime('now', '-' || ? || ' days')${userFilter}
+      `).run(...deleteParams)
 
       return rows.length
     })()

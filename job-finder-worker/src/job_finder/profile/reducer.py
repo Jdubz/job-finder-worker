@@ -193,6 +193,7 @@ def reduce_content_items(
 def load_scoring_profile(
     db_path: Optional[str] = None,
     relevant_experience_start: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> ScoringProfile:
     """Load content_items from SQLite and reduce to scoring profile.
 
@@ -200,12 +201,19 @@ def load_scoring_profile(
         db_path: Path to SQLite database
         relevant_experience_start: Only count work experience starting from this date
                                    (YYYY-MM-DD or YYYY-MM format)
+        user_id: Filter content_items to this user (required for multi-user)
     """
     try:
         with sqlite_connection(db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items"
-            ).fetchall()
+            if user_id:
+                rows = conn.execute(
+                    "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items"
+                ).fetchall()
         items = [dict(row) for row in rows]
         return reduce_content_items(items, relevant_experience_start=relevant_experience_start)
     except sqlite3.OperationalError:

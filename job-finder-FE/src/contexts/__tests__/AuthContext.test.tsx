@@ -19,7 +19,7 @@ vi.mock("@/api/auth-client", () => {
             email: "owner@test.dev",
             name: "Test User",
             picture: "avatar.png",
-            roles: ["admin", "viewer"],
+            roles: ["admin", "user"],
           },
         })
       ),
@@ -58,7 +58,7 @@ const TestComponent = () => {
   return (
     <div>
       <div data-testid="user-email">{user?.email ?? "No user"}</div>
-      <div data-testid="is-owner">{isOwner ? "Owner" : "Viewer"}</div>
+      <div data-testid="is-owner">{isOwner ? "Owner" : "User"}</div>
       <button data-testid="sign-in" onClick={() => loginWithGoogle("test-token")}>
         Sign In
       </button>
@@ -88,7 +88,7 @@ describe("AuthContext", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("user-email")).toHaveTextContent("No user")
-      expect(screen.getByTestId("is-owner")).toHaveTextContent("Viewer")
+      expect(screen.getByTestId("is-owner")).toHaveTextContent("User")
     })
   })
 

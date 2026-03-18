@@ -3,7 +3,7 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildResumeVersionRouter } from '../resume-version.routes'
 import { ResumeVersionRepository } from '../resume-version.repository'
-import type { AuthenticatedRequest } from '../../../middleware/firebase-auth'
+import type { AuthenticatedRequest } from '../../../middleware/auth'
 import { getDb } from '../../../db/sqlite'
 
 const createApp = () => {
@@ -19,7 +19,7 @@ const createApp = () => {
     }
     next()
   })
-  app.use('/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: [] }))
+  app.use('/resume-versions', buildResumeVersionRouter())
   return app
 }
 

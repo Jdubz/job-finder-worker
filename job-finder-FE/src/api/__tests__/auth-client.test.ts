@@ -43,7 +43,7 @@ describe('AuthClient', () => {
         uid: 'user-123',
         email: 'test@example.com',
         name: 'Test User',
-        roles: ['viewer'],
+        roles: ['user'],
       }
 
       mockFetch.mockResolvedValueOnce(
@@ -102,7 +102,7 @@ describe('AuthClient', () => {
         uid: 'user-456',
         email: 'session@example.com',
         name: 'Session User',
-        roles: ['admin', 'viewer'],
+        roles: ['admin', 'user'],
       }
 
       mockFetch.mockResolvedValueOnce(

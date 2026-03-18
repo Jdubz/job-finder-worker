@@ -14,6 +14,7 @@ export { companiesClient, CompaniesClient } from "./companies-client"
 export { jobSourcesClient, JobSourcesClient } from "./job-sources-client"
 export { jobListingsClient, JobListingsClient } from "./job-listings-client"
 export { resumeVersionsClient, ResumeVersionsClient } from "./resume-versions-client"
+export { userConfigClient, UserConfigClient } from "./user-config-client"
 
 export type { RequestOptions } from "./base-client"
 export type { JobMatchFilters } from "./job-matches-client"

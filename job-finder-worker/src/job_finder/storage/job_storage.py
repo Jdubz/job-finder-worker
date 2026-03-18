@@ -76,16 +76,22 @@ class JobStorage:
         return fallback
 
     def _find_existing_by_listing_id(
-        self, conn: sqlite3.Connection, job_listing_id: str
+        self, conn: sqlite3.Connection, job_listing_id: str, user_id: Optional[str] = None
     ) -> Optional[str]:
-        """Find existing job match by job_listing_id."""
+        """Find existing job match by job_listing_id (and user_id if provided)."""
         if not job_listing_id:
             return None
 
-        row = conn.execute(
-            "SELECT id FROM job_matches WHERE job_listing_id = ? LIMIT 1",
-            (job_listing_id,),
-        ).fetchone()
+        if user_id:
+            row = conn.execute(
+                "SELECT id FROM job_matches WHERE job_listing_id = ? AND user_id = ? LIMIT 1",
+                (job_listing_id, user_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id FROM job_matches WHERE job_listing_id = ? AND user_id IS NULL LIMIT 1",
+                (job_listing_id,),
+            ).fetchone()
 
         if row:
             return row["id"]
@@ -120,12 +126,13 @@ class JobStorage:
             raise StorageError("job_listing_id is required to save job match")
 
         with sqlite_connection(self.db_path) as conn:
-            # Check for existing match with this listing
-            existing = self._find_existing_by_listing_id(conn, job_listing_id)
+            # Check for existing match with this listing (scoped by user)
+            existing = self._find_existing_by_listing_id(conn, job_listing_id, user_id)
             if existing:
                 logger.info(
-                    "[DB:DUPLICATE] Job match already exists for listing %s (ID: %s)",
+                    "[DB:DUPLICATE] Job match already exists for listing %s user=%s (ID: %s)",
                     job_listing_id,
+                    user_id,
                     existing,
                 )
                 return existing
@@ -154,8 +161,8 @@ class JobStorage:
                         matched_skills, missing_skills, match_reasons, key_strengths,
                         potential_concerns, experience_match,
                         customization_recommendations, resume_intake_json, analyzed_at,
-                        submitted_by, queue_item_id, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        submitted_by, user_id, queue_item_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         job_id,
@@ -170,7 +177,8 @@ class JobStorage:
                         _serialize_list(customization),
                         None,  # resume_intake_data (deprecated)
                         now,
-                        user_id,
+                        user_id,  # submitted_by
+                        user_id,  # user_id (owner)
                         queue_item_id,
                         now,
                         now,
@@ -182,7 +190,7 @@ class JobStorage:
                         f"Invalid job_listing_id: {job_listing_id} not found in job_listings"
                     ) from exc
                 if "job_matches.job_listing_id" in str(exc):
-                    existing = self._find_existing_by_listing_id(conn, job_listing_id)
+                    existing = self._find_existing_by_listing_id(conn, job_listing_id, user_id)
                     if existing:
                         return existing
                 raise StorageError(f"Failed to save job match: {exc}") from exc

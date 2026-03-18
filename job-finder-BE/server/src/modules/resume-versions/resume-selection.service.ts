@@ -101,8 +101,8 @@ export class ResumeSelectionService {
    * Select content from the pool for a specific job match (no PDF generation).
    * Used by the generator workflow to produce ResumeContent for review.
    */
-  async selectContent(jobMatchId: string): Promise<ResumeContent> {
-    const { resumeContent } = await this.buildSelectedContent(jobMatchId)
+  async selectContent(userId: string, jobMatchId: string): Promise<ResumeContent> {
+    const { resumeContent } = await this.buildSelectedContent(userId, jobMatchId)
     return resumeContent
   }
 
@@ -111,7 +111,7 @@ export class ResumeSelectionService {
    * filter tree, validate fit.
    * Shared by selectContent (review workflow) and tailor (auto-tailor + cache).
    */
-  private async buildSelectedContent(jobMatchId: string): Promise<{
+  private async buildSelectedContent(userId: string, jobMatchId: string): Promise<{
     resumeContent: ResumeContent
     personalInfo: PersonalInfo
     selection: SelectionResult
@@ -119,24 +119,24 @@ export class ResumeSelectionService {
     fit: ReturnType<typeof estimateContentFit>
     match: JobMatchWithListing
   }> {
-    const pool = this.repo.getPoolVersion()
+    const pool = this.repo.getPoolVersion(userId)
     if (!pool) throw new PoolNotFoundError()
 
-    const items = this.repo.listItems(pool.id)
+    const items = this.repo.listItems(userId, pool.id)
     if (items.length === 0) throw new PoolNotFoundError('Resume pool has no items.')
 
     const tree = buildItemTree(items)
 
-    const match = this.jobMatchRepo.getByIdWithListing(jobMatchId)
+    const match = this.jobMatchRepo.getByIdWithListing(userId, jobMatchId)
     if (!match) throw new JobMatchNotFoundError(jobMatchId)
 
     const personalInfoStore = new PersonalInfoStore()
-    const personalInfo = await personalInfoStore.get()
+    const personalInfo = await personalInfoStore.get(userId)
     if (!personalInfo) throw new PersonalInfoMissingError()
 
     // ── Selection cache lookup ──────────────────────────────────
     const poolItemsHash = computePoolItemsHash(items)
-    const cacheResult = await this.selectionCache.lookup(match, poolItemsHash)
+    const cacheResult = await this.selectionCache.lookup(userId, match, poolItemsHash)
 
     let selection: SelectionResult
 
@@ -158,10 +158,10 @@ export class ResumeSelectionService {
           { jobMatchId, tier: cacheResult.tier },
           'Cached selection produced empty tree (stale IDs?), falling back to AI'
         )
-        selection = await this.runAISelection(tree, match, jobMatchId, poolItemsHash)
+        selection = await this.runAISelection(userId, tree, match, jobMatchId, poolItemsHash)
       }
     } else {
-      selection = await this.runAISelection(tree, match, jobMatchId, poolItemsHash, cacheResult.embedding)
+      selection = await this.runAISelection(userId, tree, match, jobMatchId, poolItemsHash, cacheResult.embedding)
     }
 
     const selectedTree = filterTreeToSelection(tree, selection)
@@ -181,6 +181,7 @@ export class ResumeSelectionService {
    * Run AI selection and store the result in the selection cache.
    */
   private async runAISelection(
+    userId: string,
     tree: ResumeItemNode[],
     match: JobMatchWithListing,
     jobMatchId: string,
@@ -197,7 +198,7 @@ export class ResumeSelectionService {
     logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
 
     // Store in selection cache (fire-and-forget — store() handles its own error logging)
-    this.selectionCache.store(match, poolItemsHash, selection, precomputedEmbedding)
+    this.selectionCache.store(userId, match, poolItemsHash, selection, precomputedEmbedding)
 
     return selection
   }
@@ -206,10 +207,10 @@ export class ResumeSelectionService {
    * Tailor the pool resume for a specific job match.
    * Returns cached result if available, otherwise runs AI selection.
    */
-  async tailor(jobMatchId: string, force = false): Promise<TailorResult> {
+  async tailor(userId: string, jobMatchId: string, force = false): Promise<TailorResult> {
     // Check cache first (unless forced)
     if (!force) {
-      const cached = this.repo.getCachedTailoredResume(jobMatchId)
+      const cached = this.repo.getCachedTailoredResume(userId, jobMatchId)
       if (cached) {
         // Verify cached PDF still exists on disk
         let pdfValid = false
@@ -239,7 +240,7 @@ export class ResumeSelectionService {
       }
     }
 
-    const { resumeContent, personalInfo, selection, selectedTree, fit } = await this.buildSelectedContent(jobMatchId)
+    const { resumeContent, personalInfo, selection, selectedTree, fit } = await this.buildSelectedContent(userId, jobMatchId)
 
     const fitEstimate: ContentFitEstimate = {
       mainColumnLines: fit.mainColumnLines,
@@ -269,7 +270,7 @@ export class ResumeSelectionService {
     const selectedItemIds = collectItemIds(selectedTree)
 
     // Cache result
-    const saved = this.repo.saveTailoredResume({
+    const saved = this.repo.saveTailoredResume(userId, {
       jobMatchId,
       resumeContent,
       selectedItems: selectedItemIds,

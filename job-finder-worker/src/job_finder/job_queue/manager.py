@@ -80,6 +80,8 @@ class QueueManager:
             cols = {row["name"] for row in conn.execute("PRAGMA table_info(job_queue);")}
             if "dedupe_key" not in cols:
                 conn.execute("ALTER TABLE job_queue ADD COLUMN dedupe_key TEXT;")
+            if "user_id" not in cols:
+                conn.execute("ALTER TABLE job_queue ADD COLUMN user_id TEXT;")
             conn.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_dedupe_active
                 ON job_queue(dedupe_key)
@@ -172,6 +174,9 @@ class QueueManager:
         t = item.type
         norm_url = self._normalize_url(item.url)
         if t == QueueItemType.JOB:
+            # Per-user scoring items include user_id to allow fan-out
+            if item.user_id:
+                return f"job|{norm_url}|user:{item.user_id}"
             return f"job|{norm_url}"
         if t == QueueItemType.COMPANY:
             ident = (
@@ -330,6 +335,7 @@ class QueueManager:
             record.get("max_retries", 3),
             record.get("last_error_category"),
             record.get("dedupe_key"),
+            record.get("user_id"),
             record["id"],
         )
 
@@ -340,7 +346,8 @@ class QueueManager:
                 SET type=?, status=?, url=?, tracking_id=?, parent_item_id=?,
                     input=?, output=?, result_message=?, error_details=?,
                     created_at=?, updated_at=?, processed_at=?, completed_at=?,
-                    retry_count=?, max_retries=?, last_error_category=?, dedupe_key=?
+                    retry_count=?, max_retries=?, last_error_category=?, dedupe_key=?,
+                    user_id=?
                 WHERE id=?
                 """,
                 values,
@@ -836,6 +843,10 @@ class QueueManager:
         # Inherit tracking_id for lineage, set parent_item_id for direct relationship
         new_item_data.setdefault("tracking_id", current_item.tracking_id)
         new_item_data.setdefault("parent_item_id", current_item.id)
+
+        # Propagate user_id to child items
+        if current_item.user_id:
+            new_item_data.setdefault("user_id", current_item.user_id)
 
         new_item = JobQueueItem(**new_item_data)
         new_item.dedupe_key = self._compute_dedupe_key(new_item)

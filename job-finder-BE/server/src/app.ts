@@ -1,4 +1,4 @@
-import express, { type RequestHandler } from 'express'
+import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import { httpLogger, logger } from './logger'
@@ -16,8 +16,8 @@ import { buildGeneratorArtifactsRouter } from './modules/generator/generator.art
 import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './modules/generator/generator.assets.routes'
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
-import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
-import { publicReadAuthenticatedWrite, queuePublicJobSubmit, generatorSelectivePublicRead } from './middleware/optional-auth'
+import { verifyAuth, requireRole } from './middleware/auth'
+import { queuePublicJobSubmit } from './middleware/optional-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { buildMaintenanceRouter } from './modules/maintenance'
 import { ApiErrorCode } from '@shared/types'
@@ -27,6 +27,7 @@ import { buildApplicatorRouter } from './routes/applicator.routes'
 import { buildOriginGuard } from './middleware/origin-guard'
 import { buildChatWidgetRouter } from './modules/chat-widget/chat.routes'
 import { buildResumeVersionRouter } from './modules/resume-versions/resume-version.routes'
+import { buildUserConfigRouter } from './modules/user-config/user-config.routes'
 
 export function buildApp() {
   const app = express()
@@ -83,64 +84,51 @@ export function buildApp() {
   )
   app.use(httpLogger)
 
+  app.use(express.json({ limit: '1mb' }))
+  app.use(express.urlencoded({ extended: true }))
+
+  // Generator pipeline uses larger body limit
   const generatorPipeline = express.Router()
   generatorPipeline.use(express.json({ limit: '10mb' }))
   generatorPipeline.use(express.urlencoded({ extended: true }))
   generatorPipeline.use('/assets', buildGeneratorAssetsRouter())
   generatorPipeline.use(buildGeneratorWorkflowRouter())
 
-  // Public asset serving (no auth). Upload stays behind /api/generator/assets within the auth pipeline.
-  app.use('/api/generator/artifacts/assets', buildGeneratorAssetsServeRouter())
-  // Artifacts route is public - URLs are unique/semi-secret paths for direct download
-  app.use('/api/generator/artifacts', buildGeneratorArtifactsRouter())
-
-  app.use('/api/generator', generatorSelectivePublicRead, generatorPipeline)
-
-  app.use(express.json({ limit: '1mb' }))
-  app.use(express.urlencoded({ extended: true }))
-
   // Basic CSRF mitigation: block cross-site mutations when Origin is present and disallowed
   app.use('/api', originGuard)
 
-  // Prompts route - public GET, authenticated PUT/POST
+  // ── Public routes (no auth) ──────────────────────────────────
   app.use('/api/prompts', buildPromptsRouter())
-
-  // Logging route - accepts both authenticated and unauthenticated requests
   app.use('/api/logs', buildLoggingRouter())
-
-  // Lifecycle events route - public by design so the frontend can detect deploys/restarts
   app.use('/api/lifecycle', buildLifecycleRouter())
-
-  // Worker routes use worker token auth (not Google OAuth) for worker-to-API communication
-  app.use('/api/queue/worker', buildWorkerRouter())
-
-  // Auth/session utilities
+  app.use('/api/chat', buildChatWidgetRouter())
   app.use('/api/auth', buildAuthRouter())
 
-  // Content items should be publicly readable. Mutations require admin role.
-  const contentItemMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
-  app.use('/api/content-items', buildContentItemRouter({ mutationsMiddleware: contentItemMutationGuards }))
+  // Worker routes use worker token auth (not Google OAuth)
+  app.use('/api/queue/worker', buildWorkerRouter())
 
-  // Resume versions — public read, admin mutations + publish, auth-only for tailoring
-  const resumeVersionMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
-  const resumeVersionAuthGuards: RequestHandler[] = [verifyFirebaseAuth]
-  app.use('/api/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: resumeVersionMutationGuards, authMiddleware: resumeVersionAuthGuards }))
-
-  // Chat widget - public endpoint for visitor interactions
-  app.use('/api/chat', buildChatWidgetRouter())
-
-  // Job matches - public GET, authenticated mutations
-  app.use('/api/job-matches', publicReadAuthenticatedWrite, buildJobMatchRouter())
-
-  // Queue routes - public POST /jobs, auth required for everything else
+  // Queue: public POST /jobs, auth required for everything else
   app.use('/api/queue', queuePublicJobSubmit, buildJobQueueRouter())
 
-  // All other API routes require authentication
-  app.use('/api', verifyFirebaseAuth)
+  // ── All remaining API routes require authentication ──────────
+  app.use('/api', verifyAuth)
+
+  // Per-user data routes (owner-only, scoped by user_id)
+  app.use('/api/content-items', buildContentItemRouter())
+  app.use('/api/resume-versions', buildResumeVersionRouter())
+  app.use('/api/job-matches', buildJobMatchRouter())
+  app.use('/api/generator/artifacts/assets', buildGeneratorAssetsServeRouter())
+  app.use('/api/generator/artifacts', buildGeneratorArtifactsRouter())
+  app.use('/api/generator', generatorPipeline)
+  app.use('/api/user-config', buildUserConfigRouter())
   app.use('/api/applicator', buildApplicatorRouter())
+
+  // Shared data routes (auth required, no user scoping)
   app.use('/api/job-listings', buildJobListingRouter())
   app.use('/api/companies', buildCompanyRouter())
-  app.use('/api/job-sources', buildJobSourceRouter())
+
+  // Admin-only routes
+  app.use('/api/job-sources', requireRole('admin'), buildJobSourceRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())
   app.use('/api/maintenance', requireRole('admin'), buildMaintenanceRouter())
 

@@ -107,9 +107,9 @@ export function buildAuthRouter() {
 
     // Upsert user and create session
     // Database is the source of truth for roles
-    // Existing users keep their roles, new users get 'viewer' role by default
+    // Existing users keep their roles, new users get 'user' role by default
     const existingUser = userRepository.findByEmail(googleUser.email)
-    const roles = existingUser?.roles?.length ? existingUser.roles : ['viewer']
+    const roles = existingUser?.roles?.length ? existingUser.roles : ['user']
 
     const user = userRepository.upsertUser(
       googleUser.email,

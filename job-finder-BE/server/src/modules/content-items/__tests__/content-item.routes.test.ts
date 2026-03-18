@@ -2,7 +2,7 @@ import express from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildContentItemRouter } from '../content-item.routes'
-import { type AuthenticatedRequest } from '../../../middleware/firebase-auth'
+import { type AuthenticatedRequest } from '../../../middleware/auth'
 import { getDb } from '../../../db/sqlite'
 
 const app = express()

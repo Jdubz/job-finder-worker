@@ -81,16 +81,17 @@ export class GeneratorWorkflowRepository {
     this.db = getDb()
   }
 
-  createRequest(record: Omit<GeneratorRequestRecord, 'createdAt' | 'updatedAt'>): GeneratorRequestRecord {
+  createRequest(userId: string, record: Omit<GeneratorRequestRecord, 'createdAt' | 'updatedAt'>): GeneratorRequestRecord {
     const now = new Date().toISOString()
     this.db
       .prepare(
         `INSERT INTO generator_requests
-         (id, generate_type, job_json, preferences_json, personal_info_json, status, resume_url, cover_letter_url, job_match_id, created_by, steps_json, intermediate_results_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, user_id, generate_type, job_json, preferences_json, personal_info_json, status, resume_url, cover_letter_url, job_match_id, created_by, steps_json, intermediate_results_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
+        userId,
         record.generateType,
         JSON.stringify(record.job ?? {}),
         record.preferences ? JSON.stringify(record.preferences) : null,
@@ -105,14 +106,15 @@ export class GeneratorWorkflowRepository {
         now,
         now
       )
-    return this.getRequest(record.id)!
+    return this.getRequest(userId, record.id)!
   }
 
   updateRequest(
+    userId: string,
     id: string,
     updates: Partial<Omit<GeneratorRequestRecord, 'id' | 'generateType' | 'job'> & { job?: Record<string, unknown> }>
   ): GeneratorRequestRecord | null {
-    const existing = this.getRequest(id)
+    const existing = this.getRequest(userId, id)
     if (!existing) {
       return null
     }
@@ -127,7 +129,7 @@ export class GeneratorWorkflowRepository {
       .prepare(
         `UPDATE generator_requests
          SET status = ?, resume_url = ?, cover_letter_url = ?, job_match_id = ?, job_json = ?, preferences_json = ?, personal_info_json = ?, steps_json = ?, intermediate_results_json = ?, updated_at = ?
-         WHERE id = ?`
+         WHERE id = ? AND user_id = ?`
       )
       .run(
         updates.status ?? existing.status,
@@ -140,14 +142,17 @@ export class GeneratorWorkflowRepository {
         mergedSteps,
         mergedIntermediate,
         new Date().toISOString(),
-        id
+        id,
+        userId
       )
 
-    return this.getRequest(id)
+    return this.getRequest(userId, id)
   }
 
-  listRequests(limit = 50, jobMatchId?: string): GeneratorRequestRecord[] {
-    const whereClause = jobMatchId ? 'WHERE job_match_id = ?' : ''
+  listRequests(userId: string, limit = 50, jobMatchId?: string): GeneratorRequestRecord[] {
+    const whereClause = jobMatchId
+      ? 'WHERE user_id = ? AND job_match_id = ?'
+      : 'WHERE user_id = ?'
     const rows = this.db
       .prepare(
         `SELECT * FROM generator_requests
@@ -155,31 +160,32 @@ export class GeneratorWorkflowRepository {
          ORDER BY created_at DESC
          LIMIT ?`
       )
-      .all(...(jobMatchId ? [jobMatchId, limit] : [limit])) as GeneratorRequestRow[]
+      .all(...(jobMatchId ? [userId, jobMatchId, limit] : [userId, limit])) as GeneratorRequestRow[]
 
     return rows.map((row) => this.mapRequest(row))
   }
 
-  getRequest(id: string): GeneratorRequestRecord | null {
+  getRequest(userId: string, id: string): GeneratorRequestRecord | null {
     const row = this.db
       .prepare(
         `SELECT * FROM generator_requests
-         WHERE id = ?`
+         WHERE id = ? AND user_id = ?`
       )
-      .get(id) as GeneratorRequestRow | undefined
+      .get(id, userId) as GeneratorRequestRow | undefined
 
     return row ? this.mapRequest(row) : null
   }
 
-  addArtifact(record: GeneratorArtifactRecord): GeneratorArtifactRecord {
+  addArtifact(userId: string, record: GeneratorArtifactRecord): GeneratorArtifactRecord {
     this.db
       .prepare(
         `INSERT INTO generator_artifacts
-         (id, request_id, artifact_type, filename, storage_path, size_bytes, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+         (id, user_id, request_id, artifact_type, filename, storage_path, size_bytes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
+        userId,
         record.requestId,
         record.artifactType,
         record.filename,
@@ -190,14 +196,14 @@ export class GeneratorWorkflowRepository {
     return record
   }
 
-  listArtifacts(requestId: string): GeneratorArtifactRecord[] {
+  listArtifacts(userId: string, requestId: string): GeneratorArtifactRecord[] {
     const rows = this.db
       .prepare(
         `SELECT * FROM generator_artifacts
-         WHERE request_id = ?
+         WHERE request_id = ? AND user_id = ?
          ORDER BY created_at ASC`
       )
-      .all(requestId) as Array<{
+      .all(requestId, userId) as Array<{
       id: string
       request_id: string
       artifact_type: string

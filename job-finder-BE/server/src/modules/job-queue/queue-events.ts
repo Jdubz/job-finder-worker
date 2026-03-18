@@ -12,9 +12,15 @@ import type {
 } from '@shared/types'
 import { logger } from '../../logger'
 import type { WebSocket } from 'ws'
-import { HEARTBEAT_INTERVAL_MS, initSseStream, safeBroadcast, type SseClient } from '../shared/sse'
+import { HEARTBEAT_INTERVAL_MS, initSseStream, type SseClient } from '../shared/sse'
+import type { AuthenticatedRequest } from '../../middleware/auth'
 
-const clients = new Set<SseClient>()
+type QueueSseClient = SseClient & {
+  userId: string | null
+  isAdmin: boolean
+}
+
+const clients = new Set<QueueSseClient>()
 const commandQueue = new Map<string, CancelCommand[]>()
 let workerSocket: WebSocket | null = null
 
@@ -129,18 +135,81 @@ export function broadcastQueueEvent<E extends QueueSseEventName>(
     ts: new Date().toISOString()
   }
   const serialized = toEventString(payload)
-  safeBroadcast(clients, serialized)
+
+  // Determine which clients should receive this event
+  const recipients = getRecipients(event, data)
+  for (const client of recipients) {
+    try {
+      client.res.write(serialized)
+    } catch {
+      if (client.heartbeat) clearInterval(client.heartbeat)
+      clients.delete(client)
+    }
+  }
+}
+
+/**
+ * Determine which connected clients should receive a given event.
+ *
+ * - System events (heartbeat, queue.bulk_update): admin clients only
+ * - Item events (item.created, item.updated): owner + admins
+ * - item.deleted: admins only (we don't have the full item to check user_id)
+ * - Everything else (snapshot, progress, command.*): all clients
+ */
+function getRecipients<E extends QueueSseEventName>(
+  event: E,
+  data: E extends keyof QueueEventDataMap ? QueueEventDataMap[E] : Record<string, unknown>
+): QueueSseClient[] {
+  // System events → admins only
+  if (event === 'heartbeat' || event === 'queue.bulk_update') {
+    return [...clients].filter((c) => c.isAdmin)
+  }
+
+  // Item events with a queueItem → owner + admins
+  if (event === 'item.created' || event === 'item.updated') {
+    const itemData = data as unknown as ItemCreatedEventData | ItemUpdatedEventData
+    const itemUserId = itemData.queueItem?.user_id
+    return [...clients].filter((c) => c.isAdmin || c.userId === itemUserId || !itemUserId)
+  }
+
+  // item.deleted only carries queueItemId (no user_id available) — send to admins only
+  if (event === 'item.deleted') {
+    return [...clients].filter((c) => c.isAdmin)
+  }
+
+  // Default (progress, command.ack, command.error, snapshot): all clients
+  return [...clients]
 }
 
 export function handleQueueEventsSse(req: Request, res: Response, items: QueueItem[]) {
-  initSseStream(req, res, clients, HEARTBEAT_INTERVAL_MS)
+  const authReq = req as AuthenticatedRequest
+  const userId = authReq.user?.uid ?? null
+  const isAdmin = authReq.user?.roles?.includes('admin') ?? false
+
+  // initSseStream registers a plain SseClient; we wrap it with user info
+  const baseClient = initSseStream(req, res, clients as unknown as Set<SseClient>, HEARTBEAT_INTERVAL_MS)
+
+  // Remove the plain client and re-add as QueueSseClient with user context
+  clients.delete(baseClient as unknown as QueueSseClient)
+  const queueClient: QueueSseClient = { ...baseClient, userId, isAdmin }
+  clients.add(queueClient)
+
+  // Clean up on disconnect
+  req.on('close', () => {
+    clients.delete(queueClient)
+  })
+
+  // Filter initial snapshot: non-admins see only their items + system items (null user_id)
+  const visibleItems = isAdmin
+    ? items
+    : items.filter((item) => !item.user_id || item.user_id === userId)
 
   // Initial retry hint and snapshot
   res.write('retry: 3000\n\n')
   const snapshot: QueueSsePayload<'snapshot'> = {
     id: randomUUID(),
     event: 'snapshot',
-    data: sanitizeEventData('snapshot', { items }),
+    data: sanitizeEventData('snapshot', { items: visibleItems }),
     ts: new Date().toISOString()
   }
   res.write(toEventString(snapshot))

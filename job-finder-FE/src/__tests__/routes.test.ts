@@ -17,7 +17,7 @@ describe("Routes Configuration", () => {
       expect(ROUTES.UNAUTHORIZED).toBe("/unauthorized")
     })
 
-    it("contains editor-only routes", () => {
+    it("contains admin-only routes", () => {
       expect(ROUTES.JOB_APPLICATIONS).toBe("/job-applications")
       expect(ROUTES.QUEUE_MANAGEMENT).toBe("/queue-management")
       expect(ROUTES.JOB_FINDER_CONFIG).toBe("/job-finder-config")
@@ -59,7 +59,7 @@ describe("Routes Configuration", () => {
       expect(PUBLIC_ROUTES).toContain(ROUTES.UNAUTHORIZED)
     })
 
-    it("does not include editor-only routes", () => {
+    it("does not include admin-only routes", () => {
       expect(PUBLIC_ROUTES).not.toContain(ROUTES.JOB_APPLICATIONS)
       expect(PUBLIC_ROUTES).not.toContain(ROUTES.QUEUE_MANAGEMENT)
       expect(PUBLIC_ROUTES).not.toContain(ROUTES.JOB_FINDER_CONFIG)
