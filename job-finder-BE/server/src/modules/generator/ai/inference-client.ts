@@ -43,6 +43,12 @@ function getModelForTask(taskType: string, useLocal = true): string {
 let resolvedClaudeModel: string | null = null
 let resolveInProgress: Promise<string | null> | null = null
 
+/** @internal Reset resolved model state (for tests only) */
+export function _resetResolvedModel(): void {
+  resolvedClaudeModel = null
+  resolveInProgress = null
+}
+
 /**
  * Known generalized Sonnet model IDs, newest first.
  * These follow Anthropic's naming: claude-sonnet-{major}-{minor}
@@ -71,12 +77,13 @@ async function probeLatestSonnet(baseUrl: string, apiKey: string, log: Logger): 
     for (const candidate of SONNET_CANDIDATES) {
       const model = `anthropic/${candidate}`
       try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`
+        }
         const response = await fetch(`${baseUrl}/v1/chat/completions`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
+          headers,
           body: JSON.stringify({
             model,
             messages: [{ role: 'user', content: '.' }],
@@ -162,7 +169,7 @@ export class InferenceClient {
       model = resolvedClaudeModel
     }
 
-    const result = await this.callLitellm(model, prompt, options)
+    const result = await this.callLitellm(model, taskType, prompt, options)
 
     // Detect silent fallback: requested Claude, got Gemini
     if (this.isClaudeModel(model) && this.isGeminiModel(result.model)) {
@@ -186,6 +193,7 @@ export class InferenceClient {
 
   private async callLitellm(
     model: string,
+    taskType: string,
     prompt: string,
     options: { max_tokens?: number; temperature?: number; systemPrompt?: string }
   ): Promise<AgentExecutionResult> {
@@ -225,7 +233,7 @@ export class InferenceClient {
         if (response.status === 502 || response.status === 503) {
           throw new NoAgentsAvailableError(
             `All LiteLLM providers unavailable for model ${model}: ${body}`,
-            'unknown',
+            taskType,
             [model]
           )
         }
@@ -245,7 +253,7 @@ export class InferenceClient {
       const actualModel = data.model || model
 
       this.log.info(
-        { taskType: 'inference', model: actualModel, tokens: data.usage?.total_tokens },
+        { taskType, model: actualModel, tokens: data.usage?.total_tokens },
         'LiteLLM call succeeded'
       )
 

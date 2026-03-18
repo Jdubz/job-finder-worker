@@ -49,7 +49,7 @@ if [ -z "$TEST_RESPONSE" ]; then
 fi
 
 # Check response type
-ERROR_TYPE=$(echo "$TEST_RESPONSE" | python3 -c "
+ERROR_TYPE=$(echo "$TEST_RESPONSE" | python -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -91,7 +91,7 @@ for CANDIDATE in \
     -H "anthropic-version: 2023-06-01" \
     -d "{\"model\":\"$CANDIDATE\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\".\"}]}" 2>/dev/null || echo "")
 
-  PROBE_TYPE=$(echo "$PROBE" | python3 -c "
+  PROBE_TYPE=$(echo "$PROBE" | python -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -110,4 +110,4 @@ except:
 done
 
 echo "[resolve-models] ERROR: No working Sonnet model found. Claude will be unavailable."
-exit 0
+exit 1

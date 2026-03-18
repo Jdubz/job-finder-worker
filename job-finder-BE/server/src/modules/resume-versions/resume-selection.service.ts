@@ -196,10 +196,8 @@ export class ResumeSelectionService {
     const selection = parseSelectionResponse(result.output)
     logger.info({ jobMatchId, model: result.model }, 'AI selection completed')
 
-    // Store in selection cache (fire-and-forget, non-fatal)
-    this.selectionCache.store(match, poolItemsHash, selection, precomputedEmbedding).catch(err => {
-      logger.warn({ err }, 'Selection cache store failed (non-fatal)')
-    })
+    // Store in selection cache (fire-and-forget — store() handles its own error logging)
+    this.selectionCache.store(match, poolItemsHash, selection, precomputedEmbedding)
 
     return selection
   }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { InferenceClient, InferenceError } from '../inference-client'
+import { InferenceClient, InferenceError, _resetResolvedModel } from '../inference-client'
 
 // Suppress pino logs during tests
 vi.mock('../../../../logger', () => ({
@@ -25,6 +25,7 @@ describe('InferenceClient', () => {
   })
 
   afterEach(() => {
+    _resetResolvedModel()
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
@@ -301,6 +302,94 @@ describe('InferenceClient', () => {
       }
 
       expect(chunks).toEqual(['ok'])
+    })
+  })
+
+  describe('Claude model auto-resolution', () => {
+    const claudeResponse = (model = 'claude-sonnet-4-6') => ({
+      ok: true,
+      json: () => Promise.resolve({
+        choices: [{ message: { content: 'result' } }],
+        model,
+        usage: { total_tokens: 100 }
+      })
+    })
+
+    const geminiResponse = () => ({
+      ok: true,
+      json: () => Promise.resolve({
+        choices: [{ message: { content: 'result' } }],
+        model: 'gemini-2.5-flash',
+        usage: { total_tokens: 100 }
+      })
+    })
+
+    it('detects Claude-to-Gemini fallback and triggers probe', async () => {
+      // First call: requested claude-document, got gemini back (silent fallback)
+      mockFetch.mockResolvedValueOnce(geminiResponse())
+      // Probe call: try anthropic/claude-sonnet-4-7 — fails
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 400, text: () => Promise.resolve('') })
+      // Probe call: try anthropic/claude-sonnet-4-6 — succeeds
+      mockFetch.mockResolvedValueOnce(claudeResponse())
+
+      const result = await client.execute('document', 'write this')
+
+      // The original request still returns the Gemini result
+      expect(result.model).toBe('gemini-2.5-flash')
+
+      // Wait for background probe to complete
+      await vi.waitFor(() => {
+        // Probe calls: original + 2 probe attempts (4-7 fails, 4-6 succeeds)
+        expect(mockFetch).toHaveBeenCalledTimes(3)
+      })
+    })
+
+    it('uses resolved model on subsequent calls', async () => {
+      // First call: silent fallback triggers probe
+      mockFetch.mockResolvedValueOnce(geminiResponse())
+      // Probe: 4-7 fails, 4-6 succeeds
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 400, text: () => Promise.resolve('') })
+      mockFetch.mockResolvedValueOnce(claudeResponse())
+
+      await client.execute('document', 'write this')
+
+      // Wait for probe to complete
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(3)
+      })
+
+      // Second call: should use resolved model directly
+      mockFetch.mockResolvedValueOnce(claudeResponse('anthropic/claude-sonnet-4-6'))
+
+      await client.execute('document', 'write again')
+
+      const lastCallBody = JSON.parse(mockFetch.mock.calls[3][1].body)
+      expect(lastCallBody.model).toBe('anthropic/claude-sonnet-4-6')
+    })
+
+    it('does not probe when response model matches requested model family', async () => {
+      mockFetch.mockResolvedValue(claudeResponse())
+
+      await client.execute('document', 'write this')
+
+      // Only the original call, no probes
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not probe for non-Claude models', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{ message: { content: 'result' } }],
+          model: 'gemini-2.5-flash',
+          usage: { total_tokens: 100 }
+        })
+      })
+
+      // extraction routes to local-extract, falls back to gemini — no probe
+      await client.execute('extraction', 'extract')
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
     })
   })
 })

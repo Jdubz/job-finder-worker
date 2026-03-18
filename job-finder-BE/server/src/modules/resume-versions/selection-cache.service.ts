@@ -54,7 +54,8 @@ export function computeSelectionFingerprint(
 
 /**
  * Compute a deterministic hash of pool items for cache invalidation.
- * Changes when items are added, removed, or substantively modified.
+ * Changes when items are added, removed, or modified (any field change
+ * invalidates all cached selections).
  */
 export function computePoolItemsHash(items: ResumeItem[]): string {
   const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id))
@@ -62,7 +63,7 @@ export function computePoolItemsHash(items: ResumeItem[]): string {
     id: item.id,
     aiContext: item.aiContext,
     title: item.title,
-    description: item.description?.slice(0, 100),
+    description: item.description,
     skills: item.skills ? [...item.skills].sort() : null,
   }))
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex')
@@ -306,12 +307,13 @@ export class SelectionCacheService {
 
     let response: Response
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (LITELLM_API_KEY) {
+        headers.Authorization = `Bearer ${LITELLM_API_KEY}`
+      }
       response = await fetch(`${LITELLM_BASE_URL}/v1/embeddings`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${LITELLM_API_KEY}`,
-        },
+        headers,
         body: JSON.stringify({
           model: 'local-embed',
           input: text,
