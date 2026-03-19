@@ -272,7 +272,7 @@ export function QueueManagementPage() {
         </div>
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>You need editor permissions to access queue management.</AlertDescription>
+          <AlertDescription>You need admin permissions to access queue management.</AlertDescription>
         </Alert>
       </div>
     )

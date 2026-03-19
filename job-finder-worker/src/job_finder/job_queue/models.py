@@ -55,7 +55,7 @@ class ProcessorContext:
     companies_manager: "CompaniesManager"
     sources_manager: "JobSourcesManager"
     company_info_fetcher: "CompanyInfoFetcher"
-    ai_matcher: "AIJobMatcher"
+    ai_matcher: Optional["AIJobMatcher"] = None
     notifier: Optional["QueueEventNotifier"] = None
     scrape_report_storage: Optional["ScrapeReportStorage"] = None
 
@@ -266,6 +266,7 @@ class JobQueueItem(BaseModel):
     dedupe_key: Optional[str] = None
     source: Optional[QueueSource] = None
     submitted_by: Optional[str] = None
+    user_id: Optional[str] = None
     scrape_config: Optional[ScrapeConfig] = None
     scraped_data: Optional[Dict[str, Any]] = None
     source_discovery_config: Optional[SourceDiscoveryConfig] = None
@@ -340,6 +341,7 @@ class JobQueueItem(BaseModel):
             "tracking_id": self.tracking_id,
             "parent_item_id": self.parent_item_id,
             "dedupe_key": self.dedupe_key,
+            "user_id": self.user_id,
             "input": json.dumps(input_payload),
             "output": json.dumps(output_payload),
             "result_message": self.result_message,
@@ -383,6 +385,7 @@ class JobQueueItem(BaseModel):
             dedupe_key=record.get("dedupe_key"),
             source=input_data.get("source"),
             submitted_by=input_data.get("submitted_by"),
+            user_id=record.get("user_id"),
             created_at=parse_dt(record.get("created_at")),
             updated_at=parse_dt(record.get("updated_at")),
             processed_at=parse_dt(record.get("processed_at")),

@@ -3,8 +3,10 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildResumeVersionRouter } from '../resume-version.routes'
 import { ResumeVersionRepository } from '../resume-version.repository'
-import type { AuthenticatedRequest } from '../../../middleware/firebase-auth'
+import type { AuthenticatedRequest } from '../../../middleware/auth'
 import { getDb } from '../../../db/sqlite'
+
+const TEST_USER = 'test-user'
 
 const createApp = () => {
   const app = express()
@@ -12,14 +14,14 @@ const createApp = () => {
   // Simulate authenticated admin user for mutation routes
   app.use((req, _res, next) => {
     ;(req as AuthenticatedRequest).user = {
-      uid: 'test-user',
+      uid: TEST_USER,
       email: 'admin@test.dev',
       name: 'Test Admin',
-      roles: ['admin', 'viewer']
+      roles: ['admin', 'user']
     }
     next()
   })
-  app.use('/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: [] }))
+  app.use('/resume-versions', buildResumeVersionRouter())
   return app
 }
 
@@ -31,8 +33,10 @@ describe('resume-version routes contract', () => {
 
   beforeEach(() => {
     db.prepare('DELETE FROM resume_items').run()
+    // Ensure the pool version is owned by the test user
+    db.prepare('UPDATE resume_versions SET user_id = ? WHERE slug = ?').run(TEST_USER, 'pool')
     // Reset pool publish state (may be modified by repository tests sharing this DB)
-    repo.unpublishVersion('pool')
+    repo.unpublishVersion(TEST_USER, 'pool')
   })
 
   // ── Version endpoints ──────────────────────────────────────────
@@ -58,13 +62,13 @@ describe('resume-version routes contract', () => {
     })
 
     it('returns version with nested items tree', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      const section = repo.createItem(version.id, {
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      const section = repo.createItem(TEST_USER, version.id, {
         title: 'Experience',
         aiContext: 'section',
         userEmail
       })
-      repo.createItem(version.id, {
+      repo.createItem(TEST_USER, version.id, {
         parentId: section.id,
         title: 'AWS',
         aiContext: 'work',
@@ -88,9 +92,9 @@ describe('resume-version routes contract', () => {
 
   describe('GET /resume-versions/:slug/items', () => {
     it('returns items tree with total count', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      repo.createItem(version.id, { title: 'Item A', userEmail })
-      repo.createItem(version.id, { title: 'Item B', userEmail })
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      repo.createItem(TEST_USER, version.id, { title: 'Item A', userEmail })
+      repo.createItem(TEST_USER, version.id, { title: 'Item B', userEmail })
 
       const res = await request(app).get('/resume-versions/pool/items')
       expect(res.status).toBe(200)
@@ -106,7 +110,7 @@ describe('resume-version routes contract', () => {
 
     afterEach(() => {
       for (const slug of cleanupSlugs) {
-        try { repo.deleteVersion(slug) } catch { /* already deleted */ }
+        try { repo.deleteVersion(TEST_USER, slug) } catch { /* already deleted */ }
       }
       cleanupSlugs.length = 0
     })
@@ -153,9 +157,9 @@ describe('resume-version routes contract', () => {
   describe('DELETE /resume-versions/:slug', () => {
     it('deletes a version and its items', async () => {
       // Create a version to delete
-      repo.createVersion({ name: 'To Delete', slug: 'to-delete' })
-      const version = repo.getVersionBySlug('to-delete')!
-      repo.createItem(version.id, { title: 'Item', userEmail })
+      repo.createVersion(TEST_USER, { name: 'To Delete', slug: 'to-delete' })
+      const version = repo.getVersionBySlug(TEST_USER, 'to-delete')!
+      repo.createItem(TEST_USER, version.id, { title: 'Item', userEmail })
 
       const res = await request(app).delete('/resume-versions/to-delete')
       expect(res.status).toBe(200)
@@ -163,7 +167,7 @@ describe('resume-version routes contract', () => {
       expect(res.body.data.slug).toBe('to-delete')
 
       // Verify version is gone
-      expect(repo.getVersionBySlug('to-delete')).toBeNull()
+      expect(repo.getVersionBySlug(TEST_USER, 'to-delete')).toBeNull()
     })
 
     it('returns 404 for unknown slug', async () => {
@@ -187,8 +191,8 @@ describe('resume-version routes contract', () => {
     })
 
     it('creates a child item', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      const parent = repo.createItem(version.id, { title: 'Exp', aiContext: 'section', userEmail })
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      const parent = repo.createItem(TEST_USER, version.id, { title: 'Exp', aiContext: 'section', userEmail })
 
       const res = await request(app)
         .post('/resume-versions/pool/items')
@@ -230,8 +234,8 @@ describe('resume-version routes contract', () => {
 
   describe('PATCH /resume-versions/:slug/items/:id', () => {
     it('updates an item', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      const item = repo.createItem(version.id, { title: 'Original', userEmail })
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      const item = repo.createItem(TEST_USER, version.id, { title: 'Original', userEmail })
 
       const res = await request(app)
         .patch(`/resume-versions/pool/items/${item.id}`)
@@ -253,8 +257,8 @@ describe('resume-version routes contract', () => {
 
   describe('DELETE /resume-versions/:slug/items/:id', () => {
     it('deletes an item', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      const item = repo.createItem(version.id, { title: 'To Delete', userEmail })
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      const item = repo.createItem(TEST_USER, version.id, { title: 'To Delete', userEmail })
 
       const res = await request(app)
         .delete(`/resume-versions/pool/items/${item.id}`)
@@ -276,10 +280,10 @@ describe('resume-version routes contract', () => {
 
   describe('POST /resume-versions/:slug/items/:id/reorder', () => {
     it('reorders items', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      repo.createItem(version.id, { title: 'A', userEmail })
-      repo.createItem(version.id, { title: 'B', userEmail })
-      const c = repo.createItem(version.id, { title: 'C', userEmail })
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      repo.createItem(TEST_USER, version.id, { title: 'A', userEmail })
+      repo.createItem(TEST_USER, version.id, { title: 'B', userEmail })
+      const c = repo.createItem(TEST_USER, version.id, { title: 'C', userEmail })
 
       // Move C to position 0
       const res = await request(app)
@@ -295,9 +299,9 @@ describe('resume-version routes contract', () => {
     })
 
     it('moves item to a parent', async () => {
-      const version = repo.getVersionBySlug('pool')!
-      const parent = repo.createItem(version.id, { title: 'Parent', aiContext: 'section', userEmail })
-      const child = repo.createItem(version.id, { title: 'Orphan', userEmail })
+      const version = repo.getVersionBySlug(TEST_USER, 'pool')!
+      const parent = repo.createItem(TEST_USER, version.id, { title: 'Parent', aiContext: 'section', userEmail })
+      const child = repo.createItem(TEST_USER, version.id, { title: 'Orphan', userEmail })
 
       const res = await request(app)
         .post(`/resume-versions/pool/items/${child.id}/reorder`)

@@ -137,6 +137,7 @@ export interface QueueItem {
   url?: string | null
   tracking_id?: string // UUID linking a task family
   parent_item_id?: string | null
+  user_id?: string | null // Owner user ID (null for system tasks like extraction)
   input?: Record<string, unknown> | null // Task-specific inputs (source IDs, configs, company hints, etc.)
   output?: Record<string, unknown> | null // Task results/telemetry (scraped data, pipeline state, stats, etc.)
   result_message?: string | null

@@ -1,5 +1,5 @@
 import type { PersonalInfo } from '@shared/types'
-import { ConfigRepository } from '../config/config.repository'
+import { UserConfigRepository } from '../user-config/user-config.repository'
 
 const PERSONAL_INFO_ID = 'personal-info'
 
@@ -12,10 +12,10 @@ function isPersonalInfo(payload: unknown): payload is PersonalInfo {
 }
 
 export class PersonalInfoStore {
-  private repo = new ConfigRepository()
+  private repo = new UserConfigRepository()
 
-  async get(): Promise<PersonalInfo | null> {
-    const record = this.repo.get<PersonalInfo>(PERSONAL_INFO_ID)
+  async get(userId: string): Promise<PersonalInfo | null> {
+    const record = this.repo.get<PersonalInfo>(userId, PERSONAL_INFO_ID)
     if (!record) {
       return null
     }

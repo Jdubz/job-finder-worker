@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
@@ -14,6 +14,8 @@ import { JobMatchRepository } from './job-match.repository'
 import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
+import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/auth'
+import { ApiHttpError } from '../../middleware/api-error'
 
 const resumeIntakeDataSchema: z.ZodType<ResumeIntakeData> = z.object({
   jobId: z.string(),
@@ -92,6 +94,14 @@ const statsQuerySchema = z.object({
   includeIgnored: z.coerce.boolean().optional().default(false)
 })
 
+function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
+  const user = (req as AuthenticatedRequest).user
+  if (!user || !user.email) {
+    throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Missing authenticated user', { status: 401 })
+  }
+  return user as AuthenticatedUser & { email: string }
+}
+
 export function buildJobMatchRouter() {
   const router = Router()
   const repo = new JobMatchRepository()
@@ -99,8 +109,9 @@ export function buildJobMatchRouter() {
   router.get(
     '/',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const filters = listQuerySchema.parse(req.query)
-      const matches = repo.listWithListings({ ...filters, status: filters.status ?? 'active' })
+      const matches = repo.listWithListings(user.uid, { ...filters, status: filters.status ?? 'active' })
       const response: ListJobMatchesResponse = { matches, count: matches.length }
       res.json(success(response))
     })
@@ -110,8 +121,9 @@ export function buildJobMatchRouter() {
     '/stats',
     asyncHandler((req, res) => {
       try {
+        const user = getAuthenticatedUser(req)
         const { includeIgnored } = statsQuerySchema.parse(req.query)
-        const stats = repo.getStats(includeIgnored)
+        const stats = repo.getStats(user.uid, includeIgnored)
         const response: GetJobMatchStatsResponse = { stats }
         res.json(success(response))
       } catch (error) {
@@ -140,7 +152,8 @@ export function buildJobMatchRouter() {
   router.get(
     '/:id',
     asyncHandler((req, res) => {
-      const match = repo.getByIdWithListing(req.params.id)
+      const user = getAuthenticatedUser(req)
+      const match = repo.getByIdWithListing(user.uid, req.params.id)
       if (!match) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
         return
@@ -153,6 +166,7 @@ export function buildJobMatchRouter() {
   router.post(
     '/',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const payload = jobMatchSchema.parse(req.body)
       const matchRequest: SaveJobMatchRequest = {
         ...payload,
@@ -171,7 +185,7 @@ export function buildJobMatchRouter() {
       }
 
       try {
-        const match = repo.upsert(matchRequest)
+        const match = repo.upsert(user.uid, matchRequest)
         const response: SaveJobMatchResponse = { match }
         res.status(201).json(success(response))
       } catch (err) {
@@ -188,7 +202,8 @@ export function buildJobMatchRouter() {
   router.delete(
     '/:id',
     asyncHandler((req, res) => {
-      repo.delete(req.params.id)
+      const user = getAuthenticatedUser(req)
+      repo.delete(user.uid, req.params.id)
       const response: DeleteJobMatchResponse = { matchId: req.params.id, deleted: true }
       res.json(success(response))
     })
@@ -197,9 +212,10 @@ export function buildJobMatchRouter() {
   router.patch(
     '/:id/status',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const statusSchema = z.object({ status: z.enum(['active', 'ignored', 'applied']) })
       const { status } = statusSchema.parse(req.body)
-      const updated = repo.updateStatus(req.params.id, status)
+      const updated = repo.updateStatus(user.uid, req.params.id, status)
       if (!updated) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
         return

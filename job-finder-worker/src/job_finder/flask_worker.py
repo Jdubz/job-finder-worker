@@ -29,12 +29,9 @@ import yaml
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
-from job_finder.ai import AIJobMatcher
 from job_finder.ai.inference_client import InferenceClient
 from job_finder.company_info_fetcher import CompanyInfoFetcher
 from job_finder.logging_config import get_structured_logger, setup_logging
-from job_finder.profile import SQLiteProfileLoader
-from job_finder.profile.schema import Profile
 from job_finder.job_queue import ConfigLoader, QueueManager
 from job_finder.job_queue.notifier import QueueEventNotifier
 from job_finder.job_queue.models import ProcessorContext, QueueStatus
@@ -219,7 +216,6 @@ def reset_stuck_processing_items(
 queue_manager: Optional[QueueManager] = None
 processor: Optional[QueueItemProcessor] = None
 config_loader: Optional[ConfigLoader] = None
-ai_matcher: Optional[AIJobMatcher] = None
 scrape_report_storage: Optional[ScrapeReportStorage] = None
 worker_thread: Optional[threading.Thread] = None
 
@@ -249,18 +245,18 @@ def load_config() -> Dict[str, Any]:
     return {}
 
 
-def apply_db_settings(config_loader: ConfigLoader, ai_matcher: AIJobMatcher):
-    """Reload dynamic settings from the database into in-memory components.
+def apply_db_settings(config_loader: ConfigLoader):
+    """Reload dynamic settings from the database.
 
     Note: InferenceClient is stateless (routes through LiteLLM), so AI provider
-    settings don't need explicit reloading here.
+    settings don't need explicit reloading here. Match policy and profile are
+    now loaded per-user in the processor, not globally.
     """
-    # Load match policy (min_match_score comes from deterministic scoring)
+    # Validate system-level config is accessible (fail-fast)
     try:
-        match_policy = config_loader.get_match_policy()
-        ai_matcher.min_match_score = match_policy["minScore"]
+        config_loader.get_worker_settings()
     except Exception as exc:  # pragma: no cover - defensive
-        slogger.worker_status("match_policy_load_failed", {"error": str(exc)})
+        slogger.worker_status("worker_settings_load_failed", {"error": str(exc)})
 
 
 def get_processing_timeout(cfg_loader: ConfigLoader) -> int:
@@ -269,7 +265,11 @@ def get_processing_timeout(cfg_loader: ConfigLoader) -> int:
 
 
 def initialize_components(config: Dict[str, Any]) -> tuple:
-    """Initialize all worker components."""
+    """Initialize all worker components.
+
+    Profile and AI matcher are no longer created globally; they are
+    built per-user inside the job processor when a queue item is processed.
+    """
     db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DATABASE_PATH")
 
     if db_path:
@@ -284,40 +284,10 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     companies_manager = CompaniesManager(db_path, sources_manager=job_sources_manager)
     report_storage = ScrapeReportStorage(db_path)
 
-    # Initialize other components
-    profile_loader = SQLiteProfileLoader(db_path)
-    try:
-        profile = profile_loader.load_profile()
-    except InitializationError as exc:
-        slogger.worker_status("profile_load_failed", {"error": str(exc)})
-        profile = Profile(
-            name="Fallback User",
-            email=None,
-            location=None,
-            summary=None,
-            years_of_experience=None,
-            skills=[],
-            experience=[],
-            education=[],
-            projects=[],
-            certifications=[],
-            languages=[],
-            preferences=None,
-        )
-
     # Initialize config loader and inference client (LiteLLM proxy)
     config_loader = ConfigLoader(db_path)
     inference_client = InferenceClient()
     inference_client.use_local_models = config_loader.is_local_models_enabled()
-
-    # Get match policy (deterministic scoring settings) - required, fail loud
-    match_policy = config_loader.get_match_policy()
-
-    ai_matcher = AIJobMatcher(
-        agent_manager=inference_client,
-        profile=profile,
-        min_match_score=match_policy["minScore"],
-    )
 
     # Company info fetcher uses InferenceClient for AI calls
     company_info_fetcher = CompanyInfoFetcher(
@@ -330,6 +300,7 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
     notifier.on_command = queue_manager.handle_command
 
     # Create ProcessorContext with all dependencies
+    # ai_matcher is None — each processor builds it per-user at processing time
     ctx = ProcessorContext(
         queue_manager=queue_manager,
         config_loader=config_loader,
@@ -338,15 +309,15 @@ def initialize_components(config: Dict[str, Any]) -> tuple:
         companies_manager=companies_manager,
         sources_manager=job_sources_manager,
         company_info_fetcher=company_info_fetcher,
-        ai_matcher=ai_matcher,
+        ai_matcher=None,
         notifier=notifier,
         scrape_report_storage=report_storage,
     )
     processor = QueueItemProcessor(ctx)
 
-    apply_db_settings(config_loader, ai_matcher)
+    apply_db_settings(config_loader)
 
-    return queue_manager, processor, config_loader, ai_matcher, config, report_storage
+    return queue_manager, processor, config_loader, config, report_storage
 
 
 # ============================================================
@@ -671,16 +642,16 @@ def status():
 @app.route("/start", methods=["POST"])
 def start_worker():
     """Start the worker."""
-    global worker_thread, queue_manager, processor, config_loader, ai_matcher, scrape_report_storage
+    global worker_thread, queue_manager, processor, config_loader, scrape_report_storage
 
     if _get_state("running"):
         slogger.worker_status("start_request_ignored", {"reason": "already_running"})
         return jsonify({"message": "Worker is already running"}), 400
 
-    if queue_manager is None or processor is None or config_loader is None or ai_matcher is None:
+    if queue_manager is None or processor is None or config_loader is None:
         config = load_config()
-        queue_manager, processor, config_loader, ai_matcher, _, scrape_report_storage = (
-            initialize_components(config)
+        queue_manager, processor, config_loader, _, scrape_report_storage = initialize_components(
+            config
         )
 
     # Startup recovery: return stuck processing items to pending
@@ -727,10 +698,10 @@ def restart_worker():
 @app.route("/config/reload", methods=["POST"])
 def reload_config():
     """Reload dynamic settings from the DB into the running worker."""
-    if not config_loader or not ai_matcher:
+    if not config_loader:
         return jsonify({"message": "Config loader not initialized"}), 503
 
-    apply_db_settings(config_loader, ai_matcher)
+    apply_db_settings(config_loader)
     return jsonify(
         {
             "message": "Reloaded config",
@@ -806,8 +777,8 @@ def main():
     try:
         # Load config and initialize components
         config = load_config()
-        global queue_manager, processor, config_loader, ai_matcher, scrape_report_storage, worker_thread
-        queue_manager, processor, config_loader, ai_matcher, config, scrape_report_storage = (
+        global queue_manager, processor, config_loader, scrape_report_storage, worker_thread
+        queue_manager, processor, config_loader, config, scrape_report_storage = (
             initialize_components(config)
         )
 

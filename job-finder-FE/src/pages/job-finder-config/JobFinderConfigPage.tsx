@@ -4,16 +4,16 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useConfigState } from "./hooks/useConfigState"
-import { QueueSettingsTab, LlmStatusTab, PersonalInfoTab, PrefilterPolicyTab, MatchPolicyTab } from "./components/tabs"
+import { QueueSettingsTab, LlmStatusTab } from "./components/tabs"
 import { useSearchParams } from "react-router-dom"
 
-type TabType = "prefilter" | "scoring" | "queue" | "llm" | "personal"
+type TabType = "queue" | "llm"
 
 export function JobFinderConfigPage() {
   const { user, isOwner } = useAuth()
   const configState = useConfigState()
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = (searchParams.get("tab") as TabType | null) ?? "prefilter"
+  const initialTab = (searchParams.get("tab") as TabType | null) ?? "queue"
   const [activeTab, setActiveTab] = useState<TabType>(initialTab)
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function JobFinderConfigPage() {
   }, [searchParams, activeTab])
 
   const handleTabChange = (value: string) => {
-    const tabValue = (value as TabType) ?? "prefilter"
+    const tabValue = (value as TabType) ?? "queue"
     setActiveTab(tabValue)
     const params = new URLSearchParams(searchParams)
     params.set("tab", tabValue)
@@ -66,7 +66,7 @@ export function JobFinderConfigPage() {
     <div className="space-y-6 p-6" id="config-page-root">
       <div>
         <h1 className="text-2xl font-bold">Job Finder Configuration</h1>
-        <p className="text-muted-foreground">Manage filtering rules, queues, scheduling, and profile defaults.</p>
+        <p className="text-muted-foreground">Manage system-level worker runtime and LLM configuration.</p>
       </div>
 
       {configState.error && (
@@ -82,45 +82,12 @@ export function JobFinderConfigPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="prefilter">Pre-Filter</TabsTrigger>
-          <TabsTrigger value="scoring">Scoring</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="queue">Worker Runtime</TabsTrigger>
           <TabsTrigger value="llm">LLM Status</TabsTrigger>
-          <TabsTrigger value="personal">Personal</TabsTrigger>
         </TabsList>
 
         <div className="space-y-4 py-4">
-          {activeTab === "prefilter" && configState.prefilterPolicy && (
-            <PrefilterPolicyTab
-              isSaving={configState.isSaving}
-              config={configState.prefilterPolicy}
-              onSave={(policy) => configState.handleSavePrefilter(policy)}
-              onReset={() => configState.resetPrefilter()}
-            />
-          )}
-
-          {activeTab === "scoring" && configState.matchPolicy && (
-            <MatchPolicyTab
-              isSaving={configState.isSaving}
-              config={configState.matchPolicy}
-              onSave={configState.handleSaveMatchPolicy}
-              onReset={configState.resetMatchPolicy}
-            />
-          )}
-          {activeTab === "scoring" && !configState.matchPolicy && !configState.isLoading && (
-            <div className="mt-4 p-6 border rounded-lg bg-muted/50">
-              <h3 className="text-lg font-semibold mb-2">Scoring Configuration Required</h3>
-              <p className="text-muted-foreground">
-                The match-policy configuration has not been set up yet. This configuration defines how jobs are scored
-                based on your preferences for seniority, location, skill matching, salary, and other factors.
-              </p>
-              <p className="text-muted-foreground mt-2">
-                Please run the database migration or manually configure the match-policy in the database.
-              </p>
-            </div>
-          )}
-
           {activeTab === "queue" && configState.workerSettings && (
             <QueueSettingsTab
               isSaving={configState.isSaving}
@@ -144,18 +111,6 @@ export function JobFinderConfigPage() {
               onReset={configState.resetWorker}
             />
           )}
-
-          {activeTab === "personal" && (
-            <PersonalInfoTab
-              isSaving={configState.isSaving}
-              currentPersonalInfo={configState.personalInfo}
-              hasPersonalInfoChanges={configState.hasPersonalInfoChanges}
-              updatePersonalInfoState={configState.updatePersonalInfoState}
-              handleSavePersonalInfo={configState.handleSavePersonalInfo}
-              handleResetPersonalInfo={configState.resetPersonal}
-            />
-          )}
-
         </div>
       </Tabs>
     </div>

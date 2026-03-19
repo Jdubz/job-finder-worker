@@ -24,7 +24,6 @@ import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { env } from '../../config/env'
 import { logger } from '../../logger'
-import { invalidateDocumentCacheAsync } from '../generator/document-cache-invalidation'
 
 const updateSchema = z.object({
   payload: z.record(z.unknown())
@@ -136,6 +135,18 @@ export function buildConfigRouter() {
       const body = updateSchema.parse(req.body)
       const id = req.params.id as JobFinderConfigId
 
+      // Per-user config keys must be managed via /api/user-config
+      const perUserKeys: string[] = ['match-policy', 'prefilter-policy', 'personal-info']
+      if (perUserKeys.includes(id)) {
+        res.status(400).json(
+          failure(
+            ApiErrorCode.INVALID_REQUEST,
+            `Config key '${id}' is per-user. Use /api/user-config/${id} instead.`
+          )
+        )
+        return
+      }
+
       const coerced = coercePayload(id, body.payload)
       if (!validatePayload(id, coerced)) {
         res.status(400).json(failure(ApiErrorCode.VALIDATION_FAILED, 'Invalid config payload'))
@@ -150,10 +161,8 @@ export function buildConfigRouter() {
       // Fire-and-forget reload to the worker so it rehydrates in-memory settings
       await triggerWorkerReload(id).catch(() => undefined)
 
-      // Invalidate document cache when profile content that feeds into prompts changes
-      if (id === 'personal-info' || id === 'ai-prompts') {
-        invalidateDocumentCacheAsync().catch(() => undefined)
-      }
+      // Note: personal-info is now per-user (blocked above), so only ai-prompts triggers
+      // global cache invalidation here. Per-user cache invalidation is handled by user-config routes.
 
       res.json(success(response))
     })

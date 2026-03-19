@@ -30,7 +30,8 @@ def _init_db(db_path: Path) -> None:
     import sqlite3
 
     conn = sqlite3.connect(db_path)
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE job_queue (
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL,
@@ -51,7 +52,8 @@ def _init_db(db_path: Path) -> None:
             processed_at TEXT,
             completed_at TEXT
         );
-        """)
+        """
+    )
     conn.commit()
     conn.close()
 

@@ -23,7 +23,8 @@ def _queue_test_db():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "queue-test.db")
         with sqlite3.connect(db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS skill_taxonomy (
                     canonical TEXT PRIMARY KEY,
                     category TEXT,
@@ -32,7 +33,8 @@ def _queue_test_db():
                     parallels_csv TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL
                 )
-            """)
+            """
+            )
         old = os.environ.get("SQLITE_DB_PATH")
         os.environ["SQLITE_DB_PATH"] = db_path
         yield db_path

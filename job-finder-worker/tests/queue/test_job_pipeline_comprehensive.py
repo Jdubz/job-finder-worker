@@ -41,14 +41,16 @@ def _apply_migrations(db_path: Path) -> None:
                     raise
 
         # Some test runs skip older migrations that created the config table; ensure it exists
-        conn.executescript("""
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS config (
               id TEXT PRIMARY KEY,
               payload_json TEXT NOT NULL,
               updated_at TEXT NOT NULL,
               updated_by TEXT
             );
-            """)
+            """
+        )
 
 
 def _process_all(

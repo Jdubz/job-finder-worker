@@ -7,7 +7,8 @@ from job_finder.job_queue.models import SourceStatus
 
 def _bootstrap_db(path: Path):
     with sqlite3.connect(path) as conn:
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE job_sources (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -22,7 +23,8 @@ def _bootstrap_db(path: Path):
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
-            """)
+            """
+        )
         conn.execute(
             """
             INSERT INTO job_sources (

@@ -16,7 +16,7 @@ const buildBypassUser = (): AuthenticatedUser => ({
   uid: 'localhost-desktop',
   email: 'desktop@localhost',
   name: 'Desktop App',
-  roles: ['editor']
+  roles: ['admin', 'user']
 })
 
 function tryLocalhostBypass(req: Request): AuthenticatedUser | null {
@@ -121,7 +121,7 @@ function isLocalhostRequest(req: Request): boolean {
  * In development/test: Also accepts dev tokens via Bearer header for testing
  * Localhost requests: Bypass auth for desktop app running on same machine
  */
-export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
+export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   // In development/test mode, check for dev tokens first
   if (IS_DEVELOPMENT || isTestEnv()) {
     const bearerToken = extractBearerToken(req)
@@ -172,7 +172,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     email: sessionUser.email,
     name: sessionUser.displayName,
     picture: sessionUser.avatarUrl,
-    roles: sessionUser.roles.length ? sessionUser.roles : ['viewer'],
+    roles: sessionUser.roles.length ? sessionUser.roles : ['user'],
   }
 
   userRepository.touchLastLogin(sessionUser.id)
@@ -183,7 +183,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
 
 /**
  * Role-based access control middleware.
- * Must be used after verifyFirebaseAuth.
+ * Must be used after verifyAuth.
  */
 export function requireRole(role: UserRole) {
   return (req: Request, res: Response, next: NextFunction) => {

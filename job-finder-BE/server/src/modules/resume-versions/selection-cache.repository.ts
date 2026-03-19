@@ -47,6 +47,7 @@ export class SelectionCacheRepository {
    * Matches on identical roleTypes + canonical tech stack + pool version.
    */
   findByTechFingerprint(
+    userId: string,
     techFpHash: string,
     poolItemsHash: string
   ): SelectionCacheRow | null {
@@ -55,8 +56,9 @@ export class SelectionCacheRepository {
       FROM selection_cache
       WHERE tech_fingerprint_hash = ?
         AND pool_items_hash = ?
+        AND user_id = ?
       LIMIT 1
-    `).get(techFpHash, poolItemsHash) as {
+    `).get(techFpHash, poolItemsHash, userId) as {
       id: number
       selection_json: string
       role_normalized: string | null
@@ -79,6 +81,7 @@ export class SelectionCacheRepository {
    * Returns most-recently-used if multiple entries match.
    */
   findByBroadFingerprint(
+    userId: string,
     broadFpHash: string,
     poolItemsHash: string
   ): SelectionCacheRow | null {
@@ -87,9 +90,10 @@ export class SelectionCacheRepository {
       FROM selection_cache
       WHERE broad_fingerprint_hash = ?
         AND pool_items_hash = ?
+        AND user_id = ?
       ORDER BY last_hit_at DESC
       LIMIT 1
-    `).get(broadFpHash, poolItemsHash) as {
+    `).get(broadFpHash, poolItemsHash, userId) as {
       id: number
       selection_json: string
       role_normalized: string | null
@@ -112,6 +116,7 @@ export class SelectionCacheRepository {
    * then joins with selection_cache filtering by pool_items_hash.
    */
   findSimilar(
+    userId: string,
     embedding: number[],
     poolItemsHash: string,
     k: number = 5
@@ -138,7 +143,8 @@ export class SelectionCacheRepository {
       FROM selection_cache
       WHERE embedding_rowid IN (${placeholders})
         AND pool_items_hash = ?
-    `).all(...rowids, poolItemsHash) as Array<{
+        AND user_id = ?
+    `).all(...rowids, poolItemsHash, userId) as Array<{
       id: number
       embedding_rowid: number
       selection_json: string
@@ -182,16 +188,16 @@ export class SelectionCacheRepository {
    * but different tech fingerprints are kept as separate rows.
    * Evicts oldest entries if at capacity. Runs in a transaction.
    */
-  store(params: SelectionCacheStoreParams): void {
+  store(userId: string, params: SelectionCacheStoreParams): void {
     const embeddingBuffer = Buffer.from(new Float32Array(params.embeddingVector).buffer)
 
     const insertTransaction = this.db.transaction(() => {
       // Remove existing entry for the same tech fingerprint to avoid duplicates
       const existing = this.db.prepare(`
         SELECT id, embedding_rowid FROM selection_cache
-        WHERE tech_fingerprint_hash = ? AND pool_items_hash = ?
+        WHERE tech_fingerprint_hash = ? AND pool_items_hash = ? AND user_id = ?
       `).get(
-        params.techFingerprintHash, params.poolItemsHash
+        params.techFingerprintHash, params.poolItemsHash, userId
       ) as { id: number; embedding_rowid: number } | undefined
 
       if (existing) {
@@ -211,11 +217,12 @@ export class SelectionCacheRepository {
       // Insert selection_cache row
       this.db.prepare(`
         INSERT INTO selection_cache (
-          embedding_rowid, selection_json, tech_fingerprint_hash,
+          user_id, embedding_rowid, selection_json, tech_fingerprint_hash,
           broad_fingerprint_hash, pool_items_hash,
           role_types_json, tech_stack_json, role_normalized
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
+        userId,
         embeddingRowid,
         params.selectionJson,
         params.techFingerprintHash,
@@ -234,12 +241,13 @@ export class SelectionCacheRepository {
    * Remove all entries whose pool_items_hash differs from the current hash.
    * Call when pool items change to purge stale selections.
    */
-  removeStaleEntries(currentPoolHash: string): number {
+  removeStaleEntries(userId: string, currentPoolHash: string): number {
     const deleteTransaction = this.db.transaction(() => {
       const rows = this.db.prepare(`
         SELECT embedding_rowid FROM selection_cache
         WHERE pool_items_hash != ?
-      `).all(currentPoolHash) as Array<{ embedding_rowid: number }>
+          AND user_id = ?
+      `).all(currentPoolHash, userId) as Array<{ embedding_rowid: number }>
 
       if (!rows.length) return 0
 
@@ -248,8 +256,8 @@ export class SelectionCacheRepository {
       this.db.prepare(`DELETE FROM job_cache_embeddings WHERE rowid IN (${placeholders})`).run(...rowids)
 
       this.db.prepare(`
-        DELETE FROM selection_cache WHERE pool_items_hash != ?
-      `).run(currentPoolHash)
+        DELETE FROM selection_cache WHERE pool_items_hash != ? AND user_id = ?
+      `).run(currentPoolHash, userId)
 
       return rows.length
     })

@@ -53,6 +53,55 @@ class ConfigLoader:
         except json.JSONDecodeError as exc:
             raise InitializationError(f"Invalid JSON for config '{key}': {exc}") from exc
 
+    def get_user_config(self, user_id: str, key: str) -> Dict[str, Any]:
+        """Get a per-user config from the user_config table.
+
+        Falls back to the global job_finder_config if not found.
+
+        Args:
+            user_id: The user ID to look up config for
+            key: Config key (e.g. 'match-policy', 'prefilter-policy', 'personal-info')
+
+        Returns:
+            Parsed JSON payload
+
+        Raises:
+            InitializationError: If config not found in either table
+        """
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM user_config WHERE id = ? AND user_id = ?",
+                (key, user_id),
+            ).fetchone()
+
+        if row:
+            try:
+                return json.loads(row["payload_json"])
+            except json.JSONDecodeError as exc:
+                raise InitializationError(
+                    f"Invalid JSON for user_config '{key}' (user={user_id}): {exc}"
+                ) from exc
+
+        # Fall back to global config
+        logger.debug("user_config '%s' not found for user %s, falling back to global", key, user_id)
+        return self._get_config(key)
+
+    def get_users_with_config(self, key: str) -> List[str]:
+        """Return distinct user_ids that have a given config key in user_config.
+
+        Args:
+            key: Config key to look for (e.g. 'match-policy')
+
+        Returns:
+            List of user_id strings
+        """
+        with sqlite_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT user_id FROM user_config WHERE id = ?",
+                (key,),
+            ).fetchall()
+        return [row["user_id"] for row in rows]
+
     def get_prefilter_policy(self) -> Dict[str, Any]:
         """
         Get pre-filter policy configuration.
@@ -320,6 +369,35 @@ class ConfigLoader:
             )
 
         return settings
+
+    # ============================================================
+    # PER-USER CONFIG CONVENIENCE METHODS
+    # ============================================================
+
+    def get_user_match_policy(self, user_id: str) -> Dict[str, Any]:
+        """Get per-user match policy (user_config, falls back to global).
+
+        Raises InitializationError if missing in both tables.
+        """
+        return self.get_user_config(user_id, "match-policy")
+
+    def get_user_prefilter_policy(self, user_id: str) -> Dict[str, Any]:
+        """Get per-user prefilter policy (user_config, falls back to global).
+
+        Raises InitializationError if missing in both tables.
+        """
+        return self.get_user_config(user_id, "prefilter-policy")
+
+    def get_user_personal_info(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get per-user personal info (user_config, falls back to global).
+
+        Returns empty dict gracefully if not configured anywhere.
+        """
+        try:
+            return self.get_user_config(user_id, "personal-info")
+        except InitializationError:
+            logger.debug("personal-info not found for user %s, using defaults", user_id)
+            return {}
 
     # ============================================================
     # WORKER RUNTIME HELPERS

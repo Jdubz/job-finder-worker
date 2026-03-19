@@ -81,18 +81,18 @@ export class SelectionCacheService {
    * Tries Tier 1 (exact tech fingerprint) → Tier 1.5 (broad) → Tier 2 (semantic).
    * Gracefully degrades to miss on any error.
    */
-  async lookup(match: JobMatchWithListing, poolItemsHash: string): Promise<SelectionCacheLookupResult> {
+  async lookup(userId: string, match: JobMatchWithListing, poolItemsHash: string): Promise<SelectionCacheLookupResult> {
     if (!CACHE_ENABLED) return { tier: 'miss' }
 
     try {
-      return await this.lookupInternal(match, poolItemsHash)
+      return await this.lookupInternal(userId, match, poolItemsHash)
     } catch (err) {
       this.log.warn({ err }, 'Selection cache: lookup failed (non-fatal), treating as miss')
       return { tier: 'miss' }
     }
   }
 
-  private async lookupInternal(match: JobMatchWithListing, poolItemsHash: string): Promise<SelectionCacheLookupResult> {
+  private async lookupInternal(userId: string, match: JobMatchWithListing, poolItemsHash: string): Promise<SelectionCacheLookupResult> {
     const extraction = match.listing.filterResult?.extraction as
       | { technologies?: string[]; roleTypes?: string[] }
       | undefined
@@ -104,7 +104,7 @@ export class SelectionCacheService {
 
     // Tier 1: Exact tech fingerprint
     const techFpHash = computeSelectionFingerprint(roleTypes, canonicalTechs, poolItemsHash)
-    const exactHit = this.repo.findByTechFingerprint(techFpHash, poolItemsHash)
+    const exactHit = this.repo.findByTechFingerprint(userId, techFpHash, poolItemsHash)
     if (exactHit) {
       let selection: SelectionResult
       try {
@@ -130,7 +130,7 @@ export class SelectionCacheService {
 
     // Tier 1.5: Broad fingerprint
     const broadFpHash = computeSelectionFingerprint(roleTypes, broadCategories, poolItemsHash)
-    const broadHit = this.repo.findByBroadFingerprint(broadFpHash, poolItemsHash)
+    const broadHit = this.repo.findByBroadFingerprint(userId, broadFpHash, poolItemsHash)
     if (broadHit) {
       let selection: SelectionResult
       try {
@@ -138,7 +138,7 @@ export class SelectionCacheService {
       } catch (err) {
         this.log.warn({ err }, 'Selection cache: corrupt broad-hit entry, treating as miss')
         // Fall through to Tier 2
-        return this.semanticLookup(match, poolItemsHash, roleNormalized, canonicalTechs)
+        return this.semanticLookup(userId, match, poolItemsHash, roleNormalized, canonicalTechs)
       }
 
       this.log.info(
@@ -148,7 +148,7 @@ export class SelectionCacheService {
 
       if (CACHE_DRY_RUN) {
         this.log.info('Selection cache: dry-run mode — returning miss despite broad hit')
-        return this.semanticLookup(match, poolItemsHash, roleNormalized, canonicalTechs)
+        return this.semanticLookup(userId, match, poolItemsHash, roleNormalized, canonicalTechs)
       }
 
       this.repo.recordHit(broadHit.id)
@@ -156,10 +156,11 @@ export class SelectionCacheService {
     }
 
     // Tier 2: Semantic similarity
-    return this.semanticLookup(match, poolItemsHash, roleNormalized, canonicalTechs)
+    return this.semanticLookup(userId, match, poolItemsHash, roleNormalized, canonicalTechs)
   }
 
   private async semanticLookup(
+    userId: string,
     match: JobMatchWithListing,
     poolItemsHash: string,
     roleNormalized: string,
@@ -182,7 +183,7 @@ export class SelectionCacheService {
       return { tier: 'miss' }
     }
 
-    const similar = this.repo.findSimilar(embedding, poolItemsHash, 3)
+    const similar = this.repo.findSimilar(userId, embedding, poolItemsHash, 3)
 
     // Apply Jaccard tech-stack boost
     if (similar.length > 0 && canonicalTechs.length > 0) {
@@ -248,6 +249,7 @@ export class SelectionCacheService {
    * Non-fatal — failures are logged but don't block the pipeline.
    */
   async store(
+    userId: string,
     match: JobMatchWithListing,
     poolItemsHash: string,
     selection: SelectionResult,
@@ -281,7 +283,7 @@ export class SelectionCacheService {
       const techFpHash = computeSelectionFingerprint(roleTypes, canonicalTechs, poolItemsHash)
       const broadFpHash = computeSelectionFingerprint(roleTypes, broadCategories, poolItemsHash)
 
-      this.repo.store({
+      this.repo.store(userId, {
         embeddingVector: embedding,
         selectionJson: JSON.stringify(selection),
         techFingerprintHash: techFpHash,

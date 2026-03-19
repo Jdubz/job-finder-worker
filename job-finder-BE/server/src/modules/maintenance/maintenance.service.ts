@@ -26,7 +26,9 @@ export class MaintenanceService {
 
     try {
       // 1. Archive old listings (older than 2 weeks)
-      // Note: This CASCADE deletes associated job_matches
+      // Note: This CASCADE deletes associated job_matches across ALL users.
+      // TODO: Archive job_matches separately by age per user before archiving
+      // listings, so that per-user match history is preserved independently.
       const archivedListings = this.repo.archiveOldListings(LISTING_ARCHIVE_DAYS)
       logger.info({ count: archivedListings, days: LISTING_ARCHIVE_DAYS }, 'Archived old listings')
 

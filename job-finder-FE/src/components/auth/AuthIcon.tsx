@@ -46,7 +46,7 @@ export function AuthIcon({ onClick, className }: AuthIconProps) {
 
     return {
       icon: <Eye className="w-4 h-4" />,
-      label: "Signed in as Viewer - Click for account options",
+      label: "Signed in as User - Click for account options",
       bgColor: "bg-secondary hover:bg-secondary/80",
       iconColor: "text-secondary-foreground",
     }

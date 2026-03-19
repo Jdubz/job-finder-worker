@@ -1,10 +1,11 @@
 export const ROUTES = {
   HOME: "/",
   HOW_IT_WORKS: "/how-it-works",
+  AI_PROMPTS: "/ai-prompts",
+  // Authenticated routes (user or admin)
   CONTENT_ITEMS: "/content-items",
   RESUMES: "/resumes",
-  AI_PROMPTS: "/ai-prompts",
-  // Authenticated routes (viewer or admin)
+  USER_SETTINGS: "/user-settings",
   JOB_APPLICATIONS: "/job-applications",
   JOB_LISTINGS: "/job-listings",
   COMPANIES: "/companies",
@@ -26,8 +27,11 @@ export const ROUTES = {
 export type RouteKey = keyof typeof ROUTES
 export type RoutePath = (typeof ROUTES)[RouteKey]
 
-// Routes that require authentication (viewer or admin role)
+// Routes that require authentication (user or admin role)
 export const AUTHENTICATED_ROUTES: RoutePath[] = [
+  ROUTES.CONTENT_ITEMS,
+  ROUTES.RESUMES,
+  ROUTES.USER_SETTINGS,
   ROUTES.JOB_APPLICATIONS,
   ROUTES.JOB_LISTINGS,
   ROUTES.COMPANIES,
@@ -45,8 +49,6 @@ export const ADMIN_ROUTES: RoutePath[] = [
 export const PUBLIC_ROUTES: RoutePath[] = [
   ROUTES.HOME,
   ROUTES.HOW_IT_WORKS,
-  ROUTES.CONTENT_ITEMS,
-  ROUTES.RESUMES,
   ROUTES.AI_PROMPTS,
   ROUTES.TERMS_OF_USE,
   ROUTES.PRIVACY_POLICY,

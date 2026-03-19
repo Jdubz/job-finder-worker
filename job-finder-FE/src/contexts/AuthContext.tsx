@@ -5,7 +5,7 @@ import { authClient, AuthError } from '@/api/auth-client'
 
 const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === 'development'
 
-export type DevRole = 'public' | 'viewer' | 'admin'
+export type DevRole = 'public' | 'user' | 'admin'
 
 interface AuthUser {
   uid: string
@@ -121,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Use dev tokens that backend accepts in development mode
-    const devCredential = role === 'admin' ? 'dev-admin-token' : 'dev-viewer-token'
+    const devCredential = role === 'admin' ? 'dev-admin-token' : 'dev-user-token'
 
     try {
       const response = await authClient.login(devCredential)
