@@ -20,7 +20,7 @@ import type { JobMatchWithListing } from '@shared/types'
 import { ResumeVersionRepository } from './resume-version.repository'
 import { buildItemTree, transformItemsToResumeContent } from './resume-version.publish'
 import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
-import { RenderMeasureService, USABLE_HEIGHT_PX } from '../generator/workflow/services/render-measure.service'
+import { RenderMeasureService, USABLE_HEIGHT_PX, type MeasureResult } from '../generator/workflow/services/render-measure.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
 import { InferenceClient } from '../generator/ai/inference-client'
 import { JobMatchRepository } from '../job-matches/job-match.repository'
@@ -280,7 +280,7 @@ export class ResumeSelectionService {
       }
     }
 
-    const { tree, selection: rawSelection, personalInfo, jobTitle, match } =
+    const { tree, selection: rawSelection, personalInfo, jobTitle } =
       await this.buildRawSelection(jobMatchId)
 
     // ── Render-measure fit loop ──────────────────────────────────
@@ -291,17 +291,23 @@ export class ResumeSelectionService {
     const renderer = new RenderMeasureService()
     let selection = rawSelection
     let resumeContent: ResumeContent
-    let measurement: { contentHeightPx: number; sparePx: number; fits: boolean }
+    let measurement: MeasureResult
     let pdfBuffer: Buffer
+
+    /** Transform a selection into content and measure its rendered height. */
+    const measureSelection = async (sel: SelectionResult) => {
+      const content = transformItemsToResumeContent(
+        filterTreeToSelection(tree, sel), personalInfo, jobTitle
+      )
+      const m = await renderer.measure(content, personalInfo)
+      return { content, measurement: m }
+    }
 
     try {
       await renderer.init()
 
       // Build initial content and measure
-      resumeContent = transformItemsToResumeContent(
-        filterTreeToSelection(tree, selection), personalInfo, jobTitle
-      )
-      measurement = await renderer.measure(resumeContent, personalInfo)
+      ;({ content: resumeContent, measurement } = await measureSelection(selection))
       let iterations = 0
 
       // Phase 1: Trim if overflowing
@@ -309,23 +315,27 @@ export class ResumeSelectionService {
         const trimmed = trimOneStep(tree, selection)
         if (!trimmed) break
         selection = trimmed
-        resumeContent = transformItemsToResumeContent(
-          filterTreeToSelection(tree, selection), personalInfo, jobTitle
-        )
-        measurement = await renderer.measure(resumeContent, personalInfo)
+        ;({ content: resumeContent, measurement } = await measureSelection(selection))
         iterations++
       }
 
-      // Phase 2: Expand while there's room for another bullet
-      while (measurement.sparePx > TOLERANCE_PX && iterations < MAX_ITERATIONS) {
+      // If still overflowing after trim exhaustion, log a warning.
+      // The PDF will render as-is (possibly multi-page) rather than failing the job application.
+      if (!measurement.fits) {
+        logger.warn(
+          { jobMatchId, contentHeightPx: measurement.contentHeightPx, sparePx: measurement.sparePx },
+          'Render-measure loop: content still overflows after exhausting trim options'
+        )
+      }
+
+      // Phase 2: Expand while there's room for another bullet (only if not overflowing)
+      while (measurement.fits && measurement.sparePx > TOLERANCE_PX && iterations < MAX_ITERATIONS) {
         const expanded = expandOneStep(tree, selection)
         if (!expanded) break // pool exhausted
 
         // Speculatively measure the expansion
-        const expandedContent = transformItemsToResumeContent(
-          filterTreeToSelection(tree, expanded), personalInfo, jobTitle
-        )
-        const expandedMeasure = await renderer.measure(expandedContent, personalInfo)
+        const { content: expandedContent, measurement: expandedMeasure } =
+          await measureSelection(expanded)
 
         if (!expandedMeasure.fits) break // would overflow — stop without accepting
 
@@ -351,8 +361,8 @@ export class ResumeSelectionService {
       mainColumnLines: Math.round(measurement.contentHeightPx / LINE_UNIT_PX),
       maxLines: LAYOUT.MAX_LINES,
       usagePercent: Math.round((measurement.contentHeightPx / USABLE_HEIGHT_PX) * 100),
-      pageCount: 1,
-      fits: true,
+      pageCount: measurement.fits ? 1 : Math.ceil(measurement.contentHeightPx / USABLE_HEIGHT_PX),
+      fits: measurement.fits,
       overflow: -Math.round(measurement.sparePx / LINE_UNIT_PX),
       suggestions: [],
     }

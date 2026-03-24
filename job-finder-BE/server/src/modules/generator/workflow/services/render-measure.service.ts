@@ -47,6 +47,8 @@ export class RenderMeasureService {
       viewport: { width: 1275, height: 1650 }, // Letter @150dpi
     })
     this.page = await this.context.newPage()
+    // Use print media so measurement matches PDF rendering (which uses @page rules)
+    await this.page.emulateMedia({ media: 'print' })
   }
 
   /**
@@ -61,7 +63,8 @@ export class RenderMeasureService {
 
     const contentHeightPx = await this.page.evaluate(() => {
       const el = document.querySelector('.page')
-      return el ? (el as HTMLElement).scrollHeight : 0
+      if (!el) throw new Error('.page element not found in rendered HTML')
+      return (el as HTMLElement).scrollHeight
     })
 
     const sparePx = USABLE_HEIGHT_PX - contentHeightPx
