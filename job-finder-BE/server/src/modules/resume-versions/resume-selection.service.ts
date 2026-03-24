@@ -175,17 +175,24 @@ export class ResumeSelectionService {
     }
 
     // Expand to fill the page when there's significant spare space
-    if (fit.overflow < -3) {
+    if (fit.overflow < -EXPAND_THRESHOLD) {
+      const preExpandResumeContent = resumeContent
+      const preExpandSelection = selection
+      const preExpandSelectedTree = selectedTree
+      const preExpandFit = fit
+
       const expanded = expandToFit(tree, selection, personalInfo, jobTitle)
       resumeContent = expanded.resumeContent
       selection = expanded.selection
       selectedTree = filterTreeToSelection(tree, selection)
       fit = estimateContentFit(resumeContent)
 
-      // Safety: if expansion caused overflow, trim back
+      // Safety: if expansion caused overflow, roll back to pre-expansion state
       if (!fit.fits) {
-        resumeContent = trimToFit(resumeContent)
-        fit = estimateContentFit(resumeContent)
+        resumeContent = preExpandResumeContent
+        selection = preExpandSelection
+        selectedTree = preExpandSelectedTree
+        fit = preExpandFit
       }
     }
 
@@ -318,7 +325,7 @@ CRITICAL RULES:
 - Your response must be valid JSON only — no markdown fences, no commentary outside the JSON.
 
 EXPERIENCE-FIRST PRIORITY (follow this order strictly):
-1. ALWAYS include ALL available professional work experience entries (up to 4). Work experience is the most valuable section — never drop a work entry to make room for projects.
+1. Include the 4 most recent professional work experience entries (by start date). If the pool has fewer than 4, include all of them. Work experience is the most valuable section — never drop a work entry to make room for projects.
 2. Maximize bullets for each work entry. Most recent role: 5-6 highlights. Second role: 4-5. Third role: 3-4. Fourth role: 2-3. Select highlights that best match the job description.
 3. FILL THE PAGE. A good resume uses all available space on 1 page. If you have room after experience, add more bullets before considering projects.
 4. Only include projects (0-2) if the candidate's work experience does NOT cover a key requirement from the job description AND a project directly fills that gap. If work experience already covers the job's core requirements, return "project_ids": [].
@@ -326,7 +333,7 @@ EXPERIENCE-FIRST PRIORITY (follow this order strictly):
 
 CONTENT BUDGET (must fit on 1 page):
 - Exactly 1 narrative/summary
-- Up to 4 experience entries (include ALL available, prefer more bullets over fewer)
+- Up to 4 experience entries (most recent by start date; include all if fewer than 4 exist)
 - 3-5 skill categories
 - 0-2 projects (ONLY for genuine skill gaps not covered by work experience)
 - All education entries`
@@ -612,7 +619,13 @@ export function trimToFit(content: ResumeContent): ResumeContent {
  * A typical bullet is ~1.6 lines (text + overhead), so 3 lines
  * means room for at least 1-2 more bullets.
  */
-const EXPAND_THRESHOLD = 3
+export const EXPAND_THRESHOLD = 3
+
+/** Extra spare lines required beyond EXPAND_THRESHOLD before adding skill categories. */
+const SKILL_EXPANSION_BUFFER = 2
+
+/** Maximum number of skill categories to allow during expansion. */
+const MAX_SKILL_CATEGORIES = 5
 
 /**
  * When content fits but leaves significant blank space, add more highlights
@@ -633,15 +646,20 @@ export function expandToFit(
     highlight_selections: { ...selection.highlight_selections },
   }
 
-  // Index: for each selected work entry, find ALL available highlights in the pool
+  const experienceIdSet = new Set(expanded.experience_ids)
+
+  // Index: for each selected work entry, find ALL available highlights in the pool.
+  // Also collect the work nodes themselves so we can sort by recency.
   const workPool = new Map<string, ResumeItemNode[]>()
+  const workNodes: ResumeItemNode[] = []
   function findWorkNodes(nodes: ResumeItemNode[]) {
     for (const node of nodes) {
-      if (node.aiContext === 'work' && expanded.experience_ids.includes(node.id)) {
+      if (node.aiContext === 'work' && experienceIdSet.has(node.id)) {
         const allHighlights = (node.children ?? [])
           .filter((c) => c.aiContext === 'highlight' && c.description)
           .sort((a, b) => a.orderIndex - b.orderIndex)
         workPool.set(node.id, allHighlights)
+        workNodes.push(node)
       }
       if (node.aiContext === 'section' && node.children?.length) {
         findWorkNodes(node.children)
@@ -652,6 +670,13 @@ export function expandToFit(
     }
   }
   findWorkNodes(tree)
+
+  // Sort work entries by recency: most recent startDate first, then by orderIndex
+  workNodes.sort((a, b) => {
+    if (a.startDate && b.startDate) return b.startDate.localeCompare(a.startDate)
+    return a.orderIndex - b.orderIndex
+  })
+  const workExpansionOrder = workNodes.map((n) => n.id)
 
   // Index: all available skill nodes in the pool that aren't selected
   const selectedSkillSet = new Set(expanded.skill_ids)
@@ -678,8 +703,8 @@ export function expandToFit(
 
     if (fit.overflow >= -EXPAND_THRESHOLD) break // not enough room
 
-    // Try adding highlights to work entries, most recent first
-    for (const workId of expanded.experience_ids) {
+    // Try adding highlights to work entries, most recent first (by startDate)
+    for (const workId of workExpansionOrder) {
       const poolHighlights = workPool.get(workId)
       if (!poolHighlights) continue
 
@@ -697,8 +722,13 @@ export function expandToFit(
       break // re-estimate after each addition
     }
 
-    // If no work highlights to add, try adding a skill category
-    if (!changed && availableSkills.length > 0 && fit.overflow < -(EXPAND_THRESHOLD + 2)) {
+    // If no work highlights to add, try adding a skill category (capped at MAX_SKILL_CATEGORIES)
+    if (
+      !changed &&
+      availableSkills.length > 0 &&
+      expanded.skill_ids.length < MAX_SKILL_CATEGORIES &&
+      fit.overflow < -(EXPAND_THRESHOLD + SKILL_EXPANSION_BUFFER)
+    ) {
       const nextSkill = availableSkills.shift()!
       expanded.skill_ids = [...expanded.skill_ids, nextSkill.id]
       selectedSkillSet.add(nextSkill.id)

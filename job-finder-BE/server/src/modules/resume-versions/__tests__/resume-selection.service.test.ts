@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import type { ResumeItemNode, ResumeContent } from '@shared/types'
+import type { ResumeItemNode, ResumeContent, PersonalInfo } from '@shared/types'
 
 // ─── Top-level mocks (Vitest hoists vi.mock to module scope) ────
 
@@ -51,7 +51,6 @@ import {
   ResumeSelectionService,
   PoolNotFoundError,
   JobMatchNotFoundError,
-  PersonalInfoMissingError
 } from '../resume-selection.service'
 
 // ─── parseSelectionResponse ─────────────────────────────────────
@@ -539,11 +538,11 @@ describe('expandToFit', () => {
     id: '', resumeVersionId: 'v-1', parentId: null, orderIndex: 0,
     aiContext: null, title: null, role: null, location: null, website: null,
     startDate: null, endDate: null, description: null, skills: null,
-    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z',
     createdBy: 'test', updatedBy: 'test'
   }
 
-  const personalInfo = {
+  const personalInfo: PersonalInfo = {
     name: 'Test User',
     email: 'test@example.com',
     applicationInfo: 'Test',
@@ -621,7 +620,7 @@ describe('expandToFit', () => {
       }
     })
 
-    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo as any, 'Software Engineer')
+    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo, 'Software Engineer')
 
     // Should have added highlights to w-1 and/or w-2
     const totalOriginalHighlights = 2 + 1 // w-1: 2, w-2: 1
@@ -655,9 +654,9 @@ describe('expandToFit', () => {
       }
     })
 
-    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo as any)
+    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo)
 
-    // w-1 is first in experience_ids, so it should get the extra highlight
+    // w-1 has startDate 2023-01 (most recent), so it gets the extra highlight first
     expect(selection.highlight_selections['w-1']!.length).toBe(3) // was 2, now 3
     expect(selection.highlight_selections['w-1']).toContain('h-1c') // next in pool order
     // w-2 should be unchanged
@@ -676,7 +675,7 @@ describe('expandToFit', () => {
       mainColumnLines: 66, sidebarLines: 0, fits: true, overflow: -1, suggestions: [],
     })
 
-    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo as any)
+    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo)
 
     // Selection should be unchanged
     expect(selection.highlight_selections['w-1']!.length).toBe(2)
@@ -704,7 +703,7 @@ describe('expandToFit', () => {
       },
     }
 
-    const { selection } = expandToFit(poolTree, fullSelection, personalInfo as any)
+    const { selection } = expandToFit(poolTree, fullSelection, personalInfo)
 
     // No highlights to add — should add skill categories instead (s-2, s-3)
     expect(selection.skill_ids).toContain('s-2')
@@ -730,7 +729,7 @@ describe('expandToFit', () => {
       },
     }
 
-    const { selection } = expandToFit(poolTree, fullHighlightsSelection, personalInfo as any)
+    const { selection } = expandToFit(poolTree, fullHighlightsSelection, personalInfo)
 
     // Should have added s-2 and/or s-3
     expect(selection.skill_ids.length).toBeGreaterThan(1) // was ['s-1']
