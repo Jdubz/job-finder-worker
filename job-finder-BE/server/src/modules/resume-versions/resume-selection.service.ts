@@ -164,7 +164,7 @@ export class ResumeSelectionService {
       selection = await this.runAISelection(tree, match, jobMatchId, poolItemsHash, cacheResult.embedding)
     }
 
-    const selectedTree = filterTreeToSelection(tree, selection)
+    let selectedTree = filterTreeToSelection(tree, selection)
     const jobTitle = selection.resume_title || match.listing?.title
     let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo, jobTitle)
 
@@ -172,6 +172,28 @@ export class ResumeSelectionService {
     if (!fit.fits) {
       resumeContent = trimToFit(resumeContent)
       fit = estimateContentFit(resumeContent)
+    }
+
+    // Expand to fill the page when there's significant spare space
+    if (fit.overflow < -EXPAND_THRESHOLD) {
+      const preExpandResumeContent = resumeContent
+      const preExpandSelection = selection
+      const preExpandSelectedTree = selectedTree
+      const preExpandFit = fit
+
+      const expanded = expandToFit(tree, selection, personalInfo, jobTitle)
+      resumeContent = expanded.resumeContent
+      selection = expanded.selection
+      selectedTree = filterTreeToSelection(tree, selection)
+      fit = estimateContentFit(resumeContent)
+
+      // Safety: if expansion caused overflow, roll back to pre-expansion state
+      if (!fit.fits) {
+        resumeContent = preExpandResumeContent
+        selection = preExpandSelection
+        selectedTree = preExpandSelectedTree
+        fit = preExpandFit
+      }
     }
 
     return { resumeContent, personalInfo, selection, selectedTree, fit, match }
@@ -302,12 +324,18 @@ CRITICAL RULES:
 - For resume_title: provide a short, generalized job title for the resume header (e.g. "Software Engineer" not "Software Engineer - React/Node.js"). Strip technologies, locations, team names, and parenthetical qualifiers.
 - Your response must be valid JSON only — no markdown fences, no commentary outside the JSON.
 
+EXPERIENCE-FIRST PRIORITY (follow this order strictly):
+1. Include the 4 most recent professional work experience entries (by start date). If the pool has fewer than 4, include all of them. Work experience is the most valuable section — never drop a work entry to make room for projects.
+2. Maximize bullets for each work entry. Most recent role: 5-6 highlights. Second role: 4-5. Third role: 3-4. Fourth role: 2-3. Select highlights that best match the job description.
+3. FILL THE PAGE. A good resume uses all available space on 1 page. If you have room after experience, add more bullets before considering projects.
+4. Only include projects (0-2) if the candidate's work experience does NOT cover a key requirement from the job description AND a project directly fills that gap. If work experience already covers the job's core requirements, return "project_ids": [].
+5. Include 3-5 skill categories and all education entries.
+
 CONTENT BUDGET (must fit on 1 page):
 - Exactly 1 narrative/summary
-- Max 4 experience entries
-- 4-5 bullets for most recent role, 2-3 for older roles
+- Up to 4 experience entries (most recent by start date; include all if fewer than 4 exist)
 - 3-5 skill categories
-- 0-2 projects (only if they fill genuine skill gaps)
+- 0-2 projects (ONLY for genuine skill gaps not covered by work experience)
 - All education entries`
 
 function buildSelectionPrompt(
@@ -582,6 +610,135 @@ export function trimToFit(content: ResumeContent): ResumeContent {
   }
 
   return result
+}
+
+// ─── Expand Loop ────────────────────────────────────────────────
+
+/**
+ * Minimum spare lines before we attempt to expand content.
+ * A typical bullet is ~1.6 lines (text + overhead), so 3 lines
+ * means room for at least 1-2 more bullets.
+ */
+export const EXPAND_THRESHOLD = 3
+
+/** Extra spare lines required beyond EXPAND_THRESHOLD before adding skill categories. */
+const SKILL_EXPANSION_BUFFER = 2
+
+/** Maximum number of skill categories to allow during expansion. */
+const MAX_SKILL_CATEGORIES = 5
+
+/**
+ * When content fits but leaves significant blank space, add more highlights
+ * from the pool to fill the page. Works at the selection level so IDs stay consistent.
+ *
+ * Priority: add more highlights to existing work entries (most recent first),
+ * then add skill categories.
+ */
+export function expandToFit(
+  tree: ResumeItemNode[],
+  selection: SelectionResult,
+  personalInfo: PersonalInfo,
+  jobTitle?: string
+): { resumeContent: ResumeContent; selection: SelectionResult } {
+  // Build a mutable copy of the selection
+  const expanded: SelectionResult = {
+    ...selection,
+    highlight_selections: { ...selection.highlight_selections },
+  }
+
+  const experienceIdSet = new Set(expanded.experience_ids)
+
+  // Index: for each selected work entry, find ALL available highlights in the pool.
+  // Also collect the work nodes themselves so we can sort by recency.
+  const workPool = new Map<string, ResumeItemNode[]>()
+  const workNodes: ResumeItemNode[] = []
+  function findWorkNodes(nodes: ResumeItemNode[]) {
+    for (const node of nodes) {
+      if (node.aiContext === 'work' && experienceIdSet.has(node.id)) {
+        const allHighlights = (node.children ?? [])
+          .filter((c) => c.aiContext === 'highlight' && c.description)
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+        workPool.set(node.id, allHighlights)
+        workNodes.push(node)
+      }
+      if (node.aiContext === 'section' && node.children?.length) {
+        findWorkNodes(node.children)
+      }
+      if (node.children?.length && !node.aiContext) {
+        findWorkNodes(node.children)
+      }
+    }
+  }
+  findWorkNodes(tree)
+
+  // Sort work entries by recency: most recent startDate first, then by orderIndex
+  workNodes.sort((a, b) => {
+    if (a.startDate && b.startDate) return b.startDate.localeCompare(a.startDate)
+    return a.orderIndex - b.orderIndex
+  })
+  const workExpansionOrder = workNodes.map((n) => n.id)
+
+  // Index: all available skill nodes in the pool that aren't selected
+  const selectedSkillSet = new Set(expanded.skill_ids)
+  const availableSkills: ResumeItemNode[] = []
+  function findSkillNodes(nodes: ResumeItemNode[]) {
+    for (const node of nodes) {
+      if (node.aiContext === 'skills' && !selectedSkillSet.has(node.id)) {
+        availableSkills.push(node)
+      }
+      if ((node.aiContext === 'section' || !node.aiContext) && node.children?.length) {
+        findSkillNodes(node.children)
+      }
+    }
+  }
+  findSkillNodes(tree)
+
+  // Iteratively add highlights until we run out of room or pool content
+  let changed = true
+  while (changed) {
+    changed = false
+    const selectedTree = filterTreeToSelection(tree, expanded)
+    const resumeContent = transformItemsToResumeContent(selectedTree, personalInfo, jobTitle)
+    const fit = estimateContentFit(resumeContent)
+
+    if (fit.overflow >= -EXPAND_THRESHOLD) break // not enough room
+
+    // Try adding highlights to work entries, most recent first (by startDate)
+    for (const workId of workExpansionOrder) {
+      const poolHighlights = workPool.get(workId)
+      if (!poolHighlights) continue
+
+      const currentIds = new Set(expanded.highlight_selections[workId] ?? [])
+      const unselected = poolHighlights.filter((h) => !currentIds.has(h.id))
+      if (unselected.length === 0) continue
+
+      // Add the next unselected highlight
+      const next = unselected[0]
+      expanded.highlight_selections[workId] = [
+        ...(expanded.highlight_selections[workId] ?? []),
+        next.id,
+      ]
+      changed = true
+      break // re-estimate after each addition
+    }
+
+    // If no work highlights to add, try adding a skill category (capped at MAX_SKILL_CATEGORIES)
+    if (
+      !changed &&
+      availableSkills.length > 0 &&
+      expanded.skill_ids.length < MAX_SKILL_CATEGORIES &&
+      fit.overflow < -(EXPAND_THRESHOLD + SKILL_EXPANSION_BUFFER)
+    ) {
+      const nextSkill = availableSkills.shift()!
+      expanded.skill_ids = [...expanded.skill_ids, nextSkill.id]
+      selectedSkillSet.add(nextSkill.id)
+      changed = true
+    }
+  }
+
+  const finalTree = filterTreeToSelection(tree, expanded)
+  const resumeContent = transformItemsToResumeContent(finalTree, personalInfo, jobTitle)
+  return { resumeContent, selection: expanded }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
