@@ -7,8 +7,8 @@
  * 3. AI returns JSON specifying which item IDs to include
  * 4. Filter the pool tree to only selected items
  * 5. Transform via transformItemsToResumeContent()
- * 6. Validate with estimateContentFit() — trim if overflow
- * 7. Render PDF via HtmlPdfService
+ * 6. Render-measure fit loop: Chromium measures .page height, expand/trim one step at a time
+ * 7. Render final PDF in the same browser session
  * 8. Cache in tailored_resumes table
  */
 
@@ -20,7 +20,7 @@ import type { JobMatchWithListing } from '@shared/types'
 import { ResumeVersionRepository } from './resume-version.repository'
 import { buildItemTree, transformItemsToResumeContent } from './resume-version.publish'
 import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
-import { HtmlPdfService } from '../generator/workflow/services/html-pdf.service'
+import { RenderMeasureService, USABLE_HEIGHT_PX } from '../generator/workflow/services/render-measure.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
 import { InferenceClient } from '../generator/ai/inference-client'
 import { JobMatchRepository } from '../job-matches/job-match.repository'
@@ -100,23 +100,22 @@ export class ResumeSelectionService {
   /**
    * Select content from the pool for a specific job match (no PDF generation).
    * Used by the generator workflow to produce ResumeContent for review.
+   * Uses estimation-based fitting (good enough for human review).
    */
   async selectContent(jobMatchId: string): Promise<ResumeContent> {
-    const { resumeContent } = await this.buildSelectedContent(jobMatchId)
+    const { resumeContent } = await this.buildFittedContent(jobMatchId)
     return resumeContent
   }
 
   /**
-   * Core pipeline: load pool, check selection cache, run AI selection if needed,
-   * filter tree, validate fit.
-   * Shared by selectContent (review workflow) and tailor (auto-tailor + cache).
+   * Load pool, run AI selection (or cache), return raw results with no fitting applied.
+   * Used by tailor() which applies its own render-measure loop.
    */
-  private async buildSelectedContent(jobMatchId: string): Promise<{
-    resumeContent: ResumeContent
-    personalInfo: PersonalInfo
+  private async buildRawSelection(jobMatchId: string): Promise<{
+    tree: ResumeItemNode[]
     selection: SelectionResult
-    selectedTree: ResumeItemNode[]
-    fit: ReturnType<typeof estimateContentFit>
+    personalInfo: PersonalInfo
+    jobTitle: string | undefined
     match: JobMatchWithListing
   }> {
     const pool = this.repo.getPoolVersion()
@@ -164,8 +163,27 @@ export class ResumeSelectionService {
       selection = await this.runAISelection(tree, match, jobMatchId, poolItemsHash, cacheResult.embedding)
     }
 
-    let selectedTree = filterTreeToSelection(tree, selection)
     const jobTitle = selection.resume_title || match.listing?.title
+    return { tree, selection, personalInfo, jobTitle, match }
+  }
+
+  /**
+   * Load pool + AI selection, then apply estimation-based expand/trim.
+   * Used by selectContent() (non-PDF review path).
+   */
+  private async buildFittedContent(jobMatchId: string): Promise<{
+    resumeContent: ResumeContent
+    personalInfo: PersonalInfo
+    selection: SelectionResult
+    selectedTree: ResumeItemNode[]
+    fit: ReturnType<typeof estimateContentFit>
+    match: JobMatchWithListing
+  }> {
+    const { tree, selection: rawSelection, personalInfo, jobTitle, match } =
+      await this.buildRawSelection(jobMatchId)
+
+    let selection = rawSelection
+    let selectedTree = filterTreeToSelection(tree, selection)
     let resumeContent = transformItemsToResumeContent(selectedTree, personalInfo, jobTitle)
 
     let fit = estimateContentFit(resumeContent)
@@ -226,7 +244,8 @@ export class ResumeSelectionService {
 
   /**
    * Tailor the pool resume for a specific job match.
-   * Returns cached result if available, otherwise runs AI selection.
+   * Uses a Chromium render-measure loop for pixel-perfect page fitting.
+   * Returns cached result if available, otherwise runs AI selection + fit loop.
    */
   async tailor(jobMatchId: string, force = false): Promise<TailorResult> {
     // Check cache first (unless forced)
@@ -261,21 +280,82 @@ export class ResumeSelectionService {
       }
     }
 
-    const { resumeContent, personalInfo, selection, selectedTree, fit } = await this.buildSelectedContent(jobMatchId)
+    const { tree, selection: rawSelection, personalInfo, jobTitle, match } =
+      await this.buildRawSelection(jobMatchId)
 
-    const fitEstimate: ContentFitEstimate = {
-      mainColumnLines: fit.mainColumnLines,
-      maxLines: LAYOUT.MAX_LINES,
-      usagePercent: Math.round((fit.mainColumnLines / LAYOUT.MAX_LINES) * 100),
-      pageCount: fit.fits ? 1 : Math.ceil(fit.mainColumnLines / LAYOUT.MAX_LINES),
-      fits: fit.fits,
-      overflow: fit.overflow,
-      suggestions: fit.suggestions
+    // ── Render-measure fit loop ──────────────────────────────────
+    const LINE_UNIT_PX = 14.175
+    const TOLERANCE_PX = 20 // ~1.4 lines — no room for another bullet
+    const MAX_ITERATIONS = 20
+
+    const renderer = new RenderMeasureService()
+    let selection = rawSelection
+    let resumeContent: ResumeContent
+    let measurement: { contentHeightPx: number; sparePx: number; fits: boolean }
+    let pdfBuffer: Buffer
+
+    try {
+      await renderer.init()
+
+      // Build initial content and measure
+      resumeContent = transformItemsToResumeContent(
+        filterTreeToSelection(tree, selection), personalInfo, jobTitle
+      )
+      measurement = await renderer.measure(resumeContent, personalInfo)
+      let iterations = 0
+
+      // Phase 1: Trim if overflowing
+      while (!measurement.fits && iterations < MAX_ITERATIONS) {
+        const trimmed = trimOneStep(tree, selection)
+        if (!trimmed) break
+        selection = trimmed
+        resumeContent = transformItemsToResumeContent(
+          filterTreeToSelection(tree, selection), personalInfo, jobTitle
+        )
+        measurement = await renderer.measure(resumeContent, personalInfo)
+        iterations++
+      }
+
+      // Phase 2: Expand while there's room for another bullet
+      while (measurement.sparePx > TOLERANCE_PX && iterations < MAX_ITERATIONS) {
+        const expanded = expandOneStep(tree, selection)
+        if (!expanded) break // pool exhausted
+
+        // Speculatively measure the expansion
+        const expandedContent = transformItemsToResumeContent(
+          filterTreeToSelection(tree, expanded), personalInfo, jobTitle
+        )
+        const expandedMeasure = await renderer.measure(expandedContent, personalInfo)
+
+        if (!expandedMeasure.fits) break // would overflow — stop without accepting
+
+        selection = expanded
+        resumeContent = expandedContent
+        measurement = expandedMeasure
+        iterations++
+      }
+
+      logger.info(
+        { jobMatchId, iterations, contentHeightPx: measurement.contentHeightPx, sparePx: measurement.sparePx },
+        'Render-measure fit loop completed'
+      )
+
+      // Render final PDF in the same browser session
+      pdfBuffer = await renderer.renderPdf(resumeContent, personalInfo)
+    } finally {
+      await renderer.dispose()
     }
 
-    // Render PDF
-    const htmlPdf = new HtmlPdfService()
-    const pdfBuffer = await htmlPdf.renderResume(resumeContent, personalInfo)
+    // Build fit estimate from actual measured values
+    const fitEstimate: ContentFitEstimate = {
+      mainColumnLines: Math.round(measurement.contentHeightPx / LINE_UNIT_PX),
+      maxLines: LAYOUT.MAX_LINES,
+      usagePercent: Math.round((measurement.contentHeightPx / USABLE_HEIGHT_PX) * 100),
+      pageCount: 1,
+      fits: true,
+      overflow: -Math.round(measurement.sparePx / LINE_UNIT_PX),
+      suggestions: [],
+    }
 
     const tailoredDir = path.join(artifactsRoot, TAILORED_DIR)
     await fs.mkdir(tailoredDir, { recursive: true })
@@ -288,6 +368,7 @@ export class ResumeSelectionService {
     await fs.writeFile(absolutePath, pdfBuffer)
 
     // Collect selected item IDs
+    const selectedTree = filterTreeToSelection(tree, selection)
     const selectedItemIds = collectItemIds(selectedTree)
 
     // Cache result
@@ -740,6 +821,152 @@ export function expandToFit(
   const finalTree = filterTreeToSelection(tree, expanded)
   const resumeContent = transformItemsToResumeContent(finalTree, personalInfo, jobTitle)
   return { resumeContent, selection: expanded }
+}
+
+// ─── Single-Step Operations (for render-measure loop) ───────────
+
+/**
+ * Collect selected work nodes from the pool tree, sorted by startDate descending
+ * (most recent first). Shared by expandOneStep and expandToFit.
+ */
+function getWorkPoolIndex(
+  tree: ResumeItemNode[],
+  experienceIds: string[]
+): { workPool: Map<string, ResumeItemNode[]>; expansionOrder: string[] } {
+  const idSet = new Set(experienceIds)
+  const workPool = new Map<string, ResumeItemNode[]>()
+  const workNodes: ResumeItemNode[] = []
+
+  function walk(nodes: ResumeItemNode[]) {
+    for (const node of nodes) {
+      if (node.aiContext === 'work' && idSet.has(node.id)) {
+        const highlights = (node.children ?? [])
+          .filter((c) => c.aiContext === 'highlight' && c.description)
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+        workPool.set(node.id, highlights)
+        workNodes.push(node)
+      }
+      if ((node.aiContext === 'section' || !node.aiContext) && node.children?.length) {
+        walk(node.children)
+      }
+    }
+  }
+  walk(tree)
+
+  workNodes.sort((a, b) => {
+    if (a.startDate && b.startDate) return b.startDate.localeCompare(a.startDate)
+    return a.orderIndex - b.orderIndex
+  })
+
+  return { workPool, expansionOrder: workNodes.map((n) => n.id) }
+}
+
+/**
+ * Add one highlight from the pool to the selection.
+ * Priority: most recent work entry first (by startDate), then older entries,
+ * then skill categories.
+ * Returns a new SelectionResult, or null if nothing can be added.
+ */
+export function expandOneStep(
+  tree: ResumeItemNode[],
+  selection: SelectionResult
+): SelectionResult | null {
+  const { workPool, expansionOrder } = getWorkPoolIndex(tree, selection.experience_ids)
+
+  // Try adding a highlight to work entries (most recent first)
+  for (const workId of expansionOrder) {
+    const poolHighlights = workPool.get(workId)
+    if (!poolHighlights) continue
+
+    const currentIds = new Set(selection.highlight_selections[workId] ?? [])
+    const unselected = poolHighlights.filter((h) => !currentIds.has(h.id))
+    if (unselected.length === 0) continue
+
+    return {
+      ...selection,
+      highlight_selections: {
+        ...selection.highlight_selections,
+        [workId]: [...(selection.highlight_selections[workId] ?? []), unselected[0].id],
+      },
+    }
+  }
+
+  // No work highlights available — try adding a skill category
+  if (selection.skill_ids.length < MAX_SKILL_CATEGORIES) {
+    const selectedSkillSet = new Set(selection.skill_ids)
+    const availableSkill = findFirstAvailableSkill(tree, selectedSkillSet)
+    if (availableSkill) {
+      return {
+        ...selection,
+        skill_ids: [...selection.skill_ids, availableSkill.id],
+      }
+    }
+  }
+
+  return null // pool exhausted
+}
+
+/**
+ * Remove one highlight from the selection.
+ * Priority: remove from the OLDEST work entry first (preserving recent experience depth).
+ * Within an entry, removes the last highlight (lowest priority by position).
+ * Falls back to removing projects, then skill categories.
+ * Returns a new SelectionResult, or null if at minimum content.
+ */
+export function trimOneStep(
+  tree: ResumeItemNode[],
+  selection: SelectionResult
+): SelectionResult | null {
+  const { expansionOrder } = getWorkPoolIndex(tree, selection.experience_ids)
+  // Reverse: oldest first for trimming
+  const trimOrder = [...expansionOrder].reverse()
+
+  // Try removing a highlight from work entries (oldest first)
+  for (const workId of trimOrder) {
+    const highlights = selection.highlight_selections[workId] ?? []
+    if (highlights.length > 1) {
+      return {
+        ...selection,
+        highlight_selections: {
+          ...selection.highlight_selections,
+          [workId]: highlights.slice(0, -1),
+        },
+      }
+    }
+  }
+
+  // Remove a project
+  if (selection.project_ids.length > 0) {
+    return {
+      ...selection,
+      project_ids: selection.project_ids.slice(0, -1),
+    }
+  }
+
+  // Remove the last skill category
+  if (selection.skill_ids.length > 1) {
+    return {
+      ...selection,
+      skill_ids: selection.skill_ids.slice(0, -1),
+    }
+  }
+
+  return null // at minimum content
+}
+
+/** Find the first skill node in the tree that isn't already selected. */
+function findFirstAvailableSkill(
+  nodes: ResumeItemNode[],
+  selectedIds: Set<string>
+): ResumeItemNode | null {
+  for (const node of nodes) {
+    if (node.aiContext === 'skills' && !selectedIds.has(node.id)) return node
+    if ((node.aiContext === 'section' || !node.aiContext) && node.children?.length) {
+      const found = findFirstAvailableSkill(node.children, selectedIds)
+      if (found) return found
+    }
+  }
+  return null
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
