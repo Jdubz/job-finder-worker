@@ -643,8 +643,8 @@ describe('expandToFit', () => {
     let callCount = 0
     vi.mocked(estimateContentFit).mockImplementation(() => {
       callCount++
-      // First call (in the while loop check): underflow. Second call: near zero.
-      const overflow = callCount === 1 ? -5 : -1
+      // First call (in the while loop check): underflow beyond threshold. Second call: within threshold.
+      const overflow = callCount === 1 ? -8 : -3
       return {
         mainColumnLines: 67 + overflow,
         sidebarLines: 0,

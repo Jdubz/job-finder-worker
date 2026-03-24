@@ -615,11 +615,12 @@ export function trimToFit(content: ResumeContent): ResumeContent {
 // ─── Expand Loop ────────────────────────────────────────────────
 
 /**
- * Minimum spare lines before we attempt to expand content.
- * A typical bullet is ~1.6 lines (text + overhead), so 3 lines
- * means room for at least 1-2 more bullets.
+ * Minimum spare lines to preserve as safety margin during expansion.
+ * The content-fit estimator can be off by 2-3 lines due to Chromium rendering
+ * variance, font metric approximations, and margin collapse edge cases.
+ * 5 lines (~71px) provides enough buffer to prevent page overflow.
  */
-export const EXPAND_THRESHOLD = 3
+export const EXPAND_THRESHOLD = 5
 
 /** Extra spare lines required beyond EXPAND_THRESHOLD before adding skill categories. */
 const SKILL_EXPANSION_BUFFER = 2
