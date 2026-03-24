@@ -46,6 +46,7 @@ import {
   parseSelectionResponse,
   filterTreeToSelection,
   trimToFit,
+  expandToFit,
   AISelectionError,
   ResumeSelectionService,
   PoolNotFoundError,
@@ -528,6 +529,215 @@ describe('filterTreeToSelection — additional edge cases', () => {
 
     const result = filterTreeToSelection([], selection)
     expect(result).toEqual([])
+  })
+})
+
+// ─── expandToFit ─────────────────────────────────────────────────
+
+describe('expandToFit', () => {
+  const baseItem: ResumeItemNode = {
+    id: '', resumeVersionId: 'v-1', parentId: null, orderIndex: 0,
+    aiContext: null, title: null, role: null, location: null, website: null,
+    startDate: null, endDate: null, description: null, skills: null,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    createdBy: 'test', updatedBy: 'test'
+  }
+
+  const personalInfo = {
+    name: 'Test User',
+    email: 'test@example.com',
+    applicationInfo: 'Test',
+  }
+
+  // Pool tree with 2 work entries, each having 6 highlights
+  const poolTree: ResumeItemNode[] = [
+    { ...baseItem, id: 'n-1', aiContext: 'narrative', description: 'Summary text' },
+    {
+      ...baseItem, id: 'sec-exp', aiContext: 'section', title: 'Experience',
+      children: [
+        {
+          ...baseItem, id: 'w-1', aiContext: 'work', title: 'Company A', role: 'Engineer',
+          startDate: '2023-01', orderIndex: 0,
+          children: [
+            { ...baseItem, id: 'h-1a', aiContext: 'highlight', parentId: 'w-1', orderIndex: 0, description: 'Built platform serving 10M users' },
+            { ...baseItem, id: 'h-1b', aiContext: 'highlight', parentId: 'w-1', orderIndex: 1, description: 'Led migration to microservices architecture' },
+            { ...baseItem, id: 'h-1c', aiContext: 'highlight', parentId: 'w-1', orderIndex: 2, description: 'Reduced latency by 40% via caching layer' },
+            { ...baseItem, id: 'h-1d', aiContext: 'highlight', parentId: 'w-1', orderIndex: 3, description: 'Implemented CI/CD pipeline with 99.9% uptime' },
+            { ...baseItem, id: 'h-1e', aiContext: 'highlight', parentId: 'w-1', orderIndex: 4, description: 'Mentored team of 5 junior engineers' },
+            { ...baseItem, id: 'h-1f', aiContext: 'highlight', parentId: 'w-1', orderIndex: 5, description: 'Designed event-driven system processing 1M events/day' },
+          ]
+        },
+        {
+          ...baseItem, id: 'w-2', aiContext: 'work', title: 'Company B', role: 'Junior Dev',
+          startDate: '2021-01', orderIndex: 1,
+          children: [
+            { ...baseItem, id: 'h-2a', aiContext: 'highlight', parentId: 'w-2', orderIndex: 0, description: 'Developed REST APIs for customer portal' },
+            { ...baseItem, id: 'h-2b', aiContext: 'highlight', parentId: 'w-2', orderIndex: 1, description: 'Wrote integration tests covering 90% of endpoints' },
+            { ...baseItem, id: 'h-2c', aiContext: 'highlight', parentId: 'w-2', orderIndex: 2, description: 'Optimized database queries reducing response time by 30%' },
+          ]
+        }
+      ]
+    },
+    {
+      ...baseItem, id: 'sec-skills', aiContext: 'section', title: 'Skills',
+      children: [
+        { ...baseItem, id: 's-1', aiContext: 'skills', title: 'Languages', skills: ['TypeScript', 'Python'], orderIndex: 0 },
+        { ...baseItem, id: 's-2', aiContext: 'skills', title: 'Frontend', skills: ['React', 'Vue'], orderIndex: 1 },
+        { ...baseItem, id: 's-3', aiContext: 'skills', title: 'Cloud', skills: ['AWS', 'GCP'], orderIndex: 2 },
+      ]
+    },
+    { ...baseItem, id: 'e-1', aiContext: 'education', title: 'University', role: 'B.S.', orderIndex: 3 },
+  ]
+
+  // Minimal selection: only 2 highlights per work entry
+  const sparseSelection = {
+    narrative_id: 'n-1',
+    resume_title: 'Software Engineer',
+    experience_ids: ['w-1', 'w-2'],
+    highlight_selections: {
+      'w-1': ['h-1a', 'h-1b'],
+      'w-2': ['h-2a'],
+    },
+    skill_ids: ['s-1'],
+    project_ids: [],
+    education_ids: ['e-1'],
+    reasoning: 'Sparse selection',
+  }
+
+  it('adds more highlights when there is significant underflow', async () => {
+    const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
+
+    // First call: large underflow (-10 lines spare). Subsequent calls: gradually less room.
+    let callCount = 0
+    vi.mocked(estimateContentFit).mockImplementation(() => {
+      callCount++
+      const overflow = -10 + (callCount * 2) // -8, -6, -4, -2, 0, +2...
+      return {
+        mainColumnLines: 67 + overflow,
+        sidebarLines: 0,
+        fits: overflow <= 0,
+        overflow,
+        suggestions: [],
+      }
+    })
+
+    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo as any, 'Software Engineer')
+
+    // Should have added highlights to w-1 and/or w-2
+    const totalOriginalHighlights = 2 + 1 // w-1: 2, w-2: 1
+    const totalExpandedHighlights =
+      (selection.highlight_selections['w-1']?.length ?? 0) +
+      (selection.highlight_selections['w-2']?.length ?? 0)
+
+    expect(totalExpandedHighlights).toBeGreaterThan(totalOriginalHighlights)
+
+    // Restore mock
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 40, sidebarLines: 0, fits: true, overflow: 0, suggestions: [],
+    })
+  })
+
+  it('adds highlights to most recent work entry first', async () => {
+    const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
+
+    // Enough room for exactly 1 more highlight
+    let callCount = 0
+    vi.mocked(estimateContentFit).mockImplementation(() => {
+      callCount++
+      // First call (in the while loop check): underflow. Second call: near zero.
+      const overflow = callCount === 1 ? -5 : -1
+      return {
+        mainColumnLines: 67 + overflow,
+        sidebarLines: 0,
+        fits: true,
+        overflow,
+        suggestions: [],
+      }
+    })
+
+    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo as any)
+
+    // w-1 is first in experience_ids, so it should get the extra highlight
+    expect(selection.highlight_selections['w-1']!.length).toBe(3) // was 2, now 3
+    expect(selection.highlight_selections['w-1']).toContain('h-1c') // next in pool order
+    // w-2 should be unchanged
+    expect(selection.highlight_selections['w-2']!.length).toBe(1)
+
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 40, sidebarLines: 0, fits: true, overflow: 0, suggestions: [],
+    })
+  })
+
+  it('does not expand when content already fills the page', async () => {
+    const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
+
+    // No underflow — overflow is -1 (just barely fits, less than threshold)
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 66, sidebarLines: 0, fits: true, overflow: -1, suggestions: [],
+    })
+
+    const { selection } = expandToFit(poolTree, sparseSelection, personalInfo as any)
+
+    // Selection should be unchanged
+    expect(selection.highlight_selections['w-1']!.length).toBe(2)
+    expect(selection.highlight_selections['w-2']!.length).toBe(1)
+
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 40, sidebarLines: 0, fits: true, overflow: 0, suggestions: [],
+    })
+  })
+
+  it('stops expanding when pool highlights are exhausted', async () => {
+    const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
+
+    // Permanent large underflow — room for many more highlights than exist
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 30, sidebarLines: 0, fits: true, overflow: -37, suggestions: [],
+    })
+
+    // Start with all highlights already selected for w-1
+    const fullSelection = {
+      ...sparseSelection,
+      highlight_selections: {
+        'w-1': ['h-1a', 'h-1b', 'h-1c', 'h-1d', 'h-1e', 'h-1f'], // all 6
+        'w-2': ['h-2a', 'h-2b', 'h-2c'], // all 3
+      },
+    }
+
+    const { selection } = expandToFit(poolTree, fullSelection, personalInfo as any)
+
+    // No highlights to add — should add skill categories instead (s-2, s-3)
+    expect(selection.skill_ids).toContain('s-2')
+
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 40, sidebarLines: 0, fits: true, overflow: 0, suggestions: [],
+    })
+  })
+
+  it('adds skill categories when all work highlights exhausted and room remains', async () => {
+    const { estimateContentFit } = await import('../../generator/workflow/services/content-fit.service')
+
+    // Permanent deep underflow
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 30, sidebarLines: 0, fits: true, overflow: -37, suggestions: [],
+    })
+
+    const fullHighlightsSelection = {
+      ...sparseSelection,
+      highlight_selections: {
+        'w-1': ['h-1a', 'h-1b', 'h-1c', 'h-1d', 'h-1e', 'h-1f'],
+        'w-2': ['h-2a', 'h-2b', 'h-2c'],
+      },
+    }
+
+    const { selection } = expandToFit(poolTree, fullHighlightsSelection, personalInfo as any)
+
+    // Should have added s-2 and/or s-3
+    expect(selection.skill_ids.length).toBeGreaterThan(1) // was ['s-1']
+
+    vi.mocked(estimateContentFit).mockReturnValue({
+      mainColumnLines: 40, sidebarLines: 0, fits: true, overflow: 0, suggestions: [],
+    })
   })
 })
 
