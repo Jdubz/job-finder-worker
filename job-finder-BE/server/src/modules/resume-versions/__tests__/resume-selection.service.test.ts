@@ -47,6 +47,8 @@ import {
   filterTreeToSelection,
   trimToFit,
   expandToFit,
+  expandOneStep,
+  trimOneStep,
   AISelectionError,
   ResumeSelectionService,
   PoolNotFoundError,
@@ -643,8 +645,8 @@ describe('expandToFit', () => {
     let callCount = 0
     vi.mocked(estimateContentFit).mockImplementation(() => {
       callCount++
-      // First call (in the while loop check): underflow. Second call: near zero.
-      const overflow = callCount === 1 ? -5 : -1
+      // First call (in the while loop check): underflow beyond threshold. Second call: within threshold.
+      const overflow = callCount === 1 ? -8 : -3
       return {
         mainColumnLines: 67 + overflow,
         sidebarLines: 0,
@@ -737,6 +739,176 @@ describe('expandToFit', () => {
     vi.mocked(estimateContentFit).mockReturnValue({
       mainColumnLines: 40, sidebarLines: 0, fits: true, overflow: 0, suggestions: [],
     })
+  })
+})
+
+// ─── expandOneStep ───────────────────────────────────────────────
+
+describe('expandOneStep', () => {
+  const baseItem: ResumeItemNode = {
+    id: '', resumeVersionId: 'v-1', parentId: null, orderIndex: 0,
+    aiContext: null, title: null, role: null, location: null, website: null,
+    startDate: null, endDate: null, description: null, skills: null,
+    createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z',
+    createdBy: 'test', updatedBy: 'test'
+  }
+
+  const poolTree: ResumeItemNode[] = [
+    {
+      ...baseItem, id: 'sec-exp', aiContext: 'section', title: 'Experience',
+      children: [
+        {
+          ...baseItem, id: 'w-1', aiContext: 'work', title: 'Company A',
+          startDate: '2023-01', orderIndex: 0,
+          children: [
+            { ...baseItem, id: 'h-1a', aiContext: 'highlight', parentId: 'w-1', orderIndex: 0, description: 'Bullet A1' },
+            { ...baseItem, id: 'h-1b', aiContext: 'highlight', parentId: 'w-1', orderIndex: 1, description: 'Bullet A2' },
+            { ...baseItem, id: 'h-1c', aiContext: 'highlight', parentId: 'w-1', orderIndex: 2, description: 'Bullet A3' },
+          ]
+        },
+        {
+          ...baseItem, id: 'w-2', aiContext: 'work', title: 'Company B',
+          startDate: '2021-01', orderIndex: 1,
+          children: [
+            { ...baseItem, id: 'h-2a', aiContext: 'highlight', parentId: 'w-2', orderIndex: 0, description: 'Bullet B1' },
+            { ...baseItem, id: 'h-2b', aiContext: 'highlight', parentId: 'w-2', orderIndex: 1, description: 'Bullet B2' },
+          ]
+        }
+      ]
+    },
+    {
+      ...baseItem, id: 'sec-skills', aiContext: 'section', title: 'Skills',
+      children: [
+        { ...baseItem, id: 's-1', aiContext: 'skills', title: 'Languages', skills: ['TS'], orderIndex: 0 },
+        { ...baseItem, id: 's-2', aiContext: 'skills', title: 'Cloud', skills: ['AWS'], orderIndex: 1 },
+      ]
+    },
+  ]
+
+  const selection = {
+    narrative_id: 'n-1', resume_title: 'Engineer',
+    experience_ids: ['w-1', 'w-2'],
+    highlight_selections: { 'w-1': ['h-1a'], 'w-2': ['h-2a'] },
+    skill_ids: ['s-1'], project_ids: [], education_ids: ['e-1'],
+    reasoning: '',
+  }
+
+  it('adds a highlight to the most recent work entry first', () => {
+    const result = expandOneStep(poolTree, selection)
+    expect(result).not.toBeNull()
+    // w-1 (2023) is more recent than w-2 (2021), so it gets the highlight
+    expect(result!.highlight_selections['w-1']).toContain('h-1b')
+    expect(result!.highlight_selections['w-2']).toEqual(['h-2a']) // unchanged
+  })
+
+  it('falls back to older work entry when most recent is exhausted', () => {
+    const fullW1 = {
+      ...selection,
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a'] },
+    }
+    const result = expandOneStep(poolTree, fullW1)
+    expect(result).not.toBeNull()
+    expect(result!.highlight_selections['w-2']).toContain('h-2b')
+  })
+
+  it('adds a skill category when all work highlights exhausted', () => {
+    const allHighlights = {
+      ...selection,
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+    }
+    const result = expandOneStep(poolTree, allHighlights)
+    expect(result).not.toBeNull()
+    expect(result!.skill_ids).toContain('s-2')
+  })
+
+  it('returns null when pool is fully exhausted', () => {
+    const allExhausted = {
+      ...selection,
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'], // at MAX_SKILL_CATEGORIES
+    }
+    const result = expandOneStep(poolTree, allExhausted)
+    expect(result).toBeNull()
+  })
+})
+
+// ─── trimOneStep ─────────────────────────────────────────────────
+
+describe('trimOneStep', () => {
+  const baseItem: ResumeItemNode = {
+    id: '', resumeVersionId: 'v-1', parentId: null, orderIndex: 0,
+    aiContext: null, title: null, role: null, location: null, website: null,
+    startDate: null, endDate: null, description: null, skills: null,
+    createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z',
+    createdBy: 'test', updatedBy: 'test'
+  }
+
+  const poolTree: ResumeItemNode[] = [
+    {
+      ...baseItem, id: 'sec-exp', aiContext: 'section', title: 'Experience',
+      children: [
+        { ...baseItem, id: 'w-1', aiContext: 'work', title: 'Recent', startDate: '2023-01', orderIndex: 0 },
+        { ...baseItem, id: 'w-2', aiContext: 'work', title: 'Old', startDate: '2021-01', orderIndex: 1 },
+      ]
+    },
+  ]
+
+  it('removes a highlight from the oldest work entry first', () => {
+    const selection = {
+      narrative_id: 'n-1', resume_title: 'Engineer',
+      experience_ids: ['w-1', 'w-2'],
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+      skill_ids: ['s-1'], project_ids: [], education_ids: ['e-1'],
+      reasoning: '',
+    }
+
+    const result = trimOneStep(poolTree, selection)
+    expect(result).not.toBeNull()
+    // w-2 is oldest, so it loses a highlight
+    expect(result!.highlight_selections['w-2']).toEqual(['h-2a']) // was ['h-2a', 'h-2b']
+    // w-1 unchanged
+    expect(result!.highlight_selections['w-1']).toEqual(['h-1a', 'h-1b', 'h-1c'])
+  })
+
+  it('removes project when all work entries are at 1 highlight', () => {
+    const selection = {
+      narrative_id: 'n-1', resume_title: 'Engineer',
+      experience_ids: ['w-1', 'w-2'],
+      highlight_selections: { 'w-1': ['h-1a'], 'w-2': ['h-2a'] },
+      skill_ids: ['s-1'], project_ids: ['p-1', 'p-2'], education_ids: [],
+      reasoning: '',
+    }
+
+    const result = trimOneStep(poolTree, selection)
+    expect(result).not.toBeNull()
+    expect(result!.project_ids).toEqual(['p-1']) // removed last project
+  })
+
+  it('removes skill category after projects exhausted', () => {
+    const selection = {
+      narrative_id: 'n-1', resume_title: 'Engineer',
+      experience_ids: ['w-1', 'w-2'],
+      highlight_selections: { 'w-1': ['h-1a'], 'w-2': ['h-2a'] },
+      skill_ids: ['s-1', 's-2'], project_ids: [], education_ids: [],
+      reasoning: '',
+    }
+
+    const result = trimOneStep(poolTree, selection)
+    expect(result).not.toBeNull()
+    expect(result!.skill_ids).toEqual(['s-1']) // removed last skill
+  })
+
+  it('returns null at minimum content', () => {
+    const selection = {
+      narrative_id: 'n-1', resume_title: 'Engineer',
+      experience_ids: ['w-1', 'w-2'],
+      highlight_selections: { 'w-1': ['h-1a'], 'w-2': ['h-2a'] },
+      skill_ids: ['s-1'], project_ids: [], education_ids: [],
+      reasoning: '',
+    }
+
+    const result = trimOneStep(poolTree, selection)
+    expect(result).toBeNull()
   })
 })
 
