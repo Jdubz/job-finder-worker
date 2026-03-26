@@ -179,6 +179,7 @@ interface JobMatchListOptions {
   sortBy?: 'score' | 'date' | 'updated'
   sortOrder?: 'asc' | 'desc'
   status?: 'active' | 'ignored' | 'applied' | 'all'
+  search?: string
 }
 
 export class JobMatchRepository {
@@ -251,14 +252,15 @@ export class JobMatchRepository {
    */
   listWithListings(options: JobMatchListOptions = {}): JobMatchWithListing[] {
     const {
-      limit = 50,
+      limit = 200,
       offset = 0,
       minScore,
       maxScore,
       jobListingId,
       sortBy = 'updated',
       sortOrder = 'desc',
-      status
+      status,
+      search
     } = options
 
     const conditions: string[] = []
@@ -279,6 +281,11 @@ export class JobMatchRepository {
     if (status && status !== 'all') {
       conditions.push('m.status = ?')
       params.push(status)
+    }
+    if (search) {
+      conditions.push('(l.title LIKE ? OR l.company_name LIKE ?)')
+      const pattern = `%${search}%`
+      params.push(pattern, pattern)
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''

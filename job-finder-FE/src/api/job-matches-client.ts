@@ -18,6 +18,7 @@ export interface JobMatchFilters {
   sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
   status?: "active" | "ignored" | "applied" | "all"
+  search?: string
 }
 
 type JobMatchesResponseShape =
@@ -40,6 +41,7 @@ export class JobMatchesClient extends BaseApiClient {
     if (filters.sortBy) params.set("sortBy", filters.sortBy)
     if (filters.sortOrder) params.set("sortOrder", filters.sortOrder)
     if (filters.status) params.set("status", filters.status)
+    if (filters.search) params.set("search", filters.search)
     return params.toString()
   }
 
