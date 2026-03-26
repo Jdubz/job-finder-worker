@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
+import { useDebounce } from "@/hooks/useDebounce"
 import { jobMatchesClient } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -55,6 +56,7 @@ export function JobApplicationsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
+  const debouncedSearch = useDebounce(searchQuery.trim(), 300)
   const [sortBy, setSortBy] = useState<string>("updated")
   const [statusFilter, setStatusFilter] = useState<"active" | "ignored" | "applied" | "all">("active")
 
@@ -120,7 +122,7 @@ export function JobApplicationsPage() {
         setLoading(false)
         setError(null) // Clear any previous errors
       },
-      { sortBy: "updated", sortOrder: "desc", status: statusFilter },
+      { sortBy: "updated", sortOrder: "desc", status: statusFilter, search: debouncedSearch || undefined },
       (err) => {
         logger.error("database", "failed", "JobApplicationsPage: Job matches subscription error", {
           error: {
@@ -138,7 +140,7 @@ export function JobApplicationsPage() {
       logger.debug("database", "stopped", "JobApplicationsPage: Unsubscribing from job matches")
       unsubscribe()
     }
-  }, [user, fetchStats, statusFilter])
+  }, [user, fetchStats, statusFilter, debouncedSearch])
 
   const getUpdatedDate = (match: JobMatchWithListing) =>
     toDate(match.updatedAt ?? match.createdAt ?? match.listing.updatedAt ?? match.listing.createdAt)
@@ -150,16 +152,6 @@ export function JobApplicationsPage() {
     // Status filter (local fallback in case backend subscription sends broader set)
     if (statusFilter !== "all") {
       filtered = filtered.filter((match) => (match.status ?? "active") === statusFilter)
-    }
-
-    // Search filter (company name or job title)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (match) =>
-          match.listing.companyName.toLowerCase().includes(query) ||
-          match.listing.title.toLowerCase().includes(query)
-      )
     }
 
     // Sorting
@@ -188,7 +180,7 @@ export function JobApplicationsPage() {
     })
 
     setFilteredMatches(filtered)
-  }, [matches, searchQuery, sortBy, statusFilter])
+  }, [matches, sortBy, statusFilter])
 
   const handleRowClick = (match: JobMatchWithListing) => {
     openModal({

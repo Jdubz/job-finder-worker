@@ -4,10 +4,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Trash2, ExternalLink, Database, AlertCircle } from "lucide-react"
+import { Loader2, Trash2, ExternalLink, Database, AlertCircle, ArrowRight } from "lucide-react"
 import { statusBadgeClass } from "@/lib/status-badge"
 import { formatDate, formatDateTime } from "@/lib/formatDate"
 import { extractMatchScore } from "@/lib/score-utils"
+import { jobMatchesClient } from "@/api"
+import { toast } from "@/components/toast"
 import type { JobListingRecord, JobListingStatus } from "@shared/types"
 
 const statusLabel: Record<JobListingStatus, string> = {
@@ -29,6 +31,7 @@ interface JobListingModalContentProps {
 export function JobListingModalContent({ listing, handlers }: JobListingModalContentProps) {
   const { openModal } = useEntityModal()
   const [isWorking, setIsWorking] = useState(false)
+  const [isLoadingMatch, setIsLoadingMatch] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const matchScore = useMemo(() => extractMatchScore(listing), [listing])
@@ -44,6 +47,23 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
       setError(err instanceof Error ? err.message : "Failed to delete listing")
     } finally {
       setIsWorking(false)
+    }
+  }
+
+  const handleViewMatch = async () => {
+    setIsLoadingMatch(true)
+    try {
+      const matches = await jobMatchesClient.listMatches({ jobListingId: listing.id, limit: 1, status: "all" })
+      if (!matches.length) {
+        toast.error({ title: "No match record found for this listing" })
+        return
+      }
+      openModal({ type: "jobMatch", match: matches[0] })
+    } catch (err) {
+      console.error("Failed to load match:", err)
+      toast.error({ title: "Failed to load match" })
+    } finally {
+      setIsLoadingMatch(false)
     }
   }
 
@@ -255,9 +275,17 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
             </Button>
           )}
         </div>
-        <Button variant="ghost" onClick={() => window.open(listing.url, "_blank")} className="w-full sm:w-auto">
-          View Posting
-        </Button>
+        <div className="flex gap-2">
+          {listing.status === "matched" && (
+            <Button variant="secondary" onClick={handleViewMatch} disabled={isLoadingMatch} className="w-full sm:w-auto">
+              {isLoadingMatch ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
+              View Match
+            </Button>
+          )}
+          <Button variant="ghost" onClick={() => window.open(listing.url, "_blank")} className="w-full sm:w-auto">
+            View Posting
+          </Button>
+        </div>
       </div>
     </div>
   )
