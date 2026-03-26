@@ -106,6 +106,58 @@ describe('JobMatchRepository', () => {
     expect(fetched?.jobListingId).toBe('test-listing')
   })
 
+  describe('listWithListings search', () => {
+    beforeEach(() => {
+      listingRepo.create(
+        buildJobListingRecord({ id: 'search-1', title: 'Senior React Developer', companyName: 'Autodesk' })
+      )
+      listingRepo.create(
+        buildJobListingRecord({ id: 'search-2', title: 'Backend Engineer', companyName: 'Google' })
+      )
+      listingRepo.create(
+        buildJobListingRecord({ id: 'search-3', title: 'Full Stack Developer', companyName: 'React Corp' })
+      )
+      repo.upsert(buildJobMatchInput({ queueItemId: 'sq-1', jobListingId: 'search-1', matchScore: 90 }))
+      repo.upsert(buildJobMatchInput({ queueItemId: 'sq-2', jobListingId: 'search-2', matchScore: 85 }))
+      repo.upsert(buildJobMatchInput({ queueItemId: 'sq-3', jobListingId: 'search-3', matchScore: 80 }))
+    })
+
+    it('filters by job title', () => {
+      const results = repo.listWithListings({ search: 'React' })
+      expect(results).toHaveLength(2)
+      const titles = results.map((r) => r.listing.title)
+      expect(titles).toContain('Senior React Developer')
+      expect(titles).toContain('Full Stack Developer')
+    })
+
+    it('filters by company name', () => {
+      const results = repo.listWithListings({ search: 'Google' })
+      expect(results).toHaveLength(1)
+      expect(results[0].listing.companyName).toBe('Google')
+    })
+
+    it('search is case-insensitive', () => {
+      const lower = repo.listWithListings({ search: 'autodesk' })
+      const upper = repo.listWithListings({ search: 'AUTODESK' })
+      const mixed = repo.listWithListings({ search: 'AutoDesk' })
+
+      expect(lower).toHaveLength(1)
+      expect(upper).toHaveLength(1)
+      expect(mixed).toHaveLength(1)
+    })
+
+    it('returns empty array when search has no matches', () => {
+      const results = repo.listWithListings({ search: 'nonexistent-company' })
+      expect(results).toHaveLength(0)
+    })
+
+    it('combines search with other filters', () => {
+      const results = repo.listWithListings({ search: 'React', minScore: 85 })
+      expect(results).toHaveLength(1)
+      expect(results[0].listing.title).toBe('Senior React Developer')
+    })
+  })
+
   it('updateStatus returns match with listing data', () => {
     createListing('listing-status')
     const created = repo.upsert(

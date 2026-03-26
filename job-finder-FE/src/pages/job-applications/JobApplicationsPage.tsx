@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
+import { useDebounce } from "@/hooks/useDebounce"
 import { jobMatchesClient } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -55,16 +56,9 @@ export function JobApplicationsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("")
-  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const debouncedSearch = useDebounce(searchQuery.trim(), 300)
   const [sortBy, setSortBy] = useState<string>("updated")
   const [statusFilter, setStatusFilter] = useState<"active" | "ignored" | "applied" | "all">("active")
-
-  // Debounce search input
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    debounceRef.current = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300)
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [searchQuery])
 
   // Ignore confirmation dialog state
   const [ignoreDialogOpen, setIgnoreDialogOpen] = useState(false)

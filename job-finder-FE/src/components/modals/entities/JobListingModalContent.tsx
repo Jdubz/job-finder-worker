@@ -53,13 +53,14 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
   const handleViewMatch = async () => {
     setIsLoadingMatch(true)
     try {
-      const matches = await jobMatchesClient.listMatches({ jobListingId: listing.id, limit: 1 })
+      const matches = await jobMatchesClient.listMatches({ jobListingId: listing.id, limit: 1, status: "all" })
       if (!matches.length) {
         toast.error({ title: "No match record found for this listing" })
         return
       }
       openModal({ type: "jobMatch", match: matches[0] })
-    } catch {
+    } catch (err) {
+      console.error("Failed to load match:", err)
       toast.error({ title: "Failed to load match" })
     } finally {
       setIsLoadingMatch(false)

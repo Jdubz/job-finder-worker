@@ -283,8 +283,8 @@ export class JobMatchRepository {
       params.push(status)
     }
     if (search) {
-      conditions.push('(l.title LIKE ? OR l.company_name LIKE ?)')
-      const pattern = `%${search}%`
+      conditions.push('(LOWER(l.title) LIKE ? OR LOWER(l.company_name) LIKE ?)')
+      const pattern = `%${search.toLowerCase()}%`
       params.push(pattern, pattern)
     }
 
