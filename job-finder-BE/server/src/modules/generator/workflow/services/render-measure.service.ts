@@ -163,6 +163,11 @@ export class RenderMeasureService {
 export async function distributePageSpacing(page: Page, sparePx: number): Promise<void> {
   if (sparePx <= 2) return
 
+  // Reserve 2px for sub-pixel rounding — scrollHeight is an integer so the
+  // measured spare can be up to 1px more than the real gap; distributing the
+  // full amount then risks pushing content past the page boundary.
+  const budget = sparePx - 2
+
   await page.evaluate((spare: number) => {
     const targets: Array<{ el: HTMLElement; weight: number; prop: 'paddingTop' | 'paddingBottom' }> = []
 
@@ -184,7 +189,8 @@ export async function distributePageSpacing(page: Page, sparePx: number): Promis
 
     const pxPerUnit = spare / totalWeight
     for (const t of targets) {
-      t.el.style[t.prop] = `${pxPerUnit * t.weight}px`
+      // Floor each value to prevent cumulative rounding from exceeding budget
+      t.el.style[t.prop] = `${Math.floor(pxPerUnit * t.weight * 100) / 100}px`
     }
-  }, sparePx)
+  }, budget)
 }
