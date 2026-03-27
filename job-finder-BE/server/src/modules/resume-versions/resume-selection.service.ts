@@ -356,14 +356,15 @@ export class ResumeSelectionService {
       await renderer.dispose()
     }
 
-    // Build fit estimate from actual measured values
+    // Build fit estimate — if page-filling was applied, the PDF visually fills the page
+    const pageFilled = measurement.fits && measurement.sparePx > 2
     const fitEstimate: ContentFitEstimate = {
       mainColumnLines: Math.round(measurement.contentHeightPx / LINE_UNIT_PX),
       maxLines: LAYOUT.MAX_LINES,
-      usagePercent: Math.round((measurement.contentHeightPx / USABLE_HEIGHT_PX) * 100),
+      usagePercent: pageFilled ? 100 : Math.round((measurement.contentHeightPx / USABLE_HEIGHT_PX) * 100),
       pageCount: measurement.fits ? 1 : Math.ceil(measurement.contentHeightPx / USABLE_HEIGHT_PX),
       fits: measurement.fits,
-      overflow: -Math.round(measurement.sparePx / LINE_UNIT_PX),
+      overflow: pageFilled ? 0 : -Math.round(measurement.sparePx / LINE_UNIT_PX),
       suggestions: [],
     }
 
@@ -481,6 +482,18 @@ Select the best items from the pool for this specific job. Return JSON:
 }`
 }
 
+function buildHighlightsListing(children: ResumeItemNode[] | undefined, indent: string): string[] {
+  if (!children?.length) return []
+  return children
+    .filter((c) => c.aiContext === 'highlight')
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((c) => {
+      // Normalize whitespace and cap length to keep prompt size predictable
+      const desc = (c.description ?? '(no description)').replace(/\s+/g, ' ').trim().slice(0, 250)
+      return `${indent}  [${c.id}] HIGHLIGHT: ${desc}`
+    })
+}
+
 function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
   const lines: string[] = []
   const indent = '  '.repeat(depth)
@@ -497,25 +510,13 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
         lines.push(`${indent}${idTag} WORK: ${node.title} / ${node.role} (${node.startDate}–${node.endDate ?? 'Present'})`)
         if (node.description) lines.push(`${indent}  desc: ${node.description.slice(0, 100)}`)
         if (node.skills?.length) lines.push(`${indent}  tech: ${node.skills.join(', ')}`)
-        if (node.children?.length) {
-          for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
-            if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description ?? '(no description)'}`)
-            }
-          }
-        }
+        lines.push(...buildHighlightsListing(node.children, indent))
         break
       case 'project':
         lines.push(`${indent}${idTag} PROJECT: ${node.title}`)
         if (node.description) lines.push(`${indent}  desc: ${node.description.slice(0, 150)}`)
         if (node.skills?.length) lines.push(`${indent}  tech: ${node.skills.join(', ')}`)
-        if (node.children?.length) {
-          for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
-            if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description ?? '(no description)'}`)
-            }
-          }
-        }
+        lines.push(...buildHighlightsListing(node.children, indent))
         break
       case 'skills':
         lines.push(`${indent}${idTag} SKILLS: ${node.title} → [${(node.skills ?? []).join(', ')}]`)

@@ -79,35 +79,16 @@ export class RenderMeasureService {
   /**
    * Render the final PDF from resume content.
    * Sets content fresh to ensure the final HTML is loaded, then generates PDF.
-   * Includes metadata injection matching HtmlPdfService.renderResume().
+   * Delegates to renderPdfFilled with no spacing.
    */
   async renderPdf(content: ResumeContent, personalInfo: PersonalInfo): Promise<Buffer> {
-    if (!this.page) throw new Error('RenderMeasureService not initialized — call init() first')
-
-    const html = atsResumeHtml(content, personalInfo)
-    await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-
-    let pdf: Buffer = await this.page.pdf({ format: 'Letter', printBackground: true })
-
-    const name = personalInfo.name || ''
-    const title = personalInfo.title || content.personalInfo?.title || ''
-    const skillKeywords = (content.skills || [])
-      .flatMap((s) => s.items)
-      .slice(0, 20)
-
-    pdf = await injectPdfMetadata(pdf, {
-      title: `${name} - ${title} Resume`,
-      author: name,
-      subject: `Resume for ${title}`,
-      keywords: skillKeywords,
-    })
-
-    return pdf
+    return this.renderPdfFilled(content, personalInfo, 0)
   }
 
   /**
    * Render the final PDF, distributing any spare vertical space to fill the page exactly.
-   * Call this instead of renderPdf() when you know the spare pixels from a prior measure().
+   * Re-measures after setContent() to account for rendering variance, and reverts
+   * to the original layout if spacing causes overflow.
    */
   async renderPdfFilled(content: ResumeContent, personalInfo: PersonalInfo, sparePx: number): Promise<Buffer> {
     if (!this.page) throw new Error('RenderMeasureService not initialized — call init() first')
@@ -116,25 +97,29 @@ export class RenderMeasureService {
     await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
 
     if (sparePx > 2) {
-      await distributePageSpacing(this.page, sparePx)
+      // Re-measure fresh to account for any rendering variance from the new setContent
+      const freshHeight = await this.page.evaluate(() => {
+        const el = document.querySelector('.page')
+        if (!el) throw new Error('.page element not found in rendered HTML')
+        return (el as HTMLElement).scrollHeight
+      })
+      const freshSpare = USABLE_HEIGHT_PX - freshHeight
+      if (freshSpare > 2) {
+        await distributePageSpacing(this.page, freshSpare)
+
+        // Verify spacing didn't cause overflow; revert if it did
+        const filledHeight = await this.page.evaluate(() => {
+          const el = document.querySelector('.page')
+          return el ? (el as HTMLElement).scrollHeight : 0
+        })
+        if (filledHeight > USABLE_HEIGHT_PX) {
+          await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+        }
+      }
     }
 
     let pdf: Buffer = await this.page.pdf({ format: 'Letter', printBackground: true })
-
-    const name = personalInfo.name || ''
-    const title = personalInfo.title || content.personalInfo?.title || ''
-    const skillKeywords = (content.skills || [])
-      .flatMap((s) => s.items)
-      .slice(0, 20)
-
-    pdf = await injectPdfMetadata(pdf, {
-      title: `${name} - ${title} Resume`,
-      author: name,
-      subject: `Resume for ${title}`,
-      keywords: skillKeywords,
-    })
-
-    return pdf
+    return injectResumeMetadata(pdf, content, personalInfo)
   }
 
   /** Close browser and release all resources. Always call in a finally block. */
@@ -149,9 +134,30 @@ export class RenderMeasureService {
   }
 }
 
+/** Extract and inject ATS-friendly PDF metadata for resume documents. */
+async function injectResumeMetadata(
+  pdf: Buffer,
+  content: ResumeContent,
+  personalInfo: PersonalInfo
+): Promise<Buffer> {
+  const name = personalInfo.name || ''
+  const title = personalInfo.title || content.personalInfo?.title || ''
+  const skillKeywords = (content.skills || [])
+    .flatMap((s) => s.items)
+    .slice(0, 20)
+
+  return injectPdfMetadata(pdf, {
+    title: `${name} - ${title} Resume`,
+    author: name,
+    subject: `Resume for ${title}`,
+    keywords: skillKeywords,
+  })
+}
+
 /**
- * Distribute spare vertical space evenly across section boundaries to fill the page exactly.
+ * Distribute spare vertical space proportionally across section boundaries to fill the page.
  * Uses padding (not margin) to avoid CSS margin collapse issues.
+ * Additive: reads existing computed padding and adds to it rather than overwriting.
  * Call after setContent() and before pdf() to eliminate bottom-of-page gaps.
  *
  * Weighted distribution:
@@ -189,8 +195,12 @@ export async function distributePageSpacing(page: Page, sparePx: number): Promis
 
     const pxPerUnit = spare / totalWeight
     for (const t of targets) {
-      // Floor each value to prevent cumulative rounding from exceeding budget
-      t.el.style[t.prop] = `${Math.floor(pxPerUnit * t.weight * 100) / 100}px`
+      // Read existing computed padding and add to it (additive, not destructive)
+      const current = parseFloat(window.getComputedStyle(t.el).getPropertyValue(
+        t.prop === 'paddingTop' ? 'padding-top' : 'padding-bottom'
+      )) || 0
+      const delta = Math.floor(pxPerUnit * t.weight * 100) / 100
+      t.el.style[t.prop] = `${current + delta}px`
     }
   }, budget)
 }
