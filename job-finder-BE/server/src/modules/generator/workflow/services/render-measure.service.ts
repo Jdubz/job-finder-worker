@@ -79,30 +79,47 @@ export class RenderMeasureService {
   /**
    * Render the final PDF from resume content.
    * Sets content fresh to ensure the final HTML is loaded, then generates PDF.
-   * Includes metadata injection matching HtmlPdfService.renderResume().
+   * Delegates to renderPdfFilled with no spacing.
    */
   async renderPdf(content: ResumeContent, personalInfo: PersonalInfo): Promise<Buffer> {
+    return this.renderPdfFilled(content, personalInfo, 0)
+  }
+
+  /**
+   * Render the final PDF, distributing any spare vertical space to fill the page exactly.
+   * Re-measures after setContent() to account for rendering variance, and reverts
+   * to the original layout if spacing causes overflow.
+   */
+  async renderPdfFilled(content: ResumeContent, personalInfo: PersonalInfo, sparePx: number): Promise<Buffer> {
     if (!this.page) throw new Error('RenderMeasureService not initialized — call init() first')
 
     const html = atsResumeHtml(content, personalInfo)
     await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
 
+    if (sparePx > 2) {
+      // Re-measure fresh to account for any rendering variance from the new setContent
+      const freshHeight = await this.page.evaluate(() => {
+        const el = document.querySelector('.page')
+        if (!el) throw new Error('.page element not found in rendered HTML')
+        return (el as HTMLElement).scrollHeight
+      })
+      const freshSpare = USABLE_HEIGHT_PX - freshHeight
+      if (freshSpare > 2) {
+        await distributePageSpacing(this.page, freshSpare)
+
+        // Verify spacing didn't cause overflow; revert if it did
+        const filledHeight = await this.page.evaluate(() => {
+          const el = document.querySelector('.page')
+          return el ? (el as HTMLElement).scrollHeight : 0
+        })
+        if (filledHeight > USABLE_HEIGHT_PX) {
+          await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+        }
+      }
+    }
+
     let pdf: Buffer = await this.page.pdf({ format: 'Letter', printBackground: true })
-
-    const name = personalInfo.name || ''
-    const title = personalInfo.title || content.personalInfo?.title || ''
-    const skillKeywords = (content.skills || [])
-      .flatMap((s) => s.items)
-      .slice(0, 20)
-
-    pdf = await injectPdfMetadata(pdf, {
-      title: `${name} - ${title} Resume`,
-      author: name,
-      subject: `Resume for ${title}`,
-      keywords: skillKeywords,
-    })
-
-    return pdf
+    return injectResumeMetadata(pdf, content, personalInfo)
   }
 
   /** Close browser and release all resources. Always call in a finally block. */
@@ -115,4 +132,75 @@ export class RenderMeasureService {
       this.page = null
     }
   }
+}
+
+/** Extract and inject ATS-friendly PDF metadata for resume documents. */
+async function injectResumeMetadata(
+  pdf: Buffer,
+  content: ResumeContent,
+  personalInfo: PersonalInfo
+): Promise<Buffer> {
+  const name = personalInfo.name || ''
+  const title = personalInfo.title || content.personalInfo?.title || ''
+  const skillKeywords = (content.skills || [])
+    .flatMap((s) => s.items)
+    .slice(0, 20)
+
+  return injectPdfMetadata(pdf, {
+    title: `${name} - ${title} Resume`,
+    author: name,
+    subject: `Resume for ${title}`,
+    keywords: skillKeywords,
+  })
+}
+
+/**
+ * Distribute spare vertical space proportionally across section boundaries to fill the page.
+ * Uses padding (not margin) to avoid CSS margin collapse issues.
+ * Additive: reads existing computed padding and adds to it rather than overwriting.
+ * Call after setContent() and before pdf() to eliminate bottom-of-page gaps.
+ *
+ * Weighted distribution:
+ *   - Section headings (paddingTop, weight 3) — most visual breathing room
+ *   - Summary paragraph (paddingBottom, weight 2)
+ *   - Experience / project / education entries (paddingBottom, weight 1)
+ *   - Skill rows (paddingBottom, weight 0.5) — fine-grained fill
+ */
+export async function distributePageSpacing(page: Page, sparePx: number): Promise<void> {
+  if (sparePx <= 2) return
+
+  // Reserve 2px for sub-pixel rounding — scrollHeight is an integer so the
+  // measured spare can be up to 1px more than the real gap; distributing the
+  // full amount then risks pushing content past the page boundary.
+  const budget = sparePx - 2
+
+  await page.evaluate((spare: number) => {
+    const targets: Array<{ el: HTMLElement; weight: number; prop: 'paddingTop' | 'paddingBottom' }> = []
+
+    document.querySelectorAll('.section-heading').forEach((el) => {
+      targets.push({ el: el as HTMLElement, weight: 3, prop: 'paddingTop' })
+    })
+    document.querySelectorAll('.summary').forEach((el) => {
+      targets.push({ el: el as HTMLElement, weight: 2, prop: 'paddingBottom' })
+    })
+    document.querySelectorAll('.exp-entry, .project-entry, .edu-entry').forEach((el) => {
+      targets.push({ el: el as HTMLElement, weight: 1, prop: 'paddingBottom' })
+    })
+    document.querySelectorAll('.skill-row').forEach((el) => {
+      targets.push({ el: el as HTMLElement, weight: 0.5, prop: 'paddingBottom' })
+    })
+
+    const totalWeight = targets.reduce((sum, t) => sum + t.weight, 0)
+    if (totalWeight === 0) return
+
+    const pxPerUnit = spare / totalWeight
+    for (const t of targets) {
+      // Read existing computed padding and add to it (additive, not destructive)
+      const current = parseFloat(window.getComputedStyle(t.el).getPropertyValue(
+        t.prop === 'paddingTop' ? 'padding-top' : 'padding-bottom'
+      )) || 0
+      const delta = Math.floor(pxPerUnit * t.weight * 100) / 100
+      t.el.style[t.prop] = `${current + delta}px`
+    }
+  }, budget)
 }

@@ -40,7 +40,7 @@ export class HtmlPdfService {
     const html = atsResumeHtml(content, personalInfo)
     let pdf = await renderHtmlToPdf(html)
 
-    const info = personalInfo ?? (content as any).personalInfo
+    const info = personalInfo ?? content.personalInfo
     const name = info?.name || ''
     const title = info?.title || content.personalInfo?.title || ''
     const skillKeywords = (content.skills || [])

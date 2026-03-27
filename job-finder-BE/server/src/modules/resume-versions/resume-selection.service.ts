@@ -285,7 +285,7 @@ export class ResumeSelectionService {
 
     // ── Render-measure fit loop ──────────────────────────────────
     const LINE_UNIT_PX = 14.175
-    const TOLERANCE_PX = 20 // ~1.4 lines — no room for another bullet
+    const TOLERANCE_PX = 5 // ~0.35 lines — spacing distribution fills the rest
     const MAX_ITERATIONS = 20
 
     const renderer = new RenderMeasureService()
@@ -350,20 +350,21 @@ export class ResumeSelectionService {
         'Render-measure fit loop completed'
       )
 
-      // Render final PDF in the same browser session
-      pdfBuffer = await renderer.renderPdf(resumeContent, personalInfo)
+      // Render final PDF, distributing any remaining spare space to fill the page exactly
+      pdfBuffer = await renderer.renderPdfFilled(resumeContent, personalInfo, measurement.sparePx)
     } finally {
       await renderer.dispose()
     }
 
-    // Build fit estimate from actual measured values
+    // Build fit estimate — if page-filling was applied, the PDF visually fills the page
+    const pageFilled = measurement.fits && measurement.sparePx > 2
     const fitEstimate: ContentFitEstimate = {
       mainColumnLines: Math.round(measurement.contentHeightPx / LINE_UNIT_PX),
       maxLines: LAYOUT.MAX_LINES,
-      usagePercent: Math.round((measurement.contentHeightPx / USABLE_HEIGHT_PX) * 100),
+      usagePercent: pageFilled ? 100 : Math.round((measurement.contentHeightPx / USABLE_HEIGHT_PX) * 100),
       pageCount: measurement.fits ? 1 : Math.ceil(measurement.contentHeightPx / USABLE_HEIGHT_PX),
       fits: measurement.fits,
-      overflow: -Math.round(measurement.sparePx / LINE_UNIT_PX),
+      overflow: pageFilled ? 0 : -Math.round(measurement.sparePx / LINE_UNIT_PX),
       suggestions: [],
     }
 
@@ -422,6 +423,8 @@ EXPERIENCE-FIRST PRIORITY (follow this order strictly):
 4. Only include projects (0-2) if the candidate's work experience does NOT cover a key requirement from the job description AND a project directly fills that gap. If work experience already covers the job's core requirements, return "project_ids": [].
 5. Include 3-5 skill categories and all education entries.
 
+VARIANT HIGHLIGHTS: Some work entries contain multiple highlights that describe the SAME project or responsibility from different technical perspectives (e.g., a frontend-focused bullet and a backend-focused bullet about the same product). When you see highlights that clearly overlap in subject matter under the same work entry, select AT MOST ONE — the variant that best matches this job's tech stack and focus area. Different projects at the same company are NOT variants and can all be selected.
+
 CONTENT BUDGET (must fit on 1 page):
 - Exactly 1 narrative/summary
 - Up to 4 experience entries (most recent by start date; include all if fewer than 4 exist)
@@ -479,6 +482,18 @@ Select the best items from the pool for this specific job. Return JSON:
 }`
 }
 
+function buildHighlightsListing(children: ResumeItemNode[] | undefined, indent: string): string[] {
+  if (!children?.length) return []
+  return children
+    .filter((c) => c.aiContext === 'highlight')
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((c) => {
+      // Normalize whitespace and cap length to keep prompt size predictable
+      const desc = (c.description ?? '(no description)').replace(/\s+/g, ' ').trim().slice(0, 250)
+      return `${indent}  [${c.id}] HIGHLIGHT: ${desc}`
+    })
+}
+
 function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
   const lines: string[] = []
   const indent = '  '.repeat(depth)
@@ -495,25 +510,13 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
         lines.push(`${indent}${idTag} WORK: ${node.title} / ${node.role} (${node.startDate}–${node.endDate ?? 'Present'})`)
         if (node.description) lines.push(`${indent}  desc: ${node.description.slice(0, 100)}`)
         if (node.skills?.length) lines.push(`${indent}  tech: ${node.skills.join(', ')}`)
-        if (node.children?.length) {
-          for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
-            if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description?.slice(0, 150) ?? '(no description)'}`)
-            }
-          }
-        }
+        lines.push(...buildHighlightsListing(node.children, indent))
         break
       case 'project':
         lines.push(`${indent}${idTag} PROJECT: ${node.title}`)
         if (node.description) lines.push(`${indent}  desc: ${node.description.slice(0, 150)}`)
         if (node.skills?.length) lines.push(`${indent}  tech: ${node.skills.join(', ')}`)
-        if (node.children?.length) {
-          for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
-            if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description?.slice(0, 150) ?? '(no description)'}`)
-            }
-          }
-        }
+        lines.push(...buildHighlightsListing(node.children, indent))
         break
       case 'skills':
         lines.push(`${indent}${idTag} SKILLS: ${node.title} → [${(node.skills ?? []).join(', ')}]`)
