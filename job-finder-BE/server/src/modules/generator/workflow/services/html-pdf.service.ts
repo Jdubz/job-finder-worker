@@ -2,6 +2,7 @@ import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { atsResumeHtml, atsCoverLetterHtml } from './html-ats.service'
 import { injectPdfMetadata } from './pdf-metadata.service'
+import { USABLE_HEIGHT_PX, distributePageSpacing } from './render-measure.service'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -38,7 +39,28 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
 export class HtmlPdfService {
   async renderResume(content: ResumeContent, personalInfo?: PersonalInfo): Promise<Buffer> {
     const html = atsResumeHtml(content, personalInfo)
-    let pdf = await renderHtmlToPdf(html)
+
+    // Measure content and distribute spare space to fill the page exactly
+    const context = await createContext()
+    let pdf: Buffer
+    try {
+      const page = await context.newPage()
+      await page.emulateMedia({ media: 'print' })
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+
+      const contentHeight = await page.evaluate(() => {
+        const el = document.querySelector('.page')
+        return el ? (el as HTMLElement).scrollHeight : 0
+      })
+      const sparePx = USABLE_HEIGHT_PX - contentHeight
+      if (sparePx > 0) {
+        await distributePageSpacing(page, sparePx)
+      }
+
+      pdf = await page.pdf({ format: 'Letter', printBackground: true })
+    } finally {
+      await context.browser()?.close()
+    }
 
     const info = personalInfo ?? (content as any).personalInfo
     const name = info?.name || ''

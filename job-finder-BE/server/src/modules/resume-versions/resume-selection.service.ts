@@ -285,7 +285,7 @@ export class ResumeSelectionService {
 
     // ── Render-measure fit loop ──────────────────────────────────
     const LINE_UNIT_PX = 14.175
-    const TOLERANCE_PX = 20 // ~1.4 lines — no room for another bullet
+    const TOLERANCE_PX = 5 // ~0.35 lines — spacing distribution fills the rest
     const MAX_ITERATIONS = 20
 
     const renderer = new RenderMeasureService()
@@ -350,8 +350,8 @@ export class ResumeSelectionService {
         'Render-measure fit loop completed'
       )
 
-      // Render final PDF in the same browser session
-      pdfBuffer = await renderer.renderPdf(resumeContent, personalInfo)
+      // Render final PDF, distributing any remaining spare space to fill the page exactly
+      pdfBuffer = await renderer.renderPdfFilled(resumeContent, personalInfo, measurement.sparePx)
     } finally {
       await renderer.dispose()
     }
@@ -421,6 +421,8 @@ EXPERIENCE-FIRST PRIORITY (follow this order strictly):
 3. FILL THE PAGE. A good resume uses all available space on 1 page. If you have room after experience, add more bullets before considering projects.
 4. Only include projects (0-2) if the candidate's work experience does NOT cover a key requirement from the job description AND a project directly fills that gap. If work experience already covers the job's core requirements, return "project_ids": [].
 5. Include 3-5 skill categories and all education entries.
+
+VARIANT HIGHLIGHTS: Some work entries contain multiple highlights that describe the SAME project or responsibility from different technical perspectives (e.g., a frontend-focused bullet and a backend-focused bullet about the same product). When you see highlights that clearly overlap in subject matter under the same work entry, select AT MOST ONE — the variant that best matches this job's tech stack and focus area. Different projects at the same company are NOT variants and can all be selected.
 
 CONTENT BUDGET (must fit on 1 page):
 - Exactly 1 narrative/summary
@@ -498,7 +500,7 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
         if (node.children?.length) {
           for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
             if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description?.slice(0, 150) ?? '(no description)'}`)
+              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description ?? '(no description)'}`)
             }
           }
         }
@@ -510,7 +512,7 @@ function buildPoolListing(nodes: ResumeItemNode[], depth: number): string {
         if (node.children?.length) {
           for (const child of node.children.sort((a, b) => a.orderIndex - b.orderIndex)) {
             if (child.aiContext === 'highlight') {
-              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description?.slice(0, 150) ?? '(no description)'}`)
+              lines.push(`${indent}  [${child.id}] HIGHLIGHT: ${child.description ?? '(no description)'}`)
             }
           }
         }
