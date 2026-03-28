@@ -137,21 +137,13 @@ async function injectResumeMetadata(
 }
 
 /**
- * Distribute spare vertical space proportionally across section boundaries to fill the page.
- * Uses padding (not margin) to avoid CSS margin collapse issues.
- * Additive: reads existing computed padding and adds to it rather than overwriting.
- * Call after setContent() and before pdf() to eliminate bottom-of-page gaps.
- *
- * Weighted distribution:
- *   - Section headings (paddingTop, weight 3) — most visual breathing room
- *   - Summary paragraph (paddingBottom, weight 2)
- *   - Experience / project / education entries (paddingBottom, weight 1)
- *   - Skill rows (paddingBottom, weight 0.5) — fine-grained fill
- */
-/**
- * Measure .page scrollHeight, distribute spare space to fill the page, revert on overflow.
+ * Measure .page scrollHeight, distribute spare space to fill the page.
  * Shared by both HtmlPdfService (published resumes) and RenderMeasureService (tailored resumes).
  * Assumes the page already has content loaded and print media emulated.
+ *
+ * Uses an iterative approach: distribute, measure, and if overflow occurs,
+ * reload and retry with a reduced budget. This handles CSS margin/padding
+ * interactions where distributed padding causes more height increase than expected.
  */
 export async function applyPageFill(page: Page, html: string): Promise<void> {
   const contentHeight = await page.evaluate(() => {
@@ -165,26 +157,36 @@ export async function applyPageFill(page: Page, html: string): Promise<void> {
   const spare = USABLE_HEIGHT_PX - contentHeight
   if (spare <= 2) return
 
-  await distributePageSpacing(page, spare)
+  // Iteratively distribute with shrinking budget until content fits.
+  // CSS margin/padding interactions can cause the actual height increase
+  // to exceed the distributed amount, so we measure and retry.
+  const MAX_ATTEMPTS = 3
+  let budget = spare
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    await distributePageSpacing(page, budget)
 
-  // Verify distribution didn't push content past the page boundary
-  const filledHeight = await page.evaluate(() => {
-    const el = document.querySelector('.page')
-    return el ? (el as HTMLElement).scrollHeight : 0
-  })
-  if (filledHeight > USABLE_HEIGHT_PX) {
-    // Revert to original un-filled layout
+    const filledHeight = await page.evaluate(() => {
+      const el = document.querySelector('.page')
+      return el ? (el as HTMLElement).scrollHeight : 0
+    })
+
+    if (filledHeight <= USABLE_HEIGHT_PX) return // success — page is filled
+
+    // Overflow: reset and retry with a reduced budget.
+    // Shrink by the exact overshoot so next attempt lands on target.
+    const overshoot = filledHeight - USABLE_HEIGHT_PX
+    budget = budget - overshoot - 1 // -1 extra for integer rounding
+    if (budget <= 2) {
+      // Budget too small to be useful — just reset and leave unfilled
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+      return
+    }
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
   }
 }
 
 export async function distributePageSpacing(page: Page, sparePx: number): Promise<void> {
-  if (sparePx <= 2) return
-
-  // Reserve 2px for sub-pixel rounding — scrollHeight is an integer so the
-  // measured spare can be up to 1px more than the real gap; distributing the
-  // full amount then risks pushing content past the page boundary.
-  const budget = sparePx - 2
+  if (sparePx <= 0) return
 
   await page.evaluate((spare: number) => {
     const targets: Array<{ el: HTMLElement; weight: number; prop: 'paddingTop' | 'paddingBottom' }> = []
@@ -214,5 +216,5 @@ export async function distributePageSpacing(page: Page, sparePx: number): Promis
       const delta = Math.floor(pxPerUnit * t.weight * 100) / 100
       t.el.style[t.prop] = `${current + delta}px`
     }
-  }, budget)
+  }, sparePx)
 }
