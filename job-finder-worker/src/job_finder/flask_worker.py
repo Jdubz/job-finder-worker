@@ -45,6 +45,7 @@ from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 from job_finder.exceptions import InitializationError, NoAgentsAvailableError
+from job_finder.rendering.playwright_renderer import get_renderer
 
 # Load environment variables
 load_dotenv()
@@ -868,6 +869,19 @@ def main():
     except Exception as e:
         slogger.worker_status("fatal_error", {"error": str(e)})
         return 1
+    finally:
+        # Clean up long-lived resources on shutdown
+        slogger.worker_status("cleanup_starting")
+        try:
+            if processor and processor.ctx.company_info_fetcher:
+                processor.ctx.company_info_fetcher.close()
+        except Exception:
+            pass
+        try:
+            get_renderer().close()
+        except Exception:
+            pass
+        slogger.worker_status("cleanup_complete")
 
     return 0
 
