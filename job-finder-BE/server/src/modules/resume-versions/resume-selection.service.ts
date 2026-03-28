@@ -874,10 +874,16 @@ function getWorkPoolIndex(
   return { workPool, expansionOrder: workNodes.map((n) => n.id) }
 }
 
+/** Maximum work entries to allow during expansion. */
+const MAX_EXPERIENCE_ENTRIES = 5
+
 /**
- * Add one highlight from the pool to the selection.
- * Priority: most recent work entry first (by startDate), then older entries,
- * then skill categories.
+ * Add one item from the pool to the selection.
+ * Priority:
+ *   1. Highlights to existing work entries (most recent first)
+ *   2. Skill categories (up to MAX_SKILL_CATEGORIES)
+ *   3. New work entries from pool (up to MAX_EXPERIENCE_ENTRIES, added with first highlight)
+ *   4. Projects from pool
  * Returns a new SelectionResult, or null if nothing can be added.
  */
 export function expandOneStep(
@@ -886,7 +892,7 @@ export function expandOneStep(
 ): SelectionResult | null {
   const { workPool, expansionOrder } = getWorkPoolIndex(tree, selection.experience_ids)
 
-  // Try adding a highlight to work entries (most recent first)
+  // 1. Try adding a highlight to existing work entries (most recent first)
   for (const workId of expansionOrder) {
     const poolHighlights = workPool.get(workId)
     if (!poolHighlights) continue
@@ -904,7 +910,7 @@ export function expandOneStep(
     }
   }
 
-  // No work highlights available — try adding a skill category
+  // 2. Try adding a skill category
   if (selection.skill_ids.length < MAX_SKILL_CATEGORIES) {
     const selectedSkillSet = new Set(selection.skill_ids)
     const availableSkill = findFirstAvailableSkill(tree, selectedSkillSet)
@@ -913,6 +919,38 @@ export function expandOneStep(
         ...selection,
         skill_ids: [...selection.skill_ids, availableSkill.id],
       }
+    }
+  }
+
+  // 3. Try adding a new work entry from the pool (must have at least one highlight)
+  if (selection.experience_ids.length < MAX_EXPERIENCE_ENTRIES) {
+    const selectedExpSet = new Set(selection.experience_ids)
+    const newWork = findFirstAvailableWork(tree, selectedExpSet)
+    if (newWork) {
+      const firstHighlight = (newWork.children ?? [])
+        .filter((c) => c.aiContext === 'highlight' && c.description)
+        .sort((a, b) => a.orderIndex - b.orderIndex)[0]
+
+      if (firstHighlight) {
+        return {
+          ...selection,
+          experience_ids: [...selection.experience_ids, newWork.id],
+          highlight_selections: {
+            ...selection.highlight_selections,
+            [newWork.id]: [firstHighlight.id],
+          },
+        }
+      }
+    }
+  }
+
+  // 4. Try adding a project from the pool
+  const selectedProjectSet = new Set(selection.project_ids)
+  const newProject = findFirstAvailableProject(tree, selectedProjectSet)
+  if (newProject) {
+    return {
+      ...selection,
+      project_ids: [...selection.project_ids, newProject.id],
     }
   }
 
@@ -976,6 +1014,47 @@ function findFirstAvailableSkill(
     if (node.aiContext === 'skills' && !selectedIds.has(node.id)) return node
     if ((node.aiContext === 'section' || !node.aiContext) && node.children?.length) {
       const found = findFirstAvailableSkill(node.children, selectedIds)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/** Find the most recent unselected work entry in the pool (by startDate desc). */
+function findFirstAvailableWork(
+  nodes: ResumeItemNode[],
+  selectedIds: Set<string>
+): ResumeItemNode | null {
+  const candidates: ResumeItemNode[] = []
+  function walk(items: ResumeItemNode[]) {
+    for (const node of items) {
+      if (node.aiContext === 'work' && !selectedIds.has(node.id)) {
+        candidates.push(node)
+      }
+      if ((node.aiContext === 'section' || !node.aiContext) && node.children?.length) {
+        walk(node.children)
+      }
+    }
+  }
+  walk(nodes)
+  if (candidates.length === 0) return null
+  // Most recent first
+  candidates.sort((a, b) => {
+    if (a.startDate && b.startDate) return b.startDate.localeCompare(a.startDate)
+    return a.orderIndex - b.orderIndex
+  })
+  return candidates[0]
+}
+
+/** Find the first unselected project node in the pool. */
+function findFirstAvailableProject(
+  nodes: ResumeItemNode[],
+  selectedIds: Set<string>
+): ResumeItemNode | null {
+  for (const node of nodes) {
+    if (node.aiContext === 'project' && !selectedIds.has(node.id)) return node
+    if ((node.aiContext === 'section' || !node.aiContext) && node.children?.length) {
+      const found = findFirstAvailableProject(node.children, selectedIds)
       if (found) return found
     }
   }

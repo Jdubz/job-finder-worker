@@ -2,6 +2,7 @@ import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { atsResumeHtml, atsCoverLetterHtml } from './html-ats.service'
 import { injectPdfMetadata } from './pdf-metadata.service'
+import { applyPageFill } from './render-measure.service'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -25,9 +26,24 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
     const page = await context.newPage()
-    // Use 'domcontentloaded' — ATS HTML is fully self-contained with no external resources,
-    // so 'networkidle' adds risk of hanging on unexpected Chromium network activity.
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+    const pdf = await page.pdf({ format: 'Letter', printBackground: true })
+    return pdf
+  } finally {
+    await context.browser()?.close()
+  }
+}
+
+/** Render resume HTML to PDF with page-fill spacing distribution. */
+async function renderResumeHtmlToPdf(html: string): Promise<Buffer> {
+  const context = await createContext()
+  try {
+    const page = await context.newPage()
+    await page.emulateMedia({ media: 'print' })
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+
+    await applyPageFill(page, html)
+
     const pdf = await page.pdf({ format: 'Letter', printBackground: true })
     return pdf
   } finally {
@@ -38,7 +54,7 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
 export class HtmlPdfService {
   async renderResume(content: ResumeContent, personalInfo?: PersonalInfo): Promise<Buffer> {
     const html = atsResumeHtml(content, personalInfo)
-    let pdf = await renderHtmlToPdf(html)
+    let pdf = await renderResumeHtmlToPdf(html)
 
     const info = personalInfo ?? content.personalInfo
     const name = info?.name || ''

@@ -783,6 +783,12 @@ describe('expandOneStep', () => {
         { ...baseItem, id: 's-2', aiContext: 'skills', title: 'Cloud', skills: ['AWS'], orderIndex: 1 },
       ]
     },
+    {
+      ...baseItem, id: 'sec-projects', aiContext: 'section', title: 'Projects',
+      children: [
+        { ...baseItem, id: 'p-1', aiContext: 'project', title: 'Side Project', description: 'A cool project', orderIndex: 0 },
+      ]
+    },
   ]
 
   const selection = {
@@ -821,11 +827,92 @@ describe('expandOneStep', () => {
     expect(result!.skill_ids).toContain('s-2')
   })
 
+  it('adds a new work entry with its first highlight when highlights and skills exhausted', () => {
+    // Add a 3rd unselected work entry to the pool
+    const extendedPool: ResumeItemNode[] = [
+      {
+        ...baseItem, id: 'sec-exp', aiContext: 'section', title: 'Experience',
+        children: [
+          ...poolTree[0].children!,
+          {
+            ...baseItem, id: 'w-3', aiContext: 'work', title: 'Company C',
+            startDate: '2019-01', orderIndex: 2,
+            children: [
+              { ...baseItem, id: 'h-3a', aiContext: 'highlight', parentId: 'w-3', orderIndex: 0, description: 'Bullet C1' },
+            ]
+          },
+        ]
+      },
+      ...poolTree.slice(1),
+    ]
+
+    const allHighlightsAndSkills = {
+      ...selection,
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'],
+    }
+    const result = expandOneStep(extendedPool, allHighlightsAndSkills)
+    expect(result).not.toBeNull()
+    expect(result!.experience_ids).toContain('w-3')
+    expect(result!.highlight_selections['w-3']).toEqual(['h-3a'])
+  })
+
+  it('skips work entries without any highlights', () => {
+    const poolWithEmptyWork: ResumeItemNode[] = [
+      {
+        ...baseItem, id: 'sec-exp', aiContext: 'section', title: 'Experience',
+        children: [
+          ...poolTree[0].children!,
+          // Work entry with no highlight children
+          { ...baseItem, id: 'w-empty', aiContext: 'work', title: 'Empty Corp', startDate: '2018-01', orderIndex: 3, children: [] },
+        ]
+      },
+      ...poolTree.slice(1),
+    ]
+
+    const allHighlightsAndSkills = {
+      ...selection,
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'],
+    }
+    const result = expandOneStep(poolWithEmptyWork, allHighlightsAndSkills)
+    expect(result).not.toBeNull()
+    // Should skip w-empty (no highlights) and add project instead
+    expect(result!.experience_ids).not.toContain('w-empty')
+    expect(result!.project_ids).toContain('p-1')
+  })
+
+  it('adds a project when work entries and skills are exhausted', () => {
+    const allExhaustedExceptProjects = {
+      ...selection,
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'],
+    }
+    const result = expandOneStep(poolTree, allExhaustedExceptProjects)
+    expect(result).not.toBeNull()
+    expect(result!.project_ids).toContain('p-1')
+  })
+
+  it('respects MAX_EXPERIENCE_ENTRIES cap', () => {
+    const atMaxExperience = {
+      ...selection,
+      experience_ids: ['w-1', 'w-2', 'w-x1', 'w-x2', 'w-x3'], // 5 entries = MAX
+      highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
+      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'],
+    }
+    // Should skip work entry expansion and go to projects
+    const result = expandOneStep(poolTree, atMaxExperience)
+    expect(result).not.toBeNull()
+    expect(result!.experience_ids).toHaveLength(5) // unchanged
+    expect(result!.project_ids).toContain('p-1')
+  })
+
   it('returns null when pool is fully exhausted', () => {
     const allExhausted = {
       ...selection,
       highlight_selections: { 'w-1': ['h-1a', 'h-1b', 'h-1c'], 'w-2': ['h-2a', 'h-2b'] },
-      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'], // at MAX_SKILL_CATEGORIES
+      skill_ids: ['s-1', 's-2', 's-3', 's-4', 's-5'],
+      project_ids: ['p-1'],
     }
     const result = expandOneStep(poolTree, allExhausted)
     expect(result).toBeNull()

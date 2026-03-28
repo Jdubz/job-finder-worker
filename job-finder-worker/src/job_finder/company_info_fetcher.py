@@ -7,6 +7,7 @@ Scraping is supplementary, not primary. URL is a hint, not a requirement.
 import json
 import logging
 import re
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -106,8 +107,17 @@ class CompanyInfoFetcher:
         )
         self.search_client = get_search_client()
         self.wikipedia_client = get_wikipedia_client()
-        # Cache structured facts (e.g., Wikipedia) per company name to reuse across passes
-        self._wiki_cache: Dict[str, Any] = {}
+        # LRU cache for Wikipedia lookups — bounded to prevent unbounded memory growth.
+        # 500 entries ≈ a few MB; oldest entries evicted when full.
+        self._wiki_cache: OrderedDict[str, Any] = OrderedDict()
+        self._wiki_cache_maxsize = 500
+
+    def close(self) -> None:
+        """Release resources held by this fetcher."""
+        self.session.close()
+        if self.wikipedia_client:
+            self.wikipedia_client.close()
+        self._wiki_cache.clear()
 
     # ============================================================
     # MAIN ENTRY POINT
@@ -188,12 +198,19 @@ class CompanyInfoFetcher:
         }
 
         try:
-            # STEP 0: Try Wikipedia first (cached per company name, both passes)
-            wiki_info = self._wiki_cache.get(search_name.lower())
-            if wiki_info is None:
+            # STEP 0: Try Wikipedia first (LRU-cached per company name, both passes)
+            cache_key = search_name.lower()
+            wiki_info = self._wiki_cache.get(cache_key)
+            if wiki_info is not None:
+                # Move to end (most recently used)
+                self._wiki_cache.move_to_end(cache_key)
+            else:
                 wiki_info = self._try_wikipedia(search_name)
                 if wiki_info:
-                    self._wiki_cache[search_name.lower()] = wiki_info
+                    self._wiki_cache[cache_key] = wiki_info
+                    # Evict oldest entry if over capacity
+                    if len(self._wiki_cache) > self._wiki_cache_maxsize:
+                        self._wiki_cache.popitem(last=False)
 
             wiki_website = wiki_info.get("website") if wiki_info else None
             if wiki_info:

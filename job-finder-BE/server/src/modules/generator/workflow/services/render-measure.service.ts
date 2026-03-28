@@ -97,25 +97,7 @@ export class RenderMeasureService {
     await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
 
     if (sparePx > 2) {
-      // Re-measure fresh to account for any rendering variance from the new setContent
-      const freshHeight = await this.page.evaluate(() => {
-        const el = document.querySelector('.page')
-        if (!el) throw new Error('.page element not found in rendered HTML')
-        return (el as HTMLElement).scrollHeight
-      })
-      const freshSpare = USABLE_HEIGHT_PX - freshHeight
-      if (freshSpare > 2) {
-        await distributePageSpacing(this.page, freshSpare)
-
-        // Verify spacing didn't cause overflow; revert if it did
-        const filledHeight = await this.page.evaluate(() => {
-          const el = document.querySelector('.page')
-          return el ? (el as HTMLElement).scrollHeight : 0
-        })
-        if (filledHeight > USABLE_HEIGHT_PX) {
-          await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-        }
-      }
+      await applyPageFill(this.page, html)
     }
 
     let pdf: Buffer = await this.page.pdf({ format: 'Letter', printBackground: true })
@@ -166,6 +148,36 @@ async function injectResumeMetadata(
  *   - Experience / project / education entries (paddingBottom, weight 1)
  *   - Skill rows (paddingBottom, weight 0.5) — fine-grained fill
  */
+/**
+ * Measure .page scrollHeight, distribute spare space to fill the page, revert on overflow.
+ * Shared by both HtmlPdfService (published resumes) and RenderMeasureService (tailored resumes).
+ * Assumes the page already has content loaded and print media emulated.
+ */
+export async function applyPageFill(page: Page, html: string): Promise<void> {
+  const contentHeight = await page.evaluate(() => {
+    const el = document.querySelector('.page')
+    return el ? (el as HTMLElement).scrollHeight : 0
+  })
+
+  // Guard: if .page is missing, contentHeight is 0 and spare would be huge — bail out
+  if (contentHeight === 0) return
+
+  const spare = USABLE_HEIGHT_PX - contentHeight
+  if (spare <= 2) return
+
+  await distributePageSpacing(page, spare)
+
+  // Verify distribution didn't push content past the page boundary
+  const filledHeight = await page.evaluate(() => {
+    const el = document.querySelector('.page')
+    return el ? (el as HTMLElement).scrollHeight : 0
+  })
+  if (filledHeight > USABLE_HEIGHT_PX) {
+    // Revert to original un-filled layout
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+  }
+}
+
 export async function distributePageSpacing(page: Page, sparePx: number): Promise<void> {
   if (sparePx <= 2) return
 

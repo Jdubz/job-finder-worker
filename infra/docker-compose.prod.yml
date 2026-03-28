@@ -95,6 +95,7 @@ services:
   worker:
     image: ghcr.io/jdubz/job-finder-worker/worker:latest
     container_name: job-finder-worker
+    init: true
     restart: unless-stopped
     env_file:
       - /srv/job-finder/secrets/worker.env
