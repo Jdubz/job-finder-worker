@@ -36,7 +36,6 @@ function makeProdResume(): ResumeContent {
         website: personalInfo.website,
         linkedin: personalInfo.linkedin,
         github: personalInfo.github,
-        phone: personalInfo.phone
       }
     },
     professionalSummary:
