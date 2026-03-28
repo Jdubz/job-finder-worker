@@ -1,8 +1,8 @@
-import { chromium, type BrowserContext, type Page } from 'playwright-core'
+import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { atsResumeHtml, atsCoverLetterHtml } from './html-ats.service'
 import { injectPdfMetadata } from './pdf-metadata.service'
-import { distributePageSpacing, USABLE_HEIGHT_PX } from './render-measure.service'
+import { applyPageFill } from './render-measure.service'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -34,15 +34,12 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
   }
 }
 
-/**
- * Render resume HTML to PDF with page-fill spacing distribution.
- * Measures content height, distributes spare space to fill the page,
- * verifies no overflow, and reverts to original layout if needed.
- */
+/** Render resume HTML to PDF with page-fill spacing distribution. */
 async function renderResumeHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
     const page = await context.newPage()
+    await page.emulateMedia({ media: 'print' })
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
 
     await applyPageFill(page, html)
@@ -51,29 +48,6 @@ async function renderResumeHtmlToPdf(html: string): Promise<Buffer> {
     return pdf
   } finally {
     await context.browser()?.close()
-  }
-}
-
-/** Measure .page scrollHeight, distribute spare space, revert on overflow. */
-async function applyPageFill(page: Page, html: string): Promise<void> {
-  const contentHeight = await page.evaluate(() => {
-    const el = document.querySelector('.page')
-    return el ? (el as HTMLElement).scrollHeight : 0
-  })
-
-  const spare = USABLE_HEIGHT_PX - contentHeight
-  if (spare <= 2) return
-
-  await distributePageSpacing(page, spare)
-
-  // Verify distribution didn't push content past the page boundary
-  const filledHeight = await page.evaluate(() => {
-    const el = document.querySelector('.page')
-    return el ? (el as HTMLElement).scrollHeight : 0
-  })
-  if (filledHeight > USABLE_HEIGHT_PX) {
-    // Revert to original un-filled layout
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
   }
 }
 

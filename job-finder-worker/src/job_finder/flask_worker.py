@@ -870,8 +870,13 @@ def main():
         slogger.worker_status("fatal_error", {"error": str(e)})
         return 1
     finally:
-        # Clean up long-lived resources on shutdown
+        # Signal shutdown and wait for the worker thread to finish processing
+        # before closing resources it may still be using.
         slogger.worker_status("cleanup_starting")
+        _set_state("shutdown_requested", True)
+        if worker_thread and worker_thread.is_alive():
+            worker_thread.join(timeout=WORKER_SHUTDOWN_TIMEOUT_SECONDS)
+
         try:
             if processor and processor.ctx.company_info_fetcher:
                 processor.ctx.company_info_fetcher.close()

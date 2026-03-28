@@ -64,7 +64,7 @@ if [ "${ENABLE_FLASK_WORKER:-true}" = "true" ]; then
     echo ""
 
     # exec replaces this shell — Flask worker becomes the main process.
-    # Python logging already writes to /app/logs/flask_worker.log;
+    # Python logging is configured in flask_worker.py and writes under /app/logs;
     # stdout/stderr go to docker logs via the container runtime.
     exec gosu node /usr/local/bin/python -u /app/src/job_finder/flask_worker.py
 

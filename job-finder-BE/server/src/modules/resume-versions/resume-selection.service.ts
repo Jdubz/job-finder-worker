@@ -922,7 +922,7 @@ export function expandOneStep(
     }
   }
 
-  // 3. Try adding a new work entry from the pool (with its first highlight)
+  // 3. Try adding a new work entry from the pool (must have at least one highlight)
   if (selection.experience_ids.length < MAX_EXPERIENCE_ENTRIES) {
     const selectedExpSet = new Set(selection.experience_ids)
     const newWork = findFirstAvailableWork(tree, selectedExpSet)
@@ -931,13 +931,15 @@ export function expandOneStep(
         .filter((c) => c.aiContext === 'highlight' && c.description)
         .sort((a, b) => a.orderIndex - b.orderIndex)[0]
 
-      return {
-        ...selection,
-        experience_ids: [...selection.experience_ids, newWork.id],
-        highlight_selections: {
-          ...selection.highlight_selections,
-          [newWork.id]: firstHighlight ? [firstHighlight.id] : [],
-        },
+      if (firstHighlight) {
+        return {
+          ...selection,
+          experience_ids: [...selection.experience_ids, newWork.id],
+          highlight_selections: {
+            ...selection.highlight_selections,
+            [newWork.id]: [firstHighlight.id],
+          },
+        }
       }
     }
   }
