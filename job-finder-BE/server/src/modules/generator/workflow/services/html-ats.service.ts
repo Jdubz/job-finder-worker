@@ -120,13 +120,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
     })
     .join('')
 
-  const avatarHtml = info?.avatar
-    ? `<img class="header-avatar" src="${escapeAttr(info.avatar)}" alt="" />`
-    : ''
-  const logoHtml = info?.logo
-    ? `<img class="header-logo" src="${escapeAttr(info.logo)}" alt="" />`
-    : ''
-
   return `
   <!DOCTYPE html>
   <html>
@@ -139,8 +132,6 @@ export function atsResumeHtml(content: ResumeContent, personalInfo?: PersonalInf
       <header class="header">
         <h1 class="name">${safeText(info?.name || '')}</h1>
         <div class="title">${safeText(info?.title || content.personalInfo?.title || '')}</div>
-        ${avatarHtml}
-        ${logoHtml}
       </header>
       <hr class="header-rule" />
       ${contactRow}
@@ -187,8 +178,6 @@ export function atsCoverLetterHtml(
     website?: string
     linkedin?: string
     github?: string
-    logo?: string
-    avatar?: string
   }
 ): string {
   const contactParts: string[] = []
@@ -196,13 +185,6 @@ export function atsCoverLetterHtml(
   if (opts.phone) contactParts.push(safeText(opts.phone))
   if (opts.location) contactParts.push(safeText(opts.location))
   const contactLine = contactParts.join(' | ')
-
-  const avatarHtml = opts.avatar
-    ? `<img class="header-avatar" src="${escapeAttr(opts.avatar)}" alt="" />`
-    : ''
-  const logoHtml = opts.logo
-    ? `<img class="header-logo" src="${escapeAttr(opts.logo)}" alt="" />`
-    : ''
 
   const bodyParas = [content.openingParagraph, ...(content.bodyParagraphs || []), content.closingParagraph]
     .filter(Boolean)
@@ -220,12 +202,10 @@ export function atsCoverLetterHtml(
     <div class="letter">
       <div class="letter-header">
         <div class="header-content">
-          ${avatarHtml}
           <div class="header-text">
             <div class="name">${safeText(opts.name)}</div>
             ${opts.title ? `<div class="title">${safeText(opts.title)}</div>` : ''}
           </div>
-          ${logoHtml}
         </div>
         <div class="letter-contact">${contactLine}</div>
       </div>

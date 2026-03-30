@@ -19,6 +19,10 @@ export const USABLE_HEIGHT_PX = 960
 
 const RENDER_TIMEOUT_MS = 15_000
 
+/** Overall timeout for a single render operation (setContent + applyPageFill + page.pdf).
+ *  page.pdf() has no built-in timeout and can hang if Chromium is resource-starved. */
+const OVERALL_RENDER_TIMEOUT_MS = 90_000
+
 export interface MeasureResult {
   contentHeightPx: number
   usableHeightPx: number
@@ -94,13 +98,21 @@ export class RenderMeasureService {
     if (!this.page) throw new Error('RenderMeasureService not initialized — call init() first')
 
     const html = atsResumeHtml(content, personalInfo)
-    await this.page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+    const page = this.page
 
-    if (sparePx > 2) {
-      await applyPageFill(this.page, html)
-    }
+    const pdf = await Promise.race([
+      (async () => {
+        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+        if (sparePx > 2) {
+          await applyPageFill(page, html)
+        }
+        return page.pdf({ format: 'Letter', printBackground: true })
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
+      ),
+    ])
 
-    let pdf: Buffer = await this.page.pdf({ format: 'Letter', printBackground: true })
     return injectResumeMetadata(pdf, content, personalInfo)
   }
 

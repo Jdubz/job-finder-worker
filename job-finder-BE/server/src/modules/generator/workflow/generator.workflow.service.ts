@@ -622,8 +622,6 @@ export class GeneratorWorkflowService {
       location: personalInfo.location,
       phone: personalInfo.phone,
       date: payload.date,
-      logo: personalInfo.logo,
-      avatar: personalInfo.avatar,
       title,
       website: personalInfo.website,
       linkedin: personalInfo.linkedin,

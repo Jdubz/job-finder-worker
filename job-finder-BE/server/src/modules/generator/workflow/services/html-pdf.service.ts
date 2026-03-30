@@ -22,13 +22,24 @@ async function createContext(): Promise<BrowserContext> {
  *  Do NOT pass margin to Playwright's page.pdf() — it would override the CSS @page rule. */
 const RENDER_TIMEOUT_MS = 30_000
 
+/** Overall timeout for the entire render operation (launch + setContent + page.pdf).
+ *  page.pdf() has no built-in timeout and can hang if Chromium is resource-starved. */
+const OVERALL_RENDER_TIMEOUT_MS = 90_000
+
 async function renderHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
-    const page = await context.newPage()
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-    const pdf = await page.pdf({ format: 'Letter', printBackground: true })
-    return pdf
+    const result = await Promise.race([
+      (async () => {
+        const page = await context.newPage()
+        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+        return page.pdf({ format: 'Letter', printBackground: true })
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
+      ),
+    ])
+    return result
   } finally {
     await context.browser()?.close()
   }
@@ -38,14 +49,19 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
 async function renderResumeHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
-    const page = await context.newPage()
-    await page.emulateMedia({ media: 'print' })
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-
-    await applyPageFill(page, html)
-
-    const pdf = await page.pdf({ format: 'Letter', printBackground: true })
-    return pdf
+    const result = await Promise.race([
+      (async () => {
+        const page = await context.newPage()
+        await page.emulateMedia({ media: 'print' })
+        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+        await applyPageFill(page, html)
+        return page.pdf({ format: 'Letter', printBackground: true })
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
+      ),
+    ])
+    return result
   } finally {
     await context.browser()?.close()
   }
@@ -82,8 +98,6 @@ export class HtmlPdfService {
       location?: string
       phone?: string
       date?: string
-      logo?: string
-      avatar?: string
       website?: string
       linkedin?: string
       github?: string
