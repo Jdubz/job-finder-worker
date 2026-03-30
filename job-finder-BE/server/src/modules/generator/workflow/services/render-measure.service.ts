@@ -23,6 +23,22 @@ const RENDER_TIMEOUT_MS = 15_000
  *  page.pdf() has no built-in timeout and can hang if Chromium is resource-starved. */
 const OVERALL_RENDER_TIMEOUT_MS = 90_000
 
+/** Race a render operation against a timeout, cleaning up the timer on completion. */
+async function withRenderTimeout<T>(fn: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
+        timer.unref()
+      }),
+    ])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
+
 export interface MeasureResult {
   contentHeightPx: number
   usableHeightPx: number
@@ -100,18 +116,13 @@ export class RenderMeasureService {
     const html = atsResumeHtml(content, personalInfo)
     const page = this.page
 
-    const pdf = await Promise.race([
-      (async () => {
-        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-        if (sparePx > 2) {
-          await applyPageFill(page, html)
-        }
-        return page.pdf({ format: 'Letter', printBackground: true })
-      })(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
-      ),
-    ])
+    const pdf = await withRenderTimeout(async () => {
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+      if (sparePx > 2) {
+        await applyPageFill(page, html)
+      }
+      return page.pdf({ format: 'Letter', printBackground: true })
+    })
 
     return injectResumeMetadata(pdf, content, personalInfo)
   }

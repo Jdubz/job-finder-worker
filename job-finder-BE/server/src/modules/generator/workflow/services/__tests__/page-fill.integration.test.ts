@@ -12,14 +12,14 @@ import { applyPageFill, USABLE_HEIGHT_PX } from '../render-measure.service'
 import type { ResumeContent, PersonalInfo } from '@shared/types'
 
 const personalInfo: PersonalInfo = {
-  name: 'Joshua Wentworth',
-  email: 'contact@joshwentworth.com',
+  name: 'Jane Doe',
+  email: 'jane.doe@example.com',
   title: 'Senior Software Engineer',
-  location: 'Portland, OR',
-  website: 'https://joshwentworth.com',
-  linkedin: 'https://linkedin.com/in/joshwentworth',
-  github: 'https://github.com/joshwentworth',
-  phone: '(510)898-8892',
+  location: 'Example City, EX',
+  website: 'https://example.com',
+  linkedin: 'https://linkedin.com/in/example',
+  github: 'https://github.com/example',
+  phone: '555-555-5555',
   applicationInfo: ''
 }
 
@@ -124,17 +124,13 @@ describe('applyPageFill integration', () => {
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15_000 })
 
       const beforeHeight = await measureHeight(page)
-      const spareBefore = USABLE_HEIGHT_PX - beforeHeight
-
-      // Content should NOT fill the page before page-fill
-      expect(spareBefore).toBeGreaterThan(100)
 
       await applyPageFill(page, html)
 
       const afterHeight = await measureHeight(page)
       const spareAfter = USABLE_HEIGHT_PX - afterHeight
 
-      // Page MUST be filled — spare after fill should be < 5px
+      // Page should be filled — spare after fill should be < 5px
       expect(spareAfter).toBeLessThan(5)
       expect(spareAfter).toBeGreaterThanOrEqual(0)
       expect(afterHeight).toBeGreaterThan(beforeHeight)

@@ -22,24 +22,35 @@ async function createContext(): Promise<BrowserContext> {
  *  Do NOT pass margin to Playwright's page.pdf() — it would override the CSS @page rule. */
 const RENDER_TIMEOUT_MS = 30_000
 
-/** Overall timeout for the entire render operation (launch + setContent + page.pdf).
+/** Overall timeout for the render phase (setContent + page.pdf).
+ *  Chromium launch (createContext) is not covered by this timeout.
  *  page.pdf() has no built-in timeout and can hang if Chromium is resource-starved. */
 const OVERALL_RENDER_TIMEOUT_MS = 90_000
+
+/** Race a render operation against a timeout, cleaning up the timer on completion. */
+async function withRenderTimeout<T>(fn: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
+        timer.unref()
+      }),
+    ])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
 
 async function renderHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
-    const result = await Promise.race([
-      (async () => {
-        const page = await context.newPage()
-        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-        return page.pdf({ format: 'Letter', printBackground: true })
-      })(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
-      ),
-    ])
-    return result
+    return await withRenderTimeout(async () => {
+      const page = await context.newPage()
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+      return page.pdf({ format: 'Letter', printBackground: true })
+    })
   } finally {
     await context.browser()?.close()
   }
@@ -49,19 +60,13 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
 async function renderResumeHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
-    const result = await Promise.race([
-      (async () => {
-        const page = await context.newPage()
-        await page.emulateMedia({ media: 'print' })
-        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-        await applyPageFill(page, html)
-        return page.pdf({ format: 'Letter', printBackground: true })
-      })(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
-      ),
-    ])
-    return result
+    return await withRenderTimeout(async () => {
+      const page = await context.newPage()
+      await page.emulateMedia({ media: 'print' })
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+      await applyPageFill(page, html)
+      return page.pdf({ format: 'Letter', printBackground: true })
+    })
   } finally {
     await context.browser()?.close()
   }
