@@ -1475,14 +1475,51 @@ ipcMain.handle(
         }
       }
 
-      // Continue executing remaining steps using shared function
-      return await executeRemainingSteps(
+      // Fire-and-forget: executeRemainingSteps sends progress/completion/failure
+      // via IPC events (generation-progress). Return immediately so the renderer
+      // can hide the review modal and show the "Generating PDF..." progress UI.
+      executeRemainingSteps(
         options.requestId,
         stepResult.nextStep,
         stepResult.steps || [],
         stepResult.resumeUrl,
         stepResult.coverLetterUrl
       )
+        .then((result) => {
+          // Cover failure paths that return without sending IPC events
+          // (step failure at line ~277, max-steps exceeded at line ~348)
+          if (!result.success && mainWindow) {
+            mainWindow.webContents.send("generation-progress", {
+              requestId: options.requestId,
+              status: "failed",
+              steps: result.data?.steps || stepResult.steps || [],
+              error: result.message || "Generation failed",
+            })
+          }
+        })
+        .catch((err) => {
+          const errMsg = err instanceof Error ? err.message : String(err)
+          logger.error("Background executeRemainingSteps failed:", errMsg)
+          if (mainWindow) {
+            mainWindow.webContents.send("generation-progress", {
+              requestId: options.requestId,
+              status: "failed",
+              steps: stepResult.steps || [],
+              error: errMsg,
+            })
+          }
+        })
+
+      return {
+        success: true,
+        data: {
+          requestId: options.requestId,
+          status: "processing",
+          steps: stepResult.steps || [],
+          resumeUrl: stepResult.resumeUrl,
+          coverLetterUrl: stepResult.coverLetterUrl,
+        },
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       logger.error("Submit review error:", message)
