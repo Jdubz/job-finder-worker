@@ -62,21 +62,21 @@ describe('ApplicationEmailRepository', () => {
   it('retrieves by gmail message id', () => {
     repo.create(baseInput)
 
-    const fetched = repo.getByGmailMessageId('msg-001')
+    const fetched = repo.getByGmailMessageId('user@gmail.com', 'msg-001')
     expect(fetched).not.toBeNull()
     expect(fetched!.sender).toBe('hr@acme.com')
   })
 
   it('returns null for nonexistent gmail message id', () => {
-    expect(repo.getByGmailMessageId('nonexistent')).toBeNull()
+    expect(repo.getByGmailMessageId('user@gmail.com', 'nonexistent')).toBeNull()
   })
 
   it('checks if a message has been processed', () => {
-    expect(repo.isProcessed('msg-001')).toBe(false)
+    expect(repo.isProcessed('user@gmail.com', 'msg-001')).toBe(false)
 
     repo.create(baseInput)
 
-    expect(repo.isProcessed('msg-001')).toBe(true)
+    expect(repo.isProcessed('user@gmail.com', 'msg-001')).toBe(true)
   })
 
   it('prevents duplicate gmail_message_id', () => {

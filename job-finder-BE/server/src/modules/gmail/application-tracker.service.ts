@@ -5,8 +5,7 @@ import {
   fetchFullMessages,
   extractBody,
   getHeader,
-  extractSenderDomain,
-  type GmailMessage
+  extractSenderDomain
 } from "./gmail-api"
 import { classifyEmail } from "./email-classifier"
 import { matchEmailToApplications, type ParsedEmail } from "./email-application-matcher"
@@ -150,7 +149,7 @@ export class ApplicationTrackerService {
 
     for (const msg of fullMessages) {
       // Skip already-processed messages
-      if (this.emailRepo.isProcessed(msg.id)) continue
+      if (this.emailRepo.isProcessed(gmailEmail, msg.id)) continue
 
       const sender = getHeader(msg, "From") ?? ""
       const subject = getHeader(msg, "Subject") ?? ""
@@ -212,14 +211,15 @@ export class ApplicationTrackerService {
         if (classification.classification !== "unclassified") {
           const match = this.matchRepo.getById(topCandidate.jobMatchId)
           if (match && this.shouldUpdateStatus(match.status as JobMatchStatus, classification.classification as JobMatchStatus)) {
-            const previousStatus = match.status as string
-            this.matchRepo.updateStatus(topCandidate.jobMatchId, classification.classification as JobMatchStatus, {
+            const previousStatus = match.status as JobMatchStatus
+            const newStatus = classification.classification as JobMatchStatus
+            this.matchRepo.updateStatus(topCandidate.jobMatchId, newStatus, {
               updatedBy: "email_tracker"
             })
             this.historyRepo.record({
               jobMatchId: topCandidate.jobMatchId,
               fromStatus: previousStatus,
-              toStatus: classification.classification,
+              toStatus: newStatus,
               changedBy: "email_tracker",
               applicationEmailId: appEmail.id,
               note: `Auto-detected from email: "${subject}"`

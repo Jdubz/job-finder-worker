@@ -30,6 +30,6 @@ CREATE TABLE IF NOT EXISTS application_emails (
 );
 
 CREATE INDEX IF NOT EXISTS idx_app_emails_match ON application_emails(job_match_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_app_emails_gmail_msg ON application_emails(gmail_message_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_app_emails_gmail_msg ON application_emails(gmail_email, gmail_message_id);
 CREATE INDEX IF NOT EXISTS idx_app_emails_domain ON application_emails(sender_domain);
 CREATE INDEX IF NOT EXISTS idx_app_emails_classification ON application_emails(classification);

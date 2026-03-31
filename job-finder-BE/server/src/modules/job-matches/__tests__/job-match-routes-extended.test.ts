@@ -183,7 +183,7 @@ describe('job match routes — extended statuses', () => {
         autoLinked: true
       })
 
-      const res = await request(app).get(`/job-matches/${match.id}/emails`)
+      const res = await request(app).get(`/job-matches/${match.id}/emails`).set('Authorization', 'Bearer bypass-token')
 
       expect(res.status).toBe(200)
       expect(res.body.data.emails).toHaveLength(1)
@@ -194,7 +194,7 @@ describe('job match routes — extended statuses', () => {
       createTestListing('l-noemail')
       const match = repo.upsert(buildJobMatchInput({ queueItemId: 'q-noemail', jobListingId: 'l-noemail' }))
 
-      const res = await request(app).get(`/job-matches/${match.id}/emails`)
+      const res = await request(app).get(`/job-matches/${match.id}/emails`).set('Authorization', 'Bearer bypass-token')
 
       expect(res.status).toBe(200)
       expect(res.body.data.emails).toHaveLength(0)
@@ -220,7 +220,7 @@ describe('job match routes — extended statuses', () => {
         changedBy: 'email_tracker'
       })
 
-      const res = await request(app).get(`/job-matches/${match.id}/status-history`)
+      const res = await request(app).get(`/job-matches/${match.id}/status-history`).set('Authorization', 'Bearer bypass-token')
 
       expect(res.status).toBe(200)
       expect(res.body.data.history).toHaveLength(2)

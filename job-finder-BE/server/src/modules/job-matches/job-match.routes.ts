@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { ApiErrorCode } from '@shared/types'
+import { ApiErrorCode, type JobMatchStatus } from '@shared/types'
 import type {
   ListJobMatchesResponse,
   GetJobMatchResponse,
@@ -13,6 +13,7 @@ import type {
 import { JobMatchRepository } from './job-match.repository'
 import { ApplicationEmailRepository } from '../gmail/application-email.repository'
 import { StatusHistoryRepository } from '../gmail/status-history.repository'
+import { verifyFirebaseAuth } from '../../middleware/firebase-auth'
 import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
@@ -226,6 +227,12 @@ export function buildJobMatchRouter() {
         statusNote: z.string().nullable().optional()
       })
       const { status, statusNote } = statusSchema.parse(req.body)
+      const existing = repo.getById(req.params.id)
+      if (!existing) {
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
+        return
+      }
+      const previousStatus = (existing.status ?? 'active') as JobMatchStatus
       const updated = repo.updateStatus(req.params.id, status, {
         updatedBy: 'user',
         note: statusNote
@@ -234,12 +241,23 @@ export function buildJobMatchRouter() {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
         return
       }
+      if (previousStatus !== status) {
+        statusHistoryRepo.record({
+          jobMatchId: req.params.id,
+          fromStatus: previousStatus,
+          toStatus: status,
+          changedBy: 'user',
+          note: statusNote ?? null
+        })
+      }
       res.json(success({ match: updated }))
     })
   )
 
+  // Email activity and status history require authentication (sensitive data)
   router.get(
     '/:id/emails',
+    verifyFirebaseAuth,
     asyncHandler((req, res) => {
       const emails = appEmailRepo.listByJobMatch(req.params.id)
       res.json(success({ emails }))
@@ -248,6 +266,7 @@ export function buildJobMatchRouter() {
 
   router.get(
     '/:id/status-history',
+    verifyFirebaseAuth,
     asyncHandler((req, res) => {
       const history = statusHistoryRepo.listByJobMatch(req.params.id)
       res.json(success({ history }))

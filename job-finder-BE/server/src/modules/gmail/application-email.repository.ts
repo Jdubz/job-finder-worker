@@ -122,10 +122,10 @@ export class ApplicationEmailRepository {
     return row ? mapRow(row) : null
   }
 
-  getByGmailMessageId(messageId: string): ApplicationEmail | null {
+  getByGmailMessageId(gmailEmail: string, messageId: string): ApplicationEmail | null {
     const row = this.db
-      .prepare("SELECT * FROM application_emails WHERE gmail_message_id = ?")
-      .get(messageId) as ApplicationEmailRow | undefined
+      .prepare("SELECT * FROM application_emails WHERE gmail_email = ? AND gmail_message_id = ?")
+      .get(gmailEmail, messageId) as ApplicationEmailRow | undefined
     return row ? mapRow(row) : null
   }
 
@@ -175,10 +175,10 @@ export class ApplicationEmailRepository {
       .run(classification, confidence, now, emailId)
   }
 
-  isProcessed(gmailMessageId: string): boolean {
+  isProcessed(gmailEmail: string, gmailMessageId: string): boolean {
     const row = this.db
-      .prepare("SELECT 1 FROM application_emails WHERE gmail_message_id = ?")
-      .get(gmailMessageId)
+      .prepare("SELECT 1 FROM application_emails WHERE gmail_email = ? AND gmail_message_id = ?")
+      .get(gmailEmail, gmailMessageId)
     return Boolean(row)
   }
 }

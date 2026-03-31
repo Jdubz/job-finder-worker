@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type Database from "better-sqlite3"
-import type { ApplicationStatusHistory } from "@shared/types"
+import type { ApplicationStatusHistory, JobMatchStatus } from "@shared/types"
 import { getDb } from "../../db/sqlite"
 
 type StatusHistoryRow = {
@@ -18,8 +18,8 @@ function mapRow(row: StatusHistoryRow): ApplicationStatusHistory {
   return {
     id: row.id,
     jobMatchId: row.job_match_id,
-    fromStatus: row.from_status,
-    toStatus: row.to_status,
+    fromStatus: row.from_status as JobMatchStatus,
+    toStatus: row.to_status as JobMatchStatus,
     changedBy: row.changed_by as "user" | "email_tracker",
     applicationEmailId: row.application_email_id,
     note: row.note,
@@ -29,8 +29,8 @@ function mapRow(row: StatusHistoryRow): ApplicationStatusHistory {
 
 export interface RecordStatusChangeInput {
   jobMatchId: string
-  fromStatus: string
-  toStatus: string
+  fromStatus: JobMatchStatus
+  toStatus: JobMatchStatus
   changedBy: "user" | "email_tracker"
   applicationEmailId?: string | null
   note?: string | null

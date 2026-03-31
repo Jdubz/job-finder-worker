@@ -1,4 +1,5 @@
 import type { TimestampLike } from "./time.types"
+import type { JobMatchStatus } from "./job.types"
 
 /** Classification of an application-related email */
 export type EmailClassification = "acknowledged" | "interviewing" | "denied" | "unclassified"
@@ -43,8 +44,8 @@ export interface ApplicationEmail {
 export interface ApplicationStatusHistory {
   id: string
   jobMatchId: string
-  fromStatus: string
-  toStatus: string
+  fromStatus: JobMatchStatus
+  toStatus: JobMatchStatus
   changedBy: "user" | "email_tracker"
   applicationEmailId?: string | null
   note?: string | null

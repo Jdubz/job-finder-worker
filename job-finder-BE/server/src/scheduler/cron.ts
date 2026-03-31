@@ -253,7 +253,11 @@ function loadCronConfig(): CronConfig {
   }
 
   if (payload && isCronConfig(payload)) {
-    const appTracker = payload.jobs.applicationTracker ?? { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
+    const defaultAppTracker = { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
+    const rawAppTracker = payload.jobs.applicationTracker
+    const appTracker = rawAppTracker && Array.isArray(rawAppTracker.hours)
+      ? rawAppTracker
+      : defaultAppTracker
     return {
       jobs: {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },

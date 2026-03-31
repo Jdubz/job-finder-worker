@@ -7,14 +7,12 @@ import { GmailAuthService, type GmailTokenPayload } from "./gmail-auth.service"
 import { exchangeAuthCode } from "./gmail-oauth"
 import { ApplicationTrackerService } from "./application-tracker.service"
 import { ApplicationEmailRepository } from "./application-email.repository"
-import { StatusHistoryRepository } from "./status-history.repository"
 import { asyncHandler } from "../../utils/async-handler"
 import type { AuthenticatedRequest } from "../../middleware/firebase-auth"
 
 const service = new GmailAuthService()
 const tracker = new ApplicationTrackerService()
 const emailRepo = new ApplicationEmailRepository()
-const historyRepo = new StatusHistoryRepository()
 
 const StoreSchema = z.object({
   userEmail: z.string().email(),
@@ -47,9 +45,7 @@ export function buildGmailRouter() {
         code: z.string().min(1),
         redirectUri: z.union([z.literal("postmessage"), z.string().url()]),
         userEmail: z.string().email(),
-        gmailEmail: z.string().email().optional(),
-        clientId: z.string().optional(),
-        clientSecret: z.string().optional()
+        gmailEmail: z.string().email().optional()
       })
 
       const parsed = schema.safeParse(req.body)
@@ -60,12 +56,12 @@ export function buildGmailRouter() {
         })
       }
 
-      const { code, redirectUri, userEmail, gmailEmail, clientId, clientSecret } = parsed.data
+      const { code, redirectUri, userEmail, gmailEmail } = parsed.data
       const authed = (req as AuthenticatedRequest).user
       if (!authed || authed.email.toLowerCase() !== userEmail.toLowerCase()) {
         throw new ApiHttpError(ApiErrorCode.FORBIDDEN, "userEmail must match authenticated user", { status: 403 })
       }
-      const tokenResponse = await exchangeAuthCode({ code, redirectUri, clientId, clientSecret })
+      const tokenResponse = await exchangeAuthCode({ code, redirectUri })
 
       if (!tokenResponse.refresh_token) {
         throw new ApiHttpError(ApiErrorCode.INVALID_REQUEST, "OAuth response missing refresh_token", {
