@@ -30,6 +30,10 @@ class WikipediaClient:
             }
         )
 
+    def close(self) -> None:
+        """Release the underlying HTTP session."""
+        self.session.close()
+
     def search_company(self, company_name: str) -> Optional[Dict]:
         """
         Search Wikipedia for a company and extract structured data.

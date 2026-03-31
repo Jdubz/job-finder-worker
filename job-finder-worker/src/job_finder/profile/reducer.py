@@ -14,12 +14,15 @@ Rules (2025-12-05 clarifications):
 from __future__ import annotations
 
 import json
+import logging
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Dict, List, Optional, Set
 
 import sqlite3
+
+logger = logging.getLogger(__name__)
 
 from job_finder.storage.sqlite_client import sqlite_connection
 
@@ -201,19 +204,22 @@ def load_scoring_profile(
         db_path: Path to SQLite database
         relevant_experience_start: Only count work experience starting from this date
                                    (YYYY-MM-DD or YYYY-MM format)
-        user_id: Filter content_items to this user (required for multi-user)
+        user_id: Filter content_items to this user. Required in multi-user mode;
+                 omitting returns an empty profile to prevent cross-user data leakage.
     """
+    if not user_id:
+        logger.warning(
+            "load_scoring_profile called without user_id — returning empty profile "
+            "to prevent cross-user data leakage"
+        )
+        return ScoringProfile(skills=set(), skill_years={}, total_experience_years=0.0)
+
     try:
         with sqlite_connection(db_path) as conn:
-            if user_id:
-                rows = conn.execute(
-                    "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items WHERE user_id = ?",
-                    (user_id,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items"
-                ).fetchall()
+            rows = conn.execute(
+                "SELECT id, parent_id, ai_context, start_date, end_date, skills FROM content_items WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
         items = [dict(row) for row in rows]
         return reduce_content_items(items, relevant_experience_start=relevant_experience_start)
     except sqlite3.OperationalError:

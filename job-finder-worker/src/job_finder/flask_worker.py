@@ -42,6 +42,7 @@ from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.job_sources_manager import JobSourcesManager
 from job_finder.storage.scrape_report_storage import ScrapeReportStorage
 from job_finder.exceptions import InitializationError, NoAgentsAvailableError
+from job_finder.rendering.playwright_renderer import get_renderer
 
 # Load environment variables
 load_dotenv()
@@ -83,7 +84,7 @@ WORKER_RESTART_DELAY_SECONDS = 5
 REQUIRED_CONFIG_MIGRATIONS = {
     "20251205_002_tech-ranks-normalize",
 }
-REQUIRED_SCHEMA_MIN_ID = 46  # latest known schema migration in repo
+REQUIRED_SCHEMA_MIN_ID = 66  # multi-user schema (065) + constraint fixes (066)
 
 # Global state with thread-safe access
 _state_lock = threading.Lock()
@@ -839,6 +840,24 @@ def main():
     except Exception as e:
         slogger.worker_status("fatal_error", {"error": str(e)})
         return 1
+    finally:
+        # Signal shutdown and wait for the worker thread to finish processing
+        # before closing resources it may still be using.
+        slogger.worker_status("cleanup_starting")
+        _set_state("shutdown_requested", True)
+        if worker_thread and worker_thread.is_alive():
+            worker_thread.join(timeout=WORKER_SHUTDOWN_TIMEOUT_SECONDS)
+
+        try:
+            if processor and processor.ctx.company_info_fetcher:
+                processor.ctx.company_info_fetcher.close()
+        except Exception:
+            pass
+        try:
+            get_renderer().close()
+        except Exception:
+            pass
+        slogger.worker_status("cleanup_complete")
 
     return 0
 

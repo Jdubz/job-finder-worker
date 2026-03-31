@@ -266,40 +266,23 @@ class JobProcessor(BaseProcessor):
             self.ai_matcher.min_match_score = match_policy["minScore"]
 
     def _build_scoring_engine(self, match_policy: Dict[str, Any]) -> ScoringEngine:
-        """Create ScoringEngine with derived profile and personal info.
+        """Create a system-level ScoringEngine with empty profile.
 
-        Skill relationships (synonyms, implies, parallels) are now managed entirely
-        by the taxonomy system - no more analogGroups in config.
+        This engine is used only as a structural fallback during initialization.
+        All real scoring goes through per-user engines built by
+        _build_user_scoring_engine(), which load user-specific content_items and
+        personal-info. The system engine intentionally has no user data to prevent
+        cross-user data leakage.
         """
         db_path = (
             self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
         )
-        # Use the same SQLite file for taxonomy so tests/CI with temp DBs don't try to touch
-        # the default repo path. This also keeps scoring + taxonomy data co-located.
         taxonomy_repo = SkillTaxonomyRepository(db_path)
-        # Extract relevantExperienceStart from experience config (if set)
-        relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
-        profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start)
-
-        # Merge personal-info into location config for scoring
-        # Personal info values override static config values (userTimezone, userCity)
-        personal_info = self.config_loader.get_personal_info()
-        if personal_info:
-            location_config = match_policy.get("location", {})
-            # timezone from personal-info overrides userTimezone in location config
-            if personal_info.get("timezone") is not None:
-                location_config["userTimezone"] = personal_info["timezone"]
-            # city from personal-info overrides userCity in location config
-            if personal_info.get("city"):
-                location_config["userCity"] = personal_info["city"]
-            # relocationAllowed is new - pass through to scoring
-            if "relocationAllowed" in personal_info:
-                location_config["relocationAllowed"] = personal_info["relocationAllowed"]
 
         return ScoringEngine(
             match_policy,
-            skill_years=profile.skill_years,
-            user_experience_years=profile.total_experience_years,
+            skill_years={},
+            user_experience_years=0.0,
             taxonomy_repo=taxonomy_repo,
         )
 
@@ -1456,17 +1439,18 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data or {}
         logger.info(f"[PIPELINE] SKIPPED: '{job_data.get('title')}' - {reason}")
 
-        # Update listing with extraction and scoring data for UI visibility
-        # Scoring breakdown shows users WHY the job was skipped
-        self._update_listing_status(
-            ctx.listing_id,
-            "skipped",
-            filter_result={
-                "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
-                "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
-                "skip_reason": reason,
-            },
-        )
+        # Only update global listing status for system items (no user_id).
+        # Per-user scoring should not overwrite shared listing state.
+        if not ctx.item.user_id:
+            self._update_listing_status(
+                ctx.listing_id,
+                "skipped",
+                filter_result={
+                    "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
+                    "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
+                    "skip_reason": reason,
+                },
+            )
 
         self.queue_manager.update_status(
             ctx.item.id,
@@ -1487,8 +1471,9 @@ class JobProcessor(BaseProcessor):
         if ctx.score_result:
             filter_data["scoring"] = ctx.score_result.to_dict()
 
-        # Update listing if we have one
-        if ctx.listing_id:
+        # Only update global listing status for system items (no user_id).
+        # Per-user scoring should not overwrite shared listing state.
+        if ctx.listing_id and not ctx.item.user_id:
             self._update_listing_status(
                 ctx.listing_id,
                 "skipped",

@@ -38,27 +38,6 @@ export const atsCss = `
   .header {
     text-align: center;
     margin-bottom: 4px;
-    position: relative;
-    padding: 0 60px; /* Reserve space for absolutely positioned avatar/logo */
-  }
-
-  .header .header-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    object-fit: cover;
-    position: absolute;
-    top: 0;
-    left: 0;
-  }
-
-  .header .header-logo {
-    height: 28px;
-    width: auto;
-    opacity: 0.85;
-    position: absolute;
-    top: 0;
-    right: 0;
   }
 
   .header .name {

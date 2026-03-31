@@ -54,6 +54,11 @@ def main():
         default=200,
         help="Max queue items to process before stopping (safety guard)",
     )
+    parser.add_argument(
+        "--user-id",
+        type=str,
+        help="User ID for profile loading and match scoping (required for multi-user)",
+    )
 
     args = parser.parse_args()
 
@@ -90,7 +95,11 @@ def main():
     sources_manager = JobSourcesManager(db_path)
     queue_manager = QueueManager(db_path)
     config_loader = ConfigLoader(db_path)
-    profile = SQLiteProfileLoader(db_path).load_profile()
+    user_id = args.user_id
+    if not user_id:
+        print("❌ --user-id is required for profile loading")
+        sys.exit(1)
+    profile = SQLiteProfileLoader(db_path).load_profile(user_id)
 
     # Load job match settings from config
     job_match = config_loader.get_job_match()

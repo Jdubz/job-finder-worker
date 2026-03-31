@@ -43,6 +43,7 @@ services:
   api:
     image: ghcr.io/jdubz/job-finder-worker/api:latest
     container_name: job-finder-api
+    init: true  # Reap zombie Chromium processes left by Playwright
     restart: unless-stopped
     stop_grace_period: 30s
     ports:
@@ -95,6 +96,7 @@ services:
   worker:
     image: ghcr.io/jdubz/job-finder-worker/worker:latest
     container_name: job-finder-worker
+    init: true
     restart: unless-stopped
     env_file:
       - /srv/job-finder/secrets/worker.env

@@ -203,23 +203,33 @@ class JobStorage:
             )
             return job_id
 
-    def match_exists_for_listing(self, job_listing_id: str) -> bool:
-        """Return True if a job match already exists for this listing."""
+    def match_exists_for_listing(
+        self, job_listing_id: str, user_id: Optional[str] = None
+    ) -> bool:
+        """Return True if a job match already exists for this listing (scoped by user)."""
         if not job_listing_id:
             return False
 
         with sqlite_connection(self.db_path) as conn:
-            row = self._find_existing_by_listing_id(conn, job_listing_id)
+            row = self._find_existing_by_listing_id(conn, job_listing_id, user_id)
             return row is not None
 
-    def get_match_by_listing_id(self, job_listing_id: str) -> Optional[Dict[str, Any]]:
-        """Get job match by job_listing_id."""
+    def get_match_by_listing_id(
+        self, job_listing_id: str, user_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Get job match by job_listing_id (scoped by user)."""
         if not job_listing_id:
             return None
 
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT * FROM job_matches WHERE job_listing_id = ?",
-                (job_listing_id,),
-            ).fetchone()
+            if user_id:
+                row = conn.execute(
+                    "SELECT * FROM job_matches WHERE job_listing_id = ? AND user_id = ?",
+                    (job_listing_id, user_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM job_matches WHERE job_listing_id = ? AND user_id IS NULL",
+                    (job_listing_id,),
+                ).fetchone()
             return dict(row) if row else None

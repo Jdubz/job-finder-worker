@@ -2,6 +2,7 @@ import { chromium, type BrowserContext } from 'playwright-core'
 import type { ResumeContent, CoverLetterContent, PersonalInfo } from '@shared/types'
 import { atsResumeHtml, atsCoverLetterHtml } from './html-ats.service'
 import { injectPdfMetadata } from './pdf-metadata.service'
+import { applyPageFill } from './render-measure.service'
 
 async function createContext(): Promise<BrowserContext> {
   const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -21,15 +22,51 @@ async function createContext(): Promise<BrowserContext> {
  *  Do NOT pass margin to Playwright's page.pdf() — it would override the CSS @page rule. */
 const RENDER_TIMEOUT_MS = 30_000
 
+/** Overall timeout for the render phase (setContent + page.pdf).
+ *  Chromium launch (createContext) is not covered by this timeout.
+ *  page.pdf() has no built-in timeout and can hang if Chromium is resource-starved. */
+const OVERALL_RENDER_TIMEOUT_MS = 90_000
+
+/** Race a render operation against a timeout, cleaning up the timer on completion. */
+async function withRenderTimeout<T>(fn: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('PDF render timed out')), OVERALL_RENDER_TIMEOUT_MS)
+        timer.unref()
+      }),
+    ])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
+
 async function renderHtmlToPdf(html: string): Promise<Buffer> {
   const context = await createContext()
   try {
-    const page = await context.newPage()
-    // Use 'domcontentloaded' — ATS HTML is fully self-contained with no external resources,
-    // so 'networkidle' adds risk of hanging on unexpected Chromium network activity.
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
-    const pdf = await page.pdf({ format: 'Letter', printBackground: true })
-    return pdf
+    return await withRenderTimeout(async () => {
+      const page = await context.newPage()
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+      return page.pdf({ format: 'Letter', printBackground: true })
+    })
+  } finally {
+    await context.browser()?.close()
+  }
+}
+
+/** Render resume HTML to PDF with page-fill spacing distribution. */
+async function renderResumeHtmlToPdf(html: string): Promise<Buffer> {
+  const context = await createContext()
+  try {
+    return await withRenderTimeout(async () => {
+      const page = await context.newPage()
+      await page.emulateMedia({ media: 'print' })
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS })
+      await applyPageFill(page, html)
+      return page.pdf({ format: 'Letter', printBackground: true })
+    })
   } finally {
     await context.browser()?.close()
   }
@@ -38,9 +75,9 @@ async function renderHtmlToPdf(html: string): Promise<Buffer> {
 export class HtmlPdfService {
   async renderResume(content: ResumeContent, personalInfo?: PersonalInfo): Promise<Buffer> {
     const html = atsResumeHtml(content, personalInfo)
-    let pdf = await renderHtmlToPdf(html)
+    let pdf = await renderResumeHtmlToPdf(html)
 
-    const info = personalInfo ?? (content as any).personalInfo
+    const info = personalInfo ?? content.personalInfo
     const name = info?.name || ''
     const title = info?.title || content.personalInfo?.title || ''
     const skillKeywords = (content.skills || [])
@@ -66,8 +103,6 @@ export class HtmlPdfService {
       location?: string
       phone?: string
       date?: string
-      logo?: string
-      avatar?: string
       website?: string
       linkedin?: string
       github?: string

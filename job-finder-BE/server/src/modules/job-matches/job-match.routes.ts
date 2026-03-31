@@ -78,7 +78,7 @@ function toTimestamp(value?: string | Date) {
   return value instanceof Date ? value : new Date(value)
 }
 
-const limitSchema = z.coerce.number().int().min(1).max(200).default(50)
+const limitSchema = z.coerce.number().int().min(1).max(200).default(200)
 const listQuerySchema = z.object({
   limit: limitSchema,
   offset: z.coerce.number().int().min(0).default(0),
@@ -87,7 +87,8 @@ const listQuerySchema = z.object({
   jobListingId: z.string().min(1).optional(),
   sortBy: z.enum(['score', 'date', 'updated']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
-  status: z.enum(['active', 'ignored', 'applied', 'all']).optional()
+  status: z.enum(['active', 'ignored', 'applied', 'all']).optional(),
+  search: z.string().transform(s => s.trim()).pipe(z.string().min(1)).optional()
 })
 
 const statsQuerySchema = z.object({
