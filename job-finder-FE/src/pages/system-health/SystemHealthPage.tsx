@@ -36,6 +36,7 @@ const CRON_JOB_LABELS: Record<CronJobKey, string> = {
   maintenance: "Maintenance",
   logrotate: "Log Rotation",
   sessionCleanup: "Session Cleanup",
+  applicationTracker: "Application Tracker",
 }
 
 function formatHoursInput(hours: number[]): string {
@@ -162,12 +163,14 @@ export function SystemHealthPage() {
   const handleToggleJob = async (job: CronJobKey, enabled: boolean) => {
     const base = cronConfig ?? (cronStatus ? { jobs: cronStatus.jobs } : null)
     if (!base) return
+    const current = base.jobs[job]
+    if (!current) return
     try {
-      const hours = parseHours(hourInputs[job] ?? formatHoursInput(base.jobs[job].hours))
+      const hours = parseHours(hourInputs[job] ?? formatHoursInput(current.hours))
       const next: CronConfig = {
         jobs: {
           ...base.jobs,
-          [job]: { ...base.jobs[job], enabled, hours }
+          [job]: { ...current, enabled, hours }
         }
       }
       await saveCronConfig(next, job)
@@ -179,12 +182,14 @@ export function SystemHealthPage() {
   const handleSaveHours = async (job: CronJobKey) => {
     const base = cronConfig ?? (cronStatus ? { jobs: cronStatus.jobs } : null)
     if (!base) return
+    const current = base.jobs[job]
+    if (!current) return
     try {
       const hours = parseHours(hourInputs[job] ?? "")
       const next: CronConfig = {
         jobs: {
           ...base.jobs,
-          [job]: { ...base.jobs[job], hours }
+          [job]: { ...current, hours }
         }
       }
       await saveCronConfig(next, job)
