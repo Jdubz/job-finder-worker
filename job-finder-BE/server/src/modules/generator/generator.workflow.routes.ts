@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import { z, ZodError } from 'zod'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
@@ -10,6 +10,8 @@ import {
 } from '@shared/types'
 import { GeneratorWorkflowService } from './workflow/generator.workflow.service'
 import { GeneratorWorkflowRepository, type GeneratorRequestRecord } from './generator.workflow.repository'
+import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/auth'
+import { ApiHttpError } from '../../middleware/api-error'
 
 // Shared schema for generator endpoints
 const generatorRequestSchema = z.object({
@@ -48,22 +50,31 @@ function getService(): GeneratorWorkflowService {
   return serviceInstance
 }
 
+function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
+  const user = (req as AuthenticatedRequest).user
+  if (!user || !user.email) {
+    throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Missing authenticated user', { status: 401 })
+  }
+  return user as AuthenticatedUser & { email: string }
+}
+
 export function buildGeneratorWorkflowRouter() {
   const router = Router()
   const service = getService()
   const repo = new GeneratorWorkflowRepository()
 
-  const attachArtifacts = (requests: GeneratorRequestRecord[]) =>
+  const attachArtifacts = (userId: string, requests: GeneratorRequestRecord[]) =>
     requests.map((request) => ({
       ...request,
-      artifacts: repo.listArtifacts(request.id)
+      artifacts: repo.listArtifacts(userId, request.id)
     }))
 
   router.get(
     '/requests',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const jobMatchId = typeof req.query.jobMatchId === 'string' ? req.query.jobMatchId : undefined
-      const documents = attachArtifacts(repo.listRequests(50, jobMatchId))
+      const documents = attachArtifacts(user.uid, repo.listRequests(user.uid, 50, jobMatchId))
       res.json(
         success({
           requests: documents,
@@ -76,6 +87,8 @@ export function buildGeneratorWorkflowRouter() {
   router.post(
     '/start',
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      service.setUserId(user.uid)
       const payload = generatorRequestSchema.parse(req.body ?? {})
 
       try {
@@ -114,6 +127,8 @@ export function buildGeneratorWorkflowRouter() {
   router.post(
     '/step/:id',
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      service.setUserId(user.uid)
       const requestId = req.params.id
       const stepResult = await service.runNextStep(requestId)
       if (!stepResult) {
@@ -127,8 +142,9 @@ export function buildGeneratorWorkflowRouter() {
   router.get(
     '/job-matches/:id/documents',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const jobMatchId = req.params.id
-      const documents = attachArtifacts(repo.listRequests(50, jobMatchId))
+      const documents = attachArtifacts(user.uid, repo.listRequests(user.uid, 50, jobMatchId))
       res.json(success({ requests: documents, count: documents.length }))
     })
   )
@@ -137,6 +153,8 @@ export function buildGeneratorWorkflowRouter() {
   router.get(
     '/requests/:id/draft',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
+      service.setUserId(user.uid)
       const requestId = req.params.id
       const draft = service.getDraftContent(requestId)
       if (!draft) {
@@ -151,6 +169,8 @@ export function buildGeneratorWorkflowRouter() {
   router.post(
     '/requests/:id/submit-review',
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      service.setUserId(user.uid)
       const requestId = req.params.id
       const body = req.body ?? {}
 
@@ -194,6 +214,8 @@ export function buildGeneratorWorkflowRouter() {
   router.post(
     '/requests/:id/reject-review',
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      service.setUserId(user.uid)
       const requestId = req.params.id
       const body = req.body ?? {}
 

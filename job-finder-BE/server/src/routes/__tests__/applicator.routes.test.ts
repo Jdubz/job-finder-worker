@@ -2,11 +2,13 @@ import express from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildApplicatorRouter } from '../applicator.routes'
-import { type AuthenticatedRequest } from '../../middleware/firebase-auth'
+import { type AuthenticatedRequest } from '../../middleware/auth'
 import { getDb } from '../../db/sqlite'
 import { ConfigRepository } from '../../modules/config/config.repository'
 import { ContentItemRepository } from '../../modules/content-items/content-item.repository'
 import type { PersonalInfo, GetApplicatorProfileResponse, ApiSuccessResponse } from '@shared/types'
+
+const TEST_USER = 'test-user'
 
 const app = express()
 app.use(express.json())
@@ -14,10 +16,10 @@ app.use(express.json())
 // Simulate authenticated user
 app.use((req, _res, next) => {
   ;(req as AuthenticatedRequest).user = {
-    uid: 'test-user',
+    uid: TEST_USER,
     email: 'test@example.com',
     name: 'Test User',
-    roles: ['viewer']
+    roles: ['user']
   }
   next()
 })
@@ -145,7 +147,7 @@ describe('applicator routes', () => {
     configRepo.upsert('personal-info', personalInfo)
 
     // Create work item
-    const company = contentRepo.create({
+    const company = contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Acme Corp',
       role: 'Senior Backend Engineer',
@@ -158,7 +160,7 @@ describe('applicator routes', () => {
     })
 
     // Add highlights
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       parentId: company.id,
       description: 'Architected microservices migration reducing API latency by 40%',
@@ -166,7 +168,7 @@ describe('applicator routes', () => {
       orderIndex: 0
     })
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       parentId: company.id,
       description: 'Implemented event-driven architecture with Kafka',
@@ -196,7 +198,7 @@ describe('applicator routes', () => {
     }
     configRepo.upsert('personal-info', personalInfo)
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'University of Technology',
       role: 'B.S. Computer Science',
@@ -224,14 +226,14 @@ describe('applicator routes', () => {
     configRepo.upsert('personal-info', personalInfo)
 
     // Create multiple work items with different skills
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Company A',
       skills: ['Node.js', 'TypeScript', 'PostgreSQL'],
       aiContext: 'work'
     })
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Company B',
       skills: ['Python', 'Django', 'PostgreSQL', 'Redis'],
@@ -267,7 +269,7 @@ describe('applicator routes', () => {
     }
     configRepo.upsert('personal-info', personalInfo)
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Old Company',
       startDate: '2018-01',
@@ -275,7 +277,7 @@ describe('applicator routes', () => {
       aiContext: 'work'
     })
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Recent Company',
       startDate: '2022-01',
@@ -283,7 +285,7 @@ describe('applicator routes', () => {
       aiContext: 'work'
     })
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Middle Company',
       startDate: '2021-01',
@@ -325,7 +327,7 @@ describe('applicator routes', () => {
     }
     configRepo.upsert('personal-info', personalInfo)
 
-    contentRepo.create({
+    contentRepo.create(TEST_USER, {
       userEmail: 'test@example.com',
       title: 'Company',
       aiContext: 'work'

@@ -1,7 +1,7 @@
 import { createClient, type DeepgramClient } from '@deepgram/sdk'
 import { Readable } from 'node:stream'
 import { logger } from '../../logger'
-import { getChatContext, buildSystemPrompt } from './chat.prompts'
+import { buildSystemPrompt } from './chat.prompts'
 import { InferenceClient } from '../generator/ai/inference-client'
 import type { ChatMessage } from '@shared/types'
 
@@ -33,9 +33,7 @@ export class ChatService {
    */
   async *streamChat(messages: ChatMessage[]): AsyncGenerator<string> {
     try {
-      // Get context for system prompt
-      const context = await getChatContext()
-      const systemPrompt = buildSystemPrompt(context)
+      const systemPrompt = buildSystemPrompt()
 
       yield* this.inferenceClient.streamChat(
         messages.map((m) => ({ role: m.role, content: m.content })),

@@ -1,13 +1,23 @@
-"""Job queue item processor (single-task pipeline).
+"""Job queue item processor (single-task pipeline with multi-user fan-out).
 
-Processes a JOB item through the complete pipeline in a single task:
-SCRAPE -> CREATE_LISTING -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION -> SCORING -> ANALYSIS -> SAVE_MATCH
+Pipeline overview:
+  Stages 1-4 (global extraction):
+    SCRAPE -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION
+  Fan-out point (after stage 4):
+    System items (no user_id) create one per-user queue item per user
+  Stages 5-7 (per-user scoring):
+    SCORING -> ANALYSIS -> SAVE_MATCH
 
 Filtering (title filter and prefilter) happens at scraper intake, NOT here.
 Jobs that reach this processor have already passed all filters.
 
-All stages execute in-memory within a single task (no respawning).
-This reduces database queries and maintains in-memory data throughout.
+Multi-user flow:
+- System items (user_id=None) execute stages 1-4 (extraction), then fan out
+  to per-user scoring items and mark themselves SUCCESS.
+- Per-user items (user_id set) load user-specific config (match-policy,
+  personal-info) and execute stages 5-7 (scoring, analysis, save).
+- Users who should receive scoring are those with a 'match-policy' entry
+  in the user_config table.
 
 Company Dependency:
 - Before AI extraction, checks if company has good data (has_good_company_data)
@@ -51,6 +61,7 @@ from job_finder.job_queue.scraper_intake import ScraperIntake
 from job_finder.scoring.engine import ScoringEngine, ScoreBreakdown
 from job_finder.scoring.taxonomy import SkillTaxonomyRepository
 from job_finder.profile.reducer import load_scoring_profile
+from job_finder.profile.sqlite_loader import SQLiteProfileLoader
 from job_finder.scrape_runner import ScrapeRunner
 from job_finder.utils.company_info import build_company_info_string
 from job_finder.utils.company_name_utils import clean_company_name, is_source_name
@@ -250,43 +261,28 @@ class JobProcessor(BaseProcessor):
         self.extractor = JobExtractor(self.inference_client)
 
         # Update AI matcher min score from match policy (required, no default)
-        self.ai_matcher.min_match_score = match_policy["minScore"]
+        # ai_matcher may be None in multi-user mode (created per-user at scoring time)
+        if self.ai_matcher is not None:
+            self.ai_matcher.min_match_score = match_policy["minScore"]
 
     def _build_scoring_engine(self, match_policy: Dict[str, Any]) -> ScoringEngine:
-        """Create ScoringEngine with derived profile and personal info.
+        """Create a system-level ScoringEngine with empty profile.
 
-        Skill relationships (synonyms, implies, parallels) are now managed entirely
-        by the taxonomy system - no more analogGroups in config.
+        This engine is used only as a structural fallback during initialization.
+        All real scoring goes through per-user engines built by
+        _build_user_scoring_engine(), which load user-specific content_items and
+        personal-info. The system engine intentionally has no user data to prevent
+        cross-user data leakage.
         """
         db_path = (
             self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
         )
-        # Use the same SQLite file for taxonomy so tests/CI with temp DBs don't try to touch
-        # the default repo path. This also keeps scoring + taxonomy data co-located.
         taxonomy_repo = SkillTaxonomyRepository(db_path)
-        # Extract relevantExperienceStart from experience config (if set)
-        relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
-        profile = load_scoring_profile(db_path, relevant_experience_start=relevant_exp_start)
-
-        # Merge personal-info into location config for scoring
-        # Personal info values override static config values (userTimezone, userCity)
-        personal_info = self.config_loader.get_personal_info()
-        if personal_info:
-            location_config = match_policy.get("location", {})
-            # timezone from personal-info overrides userTimezone in location config
-            if personal_info.get("timezone") is not None:
-                location_config["userTimezone"] = personal_info["timezone"]
-            # city from personal-info overrides userCity in location config
-            if personal_info.get("city"):
-                location_config["userCity"] = personal_info["city"]
-            # relocationAllowed is new - pass through to scoring
-            if "relocationAllowed" in personal_info:
-                location_config["relocationAllowed"] = personal_info["relocationAllowed"]
 
         return ScoringEngine(
             match_policy,
-            skill_years=profile.skill_years,
-            user_experience_years=profile.total_experience_years,
+            skill_years={},
+            user_experience_years=0.0,
             taxonomy_repo=taxonomy_repo,
         )
 
@@ -369,16 +365,18 @@ class JobProcessor(BaseProcessor):
 
     def process_job(self, item: JobQueueItem) -> None:
         """
-        Process job item through complete pipeline in a single task.
+        Process job item through the pipeline.
 
-        Pipeline stages (all in-memory, no respawning):
-        1. SCRAPE - Extract job data from URL (or use manual submission data)
-        2. COMPANY_LOOKUP - Get/create company data
-        2.5. WAIT_COMPANY - Requeue if company needs enrichment (up to 3 retries)
-        3. AI_EXTRACTION - Extract semantic data (seniority, tech, etc.)
-        4. SCORING - Deterministic scoring from config
-        5. ANALYSIS - AI match analysis with reasoning
-        6. SAVE_MATCH - Save to job_matches if above threshold
+        Two execution paths based on user_id:
+
+        A) System extraction (user_id is None) - stages 1-4:
+           SCRAPE -> COMPANY_LOOKUP -> [WAIT_COMPANY] -> AI_EXTRACTION
+           Then fan-out: create one per-user scoring queue item per user
+           who has a 'match-policy' in user_config, and mark self SUCCESS.
+
+        B) Per-user scoring (user_id is set) - stages 5-7:
+           Load user-specific config, then:
+           SCORING -> ANALYSIS -> SAVE_MATCH
 
         Note: Title/pre-filtering happens at scraper intake, not here.
         Jobs that reach this processor have already passed all filters.
@@ -390,7 +388,21 @@ class JobProcessor(BaseProcessor):
             logger.error("Cannot process item without ID")
             return
 
-        # Refresh config-driven components
+        # Per-user scoring path: user_id is set, skip to scoring stages
+        if item.user_id:
+            self._process_user_scoring(item)
+            return
+
+        # System extraction path: user_id is None
+        self._process_system_extraction(item)
+
+    def _process_system_extraction(self, item: JobQueueItem) -> None:
+        """Execute global extraction stages (1-4) and fan out to per-user scoring.
+
+        This is the system path for items with no user_id. After extraction,
+        creates one queue item per user who has a match-policy configured.
+        """
+        # Refresh config-driven components (global config for extraction)
         self._refresh_runtime_config()
 
         # Initialize pipeline context
@@ -412,7 +424,7 @@ class JobProcessor(BaseProcessor):
             item.id,
             "job",
             "processing",
-            {"url": item.url, "pipeline": "single-task"},
+            {"url": item.url, "pipeline": "system-extraction"},
         )
 
         start_time = time.monotonic()
@@ -500,11 +512,166 @@ class JobProcessor(BaseProcessor):
                 },
             )
 
-            # STAGE 4: DETERMINISTIC SCORING
+            # STAGE 4: FAN OUT to per-user scoring
+            ctx.stage = "fan_out"
+            logger.info(f"[PIPELINE] {url_preview} -> FAN_OUT")
+            self._update_status(item, "Creating per-user scoring tasks", ctx.stage)
+            fan_out_count = self._fan_out_to_users(ctx)
+
+            # SUCCESS - extraction complete, scoring delegated to per-user items
+            duration_ms = round((time.monotonic() - start_time) * 1000)
+            logger.info(
+                f"[PIPELINE] EXTRACTION COMPLETE: {ctx.job_data.get('title')} at "
+                f"{ctx.job_data.get('company')} -> {fan_out_count} user scoring tasks "
+                f"(Duration: {duration_ms}ms)"
+            )
+
+            self.queue_manager.update_status(
+                item.id,
+                QueueStatus.SUCCESS,
+                f"Extraction complete, {fan_out_count} user scoring tasks created",
+                scraped_data=self._build_final_scraped_data(ctx),
+            )
+
+            self.slogger.queue_item_processing(
+                item.id,
+                "job",
+                "completed",
+                {
+                    "url": item.url,
+                    "fan_out_count": fan_out_count,
+                    "duration_ms": duration_ms,
+                },
+            )
+
+        except NoAgentsAvailableError:
+            # Critical error - let it propagate to worker loop to stop queue
+            raise
+        except Exception as e:
+            logger.error(f"[PIPELINE] ERROR in stage {ctx.stage}: {e}", exc_info=True)
+            ctx.error = str(e)
+            self._finalize_failed(ctx, f"Pipeline error in {ctx.stage}: {e}")
+
+    def _process_user_scoring(self, item: JobQueueItem) -> None:
+        """Execute per-user scoring stages (5-7) with user-specific config.
+
+        This path handles items that already have a user_id set.
+        It loads the user's match-policy, builds per-user scoring components,
+        and runs scoring -> analysis -> save_match.
+        """
+        user_id = item.user_id
+        if not user_id:
+            logger.error("Per-user scoring item %s missing user_id", item.id)
+            ctx = PipelineContext(item=item)
+            self._finalize_failed(ctx, "Per-user scoring item missing user_id")
+            return
+
+        # Initialize pipeline context
+        ctx = PipelineContext(item=item)
+        state = item.pipeline_state or {}
+        metadata = item.metadata or {}
+
+        # Get listing_id - required for per-user scoring items
+        ctx.listing_id = metadata.get("job_listing_id") or state.get("job_listing_id")
+        if not ctx.listing_id:
+            logger.error("Per-user scoring item %s has no job_listing_id", item.id)
+            self._finalize_failed(ctx, "No job_listing_id for per-user scoring")
+            return
+
+        # Load job data from job_listings
+        if self.job_listing_storage:
+            listing = self.job_listing_storage.get_by_id(ctx.listing_id)
+            if listing:
+                ctx.job_data = {
+                    "title": listing.get("title", ""),
+                    "description": listing.get("description", ""),
+                    "company": listing.get("company_name", ""),
+                    "location": listing.get("location", ""),
+                    "url": listing.get("url") or item.url,
+                    "salary": listing.get("salary_range"),
+                    "posted_date": listing.get("posted_date"),
+                    "company_id": listing.get("company_id"),
+                }
+            else:
+                self._finalize_failed(ctx, f"Job listing {ctx.listing_id} not found")
+                return
+        else:
+            self._finalize_failed(ctx, "job_listing_storage not available")
+            return
+
+        # Load extraction data from listing filter_result (saved by extraction stage)
+        extraction_data = state.get("extraction_data")
+        if extraction_data:
+            try:
+                ctx.extraction = JobExtractionResult.from_dict(extraction_data)
+            except Exception as e:
+                logger.warning("Failed to restore extraction from state: %s", e)
+
+        # If extraction not in state, try to load from listing's filter_result
+        if not ctx.extraction:
+            filter_result = listing.get("filter_result")
+            if filter_result:
+                if isinstance(filter_result, str):
+                    try:
+                        filter_result = json.loads(filter_result)
+                    except json.JSONDecodeError:
+                        filter_result = {}
+                extraction_dict = filter_result.get("extraction")
+                if extraction_dict:
+                    try:
+                        ctx.extraction = JobExtractionResult.from_dict(extraction_dict)
+                    except Exception as e:
+                        logger.warning("Failed to restore extraction from listing: %s", e)
+
+        if not ctx.extraction:
+            self._finalize_failed(ctx, "No extraction data available for per-user scoring")
+            return
+
+        # Load company data if available
+        company_id = ctx.job_data.get("company_id")
+        if company_id:
+            ctx.company_data = self.companies_manager.get_company_by_id(company_id)
+
+        # Build per-user scoring components
+        try:
+            user_match_policy = self.config_loader.get_user_match_policy(user_id)
+        except Exception as e:
+            self._finalize_failed(ctx, f"Failed to load user config for {user_id}: {e}")
+            return
+
+        user_scoring_engine = self._build_user_scoring_engine(user_match_policy, user_id)
+        user_min_score = user_match_policy.get("minScore", 0)
+
+        # Build per-user AIJobMatcher for match analysis
+        try:
+            db_path = (
+                self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+            )
+            profile_loader = SQLiteProfileLoader(db_path)
+            user_profile = profile_loader.load_profile(user_id)
+            user_ai_matcher = AIJobMatcher(
+                self.inference_client, user_profile, min_match_score=user_min_score
+            )
+        except Exception as e:
+            self._finalize_failed(ctx, f"Failed to load profile for user {user_id}: {e}")
+            return
+
+        self.slogger.queue_item_processing(
+            item.id,
+            "job",
+            "processing",
+            {"url": item.url, "pipeline": "user-scoring", "user_id": user_id},
+        )
+
+        start_time = time.monotonic()
+        url_preview = (item.url or "")[:50]
+
+        try:
+            # STAGE 5: DETERMINISTIC SCORING (per-user)
             ctx.stage = "scoring"
-            logger.info(f"[PIPELINE] {url_preview} -> SCORING")
+            logger.info(f"[PIPELINE] {url_preview} -> SCORING (user={user_id[:8]}...)")
             self._update_status(item, "Scoring job match", ctx.stage)
-            ctx.score_result = self._execute_scoring(ctx)
+            ctx.score_result = self._execute_scoring(ctx, scoring_engine=user_scoring_engine)
 
             # Emit scoring event
             self._emit_event(
@@ -514,6 +681,7 @@ class JobProcessor(BaseProcessor):
                     "score": ctx.score_result.final_score,
                     "passed": ctx.score_result.passed,
                     "adjustmentCount": len(ctx.score_result.adjustments),
+                    "userId": user_id,
                 },
             )
 
@@ -529,11 +697,11 @@ class JobProcessor(BaseProcessor):
                         f"[PIPELINE] {url_preview} -> Bypassing score threshold via bypassFilter flag"
                     )
 
-            # STAGE 5: AI MATCH ANALYSIS
+            # STAGE 6: AI MATCH ANALYSIS (per-user)
             ctx.stage = "analysis"
-            logger.info(f"[PIPELINE] {url_preview} -> AI_ANALYSIS")
+            logger.info(f"[PIPELINE] {url_preview} -> AI_ANALYSIS (user={user_id[:8]}...)")
             self._update_status(item, "Generating match analysis", ctx.stage)
-            ctx.match_result = self._execute_match_analysis(ctx)
+            ctx.match_result = self._execute_match_analysis(ctx, ai_matcher=user_ai_matcher)
             if not ctx.match_result:
                 self._finalize_failed(ctx, "AI analysis returned no result")
                 return
@@ -544,16 +712,17 @@ class JobProcessor(BaseProcessor):
                 item.id,
                 {
                     "matchScore": ctx.match_result.match_score,
+                    "userId": user_id,
                 },
             )
 
             # Check score threshold using deterministic score (not AI score)
-            min_score = getattr(self.ai_matcher, "min_match_score", 0)
-            if ctx.score_result.final_score < min_score:
+            if ctx.score_result.final_score < user_min_score:
                 # Check for bypassFilter flag in metadata (from user submissions)
                 if not metadata.get("bypassFilter", False):
                     self._finalize_skipped(
-                        ctx, f"Score {ctx.score_result.final_score} below threshold {min_score}"
+                        ctx,
+                        f"Score {ctx.score_result.final_score} below threshold {user_min_score}",
                     )
                     return
                 else:
@@ -561,9 +730,9 @@ class JobProcessor(BaseProcessor):
                         f"[PIPELINE] {url_preview} -> Bypassing min_score threshold via bypassFilter flag"
                     )
 
-            # STAGE 6: SAVE MATCH
+            # STAGE 7: SAVE MATCH (per-user)
             ctx.stage = "save"
-            logger.info(f"[PIPELINE] {url_preview} -> SAVE_MATCH")
+            logger.info(f"[PIPELINE] {url_preview} -> SAVE_MATCH (user={user_id[:8]}...)")
             self._update_status(item, "Saving job match", ctx.stage)
             doc_id = self._execute_save_match(ctx)
 
@@ -575,6 +744,7 @@ class JobProcessor(BaseProcessor):
                     "docId": doc_id,
                     "listingId": ctx.listing_id,
                     "matchScore": ctx.match_result.match_score,
+                    "userId": user_id,
                 },
             )
 
@@ -582,6 +752,7 @@ class JobProcessor(BaseProcessor):
             duration_ms = round((time.monotonic() - start_time) * 1000)
             logger.info(
                 f"[PIPELINE] SUCCESS: {ctx.job_data.get('title')} at {ctx.job_data.get('company')} "
+                f"for user {user_id[:8]}... "
                 f"(Score: {ctx.match_result.match_score}, ID: {doc_id}, Duration: {duration_ms}ms)"
             )
 
@@ -601,6 +772,7 @@ class JobProcessor(BaseProcessor):
                     "match_score": ctx.match_result.match_score,
                     "doc_id": doc_id,
                     "duration_ms": duration_ms,
+                    "user_id": user_id,
                 },
             )
 
@@ -996,8 +1168,103 @@ class JobProcessor(BaseProcessor):
         )
         return extraction
 
-    def _execute_scoring(self, ctx: PipelineContext) -> ScoreBreakdown:
-        """Execute deterministic scoring stage."""
+    def _fan_out_to_users(self, ctx: PipelineContext) -> int:
+        """Create per-user scoring queue items for all users with match-policy.
+
+        After extraction completes (system item), this method queries users
+        who have a 'match-policy' in user_config and creates one queue item
+        per user for scoring/analysis/save.
+
+        Args:
+            ctx: Pipeline context with extraction and listing data
+
+        Returns:
+            Number of per-user scoring items created
+        """
+        user_ids = self.config_loader.get_users_with_config("match-policy")
+        if not user_ids:
+            logger.warning("[FAN_OUT] No users with match-policy found, skipping fan-out")
+            return 0
+
+        extraction_data = ctx.extraction.to_dict() if ctx.extraction else {}
+        count = 0
+
+        for uid in user_ids:
+            try:
+                self.queue_manager.spawn_item_safely(
+                    current_item=ctx.item,
+                    new_item_data={
+                        "type": QueueItemType.JOB,
+                        "url": ctx.item.url,
+                        "user_id": uid,
+                        "company_name": ctx.item.company_name,
+                        "company_id": ctx.item.company_id,
+                        "source_id": ctx.item.source_id,
+                        "source": ctx.item.source,
+                        "metadata": {
+                            "job_listing_id": ctx.listing_id,
+                        },
+                        "pipeline_state": {
+                            "extraction_data": extraction_data,
+                            "job_listing_id": ctx.listing_id,
+                        },
+                    },
+                )
+                count += 1
+                logger.debug("[FAN_OUT] Created scoring task for user %s", uid[:8])
+            except DuplicateQueueItemError:
+                logger.debug("[FAN_OUT] Scoring task already exists for user %s", uid[:8])
+            except Exception as e:
+                logger.warning(
+                    "[FAN_OUT] Failed to create scoring task for user %s: %s", uid[:8], e
+                )
+
+        logger.info("[FAN_OUT] Created %d/%d per-user scoring tasks", count, len(user_ids))
+        return count
+
+    def _build_user_scoring_engine(
+        self, match_policy: Dict[str, Any], user_id: str
+    ) -> ScoringEngine:
+        """Build a ScoringEngine using per-user match-policy and personal-info.
+
+        Similar to _build_scoring_engine but uses user-specific config.
+        """
+        db_path = (
+            self.config_loader.db_path if isinstance(self.config_loader.db_path, str) else None
+        )
+        taxonomy_repo = SkillTaxonomyRepository(db_path)
+        relevant_exp_start = match_policy.get("experience", {}).get("relevantExperienceStart")
+        profile = load_scoring_profile(
+            db_path, relevant_experience_start=relevant_exp_start, user_id=user_id
+        )
+
+        # Merge per-user personal-info into location config for scoring
+        personal_info = self.config_loader.get_user_personal_info(user_id)
+        if personal_info:
+            location_config = match_policy.get("location", {})
+            if personal_info.get("timezone") is not None:
+                location_config["userTimezone"] = personal_info["timezone"]
+            if personal_info.get("city"):
+                location_config["userCity"] = personal_info["city"]
+            if "relocationAllowed" in personal_info:
+                location_config["relocationAllowed"] = personal_info["relocationAllowed"]
+
+        return ScoringEngine(
+            match_policy,
+            skill_years=profile.skill_years,
+            user_experience_years=profile.total_experience_years,
+            taxonomy_repo=taxonomy_repo,
+        )
+
+    def _execute_scoring(
+        self, ctx: PipelineContext, scoring_engine: Optional[ScoringEngine] = None
+    ) -> ScoreBreakdown:
+        """Execute deterministic scoring stage.
+
+        Args:
+            ctx: Pipeline context with extraction and job data
+            scoring_engine: Optional per-user scoring engine. Falls back to self.scoring_engine.
+        """
         if not ctx.extraction:
             return ScoreBreakdown(
                 base_score=0,
@@ -1005,6 +1272,8 @@ class JobProcessor(BaseProcessor):
                 passed=False,
                 rejection_reason="No extraction data available",
             )
+
+        engine = scoring_engine or self.scoring_engine
 
         job_data = ctx.job_data or {}
         title = job_data.get("title", "")
@@ -1071,7 +1340,7 @@ class JobProcessor(BaseProcessor):
             extraction.technologies = remapped
 
         # Pass company_data to scoring engine for company signals
-        score_result = self.scoring_engine.score(
+        score_result = engine.score(
             extraction=extraction,
             job_title=title,
             job_description=description,
@@ -1083,12 +1352,18 @@ class JobProcessor(BaseProcessor):
         )
         return score_result
 
-    def _execute_match_analysis(self, ctx: PipelineContext) -> Optional[JobMatchResult]:
+    def _execute_match_analysis(
+        self, ctx: PipelineContext, ai_matcher: Optional[AIJobMatcher] = None
+    ) -> Optional[JobMatchResult]:
         """Execute AI match analysis stage."""
         job_data = ctx.job_data
 
         if job_data is None:
             return None
+
+        matcher = ai_matcher or self.ai_matcher
+        if matcher is None:
+            raise RuntimeError("No AIJobMatcher available for match analysis")
 
         # Enrich job_data with extraction and scoring info
         job_data_enriched = {
@@ -1098,7 +1373,7 @@ class JobProcessor(BaseProcessor):
         }
 
         try:
-            result = self.ai_matcher.analyze_job(job_data_enriched, return_below_threshold=True)
+            result = matcher.analyze_job(job_data_enriched, return_below_threshold=True)
             if result:
                 logger.info(f"Match analysis complete: score={result.match_score}")
             return result
@@ -1108,34 +1383,42 @@ class JobProcessor(BaseProcessor):
             raise
 
     def _execute_save_match(self, ctx: PipelineContext) -> str:
-        """Execute save match stage."""
-        # Update listing to matched status (analysis data goes ONLY to job_matches)
-        # Scoring breakdown is stored in filter_result.scoring
-        self._update_listing_status(
-            ctx.listing_id,
-            "matched",
-            filter_result={
-                "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
-                "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
-            },
-        )
+        """Execute save match stage.
 
-        # Update match_score on listing for quick filtering/sorting
-        if ctx.listing_id and ctx.score_result:
-            self.job_listing_storage.update_match_score(
+        For per-user scoring items, scoring/analysis data is stored in
+        job_matches (per-user), NOT written back to job_listings.
+        For system items (legacy path), listing status is still updated.
+        """
+        user_id = ctx.item.user_id
+
+        # Only update listing status/match_score for system items (no user_id).
+        # Per-user scoring should not overwrite global listing state.
+        if not user_id:
+            self._update_listing_status(
                 ctx.listing_id,
-                ctx.score_result.final_score,
+                "matched",
+                filter_result={
+                    "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
+                    "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
+                },
             )
+
+            # Update match_score on listing for quick filtering/sorting
+            if ctx.listing_id and ctx.score_result:
+                self.job_listing_storage.update_match_score(
+                    ctx.listing_id,
+                    ctx.score_result.final_score,
+                )
 
         # Save to job_matches table (single source of truth for analysis)
         doc_id = self.job_storage.save_job_match(
             job_listing_id=ctx.listing_id,
             match_result=ctx.match_result,
-            user_id=None,
+            user_id=user_id,
             queue_item_id=ctx.item.id,
         )
 
-        logger.info(f"Job match saved: ID={doc_id}")
+        logger.info(f"Job match saved: ID={doc_id}, user_id={user_id}")
         return doc_id
 
     # ============================================================
@@ -1156,17 +1439,18 @@ class JobProcessor(BaseProcessor):
         job_data = ctx.job_data or {}
         logger.info(f"[PIPELINE] SKIPPED: '{job_data.get('title')}' - {reason}")
 
-        # Update listing with extraction and scoring data for UI visibility
-        # Scoring breakdown shows users WHY the job was skipped
-        self._update_listing_status(
-            ctx.listing_id,
-            "skipped",
-            filter_result={
-                "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
-                "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
-                "skip_reason": reason,
-            },
-        )
+        # Only update global listing status for system items (no user_id).
+        # Per-user scoring should not overwrite shared listing state.
+        if not ctx.item.user_id:
+            self._update_listing_status(
+                ctx.listing_id,
+                "skipped",
+                filter_result={
+                    "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
+                    "scoring": ctx.score_result.to_dict() if ctx.score_result else None,
+                    "skip_reason": reason,
+                },
+            )
 
         self.queue_manager.update_status(
             ctx.item.id,
@@ -1187,8 +1471,9 @@ class JobProcessor(BaseProcessor):
         if ctx.score_result:
             filter_data["scoring"] = ctx.score_result.to_dict()
 
-        # Update listing if we have one
-        if ctx.listing_id:
+        # Only update global listing status for system items (no user_id).
+        # Per-user scoring should not overwrite shared listing state.
+        if ctx.listing_id and not ctx.item.user_id:
             self._update_listing_status(
                 ctx.listing_id,
                 "skipped",

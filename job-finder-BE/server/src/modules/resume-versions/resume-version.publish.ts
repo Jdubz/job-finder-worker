@@ -175,22 +175,23 @@ export function buildItemTree(items: ResumeItem[]): ResumeItemNode[] {
  * Publish a resume version: render items → ResumeContent → PDF, store at stable path.
  */
 export async function publishResumeVersion(
+  userId: string,
   slug: string,
   publishedBy: string,
   repo?: ResumeVersionRepository
 ): Promise<{ pdfPath: string; pdfSizeBytes: number }> {
   const repository = repo ?? new ResumeVersionRepository()
 
-  const version = repository.getVersionBySlug(slug)
+  const version = repository.getVersionBySlug(userId, slug)
   if (!version) throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
 
-  const items = repository.listItems(version.id)
+  const items = repository.listItems(userId, version.id)
   if (items.length === 0) {
     throw new Error(`Cannot publish: resume version "${slug}" has no items`)
   }
 
   const personalInfoStore = new PersonalInfoStore()
-  const personalInfo = await personalInfoStore.get()
+  const personalInfo = await personalInfoStore.get(userId)
   if (!personalInfo) {
     throw new Error('Cannot publish: personal info not configured. Set it in Settings > Personal Info.')
   }
@@ -210,7 +211,7 @@ export async function publishResumeVersion(
   const absolutePath = path.join(resumesDir, filename)
   await fs.writeFile(absolutePath, pdfBuffer)
 
-  repository.updateVersionPublish(slug, relativePath, pdfBuffer.length, publishedBy)
+  repository.updateVersionPublish(userId, slug, relativePath, pdfBuffer.length, publishedBy)
 
   return { pdfPath: relativePath, pdfSizeBytes: pdfBuffer.length }
 }

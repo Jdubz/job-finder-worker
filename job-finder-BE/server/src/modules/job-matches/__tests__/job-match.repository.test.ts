@@ -4,6 +4,8 @@ import { JobListingRepository } from '../../job-listings/job-listing.repository'
 import { getDb } from '../../../db/sqlite'
 import { buildJobMatchInput, buildJobListingRecord } from './fixtures'
 
+const TEST_USER = 'test-user'
+
 describe('JobMatchRepository', () => {
   const repo = new JobMatchRepository()
   const listingRepo = new JobListingRepository()
@@ -22,13 +24,13 @@ describe('JobMatchRepository', () => {
 
   it('upserts a job match and retrieves normalized data', () => {
     createListing('listing-1')
-    const created = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-1', jobListingId: 'listing-1' }))
+    const created = repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-1', jobListingId: 'listing-1' }))
 
     expect(created.id).toBeDefined()
     expect(created.matchedSkills).toEqual(['TypeScript', 'React'])
     expect(created.keyStrengths).toContain('Mentors teammates')
 
-    const fetched = repo.getById(created.id!)
+    const fetched = repo.getById(TEST_USER, created.id!)
     expect(fetched?.jobListingId).toBe(created.jobListingId)
     expect(fetched?.matchScore).toBe(90)
   })
@@ -38,17 +40,17 @@ describe('JobMatchRepository', () => {
     createListing('listing-3')
     createListing('listing-4')
 
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-2', jobListingId: 'listing-2', matchScore: 95 }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-2', jobListingId: 'listing-2', matchScore: 95 }))
     repo.upsert(
-      buildJobMatchInput({
+      TEST_USER, buildJobMatchInput({
         queueItemId: 'queue-3',
         jobListingId: 'listing-3',
         matchScore: 70
       })
     )
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-4', jobListingId: 'listing-4', matchScore: 82 }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-4', jobListingId: 'listing-4', matchScore: 82 }))
 
-    const results = repo.list({
+    const results = repo.list(TEST_USER, {
       minScore: 80,
       sortBy: 'score',
       sortOrder: 'asc'
@@ -61,8 +63,8 @@ describe('JobMatchRepository', () => {
 
   it('updates an existing match when the same id is provided', () => {
     createListing('listing-5')
-    const initial = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-5', jobListingId: 'listing-5' }))
-    const updated = repo.upsert({
+    const initial = repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-5', jobListingId: 'listing-5' }))
+    const updated = repo.upsert(TEST_USER, {
       ...initial,
       matchScore: 65,
       keyStrengths: ['Drives roadmap'],
@@ -72,26 +74,26 @@ describe('JobMatchRepository', () => {
     expect(updated.matchScore).toBe(65)
     expect(updated.keyStrengths).toContain('Drives roadmap')
 
-    const fetched = repo.getById(initial.id!)
+    const fetched = repo.getById(TEST_USER, initial.id!)
     expect(fetched?.matchScore).toBe(65)
   })
 
   it('deletes matches by id', () => {
     createListing('listing-6')
-    const created = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-6', jobListingId: 'listing-6' }))
-    repo.delete(created.id!)
+    const created = repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-6', jobListingId: 'listing-6' }))
+    repo.delete(TEST_USER, created.id!)
 
-    expect(repo.getById(created.id!)).toBeNull()
+    expect(repo.getById(TEST_USER, created.id!)).toBeNull()
   })
 
   it('filters by jobListingId', () => {
     createListing('target-listing')
     createListing('other-listing')
 
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-7', jobListingId: 'target-listing' }))
-    repo.upsert(buildJobMatchInput({ queueItemId: 'queue-8', jobListingId: 'other-listing' }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-7', jobListingId: 'target-listing' }))
+    repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-8', jobListingId: 'other-listing' }))
 
-    const results = repo.list({ jobListingId: 'target-listing' })
+    const results = repo.list(TEST_USER, { jobListingId: 'target-listing' })
 
     expect(results).toHaveLength(1)
     expect(results[0].jobListingId).toBe('target-listing')
@@ -99,9 +101,9 @@ describe('JobMatchRepository', () => {
 
   it('returns match by jobListingId', () => {
     createListing('test-listing')
-    const created = repo.upsert(buildJobMatchInput({ queueItemId: 'queue-9', jobListingId: 'test-listing' }))
+    const created = repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'queue-9', jobListingId: 'test-listing' }))
 
-    const fetched = repo.getByJobListingId('test-listing')
+    const fetched = repo.getByJobListingId(TEST_USER, 'test-listing')
     expect(fetched?.id).toBe(created.id)
     expect(fetched?.jobListingId).toBe('test-listing')
   })
@@ -117,13 +119,13 @@ describe('JobMatchRepository', () => {
       listingRepo.create(
         buildJobListingRecord({ id: 'search-3', title: 'Full Stack Developer', companyName: 'React Corp' })
       )
-      repo.upsert(buildJobMatchInput({ queueItemId: 'sq-1', jobListingId: 'search-1', matchScore: 90 }))
-      repo.upsert(buildJobMatchInput({ queueItemId: 'sq-2', jobListingId: 'search-2', matchScore: 85 }))
-      repo.upsert(buildJobMatchInput({ queueItemId: 'sq-3', jobListingId: 'search-3', matchScore: 80 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'sq-1', jobListingId: 'search-1', matchScore: 90 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'sq-2', jobListingId: 'search-2', matchScore: 85 }))
+      repo.upsert(TEST_USER, buildJobMatchInput({ queueItemId: 'sq-3', jobListingId: 'search-3', matchScore: 80 }))
     })
 
     it('filters by job title', () => {
-      const results = repo.listWithListings({ search: 'React' })
+      const results = repo.listWithListings(TEST_USER, { search: 'React' })
       expect(results).toHaveLength(2)
       const titles = results.map((r) => r.listing.title)
       expect(titles).toContain('Senior React Developer')
@@ -131,15 +133,15 @@ describe('JobMatchRepository', () => {
     })
 
     it('filters by company name', () => {
-      const results = repo.listWithListings({ search: 'Google' })
+      const results = repo.listWithListings(TEST_USER, { search: 'Google' })
       expect(results).toHaveLength(1)
       expect(results[0].listing.companyName).toBe('Google')
     })
 
     it('search is case-insensitive', () => {
-      const lower = repo.listWithListings({ search: 'autodesk' })
-      const upper = repo.listWithListings({ search: 'AUTODESK' })
-      const mixed = repo.listWithListings({ search: 'AutoDesk' })
+      const lower = repo.listWithListings(TEST_USER, { search: 'autodesk' })
+      const upper = repo.listWithListings(TEST_USER, { search: 'AUTODESK' })
+      const mixed = repo.listWithListings(TEST_USER, { search: 'AutoDesk' })
 
       expect(lower).toHaveLength(1)
       expect(upper).toHaveLength(1)
@@ -147,12 +149,12 @@ describe('JobMatchRepository', () => {
     })
 
     it('returns empty array when search has no matches', () => {
-      const results = repo.listWithListings({ search: 'nonexistent-company' })
+      const results = repo.listWithListings(TEST_USER, { search: 'nonexistent-company' })
       expect(results).toHaveLength(0)
     })
 
     it('combines search with other filters', () => {
-      const results = repo.listWithListings({ search: 'React', minScore: 85 })
+      const results = repo.listWithListings(TEST_USER, { search: 'React', minScore: 85 })
       expect(results).toHaveLength(1)
       expect(results[0].listing.title).toBe('Senior React Developer')
     })
@@ -161,10 +163,10 @@ describe('JobMatchRepository', () => {
   it('updateStatus returns match with listing data', () => {
     createListing('listing-status')
     const created = repo.upsert(
-      buildJobMatchInput({ queueItemId: 'queue-status', jobListingId: 'listing-status', status: 'active' })
+      TEST_USER, buildJobMatchInput({ queueItemId: 'queue-status', jobListingId: 'listing-status', status: 'active' })
     )
 
-    const updated = repo.updateStatus(created.id!, 'ignored')
+    const updated = repo.updateStatus(TEST_USER, created.id!, 'ignored')
 
     expect(updated?.status).toBe('ignored')
     expect(updated?.listing.id).toBe('listing-status')

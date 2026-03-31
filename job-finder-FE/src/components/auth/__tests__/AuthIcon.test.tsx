@@ -22,7 +22,7 @@ const mockUser = {
 }
 
 const mockOwnerUser = {
-  uid: "editor-user-456",
+  uid: "admin-user-456",
   email: "owner@example.com",
   displayName: "Owner User",
 }
@@ -75,7 +75,7 @@ describe("AuthIcon", () => {
       expect(button).toHaveClass("bg-muted", "hover:bg-muted/80")
     })
 
-    it("should render viewer state for non-owner user", () => {
+    it("should render user state for non-owner user", () => {
       mockUseAuth.mockReturnValue({
         user: mockUser,
         isOwner: false,
@@ -84,7 +84,7 @@ describe("AuthIcon", () => {
 
       render(<AuthIcon {...defaultProps} />)
 
-      const button = screen.getByRole("button", { name: /signed in as viewer/i })
+      const button = screen.getByRole("button", { name: /signed in as user/i })
       expect(button).toBeInTheDocument()
       expect(button).toHaveClass("bg-secondary", "hover:bg-secondary/80")
     })
@@ -152,7 +152,7 @@ describe("AuthIcon", () => {
       expect(button).toHaveAttribute("title", "Not signed in - Click to learn about authentication")
     })
 
-    it("should have proper ARIA labels for viewer state", () => {
+    it("should have proper ARIA labels for user state", () => {
       mockUseAuth.mockReturnValue({
         user: mockUser,
         isOwner: false,
@@ -161,12 +161,12 @@ describe("AuthIcon", () => {
 
       render(<AuthIcon {...defaultProps} />)
 
-      const button = screen.getByRole("button", { name: /signed in as viewer/i })
+      const button = screen.getByRole("button", { name: /signed in as user/i })
       expect(button).toHaveAttribute(
         "aria-label",
-        "Signed in as Viewer - Click for account options"
+        "Signed in as User - Click for account options"
       )
-      expect(button).toHaveAttribute("title", "Signed in as Viewer - Click for account options")
+      expect(button).toHaveAttribute("title", "Signed in as User - Click for account options")
     })
 
     it("should have proper ARIA labels for owner state", () => {
@@ -270,7 +270,7 @@ describe("AuthIcon", () => {
         screen.getByRole("button", { name: /not signed in - click to learn about authentication/i })
       ).toBeInTheDocument()
 
-      // Transition to signed in as viewer
+      // Transition to signed in as user
       mockUseAuth.mockReturnValue({
         user: mockUser,
         isOwner: false,
@@ -279,12 +279,12 @@ describe("AuthIcon", () => {
       rerender(<AuthIcon {...defaultProps} />)
 
       expect(
-        screen.getByRole("button", { name: /signed in as viewer - click for account options/i })
+        screen.getByRole("button", { name: /signed in as user - click for account options/i })
       ).toBeInTheDocument()
     })
 
-    it("should handle transition from viewer to owner", () => {
-      // Start as viewer
+    it("should handle transition from user to owner", () => {
+      // Start as user
       mockUseAuth.mockReturnValue({
         user: mockUser,
         isOwner: false,
@@ -293,7 +293,7 @@ describe("AuthIcon", () => {
       const { rerender } = render(<AuthIcon {...defaultProps} />)
 
       expect(
-        screen.getByRole("button", { name: /signed in as viewer - click for account options/i })
+        screen.getByRole("button", { name: /signed in as user - click for account options/i })
       ).toBeInTheDocument()
 
       // Transition to owner
@@ -335,7 +335,7 @@ describe("AuthIcon", () => {
 
       render(<AuthIcon {...defaultProps} />)
 
-      const button = screen.getByRole("button", { name: /signed in as viewer/i })
+      const button = screen.getByRole("button", { name: /signed in as user/i })
       expect(button).toBeInTheDocument()
     })
 

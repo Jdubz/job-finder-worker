@@ -59,11 +59,12 @@ class QueueItemProcessor:
             return
 
         # Log differently for scrape requests
+        user_tag = f" [user={item.user_id[:8]}...]" if item.user_id else ""
         if item.type == QueueItemType.SCRAPE:
             logger.info(f"Processing queue item {item.id}: SCRAPE request")
         else:
             logger.info(
-                f"Processing queue item {item.id}: {item.type} - {(item.url or '')[:50]}..."
+                f"Processing queue item {item.id}: {item.type}{user_tag} - {(item.url or '')[:50]}..."
             )
 
         try:
@@ -139,7 +140,7 @@ class QueueItemProcessor:
             f"2. Review error details below for specific issues\n"
             f"3. Verify network connectivity and API credentials\n"
             f"4. Check if the source website has changed structure\n\n"
-            f"{'Stack Trace:\n' + error_details if error_details else ''}"
+            f"{'Stack Trace:' + chr(10) + error_details if error_details else ''}"
         )
 
         # Use intelligent failure handling from QueueManager (single update)

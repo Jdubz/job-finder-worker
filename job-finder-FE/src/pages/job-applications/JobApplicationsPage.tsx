@@ -87,7 +87,7 @@ export function JobApplicationsPage() {
     logger.info(
       "database",
       "started",
-      "JobApplicationsPage: Subscribing to job matches for all users",
+      "JobApplicationsPage: Subscribing to job matches",
       {
         details: {},
       }
@@ -96,7 +96,7 @@ export function JobApplicationsPage() {
     // Fetch stats on mount
     fetchStats()
 
-    // All authenticated users see all matches (no user ownership filtering)
+    // Subscribe to user-scoped matches (backend filters by authenticated user)
     const unsubscribe = jobMatchesClient.subscribeToMatches(
       (updatedMatches) => {
         logger.info(
@@ -312,7 +312,7 @@ export function JobApplicationsPage() {
                   <SelectItem value="all">All</SelectItem>
                 </SelectContent>
               </Select>
-              {(searchQuery.trim() || sortBy !== "updated") && (
+              {(searchQuery.trim() || sortBy !== "updated" || statusFilter !== "active") && (
                 <Button
                   variant="ghost"
                   onClick={() => {
@@ -349,6 +349,8 @@ export function JobApplicationsPage() {
                 className="mt-4"
                 onClick={() => {
                   setSearchQuery("")
+                  setSortBy("updated")
+                  setStatusFilter("active")
                 }}
               >
                 Clear Filters

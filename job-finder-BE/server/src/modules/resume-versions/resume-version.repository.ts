@@ -124,132 +124,141 @@ export class ResumeVersionRepository {
 
   // ── Version queries ──────────────────────────────────────────────
 
-  listVersions(): ResumeVersion[] {
+  listVersions(userId: string): ResumeVersion[] {
     const rows = this.db
-      .prepare('SELECT * FROM resume_versions ORDER BY slug ASC')
-      .all() as VersionRow[]
+      .prepare('SELECT * FROM resume_versions WHERE user_id = ? ORDER BY slug ASC')
+      .all(userId) as VersionRow[]
     return rows.map(parseVersionRow)
   }
 
-  getVersionBySlug(slug: string): ResumeVersion | null {
+  getVersionBySlug(userId: string, slug: string): ResumeVersion | null {
     const row = this.db
-      .prepare('SELECT * FROM resume_versions WHERE slug = ?')
-      .get(slug) as VersionRow | undefined
+      .prepare('SELECT * FROM resume_versions WHERE slug = ? AND user_id = ?')
+      .get(slug, userId) as VersionRow | undefined
     return row ? parseVersionRow(row) : null
   }
 
-  getVersionById(id: string): ResumeVersion | null {
+  getVersionById(userId: string, id: string): ResumeVersion | null {
     const row = this.db
-      .prepare('SELECT * FROM resume_versions WHERE id = ?')
-      .get(id) as VersionRow | undefined
+      .prepare('SELECT * FROM resume_versions WHERE id = ? AND user_id = ?')
+      .get(id, userId) as VersionRow | undefined
     return row ? parseVersionRow(row) : null
   }
 
-  updateVersionPublish(slug: string, pdfPath: string, pdfSizeBytes: number, publishedBy: string): ResumeVersion {
+  updateVersionPublish(userId: string, slug: string, pdfPath: string, pdfSizeBytes: number, publishedBy: string): ResumeVersion {
     const now = new Date().toISOString()
     const result = this.db
       .prepare(
         `UPDATE resume_versions
          SET pdf_path = ?, pdf_size_bytes = ?, published_at = ?, published_by = ?, updated_at = ?
-         WHERE slug = ?`
+         WHERE slug = ? AND user_id = ?`
       )
-      .run(pdfPath, pdfSizeBytes, now, publishedBy, now, slug)
+      .run(pdfPath, pdfSizeBytes, now, publishedBy, now, slug, userId)
 
     if (result.changes === 0) {
       throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
     }
 
-    return this.getVersionBySlug(slug) as ResumeVersion
+    return this.getVersionBySlug(userId, slug) as ResumeVersion
   }
 
-  unpublishVersion(slug: string): void {
+  unpublishVersion(userId: string, slug: string): void {
     const now = new Date().toISOString()
     const result = this.db
       .prepare(
         `UPDATE resume_versions
          SET pdf_path = NULL, pdf_size_bytes = NULL, published_at = NULL, published_by = NULL, updated_at = ?
-         WHERE slug = ?`
+         WHERE slug = ? AND user_id = ?`
       )
-      .run(now, slug)
+      .run(now, slug, userId)
 
     if (result.changes === 0) {
       throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
     }
   }
 
-  createVersion(data: CreateResumeVersionData): ResumeVersion {
+  createVersion(userId: string, data: CreateResumeVersionData): ResumeVersion {
     const id = randomUUID()
     const now = new Date().toISOString()
 
-    const existing = this.getVersionBySlug(data.slug)
+    const existing = this.getVersionBySlug(userId, data.slug)
     if (existing) {
       throw new ResumeVersionAlreadyExistsError(data.slug)
     }
 
     this.db
       .prepare(
-        `INSERT INTO resume_versions (id, slug, name, description, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO resume_versions (id, slug, name, description, user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, data.slug, data.name, data.description ?? null, now, now)
+      .run(id, data.slug, data.name, data.description ?? null, userId, now, now)
 
-    const newVersion = this.getVersionById(id)
+    const newVersion = this.getVersionById(userId, id)
     if (!newVersion) {
       throw new Error(`Failed to retrieve newly created resume version with id: ${id}`)
     }
     return newVersion
   }
 
-  deleteVersion(slug: string): void {
-    const version = this.getVersionBySlug(slug)
+  deleteVersion(userId: string, slug: string): void {
+    const version = this.getVersionBySlug(userId, slug)
     if (!version) {
       throw new ResumeVersionNotFoundError(`Resume version not found: ${slug}`)
     }
     // CASCADE delete will remove all resume_items for this version
-    this.db.prepare('DELETE FROM resume_versions WHERE slug = ?').run(slug)
+    this.db.prepare('DELETE FROM resume_versions WHERE slug = ? AND user_id = ?').run(slug, userId)
   }
 
   // ── Item queries ─────────────────────────────────────────────────
 
-  listItems(resumeVersionId: string): ResumeItem[] {
+  listItems(userId: string, resumeVersionId: string): ResumeItem[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM resume_items
-         WHERE resume_version_id = ?
-         ORDER BY parent_id IS NOT NULL, parent_id, order_index ASC`
+        `SELECT ri.* FROM resume_items ri
+         JOIN resume_versions rv ON rv.id = ri.resume_version_id
+         WHERE ri.resume_version_id = ? AND rv.user_id = ?
+         ORDER BY ri.parent_id IS NOT NULL, ri.parent_id, ri.order_index ASC`
       )
-      .all(resumeVersionId) as ItemRow[]
+      .all(resumeVersionId, userId) as ItemRow[]
     return rows.map(parseItemRow)
   }
 
-  countItems(resumeVersionId: string): number {
+  countItems(userId: string, resumeVersionId: string): number {
     const row = this.db
-      .prepare('SELECT COUNT(*) as count FROM resume_items WHERE resume_version_id = ?')
-      .get(resumeVersionId) as { count: number }
+      .prepare(
+        `SELECT COUNT(*) as count FROM resume_items ri
+         JOIN resume_versions rv ON rv.id = ri.resume_version_id
+         WHERE ri.resume_version_id = ? AND rv.user_id = ?`
+      )
+      .get(resumeVersionId, userId) as { count: number }
     return row.count
   }
 
-  getItemById(id: string): ResumeItem | null {
+  getItemById(userId: string, id: string): ResumeItem | null {
     const row = this.db
-      .prepare('SELECT * FROM resume_items WHERE id = ?')
-      .get(id) as ItemRow | undefined
+      .prepare(
+        `SELECT ri.* FROM resume_items ri
+         JOIN resume_versions rv ON rv.id = ri.resume_version_id
+         WHERE ri.id = ? AND rv.user_id = ?`
+      )
+      .get(id, userId) as ItemRow | undefined
     return row ? parseItemRow(row) : null
   }
 
-  createItem(resumeVersionId: string, data: CreateResumeItemData & { userEmail: string }): ResumeItem {
+  createItem(userId: string, resumeVersionId: string, data: CreateResumeItemData & { userEmail: string }): ResumeItem {
     const id = randomUUID()
     const now = new Date().toISOString()
     const parentId = data.parentId ?? null
 
     if (parentId) {
-      const parent = this.getItemById(parentId)
+      const parent = this.getItemById(userId, parentId)
       if (!parent) throw new ResumeItemInvalidParentError('Parent item not found')
       if (parent.resumeVersionId !== resumeVersionId) {
         throw new ResumeItemInvalidParentError('Parent belongs to a different resume version')
       }
     }
 
-    const order = data.orderIndex ?? this.nextOrderIndex(resumeVersionId, parentId)
+    const order = data.orderIndex ?? this.nextOrderIndex(userId, resumeVersionId, parentId)
 
     this.db
       .prepare(
@@ -279,11 +288,11 @@ export class ResumeVersionRepository {
         data.userEmail
       )
 
-    return this.getItemById(id) as ResumeItem
+    return this.getItemById(userId, id) as ResumeItem
   }
 
-  updateItem(id: string, data: UpdateResumeItemData & { userEmail: string }): ResumeItem {
-    const existing = this.getItemById(id)
+  updateItem(userId: string, id: string, data: UpdateResumeItemData & { userEmail: string }): ResumeItem {
+    const existing = this.getItemById(userId, id)
     if (!existing) throw new ResumeItemNotFoundError(`Resume item not found: ${id}`)
 
     const now = new Date().toISOString()
@@ -295,7 +304,7 @@ export class ResumeVersionRepository {
           title = ?, role = ?, location = ?, website = ?,
           start_date = ?, end_date = ?, description = ?, skills = ?,
           updated_at = ?, updated_by = ?
-        WHERE id = ?`
+        WHERE id = ? AND resume_version_id IN (SELECT id FROM resume_versions WHERE user_id = ?)`
       )
       .run(
         data.parentId !== undefined ? data.parentId : existing.parentId,
@@ -313,26 +322,32 @@ export class ResumeVersionRepository {
           : existing.skills ? JSON.stringify(existing.skills) : null,
         now,
         data.userEmail,
-        id
+        id,
+        userId
       )
 
-    return this.getItemById(id) as ResumeItem
+    return this.getItemById(userId, id) as ResumeItem
   }
 
-  deleteItem(id: string): void {
-    const result = this.db.prepare('DELETE FROM resume_items WHERE id = ?').run(id)
+  deleteItem(userId: string, id: string): void {
+    const result = this.db
+      .prepare(
+        `DELETE FROM resume_items
+         WHERE id = ? AND resume_version_id IN (SELECT id FROM resume_versions WHERE user_id = ?)`
+      )
+      .run(id, userId)
     if (result.changes === 0) {
       throw new ResumeItemNotFoundError(`Resume item not found: ${id}`)
     }
   }
 
-  reorderItem(id: string, parentId: string | null, orderIndex: number, userEmail: string): ResumeItem {
-    const existing = this.getItemById(id)
+  reorderItem(userId: string, id: string, parentId: string | null, orderIndex: number, userEmail: string): ResumeItem {
+    const existing = this.getItemById(userId, id)
     if (!existing) throw new ResumeItemNotFoundError(`Resume item not found: ${id}`)
 
     const targetParent = parentId ?? null
     if (targetParent) {
-      const parent = this.getItemById(targetParent)
+      const parent = this.getItemById(userId, targetParent)
       if (!parent) throw new ResumeItemInvalidParentError('Parent item not found')
       if (parent.resumeVersionId !== existing.resumeVersionId) {
         throw new ResumeItemInvalidParentError('Parent belongs to a different resume version')
@@ -341,10 +356,10 @@ export class ResumeVersionRepository {
 
     const tx = this.db.transaction(() => {
       // Resequence old siblings (excluding this item)
-      this.resequenceSiblings(existing.resumeVersionId, existing.parentId, id)
+      this.resequenceSiblings(userId, existing.resumeVersionId, existing.parentId, id)
 
       // Place item in new position among target siblings
-      const targetSiblings = this.fetchSiblingIds(existing.resumeVersionId, targetParent)
+      const targetSiblings = this.fetchSiblingIds(userId, existing.resumeVersionId, targetParent)
         .filter((siblingId) => siblingId !== id)
       const clampedIndex = Math.max(0, Math.min(orderIndex, targetSiblings.length))
       targetSiblings.splice(clampedIndex, 0, id)
@@ -352,48 +367,63 @@ export class ResumeVersionRepository {
 
       const now = new Date().toISOString()
       this.db
-        .prepare('UPDATE resume_items SET parent_id = ?, updated_at = ?, updated_by = ? WHERE id = ?')
-        .run(targetParent, now, userEmail, id)
+        .prepare(
+          `UPDATE resume_items SET parent_id = ?, updated_at = ?, updated_by = ?
+           WHERE id = ? AND resume_version_id IN (SELECT id FROM resume_versions WHERE user_id = ?)`
+        )
+        .run(targetParent, now, userEmail, id, userId)
     })
 
     tx()
-    return this.getItemById(id) as ResumeItem
+    return this.getItemById(userId, id) as ResumeItem
   }
 
   // ── Private helpers ──────────────────────────────────────────────
 
-  private nextOrderIndex(resumeVersionId: string, parentId: string | null): number {
+  private nextOrderIndex(userId: string, resumeVersionId: string, parentId: string | null): number {
     const stmt =
       parentId === null
         ? this.db.prepare(
-            'SELECT COALESCE(MAX(order_index), -1) + 1 AS nextIndex FROM resume_items WHERE resume_version_id = ? AND parent_id IS NULL'
+            `SELECT COALESCE(MAX(ri.order_index), -1) + 1 AS nextIndex
+             FROM resume_items ri
+             JOIN resume_versions rv ON rv.id = ri.resume_version_id
+             WHERE ri.resume_version_id = ? AND ri.parent_id IS NULL AND rv.user_id = ?`
           )
         : this.db.prepare(
-            'SELECT COALESCE(MAX(order_index), -1) + 1 AS nextIndex FROM resume_items WHERE resume_version_id = ? AND parent_id = ?'
+            `SELECT COALESCE(MAX(ri.order_index), -1) + 1 AS nextIndex
+             FROM resume_items ri
+             JOIN resume_versions rv ON rv.id = ri.resume_version_id
+             WHERE ri.resume_version_id = ? AND ri.parent_id = ? AND rv.user_id = ?`
           )
 
     const row = (
-      parentId === null ? stmt.get(resumeVersionId) : stmt.get(resumeVersionId, parentId)
+      parentId === null ? stmt.get(resumeVersionId, userId) : stmt.get(resumeVersionId, parentId, userId)
     ) as { nextIndex: number | null } | undefined
     return (row?.nextIndex ?? 0) as number
   }
 
-  private resequenceSiblings(resumeVersionId: string, parentId: string | null | undefined, excludeId: string): void {
-    const ids = this.fetchSiblingIds(resumeVersionId, parentId ?? null).filter((sid) => sid !== excludeId)
+  private resequenceSiblings(userId: string, resumeVersionId: string, parentId: string | null | undefined, excludeId: string): void {
+    const ids = this.fetchSiblingIds(userId, resumeVersionId, parentId ?? null).filter((sid) => sid !== excludeId)
     this.assignOrderForIds(ids)
   }
 
-  private fetchSiblingIds(resumeVersionId: string, parentId: string | null): string[] {
+  private fetchSiblingIds(userId: string, resumeVersionId: string, parentId: string | null): string[] {
     const stmt =
       parentId === null
         ? this.db.prepare(
-            'SELECT id FROM resume_items WHERE resume_version_id = ? AND parent_id IS NULL ORDER BY order_index ASC'
+            `SELECT ri.id FROM resume_items ri
+             JOIN resume_versions rv ON rv.id = ri.resume_version_id
+             WHERE ri.resume_version_id = ? AND ri.parent_id IS NULL AND rv.user_id = ?
+             ORDER BY ri.order_index ASC`
           )
         : this.db.prepare(
-            'SELECT id FROM resume_items WHERE resume_version_id = ? AND parent_id = ? ORDER BY order_index ASC'
+            `SELECT ri.id FROM resume_items ri
+             JOIN resume_versions rv ON rv.id = ri.resume_version_id
+             WHERE ri.resume_version_id = ? AND ri.parent_id = ? AND rv.user_id = ?
+             ORDER BY ri.order_index ASC`
           )
     const rows = (
-      parentId === null ? stmt.all(resumeVersionId) : stmt.all(resumeVersionId, parentId)
+      parentId === null ? stmt.all(resumeVersionId, userId) : stmt.all(resumeVersionId, parentId, userId)
     ) as Array<{ id: string }>
     return rows.map((r) => r.id)
   }
@@ -407,23 +437,23 @@ export class ResumeVersionRepository {
 
   // ── Pool helpers ────────────────────────────────────────────────
 
-  getPoolVersion(): ResumeVersion | null {
-    return this.getVersionBySlug('pool')
+  getPoolVersion(userId: string): ResumeVersion | null {
+    return this.getVersionBySlug(userId, 'pool')
   }
 
   // ── Tailored resume cache ──────────────────────────────────────
 
-  getCachedTailoredResume(jobMatchId: string): TailoredResume | null {
+  getCachedTailoredResume(userId: string, jobMatchId: string): TailoredResume | null {
     const row = this.db
       .prepare(
-        `SELECT * FROM tailored_resumes
-         WHERE job_match_id = ? AND datetime(expires_at) > datetime('now')`
+        `SELECT tr.* FROM tailored_resumes tr
+         WHERE tr.job_match_id = ? AND tr.user_id = ? AND datetime(tr.expires_at) > datetime('now')`
       )
-      .get(jobMatchId) as TailoredResumeRow | undefined
+      .get(jobMatchId, userId) as TailoredResumeRow | undefined
     return row ? parseTailoredRow(row) : null
   }
 
-  saveTailoredResume(data: {
+  saveTailoredResume(userId: string, data: {
     jobMatchId: string
     resumeContent: unknown
     selectedItems: string[]
@@ -436,14 +466,14 @@ export class ResumeVersionRepository {
     const now = new Date().toISOString()
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
 
-    // Upsert: update in place if same job_match_id exists (preserves original id)
+    // Upsert: update in place if same job_match_id + user_id exists (preserves original id)
     this.db
       .prepare(
         `INSERT INTO tailored_resumes (
-          id, job_match_id, resume_content, selected_items,
+          id, job_match_id, user_id, resume_content, selected_items,
           pdf_path, pdf_size_bytes, content_fit, reasoning,
           created_at, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(job_match_id) DO UPDATE SET
           resume_content = excluded.resume_content,
           selected_items = excluded.selected_items,
@@ -457,6 +487,7 @@ export class ResumeVersionRepository {
       .run(
         id,
         data.jobMatchId,
+        userId,
         JSON.stringify(data.resumeContent),
         JSON.stringify(data.selectedItems),
         data.pdfPath,
@@ -467,15 +498,15 @@ export class ResumeVersionRepository {
         expiresAt
       )
 
-    return this.getCachedTailoredResume(data.jobMatchId)!
+    return this.getCachedTailoredResume(userId, data.jobMatchId)!
   }
 
-  invalidateAllTailoredResumes(): number {
+  invalidateAllTailoredResumes(userId: string): number {
     // Collect PDF paths before deletion so caller can clean up files
     const rows = this.db
-      .prepare('SELECT pdf_path FROM tailored_resumes WHERE pdf_path IS NOT NULL')
-      .all() as Array<{ pdf_path: string }>
-    const result = this.db.prepare('DELETE FROM tailored_resumes').run()
+      .prepare('SELECT pdf_path FROM tailored_resumes WHERE pdf_path IS NOT NULL AND user_id = ?')
+      .all(userId) as Array<{ pdf_path: string }>
+    const result = this.db.prepare('DELETE FROM tailored_resumes WHERE user_id = ?').run(userId)
     this._orphanedPdfPaths = rows.map((r) => r.pdf_path)
     return result.changes
   }
@@ -489,10 +520,13 @@ export class ResumeVersionRepository {
     return paths
   }
 
-  getTailoredResumePdfPath(jobMatchId: string): string | null {
+  getTailoredResumePdfPath(userId: string, jobMatchId: string): string | null {
     const row = this.db
-      .prepare('SELECT pdf_path FROM tailored_resumes WHERE job_match_id = ? AND datetime(expires_at) > datetime(\'now\')')
-      .get(jobMatchId) as { pdf_path: string | null } | undefined
+      .prepare(
+        `SELECT pdf_path FROM tailored_resumes
+         WHERE job_match_id = ? AND user_id = ? AND datetime(expires_at) > datetime('now')`
+      )
+      .get(jobMatchId, userId) as { pdf_path: string | null } | undefined
     return row?.pdf_path ?? null
   }
 }

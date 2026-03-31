@@ -1,4 +1,4 @@
-import { Router, type Request, type RequestHandler, type Response } from 'express'
+import { Router, type Request, type Response } from 'express'
 import { createReadStream } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -37,7 +37,41 @@ import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiHttpError } from '../../middleware/api-error'
-import type { AuthenticatedRequest, AuthenticatedUser } from '../../middleware/firebase-auth'
+import type { AuthenticatedRequest, AuthenticatedUser } from '../../middleware/auth'
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
+  const user = (req as AuthenticatedRequest).user
+  if (!user || !user.email) {
+    throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Missing authenticated user', { status: 401 })
+  }
+  return user as AuthenticatedUser & { email: string }
+}
+
+function handleRouteError(err: unknown, res: Response): boolean {
+  if (err instanceof z.ZodError) {
+    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')))
+    return true
+  }
+  if (err instanceof ResumeVersionNotFoundError) {
+    res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
+    return true
+  }
+  if (err instanceof ResumeItemNotFoundError) {
+    res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
+    return true
+  }
+  if (err instanceof ResumeItemInvalidParentError) {
+    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
+    return true
+  }
+  if (err instanceof ResumeVersionAlreadyExistsError) {
+    res.status(409).json(failure(ApiErrorCode.ALREADY_EXISTS, err.message))
+    return true
+  }
+  return false
+}
 
 // ─── Validation schemas ──────────────────────────────────────────────
 
@@ -88,69 +122,20 @@ const createVersionRequestSchema = z.object({
   description: z.string().max(500).optional().nullable()
 })
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string } {
-  const user = (req as AuthenticatedRequest).user
-  if (!user || !user.email) {
-    throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Missing authenticated user', { status: 401 })
-  }
-  return user as AuthenticatedUser & { email: string }
-}
-
-function handleRouteError(err: unknown, res: Response): boolean {
-  if (err instanceof z.ZodError) {
-    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')))
-    return true
-  }
-  if (err instanceof ResumeVersionNotFoundError) {
-    res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
-    return true
-  }
-  if (err instanceof ResumeItemNotFoundError) {
-    res.status(404).json(failure(ApiErrorCode.NOT_FOUND, err.message))
-    return true
-  }
-  if (err instanceof ResumeItemInvalidParentError) {
-    res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.message))
-    return true
-  }
-  if (err instanceof ResumeVersionAlreadyExistsError) {
-    res.status(409).json(failure(ApiErrorCode.ALREADY_EXISTS, err.message))
-    return true
-  }
-  return false
-}
-
 // ─── Router builder ──────────────────────────────────────────────────
 
-interface ResumeVersionRouterOptions {
-  mutationsMiddleware?: RequestHandler[]
-  authMiddleware?: RequestHandler[] // auth-only (no admin role required) — used for tailor endpoint
-}
-
-export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {}) {
+export function buildResumeVersionRouter() {
   const router = Router()
   const repo = new ResumeVersionRepository()
-
-  const defaultMutationGuard: RequestHandler = (req, _res, next) => {
-    try {
-      getAuthenticatedUser(req)
-      next()
-    } catch (err) {
-      next(err)
-    }
-  }
-  const mutationsMiddleware = options.mutationsMiddleware ?? [defaultMutationGuard]
-  const authMiddleware = options.authMiddleware ?? [defaultMutationGuard]
 
   // ── Version endpoints ──────────────────────────────────────────
 
   // GET / — list all versions
   router.get(
     '/',
-    asyncHandler((_req, res) => {
-      const versions = repo.listVersions()
+    asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
+      const versions = repo.listVersions(user.uid)
       const response: ListResumeVersionsResponse = { versions }
       res.json(success(response))
     })
@@ -163,17 +148,17 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
     jobMatchId: z.string().uuid('jobMatchId must be a valid UUID')
   })
 
-  // POST /pool/tailor — trigger AI tailoring for a job match (auth only, not admin)
+  // POST /pool/tailor — trigger AI tailoring for a job match
   router.post(
     '/pool/tailor',
-    ...authMiddleware,
     asyncHandler(async (req, res) => {
       try {
+        const user = getAuthenticatedUser(req)
         const { jobMatchId } = tailorRequestSchema.parse(req.body)
         const force = req.query.force === 'true'
 
         const selectionService = new ResumeSelectionService(repo)
-        const result = await selectionService.tailor(jobMatchId, force)
+        const result = await selectionService.tailor(user.uid, jobMatchId, force)
 
         const response: TailorResumeResponse = {
           id: result.id,
@@ -211,13 +196,13 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
     })
   )
 
-  // GET /pool/tailor/:jobMatchId/pdf — serve cached tailored PDF (auth required)
+  // GET /pool/tailor/:jobMatchId/pdf — serve cached tailored PDF
   router.get(
     '/pool/tailor/:jobMatchId/pdf',
-    ...authMiddleware,
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
       const jobMatchId = req.params.jobMatchId
-      const pdfPath = repo.getTailoredResumePdfPath(jobMatchId)
+      const pdfPath = repo.getTailoredResumePdfPath(user.uid, jobMatchId)
       if (!pdfPath) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'No tailored resume found for this job match. Trigger tailoring first.'))
         return
@@ -243,14 +228,15 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // GET /pool/health — pool content summary
   router.get(
     '/pool/health',
-    asyncHandler((_req, res) => {
-      const pool = repo.getPoolVersion()
+    asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
+      const pool = repo.getPoolVersion(user.uid)
       if (!pool) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Resume pool not found'))
         return
       }
 
-      const items = repo.listItems(pool.id)
+      const items = repo.listItems(user.uid, pool.id)
       const tree = buildItemTree(items)
 
       const summary: PoolHealthSummary = {
@@ -287,13 +273,14 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   router.get(
     '/:slug',
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
       const slug = slugSchema.parse(req.params.slug)
-      const version = repo.getVersionBySlug(slug)
+      const version = repo.getVersionBySlug(user.uid, slug)
       if (!version) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, `Resume version not found: ${slug}`))
         return
       }
-      const items = repo.listItems(version.id)
+      const items = repo.listItems(user.uid, version.id)
       const tree = buildItemTree(items)
 
       // Compute content fit estimate if there are items and personal info is available
@@ -301,7 +288,7 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
       if (items.length > 0) {
         try {
           const personalInfoStore = new PersonalInfoStore()
-          const personalInfo = await personalInfoStore.get()
+          const personalInfo = await personalInfoStore.get(user.uid)
           if (personalInfo) {
             const resumeContent = transformItemsToResumeContent(tree, personalInfo)
             const fit = estimateContentFit(resumeContent)
@@ -330,15 +317,16 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   router.get(
     '/:slug/items',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const slug = slugSchema.parse(req.params.slug)
-      const version = repo.getVersionBySlug(slug)
+      const version = repo.getVersionBySlug(user.uid, slug)
       if (!version) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, `Resume version not found: ${slug}`))
         return
       }
-      const items = repo.listItems(version.id)
+      const items = repo.listItems(user.uid, version.id)
       const tree = buildItemTree(items)
-      const total = repo.countItems(version.id)
+      const total = repo.countItems(user.uid, version.id)
       const response: ListResumeItemsResponse = { items: tree, total }
       res.json(success(response))
     })
@@ -348,8 +336,9 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   router.get(
     '/:slug/pdf',
     asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
       const slug = slugSchema.parse(req.params.slug)
-      const version = repo.getVersionBySlug(slug)
+      const version = repo.getVersionBySlug(user.uid, slug)
       if (!version) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, `Resume version not found: ${slug}`))
         return
@@ -378,11 +367,11 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // POST / — create version
   router.post(
     '/',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
+        const user = getAuthenticatedUser(req)
         const payload = createVersionRequestSchema.parse(req.body)
-        const version = repo.createVersion(payload)
+        const version = repo.createVersion(user.uid, payload)
         const response: CreateResumeVersionResponse = { version, message: `Resume version "${version.name}" created` }
         res.status(201).json(success(response))
       } catch (err) {
@@ -395,11 +384,11 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // DELETE /:slug — delete version
   router.delete(
     '/:slug',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
+        const user = getAuthenticatedUser(req)
         const slug = slugSchema.parse(req.params.slug)
-        repo.deleteVersion(slug)
+        repo.deleteVersion(user.uid, slug)
         const response: DeleteResumeVersionResponse = { slug, deleted: true, message: `Resume version "${slug}" deleted` }
         res.json(success(response))
       } catch (err) {
@@ -412,9 +401,9 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // ── Item mutation endpoints (admin only) ───────────────────────
 
   // Helper: invalidate tailored resume cache when pool items change
-  function invalidatePoolCacheIfNeeded(slug: string) {
+  function invalidatePoolCacheIfNeeded(userId: string, slug: string) {
     if (slug === 'pool') {
-      const count = repo.invalidateAllTailoredResumes()
+      const count = repo.invalidateAllTailoredResumes(userId)
       if (count > 0) {
         logger.info({ count }, 'Invalidated tailored resume cache due to pool edit')
         // Clean up orphaned PDF files in background
@@ -433,19 +422,18 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // POST /:slug/items — create item
   router.post(
     '/:slug/items',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
+        const user = getAuthenticatedUser(req)
         const slug = slugSchema.parse(req.params.slug)
-        const version = repo.getVersionBySlug(slug)
+        const version = repo.getVersionBySlug(user.uid, slug)
         if (!version) {
           res.status(404).json(failure(ApiErrorCode.NOT_FOUND, `Resume version not found: ${slug}`))
           return
         }
         const payload = createRequestSchema.parse(req.body) as CreateResumeItemRequest
-        const user = getAuthenticatedUser(req)
-        const item = repo.createItem(version.id, { ...payload.itemData, userEmail: user.email })
-        invalidatePoolCacheIfNeeded(slug)
+        const item = repo.createItem(user.uid, version.id, { ...payload.itemData, userEmail: user.email })
+        invalidatePoolCacheIfNeeded(user.uid, slug)
         const response: CreateResumeItemResponse = { item, message: 'Resume item created' }
         res.status(201).json(success(response))
       } catch (err) {
@@ -458,14 +446,13 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // PATCH /:slug/items/:id — update item
   router.patch(
     '/:slug/items/:id',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
-        const payload = updateRequestSchema.parse(req.body) as UpdateResumeItemRequest
         const user = getAuthenticatedUser(req)
+        const payload = updateRequestSchema.parse(req.body) as UpdateResumeItemRequest
         const slug = slugSchema.parse(req.params.slug)
-        const item = repo.updateItem(req.params.id, { ...payload.itemData, userEmail: user.email })
-        invalidatePoolCacheIfNeeded(slug)
+        const item = repo.updateItem(user.uid, req.params.id, { ...payload.itemData, userEmail: user.email })
+        invalidatePoolCacheIfNeeded(user.uid, slug)
         const response: UpdateResumeItemResponse = { item, message: 'Resume item updated' }
         res.json(success(response))
       } catch (err) {
@@ -478,12 +465,12 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // DELETE /:slug/items/:id — delete item
   router.delete(
     '/:slug/items/:id',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
+        const user = getAuthenticatedUser(req)
         const slug = slugSchema.parse(req.params.slug)
-        repo.deleteItem(req.params.id)
-        invalidatePoolCacheIfNeeded(slug)
+        repo.deleteItem(user.uid, req.params.id)
+        invalidatePoolCacheIfNeeded(user.uid, slug)
         const response: DeleteResumeItemResponse = {
           itemId: req.params.id,
           deleted: true,
@@ -500,14 +487,13 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // POST /:slug/items/:id/reorder — reorder item
   router.post(
     '/:slug/items/:id/reorder',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
-        const payload = reorderRequestSchema.parse(req.body)
         const user = getAuthenticatedUser(req)
+        const payload = reorderRequestSchema.parse(req.body)
         const slug = slugSchema.parse(req.params.slug)
-        const item = repo.reorderItem(req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
-        invalidatePoolCacheIfNeeded(slug)
+        const item = repo.reorderItem(user.uid, req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
+        invalidatePoolCacheIfNeeded(user.uid, slug)
         const response: ReorderResumeItemResponse = { item }
         res.json(success(response))
       } catch (err) {
@@ -520,13 +506,12 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // POST /:slug/publish — render PDF and publish
   router.post(
     '/:slug/publish',
-    ...mutationsMiddleware,
     asyncHandler(async (req, res) => {
       try {
         const slug = slugSchema.parse(req.params.slug)
         const user = getAuthenticatedUser(req)
-        await publishResumeVersion(slug, user.email, repo)
-        const version = repo.getVersionBySlug(slug)!
+        await publishResumeVersion(user.uid, slug, user.email, repo)
+        const version = repo.getVersionBySlug(user.uid, slug)!
         const response: PublishResumeVersionResponse = { version, message: `Resume "${version.name}" published successfully` }
         res.json(success(response))
       } catch (err) {

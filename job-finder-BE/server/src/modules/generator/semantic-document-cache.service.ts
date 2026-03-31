@@ -44,6 +44,7 @@ export interface ResumeBody {
 }
 
 export interface CacheContext {
+  userId: string
   personalInfo: PersonalInfo
   contentItems: ContentItem[]
   documentType: DocumentType
@@ -102,7 +103,7 @@ export class SemanticDocumentCache {
     const fingerprintHash = computeJobFingerprint(roleNormalized, techStack, contentItemsHash, ctx.company)
 
     // Tier 1: Exact match (non-mutating — hit is recorded only when result is used)
-    const exactHit = this.repo.findExact(fingerprintHash, contentItemsHash, ctx.documentType)
+    const exactHit = this.repo.findExact(ctx.userId, fingerprintHash, contentItemsHash, ctx.documentType)
     if (exactHit) {
       let document: unknown
       try {
@@ -129,7 +130,7 @@ export class SemanticDocumentCache {
     // Tier 1.5: Role fingerprint match (resumes only — role+tech driven, company-independent)
     if (ctx.documentType === 'resume') {
       const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
-      const roleHit = this.repo.findByRoleFingerprint(roleFpHash, contentItemsHash, ctx.documentType)
+      const roleHit = this.repo.findByRoleFingerprint(ctx.userId, roleFpHash, contentItemsHash, ctx.documentType)
       if (roleHit) {
         let document: unknown
         try {
@@ -161,7 +162,7 @@ export class SemanticDocumentCache {
       const archetype = getRoleArchetype(roleNormalized)
       if (archetype) {
         const archetypeFpHash = computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
-        const archetypeHit = this.repo.findByArchetypeFingerprint(archetypeFpHash, contentItemsHash, ctx.documentType)
+        const archetypeHit = this.repo.findByArchetypeFingerprint(ctx.userId, archetypeFpHash, contentItemsHash, ctx.documentType)
         if (archetypeHit) {
           let document: unknown
           try {
@@ -197,7 +198,7 @@ export class SemanticDocumentCache {
       return { tier: 'miss' }
     }
 
-    const similar = this.repo.findSimilar(embedding, contentItemsHash, ctx.documentType, 3)
+    const similar = this.repo.findSimilar(ctx.userId, embedding, contentItemsHash, ctx.documentType, 3)
 
     // Apply Jaccard tech-stack boost: blend embedding similarity with structured overlap
     if (similar.length > 0 && techStack.length > 0) {
@@ -308,7 +309,7 @@ export class SemanticDocumentCache {
         ? computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
         : null
 
-      this.repo.store({
+      this.repo.store(ctx.userId, {
         embeddingVector: embedding,
         documentType: ctx.documentType,
         jobFingerprintHash: fingerprintHash,
@@ -346,7 +347,7 @@ export class SemanticDocumentCache {
       const techStack = this.extractTechStack(ctx.jobMatch)
       const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
 
-      const hit = this.repo.findByRoleFingerprint(roleFpHash, contentItemsHash, 'cover_letter_body')
+      const hit = this.repo.findByRoleFingerprint(ctx.userId, roleFpHash, contentItemsHash, 'cover_letter_body')
       if (!hit) return null
 
       const bodyParagraphs = JSON.parse(hit.documentContentJson) as string[]
@@ -410,7 +411,7 @@ export class SemanticDocumentCache {
         ? computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
         : null
 
-      this.repo.store({
+      this.repo.store(ctx.userId, {
         embeddingVector: embedding,
         documentType: 'cover_letter_body',
         jobFingerprintHash: fingerprintHash,
@@ -449,7 +450,7 @@ export class SemanticDocumentCache {
       const techStack = this.extractTechStack(ctx.jobMatch)
       const roleFpHash = computeRoleFingerprint(roleNormalized, techStack, contentItemsHash)
 
-      const hit = this.repo.findByRoleFingerprint(roleFpHash, contentItemsHash, 'resume_body')
+      const hit = this.repo.findByRoleFingerprint(ctx.userId, roleFpHash, contentItemsHash, 'resume_body')
       if (!hit) return null
 
       const body = JSON.parse(hit.documentContentJson) as ResumeBody
@@ -509,7 +510,7 @@ export class SemanticDocumentCache {
         ? computeArchetypeFingerprint(archetype, techStack, contentItemsHash)
         : null
 
-      this.repo.store({
+      this.repo.store(ctx.userId, {
         embeddingVector: embedding,
         documentType: 'resume_body',
         jobFingerprintHash: fingerprintHash,

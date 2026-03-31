@@ -252,7 +252,7 @@ export function JobListingModalContent({ listing, handlers }: JobListingModalCon
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between pt-4 border-t flex-shrink-0 mt-2">
         <div className="flex gap-2 flex-1">
           {handlers?.onDelete && (
-            <Button variant="destructive" onClick={handleDelete} className="w-full sm:w-auto">
+            <Button variant="destructive" onClick={handleDelete} disabled={isWorking} className="w-full sm:w-auto">
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </Button>

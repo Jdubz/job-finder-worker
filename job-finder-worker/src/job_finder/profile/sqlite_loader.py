@@ -43,12 +43,14 @@ class SQLiteProfileLoader:
 
     def load_profile(
         self,
+        user_id: str,
         name: Optional[str] = None,
         email: Optional[str] = None,
     ) -> Profile:
-        """Load complete profile from content_items.
+        """Load complete profile from content_items for a specific user.
 
         Args:
+            user_id: The user's ID
             name: Override name (optional)
             email: Override email (optional)
 
@@ -58,14 +60,14 @@ class SQLiteProfileLoader:
         try:
             from job_finder.profile.reducer import load_scoring_profile
 
-            profile_row = self._fetch_user_row()
-            experiences = self._load_experiences()
-            summary = self._load_summary()
-            education = self._load_education()
-            projects = self._load_projects()
+            profile_row = self._fetch_user_row(user_id)
+            experiences = self._load_experiences(user_id)
+            summary = self._load_summary(user_id)
+            education = self._load_education(user_id)
+            projects = self._load_projects(user_id)
 
             # Load scoring profile once and derive skills + years from it
-            scoring_profile = load_scoring_profile(self.db_path)
+            scoring_profile = load_scoring_profile(self.db_path, user_id=user_id)
             years_of_experience = scoring_profile.total_experience_years
 
             skills: List[Skill] = []
@@ -74,10 +76,14 @@ class SQLiteProfileLoader:
                 skills.append(Skill(name=skill_name, level=level, years_experience=years))
             skills.sort(key=lambda s: (-(s.years_experience or 0), s.name.lower()))
 
+            # Read personal info from user_config table
+            personal_info = self._load_personal_info(user_id)
+            location = personal_info.get("location") if personal_info else None
+
             return Profile(
                 name=name or profile_row.get("name") or "Job Finder User",
                 email=email or profile_row.get("email"),
-                location=profile_row.get("location"),
+                location=location or profile_row.get("location"),
                 summary=summary,
                 years_of_experience=years_of_experience,
                 skills=skills,
@@ -91,18 +97,18 @@ class SQLiteProfileLoader:
         except Exception as exc:
             raise InitializationError(f"Failed to load profile: {exc}") from exc
 
-    def _fetch_user_row(self) -> Dict[str, Any]:
-        """Fetch the first user row from the users table."""
-        query = "SELECT * FROM users LIMIT 1"
+    def _fetch_user_row(self, user_id: str) -> Dict[str, Any]:
+        """Fetch a specific user row from the users table."""
+        query = "SELECT * FROM users WHERE id = ?"
 
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(query).fetchone()
+            row = conn.execute(query, (user_id,)).fetchone()
 
         if not row:
             return {}
         return dict(row)
 
-    def _load_experiences(self) -> List[Experience]:
+    def _load_experiences(self, user_id: str) -> List[Experience]:
         """Load work experiences with their project highlights.
 
         Queries work items (ai_context='work') and their child highlights,
@@ -111,7 +117,7 @@ class SQLiteProfileLoader:
         # Query work items only (NULL dates sorted last)
         work_query = """
             SELECT * FROM content_items
-            WHERE ai_context = 'work'
+            WHERE ai_context = 'work' AND user_id = ?
             ORDER BY CASE WHEN start_date IS NULL THEN 1 ELSE 0 END,
                      datetime(start_date) DESC
         """
@@ -119,13 +125,13 @@ class SQLiteProfileLoader:
         # Query highlights grouped by parent
         highlight_query = """
             SELECT * FROM content_items
-            WHERE ai_context = 'highlight'
+            WHERE ai_context = 'highlight' AND user_id = ?
             ORDER BY parent_id, order_index
         """
 
         with sqlite_connection(self.db_path) as conn:
-            work_rows = conn.execute(work_query).fetchall()
-            highlight_rows = conn.execute(highlight_query).fetchall()
+            work_rows = conn.execute(work_query, (user_id,)).fetchall()
+            highlight_rows = conn.execute(highlight_query, (user_id,)).fetchall()
 
         # Build lookup: parent_id -> list of highlights
         highlights_by_parent: Dict[str, List[Dict[str, Any]]] = {}
@@ -193,16 +199,16 @@ class SQLiteProfileLoader:
 
         return experiences
 
-    def _load_summary(self) -> Optional[str]:
+    def _load_summary(self, user_id: str) -> Optional[str]:
         """Load professional summary from narrative overview item."""
         query = """
             SELECT description FROM content_items
-            WHERE ai_context = 'narrative' AND id = 'overview'
+            WHERE ai_context = 'narrative' AND id = 'overview' AND user_id = ?
             LIMIT 1
         """
 
         with sqlite_connection(self.db_path) as conn:
-            row = conn.execute(query).fetchone()
+            row = conn.execute(query, (user_id,)).fetchone()
 
         if not row:
             return None
@@ -214,16 +220,16 @@ class SQLiteProfileLoader:
             lines = lines[1:]
         return "\n".join(lines).strip() or None
 
-    def _load_education(self) -> List[Education]:
+    def _load_education(self, user_id: str) -> List[Education]:
         """Load education items from content_items."""
         query = """
             SELECT * FROM content_items
-            WHERE ai_context = 'education'
+            WHERE ai_context = 'education' AND user_id = ?
             ORDER BY order_index
         """
 
         with sqlite_connection(self.db_path) as conn:
-            rows = conn.execute(query).fetchall()
+            rows = conn.execute(query, (user_id,)).fetchall()
 
         education_list: List[Education] = []
         for row in rows:
@@ -258,16 +264,16 @@ class SQLiteProfileLoader:
 
         return education_list
 
-    def _load_projects(self) -> List[Project]:
+    def _load_projects(self, user_id: str) -> List[Project]:
         """Load project items from content_items."""
         query = """
             SELECT * FROM content_items
-            WHERE ai_context = 'project'
+            WHERE ai_context = 'project' AND user_id = ?
             ORDER BY order_index
         """
 
         with sqlite_connection(self.db_path) as conn:
-            rows = conn.execute(query).fetchall()
+            rows = conn.execute(query, (user_id,)).fetchall()
 
         projects: List[Project] = []
         for row in rows:
@@ -293,6 +299,24 @@ class SQLiteProfileLoader:
             )
 
         return projects
+
+    def _load_personal_info(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Load personal info from user_config table for the given user."""
+        query = """
+            SELECT payload_json FROM user_config
+            WHERE id = 'personal-info' AND user_id = ?
+        """
+        with sqlite_connection(self.db_path) as conn:
+            row = conn.execute(query, (user_id,)).fetchone()
+
+        if not row:
+            return None
+
+        try:
+            return json.loads(row["payload_json"])
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON in user_config personal-info for user %s", user_id)
+            return None
 
     def _infer_skill_level(self, years: float) -> str:
         """Infer skill proficiency level from years of experience."""

@@ -16,14 +16,16 @@ def _apply_migrations(db_path: Path) -> None:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
-        conn.executescript("""
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS config (
               id TEXT PRIMARY KEY,
               payload_json TEXT NOT NULL,
               updated_at TEXT NOT NULL,
               updated_by TEXT
             );
-            """)
+            """
+        )
         vec0_unavailable = False
         for sql_file in sorted(migrations_dir.glob("*.sql")):
             if vec0_unavailable and sql_file.name.startswith(("051", "052")):

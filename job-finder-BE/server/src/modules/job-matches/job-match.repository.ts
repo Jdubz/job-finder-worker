@@ -193,7 +193,7 @@ export class JobMatchRepository {
     this.companyRepo = new CompanyRepository()
   }
 
-  list(options: JobMatchListOptions = {}): JobMatch[] {
+  list(userId: string, options: JobMatchListOptions = {}): JobMatch[] {
     const {
       limit = 50,
       offset = 0,
@@ -205,8 +205,8 @@ export class JobMatchRepository {
       status
     } = options
 
-    const conditions: string[] = []
-    const params: unknown[] = []
+    const conditions: string[] = ['user_id = ?']
+    const params: unknown[] = [userId]
 
     if (typeof minScore === 'number') {
       conditions.push('match_score >= ?')
@@ -228,7 +228,7 @@ export class JobMatchRepository {
       params.push(status)
     }
 
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
     const sortColumnMap: Record<string, string> = {
       score: 'match_score',
       date: 'created_at',
@@ -250,7 +250,7 @@ export class JobMatchRepository {
    * List job matches with their associated listing and company data.
    * Uses a single JOIN query instead of N+1 individual lookups.
    */
-  listWithListings(options: JobMatchListOptions = {}): JobMatchWithListing[] {
+  listWithListings(userId: string, options: JobMatchListOptions = {}): JobMatchWithListing[] {
     const {
       limit = 200,
       offset = 0,
@@ -263,8 +263,8 @@ export class JobMatchRepository {
       search
     } = options
 
-    const conditions: string[] = []
-    const params: unknown[] = []
+    const conditions: string[] = ['m.user_id = ?']
+    const params: unknown[] = [userId]
 
     if (typeof minScore === 'number') {
       conditions.push('m.match_score >= ?')
@@ -288,7 +288,7 @@ export class JobMatchRepository {
       params.push(pattern, pattern)
     }
 
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
     const sortColumnMap: Record<string, string> = {
       score: 'm.match_score',
       date: 'm.created_at',
@@ -347,13 +347,13 @@ export class JobMatchRepository {
     }))
   }
 
-  getById(id: string): JobMatch | null {
-    const row = this.db.prepare('SELECT * FROM job_matches WHERE id = ?').get(id) as JobMatchRow | undefined
+  getById(userId: string, id: string): JobMatch | null {
+    const row = this.db.prepare('SELECT * FROM job_matches WHERE id = ? AND user_id = ?').get(id, userId) as JobMatchRow | undefined
     return row ? buildJobMatch(row) : null
   }
 
-  getByIdWithListing(id: string): JobMatchWithListing | null {
-    const match = this.getById(id)
+  getByIdWithListing(userId: string, id: string): JobMatchWithListing | null {
+    const match = this.getById(userId, id)
     if (!match) return null
 
     const listing = this.listingRepo.getById(match.jobListingId)
@@ -365,14 +365,14 @@ export class JobMatchRepository {
     return { ...match, listing, company }
   }
 
-  getByJobListingId(jobListingId: string): JobMatch | null {
+  getByJobListingId(userId: string, jobListingId: string): JobMatch | null {
     const row = this.db
-      .prepare('SELECT * FROM job_matches WHERE job_listing_id = ?')
-      .get(jobListingId) as JobMatchRow | undefined
+      .prepare('SELECT * FROM job_matches WHERE job_listing_id = ? AND user_id = ?')
+      .get(jobListingId, userId) as JobMatchRow | undefined
     return row ? buildJobMatch(row) : null
   }
 
-  upsert(match: CreateJobMatchInput): JobMatch {
+  upsert(userId: string, match: CreateJobMatchInput): JobMatch {
     const id = match.id ?? randomUUID()
     const now = new Date().toISOString()
     const isIgnored = match.status === 'ignored'
@@ -380,12 +380,12 @@ export class JobMatchRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO job_matches (
-        id, job_listing_id, match_score, matched_skills, missing_skills,
+        id, user_id, job_listing_id, match_score, matched_skills, missing_skills,
         match_reasons, key_strengths, potential_concerns, experience_match,
         customization_recommendations, resume_intake_json,
         analyzed_at, submitted_by, queue_item_id, created_at, updated_at,
         status, ignored_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         job_listing_id = excluded.job_listing_id,
         match_score = excluded.match_score,
@@ -407,6 +407,7 @@ export class JobMatchRepository {
 
     stmt.run(
       id,
+      userId,
       match.jobListingId,
       match.matchScore,
       JSON.stringify(match.matchedSkills ?? []),
@@ -426,16 +427,16 @@ export class JobMatchRepository {
       ignoredAt
     )
 
-    return this.getById(id) as JobMatch
+    return this.getById(userId, id) as JobMatch
   }
 
-  delete(id: string): void {
-    this.db.prepare('DELETE FROM job_matches WHERE id = ?').run(id)
+  delete(userId: string, id: string): void {
+    this.db.prepare('DELETE FROM job_matches WHERE id = ? AND user_id = ?').run(id, userId)
   }
 
-  updateStatus(id: string, status: 'active' | 'ignored' | 'applied'): JobMatchWithListing | null {
+  updateStatus(userId: string, id: string, status: 'active' | 'ignored' | 'applied'): JobMatchWithListing | null {
     // First check if the match exists before attempting update
-    const existingMatch = this.getById(id)
+    const existingMatch = this.getById(userId, id)
     if (!existingMatch) {
       return null
     }
@@ -447,9 +448,9 @@ export class JobMatchRepository {
          SET status = @status,
              ignored_at = CASE WHEN @status = 'ignored' THEN @now ELSE NULL END,
              updated_at = @now
-         WHERE id = @id`
+         WHERE id = @id AND user_id = @userId`
       )
-      .run({ status, now, id })
+      .run({ status, now, id, userId })
 
     // Verify the update succeeded
     if (result.changes === 0) {
@@ -457,7 +458,7 @@ export class JobMatchRepository {
     }
 
     // Try to get the updated match with listing
-    const matchWithListing = this.getByIdWithListing(id)
+    const matchWithListing = this.getByIdWithListing(userId, id)
 
     // If listing is missing, this is a data integrity issue
     // The status was updated, but we can't return the full data
@@ -476,8 +477,13 @@ export class JobMatchRepository {
    * Get stats for job matches grouped by score range.
    * Used for summary pills in the UI.
    */
-  getStats(includeIgnored = false): JobMatchStats {
-    const whereClause = includeIgnored ? '' : "WHERE status != 'ignored'"
+  getStats(userId: string, includeIgnored = false): JobMatchStats {
+    const conditions: string[] = ['user_id = ?']
+    const params: unknown[] = [userId]
+    if (!includeIgnored) {
+      conditions.push("status != 'ignored'")
+    }
+    const whereClause = `WHERE ${conditions.join(' AND ')}`
     const result = this.db
       .prepare(`
         SELECT
@@ -489,7 +495,7 @@ export class JobMatchRepository {
         FROM job_matches
         ${whereClause}
       `)
-      .get() as {
+      .get(...params) as {
       total: number
       highScore: number
       mediumScore: number

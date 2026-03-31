@@ -73,6 +73,20 @@ export class GeneratorWorkflowService {
     'AI generation failed. Please retry in a moment or contact support if it keeps happening.'
   private readonly agentManager: InferenceClient
 
+  /** Per-request user ID. Must be set before calling any service method. */
+  private _userId: string | null = null
+
+  get userId(): string {
+    if (!this._userId) {
+      throw new Error('GeneratorWorkflowService: userId not set. Call setUserId() before using the service.')
+    }
+    return this._userId
+  }
+
+  setUserId(uid: string): void {
+    this._userId = uid
+  }
+
   constructor(
     private readonly htmlPdf = new HtmlPdfService(),
     private readonly workflowRepo = new GeneratorWorkflowRepository(),
@@ -91,7 +105,7 @@ export class GeneratorWorkflowService {
    * Returns the content waiting for user review along with its type.
    */
   getDraftContent(requestId: string): DraftContentResponse | null {
-    const request = this.workflowRepo.getRequest(requestId)
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
     if (!request || request.status !== 'awaiting_review') {
       return null
     }
@@ -145,7 +159,7 @@ export class GeneratorWorkflowService {
     documentType: ReviewDocumentType,
     content: ResumeContent | CoverLetterContent
   ): Promise<StepExecutionResult | null> {
-    const request = this.workflowRepo.getRequest(requestId)
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
     if (!request || request.status !== 'awaiting_review') {
       return null
     }
@@ -158,7 +172,7 @@ export class GeneratorWorkflowService {
       ? { ...request.intermediateResults, resumeContent: content as ResumeContent }
       : { ...request.intermediateResults, coverLetterContent: content as CoverLetterContent }
 
-    this.workflowRepo.updateRequest(requestId, { status: 'processing', intermediateResults })
+    this.workflowRepo.updateRequest(this.userId, requestId, { status: 'processing', intermediateResults })
 
     const steps = request.steps ?? createInitialSteps(request.generateType)
     const reviewStepId = documentType === 'resume' ? 'review-resume' : 'review-cover-letter'
@@ -186,7 +200,7 @@ export class GeneratorWorkflowService {
     documentType: ReviewDocumentType,
     feedback: string
   ): Promise<{ content: ResumeContent | CoverLetterContent } | null> {
-    const request = this.workflowRepo.getRequest(requestId)
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
     if (!request || request.status !== 'awaiting_review') {
       return null
     }
@@ -199,7 +213,7 @@ export class GeneratorWorkflowService {
       )
     }
 
-    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? null
+    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get(this.userId)) ?? null
     if (!personalInfo) {
       throw new UserFacingError('Personal info not configured.')
     }
@@ -217,7 +231,7 @@ export class GeneratorWorkflowService {
         throw new Error('No resume content found for retry')
       }
 
-      const contentItems = this.contentItemRepo.list()
+      const contentItems = this.contentItemRepo.list(this.userId)
       const jobMatch = this.enrichPayloadWithJobMatch(payload)
       const originalPrompt = buildResumePrompt(payload, personalInfo, contentItems, jobMatch)
       const retryPrompt = buildResumeRetryPrompt(originalPrompt, firstAttempt, feedback)
@@ -233,7 +247,7 @@ export class GeneratorWorkflowService {
       parsed = this.groundResumeContent(parsed, contentItems, personalInfo, payload)
 
       // Update intermediate results with new content and increment rejection count
-      this.workflowRepo.updateRequest(requestId, {
+      this.workflowRepo.updateRequest(this.userId, requestId, {
         intermediateResults: {
           ...request.intermediateResults,
           resumeContent: parsed,
@@ -249,7 +263,7 @@ export class GeneratorWorkflowService {
         throw new Error('No cover letter content found for retry')
       }
 
-      const contentItems = this.contentItemRepo.list()
+      const contentItems = this.contentItemRepo.list(this.userId)
       const jobMatch = this.enrichPayloadWithJobMatch(payload)
       const originalPrompt = buildCoverLetterPrompt(payload, personalInfo, contentItems, jobMatch)
       const retryPrompt = buildResumeRetryPrompt(originalPrompt, firstAttempt, feedback)
@@ -264,7 +278,7 @@ export class GeneratorWorkflowService {
       const parsed = validation.data as CoverLetterContent
 
       // Update intermediate results with new content and increment rejection count
-      this.workflowRepo.updateRequest(requestId, {
+      this.workflowRepo.updateRequest(this.userId, requestId, {
         intermediateResults: {
           ...request.intermediateResults,
           coverLetterContent: parsed,
@@ -279,7 +293,7 @@ export class GeneratorWorkflowService {
   async createRequest(payload: GenerateDocumentPayload) {
     const requestId = generateRequestId()
     const steps = createInitialSteps(payload.generateType)
-    this.workflowRepo.createRequest({
+    this.workflowRepo.createRequest(this.userId, {
       id: requestId,
       generateType: payload.generateType,
       job: payload.job,
@@ -297,7 +311,7 @@ export class GeneratorWorkflowService {
   }
 
   async runNextStep(requestId: string, _payload?: GenerateDocumentPayload): Promise<StepExecutionResult | null> {
-    const request = this.workflowRepo.getRequest(requestId)
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
     if (!request) {
       return null
     }
@@ -306,9 +320,9 @@ export class GeneratorWorkflowService {
     const pendingStep = steps.find((step) => step.status === 'pending')
     if (!pendingStep) {
       if (request.status !== 'completed' && request.status !== 'failed') {
-        this.workflowRepo.updateRequest(requestId, { status: 'completed', steps })
+        this.workflowRepo.updateRequest(this.userId, requestId, { status: 'completed', steps })
       }
-      const finalReq = this.workflowRepo.getRequest(requestId)
+      const finalReq = this.workflowRepo.getRequest(this.userId, requestId)
       return {
         requestId,
         status: finalReq?.status ?? request.status,
@@ -320,14 +334,14 @@ export class GeneratorWorkflowService {
       }
     }
 
-    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get()) ?? null
+    const personalInfo = request.personalInfo ?? (await this.personalInfoStore.get(this.userId)) ?? null
     if (!personalInfo) {
       const message =
-        'Personal info is not configured. Please set your name, email, and other details in the config entry "personal-info" (e.g., via /api/config/personal-info) before generating documents.'
-      this.workflowRepo.updateRequest(requestId, { status: 'failed' })
+        'Personal info is not configured. Please set your name, email, and other details in the config entry "personal-info" (e.g., via /api/user-config/personal-info) before generating documents.'
+      this.workflowRepo.updateRequest(this.userId, requestId, { status: 'failed' })
       throw new UserFacingError(message)
     }
-    this.workflowRepo.updateRequest(requestId, { personalInfo, steps })
+    this.workflowRepo.updateRequest(this.userId, requestId, { personalInfo, steps })
 
     // Build payload once for reuse
     const payload: GenerateDocumentPayload = {
@@ -379,8 +393,8 @@ export class GeneratorWorkflowService {
     // Review steps: pause workflow and wait for user to review/edit content
     if (pendingStep.id === 'review-resume' || pendingStep.id === 'review-cover-letter') {
       const updated = completeStep(startStep(steps, pendingStep.id), pendingStep.id, 'completed')
-      this.workflowRepo.updateRequest(requestId, { status: 'awaiting_review', steps: updated })
-      const finalRequest = this.workflowRepo.getRequest(requestId)
+      this.workflowRepo.updateRequest(this.userId, requestId, { status: 'awaiting_review', steps: updated })
+      const finalRequest = this.workflowRepo.getRequest(this.userId, requestId)
       return {
         requestId,
         status: 'awaiting_review',
@@ -406,13 +420,13 @@ export class GeneratorWorkflowService {
           // Render resume if content exists
           if (request.intermediateResults?.resumeContent) {
             resumeUrl = await this.renderResumePdf(payload, requestId, personalInfo)
-            this.workflowRepo.updateRequest(requestId, { resumeUrl })
+            this.workflowRepo.updateRequest(this.userId, requestId, { resumeUrl })
           }
 
           // Render cover letter if content exists
           if (request.intermediateResults?.coverLetterContent) {
             coverLetterUrl = await this.renderCoverLetterPdf(payload, requestId, personalInfo)
-            this.workflowRepo.updateRequest(requestId, { coverLetterUrl })
+            this.workflowRepo.updateRequest(this.userId, requestId, { coverLetterUrl })
           }
 
           // Return URLs (the executeStep will handle updating the request)
@@ -427,7 +441,7 @@ export class GeneratorWorkflowService {
     }
 
     // Unknown step - mark request as failed to prevent infinite loop
-    this.workflowRepo.updateRequest(requestId, { status: 'failed', steps })
+    this.workflowRepo.updateRequest(this.userId, requestId, { status: 'failed', steps })
     return {
       requestId,
       status: 'failed',
@@ -497,7 +511,7 @@ export class GeneratorWorkflowService {
       const updated = completeStep(startStep(steps, stepId), stepId, 'completed')
 
       // Build update object with steps and optional URL field (type-safe)
-      const repoUpdate: Parameters<typeof this.workflowRepo.updateRequest>[1] = { steps: updated }
+      const repoUpdate: Parameters<typeof this.workflowRepo.updateRequest>[2] = { steps: updated }
       if (result?.urlField === 'resumeUrl') {
         repoUpdate.resumeUrl = result.url ?? null
       } else if (result?.urlField === 'coverLetterUrl') {
@@ -510,7 +524,7 @@ export class GeneratorWorkflowService {
         repoUpdate.status = 'completed'
       }
       const finalStatus = hasMoreSteps ? currentStatus : 'completed'
-      this.workflowRepo.updateRequest(requestId, repoUpdate)
+      this.workflowRepo.updateRequest(this.userId, requestId, repoUpdate)
 
       return this.buildStepResult(
         requestId,
@@ -525,7 +539,7 @@ export class GeneratorWorkflowService {
       const updated = completeStep(startStep(steps, stepId), stepId, 'failed', undefined, {
         message: errorMessage
       })
-      this.workflowRepo.updateRequest(requestId, { status: 'failed', steps: updated })
+      this.workflowRepo.updateRequest(this.userId, requestId, { status: 'failed', steps: updated })
 
       return this.buildStepResult(requestId, 'failed', updated, stepId, undefined, errorMessage)
     }
@@ -546,14 +560,14 @@ export class GeneratorWorkflowService {
     // Falls back to legacy full AI generation only for manual/non-match invocations.
     if (payload.jobMatchId) {
       this.log.info({ jobMatchId: payload.jobMatchId }, 'Using pool-based resume selection')
-      resume = await this.resumeSelectionService.selectContent(payload.jobMatchId)
+      resume = await this.resumeSelectionService.selectContent(this.userId, payload.jobMatchId)
     } else {
       resume = await this.buildResumeContent(payload, personalInfo)
     }
 
     // Store content for review
-    const request = this.workflowRepo.getRequest(requestId)
-    this.workflowRepo.updateRequest(requestId, {
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
+    this.workflowRepo.updateRequest(this.userId, requestId, {
       intermediateResults: {
         ...request?.intermediateResults,
         resumeContent: resume
@@ -570,7 +584,7 @@ export class GeneratorWorkflowService {
     requestId: string,
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
-    const request = this.workflowRepo.getRequest(requestId)
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
     const resume = request?.intermediateResults?.resumeContent
     if (!resume) {
       throw new Error('No resume content found in intermediateResults. Run generate-resume step first.')
@@ -591,8 +605,8 @@ export class GeneratorWorkflowService {
   ): Promise<void> {
     const coverLetter = await this.buildCoverLetterContent(payload, personalInfo)
     // Store content for review
-    const request = this.workflowRepo.getRequest(requestId)
-    this.workflowRepo.updateRequest(requestId, {
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
+    this.workflowRepo.updateRequest(this.userId, requestId, {
       intermediateResults: {
         ...request?.intermediateResults,
         coverLetterContent: coverLetter
@@ -609,7 +623,7 @@ export class GeneratorWorkflowService {
     requestId: string,
     personalInfo: PersonalInfo
   ): Promise<string | undefined> {
-    const request = this.workflowRepo.getRequest(requestId)
+    const request = this.workflowRepo.getRequest(this.userId, requestId)
     const coverLetter = request?.intermediateResults?.coverLetterContent
     if (!coverLetter) {
       throw new Error('No cover letter content found in intermediateResults. Run generate-cover-letter step first.')
@@ -648,7 +662,7 @@ export class GeneratorWorkflowService {
       type
     }
     const saved = await storageService.saveArtifactWithMetadata(buffer, metadata, { runId: requestId, extension })
-    this.workflowRepo.addArtifact({
+    this.workflowRepo.addArtifact(this.userId, {
       id: randomUUID(),
       requestId,
       artifactType: type,
@@ -667,7 +681,7 @@ export class GeneratorWorkflowService {
       return null
     }
 
-    const jobMatch = this.jobMatchRepo.getByIdWithListing(payload.jobMatchId)
+    const jobMatch = this.jobMatchRepo.getByIdWithListing(this.userId, payload.jobMatchId)
     if (jobMatch) {
       // Enrich payload with job listing data
       payload.job.jobDescriptionText = payload.job.jobDescriptionText || jobMatch.listing.description
@@ -956,7 +970,7 @@ export class GeneratorWorkflowService {
 
   private async buildResumeContent(payload: GenerateDocumentPayload, personalInfo: PersonalInfo): Promise<ResumeContent> {
     // Fetch content items from the database
-    const contentItems = this.contentItemRepo.list()
+    const contentItems = this.contentItemRepo.list(this.userId)
 
     if (!contentItems.length) {
       this.log.error('No content items found; cannot build resume without source experience data')
@@ -968,6 +982,7 @@ export class GeneratorWorkflowService {
 
     // Build cache context for lookup and store
     const cacheCtx: CacheContext = {
+      userId: this.userId,
       personalInfo,
       contentItems,
       documentType: 'resume',
@@ -1107,13 +1122,14 @@ export class GeneratorWorkflowService {
     personalInfo: PersonalInfo
   ): Promise<CoverLetterContent> {
     // Fetch content items from the database
-    const contentItems = this.contentItemRepo.list()
+    const contentItems = this.contentItemRepo.list(this.userId)
 
     // Fetch and enrich with job match data if available
     const jobMatch = this.enrichPayloadWithJobMatch(payload)
 
     // Build cache context for lookup and store
     const cacheCtx: CacheContext = {
+      userId: this.userId,
       personalInfo,
       contentItems,
       documentType: 'cover_letter',

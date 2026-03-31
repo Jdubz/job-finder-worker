@@ -1,4 +1,4 @@
-import { Router, type Request, type RequestHandler, type Response } from 'express'
+import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
@@ -18,7 +18,7 @@ import { invalidateDocumentCacheAsync } from '../generator/document-cache-invali
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiHttpError } from '../../middleware/api-error'
-import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/firebase-auth'
+import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/auth'
 
 const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
 const monthSchema = z.preprocess(
@@ -85,32 +85,16 @@ function buildTree(items: ContentItem[]): ContentItemNode[] {
   return roots
 }
 
-interface ContentItemRouterOptions {
-  /**
-   * Middleware applied to mutating routes (POST/PATCH/DELETE/reorder). Use this
-   * to enforce authentication/authorization while keeping GET public.
-   */
-  mutationsMiddleware?: RequestHandler[]
-}
-
-export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
+export function buildContentItemRouter() {
   const router = Router()
   const repo = new ContentItemRepository()
-  const defaultMutationGuard: RequestHandler = (req, _res, next) => {
-    try {
-      getAuthenticatedUser(req)
-      next()
-    } catch (err) {
-      next(err)
-    }
-  }
-  const mutationsMiddleware = options.mutationsMiddleware ?? [defaultMutationGuard]
 
   router.get(
     '/',
     asyncHandler((req, res) => {
+      const user = getAuthenticatedUser(req)
       const query = listQuerySchema.parse(req.query)
-      const items = repo.list({
+      const items = repo.list(user.uid, {
         parentId:
           query.parentId === undefined
             ? undefined
@@ -120,7 +104,7 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
         limit: query.limit,
         offset: query.offset
       })
-      const total = repo.count({
+      const total = repo.count(user.uid, {
         parentId:
           query.parentId === undefined
             ? undefined
@@ -142,7 +126,8 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
   router.get(
     '/:id',
     asyncHandler((req, res) => {
-      const item = repo.getById(req.params.id)
+      const user = getAuthenticatedUser(req)
+      const item = repo.getById(user.uid, req.params.id)
       if (!item) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Content item not found'))
         return
@@ -154,13 +139,12 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
 
   router.post(
     '/',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = createRequestSchema.parse(req.body) as CreateContentItemRequest
         const user = getAuthenticatedUser(req)
-        const item = repo.create({ ...payload.itemData, userEmail: user.email })
-        invalidateDocumentCacheAsync().catch(() => undefined)
+        const item = repo.create(user.uid, { ...payload.itemData, userEmail: user.email })
+        invalidateDocumentCacheAsync(user.uid).catch(() => undefined)
         const response: CreateContentItemResponse = { item, message: 'Content item created' }
         res.status(201).json(success(response))
       } catch (err) {
@@ -172,13 +156,12 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
 
   router.patch(
     '/:id',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = updateRequestSchema.parse(req.body) as UpdateContentItemRequest
         const user = getAuthenticatedUser(req)
-        const item = repo.update(req.params.id, { ...payload.itemData, userEmail: user.email })
-        invalidateDocumentCacheAsync().catch(() => undefined)
+        const item = repo.update(user.uid, req.params.id, { ...payload.itemData, userEmail: user.email })
+        invalidateDocumentCacheAsync(user.uid).catch(() => undefined)
         const response: UpdateContentItemResponse = { item, message: 'Content item updated' }
         res.json(success(response))
       } catch (err) {
@@ -190,11 +173,11 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
 
   router.delete(
     '/:id',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
-        repo.delete(req.params.id)
-        invalidateDocumentCacheAsync().catch(() => undefined)
+        const user = getAuthenticatedUser(req)
+        repo.delete(user.uid, req.params.id)
+        invalidateDocumentCacheAsync(user.uid).catch(() => undefined)
         const response: DeleteContentItemResponse = {
           itemId: req.params.id,
           deleted: true,
@@ -210,13 +193,12 @@ export function buildContentItemRouter(options: ContentItemRouterOptions = {}) {
 
   router.post(
     '/:id/reorder',
-    ...mutationsMiddleware,
     asyncHandler((req, res) => {
       try {
         const payload = reorderRequestSchema.parse(req.body)
         const user = getAuthenticatedUser(req)
-        const item = repo.reorder(req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
-        invalidateDocumentCacheAsync().catch(() => undefined)
+        const item = repo.reorder(user.uid, req.params.id, payload.parentId ?? null, payload.orderIndex, user.email)
+        invalidateDocumentCacheAsync(user.uid).catch(() => undefined)
         const response: ReorderContentItemResponse = { item }
         res.json(success(response))
       } catch (err) {
