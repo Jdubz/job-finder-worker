@@ -70,7 +70,7 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   status: (row.status as JobMatchStatus) ?? 'active',
   ignoredAt: row.ignored_at ? parseTimestamp(row.ignored_at) : undefined,
   appliedAt: row.applied_at ? parseTimestamp(row.applied_at) : undefined,
-  statusUpdatedBy: row.status_updated_by,
+  statusUpdatedBy: row.status_updated_by as "user" | "email_tracker" | null,
   statusNote: row.status_note,
   isGhost: Boolean(row.is_ghost),
   ghostCompany: row.ghost_company,

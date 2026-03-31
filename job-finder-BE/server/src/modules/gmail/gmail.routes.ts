@@ -158,7 +158,7 @@ export function buildGmailRouter() {
       const { matchId } = z.object({ matchId: z.string().min(1) }).parse(req.body)
       const updated = emailRepo.linkToMatch(req.params.id, matchId)
       if (!updated) {
-        throw new ApiHttpError(ApiErrorCode.NOT_FOUND, "Application email not found", { status: 404 })
+        throw new ApiHttpError(ApiErrorCode.NOT_FOUND, "Application email or target match not found", { status: 404 })
       }
       res.json(success({ email: updated }))
     })

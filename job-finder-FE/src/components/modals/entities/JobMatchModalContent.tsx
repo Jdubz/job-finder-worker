@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ExternalLink, FileText, Download, CheckCircle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { JobMatchWithListing } from "@shared/types"
+import type { JobMatchWithListing, JobMatchStatus } from "@shared/types"
 import {
   generatorClient,
   type GeneratorRequestRecord,
@@ -50,13 +50,13 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   const companyInfo = localMatch.company?.about || localMatch.company?.culture || localMatch.company?.mission
 
-  const handleStatusChange = async (status: string) => {
+  const handleStatusChange = async (status: JobMatchStatus) => {
     if (!localMatch.id) return
     try {
-      const updated = await jobMatchesClient.updateStatus(localMatch.id, status as import("@shared/types").JobMatchStatus)
+      const updated = await jobMatchesClient.updateStatus(localMatch.id, status)
       setLocalMatch(updated)
       handlers?.onStatusChange?.(updated)
-      const messages: Record<string, string> = {
+      const messages: Record<JobMatchStatus, string> = {
         active: "Match marked active",
         applied: "Marked as applied",
         acknowledged: "Marked as acknowledged",
@@ -64,7 +64,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
         denied: "Marked as denied",
         ignored: "Match ignored",
       }
-      toast.success({ title: messages[status] ?? `Status: ${status}` })
+      toast.success({ title: messages[status] })
     } catch (err) {
       console.error("Failed to update match status", err)
       toast.error({ title: "Could not update match status" })
@@ -297,7 +297,7 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           )}
           <Select
             value={localMatch.status ?? "active"}
-            onValueChange={handleStatusChange}
+            onValueChange={(v) => handleStatusChange(v as JobMatchStatus)}
           >
             <SelectTrigger className="w-[160px]" aria-label="Match status">
               <SelectValue placeholder="Set status" />

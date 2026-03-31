@@ -410,8 +410,8 @@ export interface JobMatch {
   /** When the match was marked as applied */
   appliedAt?: TimestampLike
 
-  /** Who last changed the status ('user' | 'email_tracker') */
-  statusUpdatedBy?: string | null
+  /** Who last changed the status */
+  statusUpdatedBy?: "user" | "email_tracker" | null
 
   /** Free-text note for the current status (e.g., interview stage details) */
   statusNote?: string | null

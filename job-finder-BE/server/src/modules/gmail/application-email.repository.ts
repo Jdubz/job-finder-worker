@@ -154,9 +154,18 @@ export class ApplicationEmailRepository {
 
   linkToMatch(emailId: string, matchId: string): ApplicationEmail | null {
     const now = new Date().toISOString()
-    this.db
-      .prepare("UPDATE application_emails SET job_match_id = ?, updated_at = ? WHERE id = ?")
-      .run(matchId, now, emailId)
+    try {
+      const result = this.db
+        .prepare("UPDATE application_emails SET job_match_id = ?, updated_at = ? WHERE id = ?")
+        .run(matchId, now, emailId)
+      if (!result.changes) return null
+    } catch (err) {
+      const code = (err as { code?: string })?.code
+      if (typeof code === "string" && code.startsWith("SQLITE_CONSTRAINT")) {
+        return null
+      }
+      throw err
+    }
     return this.getById(emailId)
   }
 
