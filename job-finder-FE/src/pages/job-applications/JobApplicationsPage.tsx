@@ -6,7 +6,7 @@ import { jobMatchesClient } from "@/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import type { JobMatchStats } from "@shared/types"
+import type { JobMatchStats, JobMatchStatus } from "@shared/types"
 import {
   Select,
   SelectContent,
@@ -40,6 +40,7 @@ import { logger } from "@/services/logging"
 import { toDate, formatDate, normalizeDateValue } from "@/utils/dateFormat"
 import { useEntityModal } from "@/contexts/EntityModalContext"
 import { getScoreColor, SCORE_THRESHOLDS } from "@/lib/score-utils"
+import { statusBadgeClass } from "@/lib/status-badge"
 import { toast } from "@/components/toast"
 
 export function JobApplicationsPage() {
@@ -58,7 +59,7 @@ export function JobApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const debouncedSearch = useDebounce(searchQuery.trim(), 300)
   const [sortBy, setSortBy] = useState<string>("updated")
-  const [statusFilter, setStatusFilter] = useState<"active" | "ignored" | "applied" | "all">("active")
+  const [statusFilter, setStatusFilter] = useState<JobMatchStatus | "all">("active")
 
   // Ignore confirmation dialog state
   const [ignoreDialogOpen, setIgnoreDialogOpen] = useState(false)
@@ -308,6 +309,9 @@ export function JobApplicationsPage() {
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="applied">Applied</SelectItem>
+                  <SelectItem value="acknowledged">Acknowledged</SelectItem>
+                  <SelectItem value="interviewing">Interviewing</SelectItem>
+                  <SelectItem value="denied">Denied</SelectItem>
                   <SelectItem value="ignored">Ignored</SelectItem>
                   <SelectItem value="all">All</SelectItem>
                 </SelectContent>
@@ -364,6 +368,7 @@ export function JobApplicationsPage() {
                     <TableHead className="hidden md:table-cell min-w-[120px]">Location</TableHead>
                     <TableHead className="hidden lg:table-cell min-w-[100px]">Posted</TableHead>
                     <TableHead className="text-center min-w-[80px]">Score</TableHead>
+                    <TableHead className="hidden sm:table-cell min-w-[100px]">Status</TableHead>
                     <TableHead className="text-center min-w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -409,6 +414,11 @@ export function JobApplicationsPage() {
                       </TableCell>
                       <TableCell className="text-center whitespace-nowrap">
                         <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${statusBadgeClass(match.status ?? "active")}`}>
+                          {match.status ?? "active"}
+                        </span>
                       </TableCell>
                       <TableCell className="text-center">
                         {match.status !== "ignored" && (

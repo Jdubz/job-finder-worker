@@ -11,6 +11,8 @@ import type {
   GetJobMatchStatsResponse
 } from '@shared/types'
 import { JobMatchRepository } from './job-match.repository'
+import { ApplicationEmailRepository } from '../gmail/application-email.repository'
+import { StatusHistoryRepository } from '../gmail/status-history.repository'
 import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
@@ -65,7 +67,7 @@ const jobMatchSchema = z.object({
   updatedAt: z.union([z.string(), z.date()]).optional(),
   submittedBy: z.string().nullable().optional(),
   queueItemId: z.string(),
-  status: z.enum(['active', 'ignored', 'applied']).optional(),
+  status: z.enum(['active', 'ignored', 'applied', 'acknowledged', 'interviewing', 'denied']).optional(),
   ignoredAt: z.union([z.string(), z.date()]).optional()
 })
 
@@ -85,7 +87,7 @@ const listQuerySchema = z.object({
   jobListingId: z.string().min(1).optional(),
   sortBy: z.enum(['score', 'date', 'updated']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
-  status: z.enum(['active', 'ignored', 'applied', 'all']).optional(),
+  status: z.enum(['active', 'ignored', 'applied', 'acknowledged', 'interviewing', 'denied', 'all']).optional(),
   search: z.string().transform(s => s.trim()).pipe(z.string().min(1)).optional()
 })
 
@@ -96,6 +98,8 @@ const statsQuerySchema = z.object({
 export function buildJobMatchRouter() {
   const router = Router()
   const repo = new JobMatchRepository()
+  const appEmailRepo = new ApplicationEmailRepository()
+  const statusHistoryRepo = new StatusHistoryRepository()
 
   router.get(
     '/',
@@ -186,6 +190,25 @@ export function buildJobMatchRouter() {
     })
   )
 
+  router.post(
+    '/ghost',
+    asyncHandler((req, res) => {
+      const ghostSchema = z.object({
+        company: z.string().min(1),
+        title: z.string().min(1),
+        url: z.string().url().optional(),
+        notes: z.string().optional()
+      })
+      const data = ghostSchema.parse(req.body)
+      const match = repo.createGhost(data)
+      if (!match) {
+        res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Failed to create ghost match'))
+        return
+      }
+      res.status(201).json(success({ match }))
+    })
+  )
+
   router.delete(
     '/:id',
     asyncHandler((req, res) => {
@@ -198,14 +221,36 @@ export function buildJobMatchRouter() {
   router.patch(
     '/:id/status',
     asyncHandler((req, res) => {
-      const statusSchema = z.object({ status: z.enum(['active', 'ignored', 'applied']) })
-      const { status } = statusSchema.parse(req.body)
-      const updated = repo.updateStatus(req.params.id, status)
+      const statusSchema = z.object({
+        status: z.enum(['active', 'ignored', 'applied', 'acknowledged', 'interviewing', 'denied']),
+        statusNote: z.string().nullable().optional()
+      })
+      const { status, statusNote } = statusSchema.parse(req.body)
+      const updated = repo.updateStatus(req.params.id, status, {
+        updatedBy: 'user',
+        note: statusNote
+      })
       if (!updated) {
         res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Job match not found'))
         return
       }
       res.json(success({ match: updated }))
+    })
+  )
+
+  router.get(
+    '/:id/emails',
+    asyncHandler((req, res) => {
+      const emails = appEmailRepo.listByJobMatch(req.params.id)
+      res.json(success({ emails }))
+    })
+  )
+
+  router.get(
+    '/:id/status-history',
+    asyncHandler((req, res) => {
+      const history = statusHistoryRepo.listByJobMatch(req.params.id)
+      res.json(success({ history }))
     })
   )
 

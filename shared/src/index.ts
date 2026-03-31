@@ -17,6 +17,7 @@ export * from "./config.types"
 export * from "./contact.types"
 export * from "./agent-cli.types"
 export * from "./form-fill-safety"
+export * from "./application-email.types"
 
 // API types
 export * from "./api.types"

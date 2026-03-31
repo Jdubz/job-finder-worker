@@ -31,6 +31,11 @@ const EnvSchema = z.object({
   // Cookie domain for session cookies (e.g., '.example.com')
   COOKIE_DOMAIN: z.string().optional(),
 
+  // Gmail OAuth
+  GMAIL_OAUTH_CLIENT_ID: z.string().optional(),
+  GMAIL_OAUTH_CLIENT_SECRET: z.string().optional(),
+  GMAIL_TOKEN_KEY: z.string().optional(),
+
   // Semantic document cache
   CACHE_ENABLED: z.string().optional(),
   CACHE_DRY_RUN: z.string().optional(),

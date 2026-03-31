@@ -17,6 +17,9 @@ export interface UserRecord {
   sessionToken?: string | null
   sessionExpiresAt?: string | null
   sessionExpiresAtMs?: number | null
+  // Gmail OAuth
+  gmailEmail?: string | null
+  gmailAuthJson?: string | null
 }
 
 export interface SessionRecord {
@@ -42,6 +45,8 @@ type UserRow = {
   session_token: string | null
   session_expires_at: string | null
   session_expires_at_ms: number | null
+  gmail_email: string | null
+  gmail_auth_json: string | null
 }
 
 function parseRoles(value: string | null): UserRole[] {
@@ -66,7 +71,9 @@ function mapRow(row: UserRow): UserRecord {
     lastLoginAt: row.last_login_at ?? undefined,
     sessionToken: row.session_token,
     sessionExpiresAt: row.session_expires_at,
-    sessionExpiresAtMs: row.session_expires_at_ms ?? null
+    sessionExpiresAtMs: row.session_expires_at_ms ?? null,
+    gmailEmail: row.gmail_email,
+    gmailAuthJson: row.gmail_auth_json
   }
 }
 
@@ -85,7 +92,7 @@ export class UserRepository {
     const row = this.db
       .prepare(
         [
-          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms",
+          "SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json",
           "FROM users",
           "WHERE lower(email) = lower(?)"
         ].join(" ")
@@ -197,7 +204,7 @@ export class UserRepository {
       const userRow = this.db
         .prepare(
           `SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at,
-                  session_token, session_expires_at, session_expires_at_ms
+                  session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json
            FROM users WHERE id = ?`
         )
         .get(sessionRow.user_id) as UserRow | undefined
@@ -210,7 +217,7 @@ export class UserRepository {
     const row = this.db
       .prepare(
         `SELECT id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at,
-                session_token, session_expires_at, session_expires_at_ms
+                session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json
          FROM users WHERE session_token = ?`
       )
       .get(hashed) as UserRow | undefined
@@ -254,5 +261,46 @@ export class UserRepository {
         "UPDATE users SET session_token = NULL, session_expires_at = NULL, session_expires_at_ms = NULL, updated_at = datetime('now') WHERE id = ?"
       )
       .run(userId)
+  }
+
+  // ============================================================================
+  // Gmail OAuth support
+  // ============================================================================
+
+  private static readonly GMAIL_COLUMNS = `id, email, display_name, avatar_url, roles, created_at, updated_at, last_login_at,
+    session_token, session_expires_at, session_expires_at_ms, gmail_email, gmail_auth_json`
+
+  saveGmailAuth(userId: string, gmailEmail: string, encryptedTokens: string): void {
+    this.db
+      .prepare(
+        `UPDATE users SET gmail_email = ?, gmail_auth_json = ?, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(gmailEmail, encryptedTokens, userId)
+  }
+
+  findByGmailEmail(gmailEmail: string): UserRecord | null {
+    const row = this.db
+      .prepare(
+        `SELECT ${UserRepository.GMAIL_COLUMNS} FROM users WHERE lower(gmail_email) = lower(?)`
+      )
+      .get(gmailEmail) as UserRow | undefined
+    return row ? mapRow(row) : null
+  }
+
+  findUsersWithGmailAuth(): UserRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT ${UserRepository.GMAIL_COLUMNS} FROM users WHERE gmail_email IS NOT NULL AND gmail_auth_json IS NOT NULL`
+      )
+      .all() as UserRow[]
+    return rows.map(mapRow)
+  }
+
+  clearGmailAuthByEmail(gmailEmail: string): void {
+    this.db
+      .prepare(
+        `UPDATE users SET gmail_email = NULL, gmail_auth_json = NULL, updated_at = datetime('now') WHERE lower(gmail_email) = lower(?)`
+      )
+      .run(gmailEmail)
   }
 }

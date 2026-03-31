@@ -50,18 +50,21 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   const companyInfo = localMatch.company?.about || localMatch.company?.culture || localMatch.company?.mission
 
-  const handleStatusChange = async (status: "active" | "ignored" | "applied") => {
+  const handleStatusChange = async (status: string) => {
     if (!localMatch.id) return
     try {
-      const updated = await jobMatchesClient.updateStatus(localMatch.id, status)
+      const updated = await jobMatchesClient.updateStatus(localMatch.id, status as import("@shared/types").JobMatchStatus)
       setLocalMatch(updated)
       handlers?.onStatusChange?.(updated)
-      const messages: Record<typeof status, string> = {
+      const messages: Record<string, string> = {
         active: "Match marked active",
         applied: "Marked as applied",
+        acknowledged: "Marked as acknowledged",
+        interviewing: "Marked as interviewing",
+        denied: "Marked as denied",
         ignored: "Match ignored",
       }
-      toast.success({ title: messages[status] })
+      toast.success({ title: messages[status] ?? `Status: ${status}` })
     } catch (err) {
       console.error("Failed to update match status", err)
       toast.error({ title: "Could not update match status" })
@@ -292,18 +295,19 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           {typeof localMatch.matchScore === "number" && (
             <Badge variant="outline">Score: {localMatch.matchScore}%</Badge>
           )}
-          {localMatch.status === "ignored" && <Badge variant="destructive">Ignored</Badge>}
-          {localMatch.status === "applied" && <Badge variant="secondary">Applied</Badge>}
           <Select
             value={localMatch.status ?? "active"}
-            onValueChange={(value) => handleStatusChange(value as "active" | "ignored" | "applied")}
+            onValueChange={handleStatusChange}
           >
-            <SelectTrigger className="w-[140px]" aria-label="Match status">
+            <SelectTrigger className="w-[160px]" aria-label="Match status">
               <SelectValue placeholder="Set status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="applied">Applied</SelectItem>
+              <SelectItem value="acknowledged">Acknowledged</SelectItem>
+              <SelectItem value="interviewing">Interviewing</SelectItem>
+              <SelectItem value="denied">Denied</SelectItem>
               <SelectItem value="ignored">Ignored</SelectItem>
             </SelectContent>
           </Select>

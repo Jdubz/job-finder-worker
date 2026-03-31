@@ -27,6 +27,7 @@ import { buildApplicatorRouter } from './routes/applicator.routes'
 import { buildOriginGuard } from './middleware/origin-guard'
 import { buildChatWidgetRouter } from './modules/chat-widget/chat.routes'
 import { buildResumeVersionRouter } from './modules/resume-versions/resume-version.routes'
+import { buildGmailRouter } from './modules/gmail/gmail.routes'
 
 export function buildApp() {
   const app = express()
@@ -142,6 +143,7 @@ export function buildApp() {
   app.use('/api/companies', buildCompanyRouter())
   app.use('/api/job-sources', buildJobSourceRouter())
   app.use('/api/config', requireRole('admin'), buildConfigRouter())
+  app.use('/api/gmail', requireRole('admin'), buildGmailRouter())
   app.use('/api/maintenance', requireRole('admin'), buildMaintenanceRouter())
 
   app.get('/healthz', healthHandler)

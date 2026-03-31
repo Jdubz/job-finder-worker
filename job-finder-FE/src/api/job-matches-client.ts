@@ -7,6 +7,9 @@ import type {
   GetJobMatchResponse,
   JobMatchStats,
   GetJobMatchStatsResponse,
+  JobMatchStatus,
+  ApplicationEmail,
+  ApplicationStatusHistory,
 } from "@shared/types"
 
 export interface JobMatchFilters {
@@ -17,7 +20,7 @@ export interface JobMatchFilters {
   offset?: number
   sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
-  status?: "active" | "ignored" | "applied" | "all"
+  status?: JobMatchStatus | "all"
   search?: string
 }
 
@@ -71,14 +74,49 @@ export class JobMatchesClient extends BaseApiClient {
     return this.unwrapMatch(response)
   }
 
-  async updateStatus(matchId: string, status: "active" | "ignored" | "applied") {
+  async updateStatus(matchId: string, status: JobMatchStatus, statusNote?: string | null) {
+    const body: Record<string, unknown> = { status }
+    if (statusNote !== undefined) body.statusNote = statusNote
     const response = await this.patch<ApiSuccessResponse<{ match: JobMatchWithListing }>>(
       `/job-matches/${matchId}/status`,
-      { status }
+      body
     )
     const payload: { match: JobMatchWithListing } =
       "data" in response ? response.data : (response as { match: JobMatchWithListing })
     return payload.match
+  }
+
+  async createGhostMatch(data: { company: string; title: string; url?: string; notes?: string }) {
+    const response = await this.post<ApiSuccessResponse<{ match: JobMatchWithListing }>>(
+      "/job-matches/ghost",
+      data
+    )
+    const payload = "data" in response ? response.data : (response as { match: JobMatchWithListing })
+    return payload.match
+  }
+
+  async getApplicationEmails(matchId: string): Promise<ApplicationEmail[]> {
+    const response = await this.get<ApiSuccessResponse<{ emails: ApplicationEmail[] }>>(
+      `/job-matches/${matchId}/emails`
+    )
+    const payload = "data" in response ? response.data : (response as { emails: ApplicationEmail[] })
+    return payload.emails ?? []
+  }
+
+  async getStatusHistory(matchId: string): Promise<ApplicationStatusHistory[]> {
+    const response = await this.get<ApiSuccessResponse<{ history: ApplicationStatusHistory[] }>>(
+      `/job-matches/${matchId}/status-history`
+    )
+    const payload = "data" in response ? response.data : (response as { history: ApplicationStatusHistory[] })
+    return payload.history ?? []
+  }
+
+  async triggerTrackerScan() {
+    const response = await this.post<ApiSuccessResponse<{ results: unknown[] }>>(
+      "/gmail/tracker/scan",
+      {}
+    )
+    return "data" in response ? response.data : response
   }
 
   subscribeToMatches(
