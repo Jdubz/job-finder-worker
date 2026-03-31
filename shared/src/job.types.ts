@@ -346,6 +346,9 @@ export interface ResumeIntakeData {
  * NOTE: Job listing data (url, title, company, etc.) lives in job_listings table.
  * This table stores only the AI analysis results with a FK to the listing.
  */
+/** All valid statuses for job match lifecycle */
+export type JobMatchStatus = "active" | "ignored" | "applied" | "acknowledged" | "interviewing" | "denied"
+
 export interface JobMatch {
   /** Database record ID */
   id?: string
@@ -398,11 +401,35 @@ export interface JobMatch {
   /** Queue item ID that generated this match */
   queueItemId: string
 
-  /** Workflow status for this match (e.g., ignored by user) */
-  status?: "active" | "ignored" | "applied"
+  /** Workflow status for this match */
+  status?: JobMatchStatus
 
   /** When the match was ignored (if applicable) */
   ignoredAt?: TimestampLike
+
+  /** When the match was marked as applied */
+  appliedAt?: TimestampLike
+
+  /** Who last changed the status */
+  statusUpdatedBy?: "user" | "email_tracker" | null
+
+  /** Free-text note for the current status (e.g., interview stage details) */
+  statusNote?: string | null
+
+  /** Whether this is a ghost match (manual application, no job listing) */
+  isGhost?: boolean
+
+  /** Company name for ghost matches */
+  ghostCompany?: string | null
+
+  /** Job title for ghost matches */
+  ghostTitle?: string | null
+
+  /** Job posting URL for ghost matches */
+  ghostUrl?: string | null
+
+  /** Free-text notes for ghost matches */
+  ghostNotes?: string | null
 }
 
 /**

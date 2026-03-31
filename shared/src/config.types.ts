@@ -562,6 +562,7 @@ export interface CronConfig {
     sessionCleanup: CronJobSchedule
     /** @deprecated LiteLLM handles budgets; kept optional for existing DB rows */
     agentReset?: CronJobSchedule
+    applicationTracker?: CronJobSchedule
   }
 }
 

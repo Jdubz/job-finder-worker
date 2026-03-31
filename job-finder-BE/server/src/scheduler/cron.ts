@@ -10,8 +10,9 @@ import { ConfigRepository } from '../modules/config/config.repository'
 import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig } from '@shared/types'
 import { MaintenanceService } from '../modules/maintenance'
 import { UserRepository } from '../modules/users/user.repository'
+import { ApplicationTrackerService } from '../modules/gmail/application-tracker.service'
 
-type CronJobKey = keyof CronConfig['jobs'] & ('scrape' | 'maintenance' | 'logrotate' | 'sessionCleanup')
+type CronJobKey = keyof CronConfig['jobs'] & ('scrape' | 'maintenance' | 'logrotate' | 'sessionCleanup' | 'applicationTracker')
 
 const DEFAULT_CRON_CONFIG: CronConfig = {
   jobs: {
@@ -53,6 +54,14 @@ const getUserRepo = (() => {
   return () => {
     if (!repo) repo = new UserRepository()
     return repo
+  }
+})()
+
+const getTrackerService = (() => {
+  let svc: ApplicationTrackerService | null = null
+  return () => {
+    if (!svc) svc = new ApplicationTrackerService()
+    return svc
   }
 })()
 
@@ -188,6 +197,18 @@ export async function triggerLogRotation() {
   }
 }
 
+export async function triggerApplicationTracker() {
+  try {
+    logger.info({ at: utcNowIso() }, 'Cron application tracker starting')
+    const results = await getTrackerService().scanAll()
+    logger.info({ results, at: utcNowIso() }, 'Cron application tracker completed')
+    return { success: true, results }
+  } catch (error) {
+    logger.error({ error, at: utcNowIso() }, 'Cron application tracker failed')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 export async function triggerSessionCleanup() {
   try {
     logger.info({ at: utcNowIso() }, 'Cron session cleanup starting')
@@ -206,7 +227,8 @@ const lastRunHourKey: Record<CronJobKey, string | null> = {
   scrape: null,
   maintenance: null,
   logrotate: null,
-  sessionCleanup: null
+  sessionCleanup: null,
+  applicationTracker: null
 }
 
 function getContainerTimezone(): string {
@@ -222,18 +244,27 @@ function loadCronConfig(): CronConfig {
   const entry = getConfigRepo().get<CronConfig>('cron-config')
   const payload = entry?.payload as Record<string, any> | undefined
 
-  // Normalize legacy rows that may lack sessionCleanup before the type guard
+  // Normalize legacy rows that may lack newer job keys
   if (payload?.jobs && !payload.jobs.sessionCleanup) {
     payload.jobs.sessionCleanup = { ...DEFAULT_CRON_CONFIG.jobs.sessionCleanup }
   }
+  if (payload?.jobs && !payload.jobs.applicationTracker) {
+    payload.jobs.applicationTracker = { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
+  }
 
   if (payload && isCronConfig(payload)) {
+    const defaultAppTracker = { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
+    const rawAppTracker = payload.jobs.applicationTracker
+    const appTracker = rawAppTracker && Array.isArray(rawAppTracker.hours)
+      ? rawAppTracker
+      : defaultAppTracker
     return {
       jobs: {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
         maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
         logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) },
-        sessionCleanup: { ...payload.jobs.sessionCleanup, hours: normalizeHours(payload.jobs.sessionCleanup.hours) }
+        sessionCleanup: { ...payload.jobs.sessionCleanup, hours: normalizeHours(payload.jobs.sessionCleanup.hours) },
+        applicationTracker: { ...appTracker, hours: normalizeHours(appTracker.hours) }
       }
     }
   }
@@ -271,7 +302,8 @@ async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
     scrape: enqueueScrapeJob,
     maintenance: triggerMaintenance,
     logrotate: rotateLogs,
-    sessionCleanup: triggerSessionCleanup
+    sessionCleanup: triggerSessionCleanup,
+    applicationTracker: triggerApplicationTracker
   })
 }
 
@@ -285,7 +317,7 @@ async function maybeRunJobWithState(
   actions: JobActions
 ) {
   const schedule = config.jobs[jobKey]
-  if (!schedule.enabled) return false
+  if (!schedule || !schedule.enabled) return false
 
   const currentHour = now.getHours()
   const hourKey = buildHourKey(now)
@@ -295,7 +327,7 @@ async function maybeRunJobWithState(
   await actions[jobKey]()
 
   const iso = now.toISOString()
-  config.jobs[jobKey].lastRun = iso
+  config.jobs[jobKey]!.lastRun = iso
   state[jobKey] = hourKey
   return true
 }
@@ -306,7 +338,7 @@ async function schedulerTick() {
 
   // Prevent double-runs when service restarts within the same hour by priming lastRun map
   for (const key of Object.keys(config.jobs) as CronJobKey[]) {
-    const priorHourKey = hourKeyFromIso(config.jobs[key].lastRun)
+    const priorHourKey = hourKeyFromIso(config.jobs[key]?.lastRun)
     const currentHourKey = buildHourKey(now)
     if (priorHourKey === currentHourKey) {
       lastRunHourKey[key] = priorHourKey

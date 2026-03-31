@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ExternalLink, FileText, Download, CheckCircle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { JobMatchWithListing } from "@shared/types"
+import type { JobMatchWithListing, JobMatchStatus } from "@shared/types"
 import {
   generatorClient,
   type GeneratorRequestRecord,
@@ -50,15 +50,18 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   const companyInfo = localMatch.company?.about || localMatch.company?.culture || localMatch.company?.mission
 
-  const handleStatusChange = async (status: "active" | "ignored" | "applied") => {
+  const handleStatusChange = async (status: JobMatchStatus) => {
     if (!localMatch.id) return
     try {
       const updated = await jobMatchesClient.updateStatus(localMatch.id, status)
       setLocalMatch(updated)
       handlers?.onStatusChange?.(updated)
-      const messages: Record<typeof status, string> = {
+      const messages: Record<JobMatchStatus, string> = {
         active: "Match marked active",
         applied: "Marked as applied",
+        acknowledged: "Marked as acknowledged",
+        interviewing: "Marked as interviewing",
+        denied: "Marked as denied",
         ignored: "Match ignored",
       }
       toast.success({ title: messages[status] })
@@ -292,18 +295,19 @@ export function JobMatchModalContent({ match, handlers }: JobMatchModalContentPr
           {typeof localMatch.matchScore === "number" && (
             <Badge variant="outline">Score: {localMatch.matchScore}%</Badge>
           )}
-          {localMatch.status === "ignored" && <Badge variant="destructive">Ignored</Badge>}
-          {localMatch.status === "applied" && <Badge variant="secondary">Applied</Badge>}
           <Select
             value={localMatch.status ?? "active"}
-            onValueChange={(value) => handleStatusChange(value as "active" | "ignored" | "applied")}
+            onValueChange={(v) => handleStatusChange(v as JobMatchStatus)}
           >
-            <SelectTrigger className="w-[140px]" aria-label="Match status">
+            <SelectTrigger className="w-[160px]" aria-label="Match status">
               <SelectValue placeholder="Set status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="applied">Applied</SelectItem>
+              <SelectItem value="acknowledged">Acknowledged</SelectItem>
+              <SelectItem value="interviewing">Interviewing</SelectItem>
+              <SelectItem value="denied">Denied</SelectItem>
               <SelectItem value="ignored">Ignored</SelectItem>
             </SelectContent>
           </Select>

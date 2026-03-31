@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobMatch, JobMatchWithListing, JobListingRecord, JobListingStatus, Company, TimestampLike, JobMatchStats } from '@shared/types'
+import type { JobMatch, JobMatchWithListing, JobListingRecord, JobListingStatus, Company, TimestampLike, JobMatchStats, JobMatchStatus } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 import { JobListingRepository } from '../job-listings/job-listing.repository'
 import { CompanyRepository } from '../companies/company.repository'
@@ -24,6 +24,14 @@ type JobMatchRow = {
   updated_at: string
   status: string
   ignored_at: string | null
+  applied_at: string | null
+  status_updated_by: string | null
+  status_note: string | null
+  is_ghost: number
+  ghost_company: string | null
+  ghost_title: string | null
+  ghost_url: string | null
+  ghost_notes: string | null
 }
 
 const parseTimestamp = (value: string | null): Date => {
@@ -59,8 +67,16 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   updatedAt: parseTimestamp(row.updated_at),
   submittedBy: row.submitted_by,
   queueItemId: row.queue_item_id,
-  status: (row.status as JobMatch['status']) ?? 'active',
-  ignoredAt: row.ignored_at ? parseTimestamp(row.ignored_at) : undefined
+  status: (row.status as JobMatchStatus) ?? 'active',
+  ignoredAt: row.ignored_at ? parseTimestamp(row.ignored_at) : undefined,
+  appliedAt: row.applied_at ? parseTimestamp(row.applied_at) : undefined,
+  statusUpdatedBy: row.status_updated_by as "user" | "email_tracker" | null,
+  statusNote: row.status_note,
+  isGhost: Boolean(row.is_ghost),
+  ghostCompany: row.ghost_company,
+  ghostTitle: row.ghost_title,
+  ghostUrl: row.ghost_url,
+  ghostNotes: row.ghost_notes
 })
 
 /** Raw row shape returned by the JOIN query in listWithListings */
@@ -178,7 +194,7 @@ interface JobMatchListOptions {
   jobListingId?: string
   sortBy?: 'score' | 'date' | 'updated'
   sortOrder?: 'asc' | 'desc'
-  status?: 'active' | 'ignored' | 'applied' | 'all'
+  status?: JobMatchStatus | 'all'
   search?: string
 }
 
@@ -283,9 +299,9 @@ export class JobMatchRepository {
       params.push(status)
     }
     if (search) {
-      conditions.push('(LOWER(l.title) LIKE ? OR LOWER(l.company_name) LIKE ?)')
+      conditions.push('(LOWER(l.title) LIKE ? OR LOWER(l.company_name) LIKE ? OR LOWER(m.ghost_title) LIKE ? OR LOWER(m.ghost_company) LIKE ?)')
       const pattern = `%${search.toLowerCase()}%`
-      params.push(pattern, pattern)
+      params.push(pattern, pattern, pattern, pattern)
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -331,7 +347,7 @@ export class JobMatchRepository {
         c.created_at  AS c_created_at,
         c.updated_at  AS c_updated_at
       FROM job_matches m
-      INNER JOIN job_listings l ON l.id = m.job_listing_id
+      LEFT JOIN job_listings l ON l.id = m.job_listing_id
       LEFT JOIN companies c ON c.id = l.company_id
       ${whereClause}
       ORDER BY ${orderColumn} ${orderDirection}
@@ -340,11 +356,36 @@ export class JobMatchRepository {
 
     const rows = this.db.prepare(sql).all(...params, limit, offset) as JoinedRow[]
 
-    return rows.map((row) => ({
-      ...buildJobMatch(row),
-      listing: buildListingFromRow(row),
-      company: buildCompanyFromRow(row)
-    }))
+    return rows.map((row) => {
+      const match = buildJobMatch(row)
+      if (match.isGhost || !row.l_id || row.l_id === '__ghost_listing__') {
+        const ghostListing: JobListingRecord = {
+          id: '__ghost_listing__',
+          url: match.ghostUrl ?? '',
+          sourceId: null,
+          companyId: null,
+          title: match.ghostTitle ?? 'Unknown Position',
+          companyName: match.ghostCompany ?? 'Unknown Company',
+          location: null,
+          salaryRange: null,
+          description: match.ghostNotes ?? '',
+          postedDate: null,
+          status: 'matched' as JobListingStatus,
+          filterResult: null,
+          matchScore: null,
+          applyUrl: match.ghostUrl ?? null,
+          contentFingerprint: null,
+          createdAt: match.createdAt,
+          updatedAt: match.updatedAt
+        }
+        return { ...match, listing: ghostListing, company: null }
+      }
+      return {
+        ...match,
+        listing: buildListingFromRow(row),
+        company: buildCompanyFromRow(row)
+      }
+    })
   }
 
   getById(id: string): JobMatch | null {
@@ -356,10 +397,33 @@ export class JobMatchRepository {
     const match = this.getById(id)
     if (!match) return null
 
+    // Ghost matches reference the sentinel listing — return a synthetic listing from ghost fields
+    if (match.isGhost) {
+      const ghostListing: JobListingRecord = {
+        id: '__ghost_listing__',
+        url: match.ghostUrl ?? '',
+        sourceId: null,
+        companyId: null,
+        title: match.ghostTitle ?? 'Unknown Position',
+        companyName: match.ghostCompany ?? 'Unknown Company',
+        location: null,
+        salaryRange: null,
+        description: match.ghostNotes ?? '',
+        postedDate: null,
+        status: 'matched' as JobListingStatus,
+        filterResult: null,
+        matchScore: null,
+        applyUrl: match.ghostUrl ?? null,
+        contentFingerprint: null,
+        createdAt: match.createdAt,
+        updatedAt: match.updatedAt
+      }
+      return { ...match, listing: ghostListing, company: null }
+    }
+
     const listing = this.listingRepo.getById(match.jobListingId)
     if (!listing) return null
 
-    // Fetch company data if companyId exists on the listing
     const company = listing.companyId ? this.companyRepo.getById(listing.companyId) : null
 
     return { ...match, listing, company }
@@ -433,34 +497,38 @@ export class JobMatchRepository {
     this.db.prepare('DELETE FROM job_matches WHERE id = ?').run(id)
   }
 
-  updateStatus(id: string, status: 'active' | 'ignored' | 'applied'): JobMatchWithListing | null {
-    // First check if the match exists before attempting update
+  updateStatus(
+    id: string,
+    status: JobMatchStatus,
+    options?: { updatedBy?: 'user' | 'email_tracker'; note?: string | null }
+  ): JobMatchWithListing | null {
     const existingMatch = this.getById(id)
     if (!existingMatch) {
       return null
     }
 
     const now = new Date().toISOString()
+    const updatedBy = options?.updatedBy ?? 'user'
+    const note = options?.note !== undefined ? options.note : existingMatch.statusNote ?? null
     const result = this.db
       .prepare(
         `UPDATE job_matches
          SET status = @status,
-             ignored_at = CASE WHEN @status = 'ignored' THEN @now ELSE NULL END,
+             ignored_at = CASE WHEN @status = 'ignored' THEN @now ELSE ignored_at END,
+             applied_at = CASE WHEN @status = 'applied' AND applied_at IS NULL THEN @now ELSE applied_at END,
+             status_updated_by = @updatedBy,
+             status_note = @note,
              updated_at = @now
          WHERE id = @id`
       )
-      .run({ status, now, id })
+      .run({ status, now, id, updatedBy, note })
 
-    // Verify the update succeeded
     if (result.changes === 0) {
       return null
     }
 
-    // Try to get the updated match with listing
     const matchWithListing = this.getByIdWithListing(id)
 
-    // If listing is missing, this is a data integrity issue
-    // The status was updated, but we can't return the full data
     if (!matchWithListing) {
       console.error(
         `Data integrity error: Job match ${id} was updated but associated listing is missing. ` +
@@ -470,6 +538,46 @@ export class JobMatchRepository {
     }
 
     return matchWithListing
+  }
+
+  createGhost(data: {
+    company: string
+    title: string
+    url?: string
+    notes?: string
+    submittedBy?: string
+  }): JobMatchWithListing | null {
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    // Ghost matches reference the sentinel __ghost_listing__ row to satisfy FK constraint
+    this.db.prepare(`
+      INSERT INTO job_matches (
+        id, job_listing_id, match_score, matched_skills, missing_skills,
+        match_reasons, key_strengths, potential_concerns, experience_match,
+        customization_recommendations, resume_intake_json,
+        analyzed_at, submitted_by, queue_item_id, created_at, updated_at,
+        status, applied_at, status_updated_by,
+        is_ghost, ghost_company, ghost_title, ghost_url, ghost_notes
+      ) VALUES (
+        @id, @listingId, 0, '[]', '[]',
+        '[]', '[]', '[]', 0,
+        '[]', NULL,
+        @now, @submittedBy, @id, @now, @now,
+        'applied', @now, 'user',
+        1, @company, @title, @url, @notes
+      )
+    `).run({
+      id,
+      listingId: '__ghost_listing__',
+      now,
+      submittedBy: data.submittedBy ?? null,
+      company: data.company,
+      title: data.title,
+      url: data.url ?? null,
+      notes: data.notes ?? null
+    })
+
+    return this.getByIdWithListing(id)
   }
 
   /**

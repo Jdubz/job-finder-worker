@@ -16,6 +16,13 @@ const STATUS_MAP: Record<string, StatusTone> = {
   processing: "info",
   pending: "info",
   discovery: "info",
+  acknowledged: "info",
+
+  interviewing: "success",
+  applied: "info",
+  denied: "danger",
+
+  ignored: "muted",
 
   error: "danger",
   failed: "danger",

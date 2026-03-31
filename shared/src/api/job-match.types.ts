@@ -1,4 +1,4 @@
-import type { JobMatch, JobMatchWithListing, JobMatchStats } from "../job.types"
+import type { JobMatch, JobMatchWithListing, JobMatchStats, JobMatchStatus } from "../job.types"
 import type { PaginationParams } from "../api.types"
 
 export interface ListJobMatchesRequest extends PaginationParams {
@@ -7,7 +7,7 @@ export interface ListJobMatchesRequest extends PaginationParams {
   jobListingId?: string
   sortBy?: "score" | "date" | "updated"
   sortOrder?: "asc" | "desc"
-  status?: "active" | "ignored" | "applied" | "all"
+  status?: JobMatchStatus | "all"
 }
 
 export interface ListJobMatchesResponse {
