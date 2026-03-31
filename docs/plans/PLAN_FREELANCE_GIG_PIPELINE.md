@@ -140,7 +140,7 @@ CREATE TABLE gig_sources (
   user_id             TEXT NOT NULL,
   platform_id         TEXT REFERENCES gig_platform_catalog(id) ON DELETE SET NULL,
   name                TEXT NOT NULL,
-  source_type         TEXT NOT NULL,          -- 'api' | 'rss' | 'html'
+  source_type         TEXT NOT NULL CHECK (source_type IN ('api', 'rss', 'html')),
   status              TEXT NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active', 'paused', 'disabled', 'error')),
   config_json         TEXT NOT NULL,
@@ -169,12 +169,12 @@ CREATE TABLE gig_listings (
   location            TEXT,
   posted_date         TEXT,
   rate_min            REAL,
-  rate_max            REAL,
+  rate_max            REAL CHECK (rate_max >= rate_min),
   rate_type           TEXT CHECK (rate_type IN ('hourly', 'fixed', 'monthly', 'annual')),
   rate_currency       TEXT DEFAULT 'USD',
   duration            TEXT,
   engagement_type     TEXT CHECK (engagement_type IN ('project', 'hourly', 'retainer', 'contract', 'part_time')),
-  hours_per_week      INTEGER,
+  hours_per_week      INTEGER CHECK (hours_per_week >= 0 AND hours_per_week <= 168),
   skills_required     TEXT,                   -- JSON array
   skills_preferred    TEXT,                   -- JSON array
   experience_level    TEXT,
@@ -209,7 +209,7 @@ CREATE TABLE gig_matches (
   status              TEXT NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active', 'interested', 'applied', 'interviewing', 'won', 'lost', 'ignored')),
   status_changed_at   TEXT,
-  queue_item_id       TEXT,
+  queue_item_id       TEXT REFERENCES job_queue(id) ON DELETE SET NULL,
   analyzed_at         TEXT NOT NULL DEFAULT (datetime('now')),
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
@@ -231,7 +231,7 @@ New utility: `job-finder-BE/server/src/utils/encryption.ts`
 - Master key from env var `CREDENTIAL_ENCRYPTION_KEY` (32 bytes, hex-encoded)
 - Random 12-byte IV per operation
 - Auth tag stored alongside ciphertext for integrity verification
-- Decrypted credentials never leave the server via API; only used internally by worker credential injection
+- Decrypted credentials never leave the server via public API; only used internally by worker credential injection via a secured internal endpoint
 
 ```typescript
 export function encrypt(plaintext: string): { encryptedData: Buffer; iv: Buffer; authTag: Buffer }
@@ -291,7 +291,7 @@ All new modules in `job-finder-BE/server/src/modules/`:
 
 Each module follows the existing pattern: `repository.ts` + `routes.ts` (+ `service.ts` where needed).
 
-**Credential security boundary:** The worker accesses decrypted credentials via an internal endpoint `POST /api/gig-credentials/internal/:id/decrypt` protected by `verifyWorkerToken()` middleware. The public API never returns decrypted credential data.
+**Credential security boundary:** The worker accesses decrypted credentials via an internal endpoint `POST /api/gig-credentials/internal/:id/decrypt` protected by `verifyWorkerToken()` middleware, which enforces a worker Bearer token when `WORKER_WS_TOKEN` is configured (and must be set in production). The public API never returns decrypted credential data.
 
 ---
 
@@ -396,7 +396,7 @@ Add "Freelance" section to sidebar with links to all gig pages.
 
 1. **Encryption round-trip**: encrypt → store → decrypt produces original plaintext; tampered ciphertext throws
 2. **User isolation**: User A's gig data invisible to User B (repository-level WHERE user_id = ?)
-3. **Credential security**: API responses never contain `encrypted_data`; worker internal endpoint requires `WORKER_WS_TOKEN`
+3. **Credential security**: API responses never contain `encrypted_data`; worker internal endpoint validates `WORKER_WS_TOKEN` when configured (and `WORKER_WS_TOKEN` must be set in production)
 4. **Scrape pipeline**: Submit gig source → trigger gig_scrape → gig_listings created → GigProcessor → gig_matches saved
 5. **Onboarding flow**: Browse platforms → track → vet → add credentials → auto-create source → scrape gigs
 6. **Queue dispatch**: New `gig` and `gig_scrape` item types correctly routed to `GigProcessor`
