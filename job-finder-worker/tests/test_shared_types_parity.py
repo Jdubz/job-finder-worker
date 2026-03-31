@@ -173,6 +173,16 @@ def test_job_match_fields_cover_shared_contract():
         "submitted_by",
         "status",
         "ignored_at",
+        # Extended status model (set by backend/email tracker, not worker)
+        "applied_at",
+        "status_updated_by",
+        "status_note",
+        # Ghost match fields (manual applications, not worker-generated)
+        "is_ghost",
+        "ghost_company",
+        "ghost_title",
+        "ghost_url",
+        "ghost_notes",
     }
 
     worker_match_fields.update(JobMatchResult.model_fields.keys())
