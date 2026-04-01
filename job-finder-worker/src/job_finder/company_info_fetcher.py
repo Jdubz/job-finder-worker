@@ -1152,20 +1152,21 @@ Be factual. Return ONLY valid JSON."""
             return ""
 
     def _domain_matches_company(self, domain: str, company_lower: str) -> bool:
-        """Heuristic: does domain contain a token from the company name?"""
+        """Heuristic: does domain contain a token from the company name?
+
+        Uses get_root_domain (tldextract-aware) so subdomains and multi-part
+        TLDs (co.uk, com.au) are handled correctly.
+        """
         if not domain or not company_lower:
             return False
-        # Strip port and common subdomains, then extract SLD
+        from job_finder.storage.companies_manager import _extract_sld
+
         hostname = domain.split(":")[0].lower()
-        for prefix in ("www.", "careers.", "jobs.", "mail.", "email."):
-            if hostname.startswith(prefix):
-                hostname = hostname[len(prefix) :]
-                break
-        parts = hostname.split(".")
-        # SLD is the second-to-last label (e.g., "stripe" from "stripe.com")
-        root = parts[-2] if len(parts) >= 2 else parts[0]
+        sld = _extract_sld(hostname)
+        if not sld:
+            return False
         tokens = [t for t in re.findall(r"[a-z0-9]+", company_lower) if len(t) >= 3]
-        return any(tok in root for tok in tokens)
+        return any(tok in sld or sld in tok for tok in tokens)
 
     def _homepage_mentions_brand(self, url: str, company_name: str, timeout: int = 5) -> bool:
         """

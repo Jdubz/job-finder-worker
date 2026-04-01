@@ -15,22 +15,51 @@ from job_finder.utils.company_name_utils import (
     clean_company_name,
     normalize_company_name,
 )
+from job_finder.utils.url_utils import get_root_domain
 
 logger = logging.getLogger(__name__)
+
+
+_MULTI_PART_TLDS = frozenset(
+    ["co.uk", "com.au", "co.jp", "co.nz", "com.br", "co.in", "org.uk", "co.za"]
+)
+
+
+def _extract_sld(domain: str) -> str:
+    """Extract the second-level domain label, handling multi-part TLDs.
+
+    Uses get_root_domain (tldextract-aware) when available. Falls back to
+    a hardcoded MULTI_PART_TLDS list to handle co.uk / com.au correctly
+    even when tldextract is not installed.
+    """
+    root = get_root_domain(domain)
+    # If get_root_domain returned a multi-part TLD as the root (no tldextract),
+    # fall back to manual extraction from the original domain.
+    if root in _MULTI_PART_TLDS or not root:
+        lower = domain.lower()
+        for tld in _MULTI_PART_TLDS:
+            if lower.endswith(f".{tld}"):
+                without_tld = lower[: -(len(tld) + 1)]
+                parts = without_tld.split(".")
+                return parts[-1]
+        # Not a known multi-part TLD; use get_root_domain result
+        return root.split(".")[0] if root else ""
+    return root.split(".")[0]
 
 
 def _domain_matches_company_name(domain: str, company_name: str) -> bool:
     """Check that a domain plausibly belongs to the company.
 
-    Extracts the second-level domain (SLD) and checks if any significant
-    token (3+ chars) from the company name appears in it, or vice versa.
+    Uses get_root_domain (tldextract-aware) to extract the registrable
+    domain, then checks if any significant company name token (3+ chars)
+    appears in the SLD, or vice versa.
+
+    Handles subdomains (careers.acme.com) and multi-part TLDs (acme.co.uk).
     """
     if not domain or not company_name:
         return True  # can't validate — let it through
 
-    # Extract SLD: "www.stripe.com" → "stripe"
-    parts = domain.lower().replace("www.", "").split(".")
-    sld = parts[0] if parts else ""
+    sld = _extract_sld(domain)
     if not sld or len(sld) < 3:
         return True  # too short to validate
 
