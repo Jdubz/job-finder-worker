@@ -7,6 +7,7 @@ export interface MaintenanceResult {
   archivedQueueItems: number
   archivedListings: number
   prunedCacheEntries: number
+  linkedOrphanListings: number
   error?: string
 }
 
@@ -38,11 +39,18 @@ export class MaintenanceService {
       const prunedCacheEntries = this.cacheRepo.pruneOlderThan(CACHE_PRUNE_DAYS)
       logger.info({ count: prunedCacheEntries, days: CACHE_PRUNE_DAYS }, 'Pruned old document cache entries')
 
+      // 4. Link orphan job listings to existing company records
+      const linkedOrphanListings = this.repo.linkOrphanListings()
+      if (linkedOrphanListings > 0) {
+        logger.info({ count: linkedOrphanListings }, 'Linked orphan job listings to company records')
+      }
+
       logger.info(
         {
           archivedQueueItems,
           archivedListings,
-          prunedCacheEntries
+          prunedCacheEntries,
+          linkedOrphanListings
         },
         'Maintenance cycle completed'
       )
@@ -51,7 +59,8 @@ export class MaintenanceService {
         success: true,
         archivedQueueItems,
         archivedListings,
-        prunedCacheEntries
+        prunedCacheEntries,
+        linkedOrphanListings
       }
     } catch (error) {
       logger.error({ error }, 'Maintenance cycle failed')
@@ -60,6 +69,7 @@ export class MaintenanceService {
         archivedQueueItems: 0,
         archivedListings: 0,
         prunedCacheEntries: 0,
+        linkedOrphanListings: 0,
         error: error instanceof Error ? error.message : String(error)
       }
     }

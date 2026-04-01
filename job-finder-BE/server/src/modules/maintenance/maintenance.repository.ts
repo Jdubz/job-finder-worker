@@ -101,6 +101,22 @@ export class MaintenanceRepository {
   }
 
   /**
+   * Repair orphan job_listings that have a company_name but no company_id,
+   * where a matching company record exists.
+   */
+  linkOrphanListings(): number {
+    const result = this.db.prepare(`
+      UPDATE job_listings SET company_id = (
+        SELECT c.id FROM companies c WHERE lower(c.name) = lower(job_listings.company_name) LIMIT 1
+      ), updated_at = datetime('now')
+      WHERE (company_id IS NULL OR company_id = '')
+        AND company_name IS NOT NULL AND company_name != ''
+        AND EXISTS (SELECT 1 FROM companies c WHERE lower(c.name) = lower(job_listings.company_name))
+    `).run()
+    return result.changes
+  }
+
+  /**
    * Get maintenance statistics.
    */
   getStats(): MaintenanceStats {

@@ -47,6 +47,35 @@ function extractDomainFromUrl(url: string | undefined | null): string | undefine
 }
 
 /**
+ * Sanity-check that a company domain plausibly belongs to the company.
+ * Returns the domain if it passes, undefined if the website is likely wrong
+ * (e.g., AI enrichment stored a parent company, investor, or random entity).
+ *
+ *   ("stripe.com", "Stripe")         → "stripe.com"   ✓
+ *   ("mckinsey.com", "Alkami")       → undefined       ✗
+ *   ("meta.com", "Kustomer")         → undefined       ✗
+ *   ("forhims.com", "Hims & Hers")  → "forhims.com"  ✓ (brand matches "hims")
+ */
+function validateDomainForCompany(domain: string | undefined, companyName: string): string | undefined {
+  if (!domain || !companyName) return domain
+
+  const normalizedCompany = normalizeCompanyName(companyName)
+  if (normalizedCompany.length < 3) return domain // too short to validate
+
+  // Extract the brand portion of the domain (SLD without TLD)
+  const brand = extractBrandFromDomain(domain)
+  if (!brand || brand.length < 3) return domain
+
+  // Check: does the domain brand overlap with the company name?
+  // Either the brand contains a company name token, or a company name token contains the brand
+  const companyTokens = normalizedCompany.split(/\s+/).filter((t) => t.length >= 3)
+  const domainMatchesCompany =
+    companyTokens.some((token) => brand.includes(token) || token.includes(brand))
+
+  return domainMatchesCompany ? domain : undefined
+}
+
+/**
  * Normalize a company name for fuzzy matching:
  * lowercase, strip common suffixes (Inc, LLC, Corp, Ltd, etc.), trim
  */
@@ -152,7 +181,10 @@ export function matchEmailToApplications(
       ? match.ghostTitle ?? ""
       : match.listing.title
 
-    const companyDomain = extractDomainFromUrl(companyWebsite)
+    const rawDomain = extractDomainFromUrl(companyWebsite)
+    // Validate that the stored website actually belongs to this company.
+    // AI enrichment sometimes stores parent companies, investors, or unrelated domains.
+    const companyDomain = validateDomainForCompany(rawDomain, companyName)
 
     // Signal 1: Company domain match (+40)
     if (email.senderDomain && companyDomain) {
