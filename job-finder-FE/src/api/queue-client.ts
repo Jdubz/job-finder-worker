@@ -181,7 +181,11 @@ export class QueueClient extends BaseApiClient {
   }
 
   async triggerCronApplicationTracker(): Promise<CronTriggerResult> {
-    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(`/queue/cron/trigger/application-tracker`)
+    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(
+      `/queue/cron/trigger/application-tracker`,
+      undefined,
+      { timeout: 5 * 60 * 1000 }
+    )
     return response.data
   }
 

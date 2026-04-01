@@ -45,11 +45,12 @@ export function PersonalInfoTab({
   const [gmailSuccess, setGmailSuccess] = useState<string | null>(null)
 
   const fetchGmailAccounts = useCallback(async () => {
+    setGmailError(null)
     try {
       const data = await gmailClient.listAccounts()
       setGmailAccounts(data)
-    } catch {
-      // Silently fail — Gmail may not be configured
+    } catch (err) {
+      setGmailError(err instanceof Error ? err.message : "Failed to load Gmail accounts")
     } finally {
       setGmailLoading(false)
     }
@@ -464,23 +465,46 @@ export function PersonalInfoTab({
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              onClick={() => connectGmail()}
-              disabled={gmailConnecting || gmailLoading}
-            >
-              {gmailConnecting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Connecting…
-                </>
-              ) : (
-                <>
-                  <Mail className="h-4 w-4 mr-2" />
-                  Connect Gmail
-                </>
+            <div className="flex items-center gap-2">
+              {gmailAccounts.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGmailScan}
+                  disabled={gmailScanning}
+                  aria-label="Scan all Gmail accounts for application emails"
+                >
+                  {gmailScanning ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Scanning…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Scan
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+              <Button
+                size="sm"
+                onClick={() => connectGmail()}
+                disabled={gmailConnecting || gmailLoading}
+              >
+                {gmailConnecting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Connecting…
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Connect Gmail
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           {gmailError && (
@@ -523,32 +547,19 @@ export function PersonalInfoTab({
                       Updated {new Date(account.updatedAt).toLocaleString()}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGmailScan}
-                      disabled={gmailScanning}
-                    >
-                      {gmailScanning ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleGmailRevoke(account.gmailEmail)}
-                      disabled={gmailRevoking === account.gmailEmail}
-                    >
-                      {gmailRevoking === account.gmailEmail ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      )}
-                    </Button>
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleGmailRevoke(account.gmailEmail)}
+                    disabled={gmailRevoking === account.gmailEmail}
+                    aria-label={`Disconnect ${account.gmailEmail}`}
+                  >
+                    {gmailRevoking === account.gmailEmail ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    )}
+                  </Button>
                 </div>
               ))}
             </div>

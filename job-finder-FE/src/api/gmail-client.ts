@@ -34,31 +34,30 @@ export class GmailClient extends BaseApiClient {
     const response = await this.post<
       ApiSuccessResponse<{ stored: boolean; gmailEmail: string; userEmail: string; scopes?: string[] }>
     >("/gmail/oauth/exchange", params)
-    return "data" in response ? response.data : response
+    return response.data
   }
 
   async listAccounts(): Promise<GmailAccountInfo[]> {
     const response = await this.get<ApiSuccessResponse<{ accounts: GmailAccountInfo[] }>>(
       "/gmail/accounts"
     )
-    const payload = "data" in response ? response.data : (response as { accounts: GmailAccountInfo[] })
-    return payload.accounts ?? []
+    return response.data.accounts ?? []
   }
 
   async revokeAccount(gmailEmail: string) {
     const response = await this.post<ApiSuccessResponse<{ revoked: boolean; gmailEmail: string }>>(
       `/gmail/accounts/${encodeURIComponent(gmailEmail)}/revoke`
     )
-    return "data" in response ? response.data : response
+    return response.data
   }
 
   async triggerScan(): Promise<TrackerScanResult[]> {
     const response = await this.post<ApiSuccessResponse<{ results: TrackerScanResult[] }>>(
       "/gmail/tracker/scan",
-      {}
+      {},
+      { timeout: 5 * 60 * 1000 }
     )
-    const payload = "data" in response ? response.data : (response as { results: TrackerScanResult[] })
-    return payload.results ?? []
+    return response.data.results ?? []
   }
 
   async listEmails(options?: { limit?: number; offset?: number }): Promise<ApplicationEmail[]> {
@@ -69,16 +68,14 @@ export class GmailClient extends BaseApiClient {
     const response = await this.get<ApiSuccessResponse<{ emails: ApplicationEmail[] }>>(
       `/gmail/tracker/emails${qs ? `?${qs}` : ""}`
     )
-    const payload = "data" in response ? response.data : (response as { emails: ApplicationEmail[] })
-    return payload.emails ?? []
+    return response.data.emails ?? []
   }
 
   async listUnlinkedEmails(): Promise<ApplicationEmail[]> {
     const response = await this.get<ApiSuccessResponse<{ emails: ApplicationEmail[] }>>(
       "/gmail/tracker/emails/unlinked"
     )
-    const payload = "data" in response ? response.data : (response as { emails: ApplicationEmail[] })
-    return payload.emails ?? []
+    return response.data.emails ?? []
   }
 
   async linkEmail(emailId: string, matchId: string): Promise<ApplicationEmail> {
@@ -86,16 +83,14 @@ export class GmailClient extends BaseApiClient {
       `/gmail/tracker/emails/${emailId}/link`,
       { matchId }
     )
-    const payload = "data" in response ? response.data : (response as { email: ApplicationEmail })
-    return payload.email
+    return response.data.email
   }
 
   async unlinkEmail(emailId: string): Promise<ApplicationEmail> {
     const response = await this.post<ApiSuccessResponse<{ email: ApplicationEmail }>>(
       `/gmail/tracker/emails/${emailId}/unlink`
     )
-    const payload = "data" in response ? response.data : (response as { email: ApplicationEmail })
-    return payload.email
+    return response.data.email
   }
 }
 

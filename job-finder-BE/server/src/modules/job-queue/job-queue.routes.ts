@@ -460,12 +460,10 @@ export function buildJobQueueRouter() {
     '/cron/trigger/application-tracker',
     requireRole('admin'),
     asyncHandler(async (_req, res) => {
-      const result = await triggerApplicationTracker()
-      if (result.success) {
-        res.json(success(result))
-      } else {
-        res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
-      }
+      // Fire-and-forget: Gmail scan is network-bound and can be slow.
+      // Return 202 immediately; errors are logged inside triggerApplicationTracker.
+      void triggerApplicationTracker()
+      res.status(202).json(success({ message: 'Application tracker triggered' }))
     })
   )
 
