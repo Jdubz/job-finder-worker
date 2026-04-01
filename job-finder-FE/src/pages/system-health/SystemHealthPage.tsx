@@ -97,6 +97,7 @@ export function SystemHealthPage() {
               maintenance: formatHoursInput(derivedConfig.jobs.maintenance.hours),
               logrotate: formatHoursInput(derivedConfig.jobs.logrotate.hours),
               sessionCleanup: formatHoursInput(derivedConfig.jobs.sessionCleanup.hours),
+              applicationTracker: formatHoursInput(derivedConfig.jobs.applicationTracker?.hours ?? [2, 8, 14, 20]),
             }
           : {}
       )
@@ -126,6 +127,7 @@ export function SystemHealthPage() {
       if (type === "scrape") result = await queueClient.triggerCronScrape()
       else if (type === "maintenance") result = await queueClient.triggerCronMaintenance()
       else if (type === "sessionCleanup") result = await queueClient.triggerCronSessionCleanup()
+      else if (type === "applicationTracker") result = await queueClient.triggerCronApplicationTracker()
       else result = await queueClient.triggerCronLogrotate()
 
       if (result.success) {

@@ -34,7 +34,8 @@ import {
   getWorkerHealth,
   getWorkerCliHealth,
   triggerLogRotation,
-  triggerSessionCleanup
+  triggerSessionCleanup,
+  triggerApplicationTracker
 } from '../../scheduler/cron'
 import { getLocalCliHealth, getLitellmModelHealth } from '../../services/cli-health.service'
 
@@ -452,6 +453,17 @@ export function buildJobQueueRouter() {
       } else {
         res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
       }
+    })
+  )
+
+  router.post(
+    '/cron/trigger/application-tracker',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      // Fire-and-forget: Gmail scan is network-bound and can be slow.
+      // Return 202 immediately; errors are logged inside triggerApplicationTracker.
+      void triggerApplicationTracker()
+      res.status(202).json(success({ message: 'Application tracker triggered' }))
     })
   )
 

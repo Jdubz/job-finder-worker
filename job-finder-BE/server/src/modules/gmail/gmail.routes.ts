@@ -126,8 +126,9 @@ export function buildGmailRouter() {
 
   router.post(
     "/tracker/scan",
-    asyncHandler(async (_req, res) => {
-      const results = await tracker.scanAll()
+    asyncHandler(async (req, res) => {
+      const authed = (req as AuthenticatedRequest).user
+      const results = await tracker.scanAll(authed?.email)
       res.json(success({ results }))
     })
   )

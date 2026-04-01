@@ -71,8 +71,11 @@ export class ApplicationTrackerService {
   private readonly historyRepo = new StatusHistoryRepository()
   private readonly matchRepo = new JobMatchRepository()
 
-  async scanAll(): Promise<TrackerScanResult[]> {
-    const accounts = this.auth.listAccounts()
+  async scanAll(userEmail?: string): Promise<TrackerScanResult[]> {
+    let accounts = this.auth.listAccounts()
+    if (userEmail) {
+      accounts = accounts.filter((a) => a.userEmail.toLowerCase() === userEmail.toLowerCase())
+    }
     const results: TrackerScanResult[] = []
 
     for (const acct of accounts) {
