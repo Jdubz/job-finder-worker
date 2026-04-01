@@ -128,7 +128,12 @@ export function buildGmailRouter() {
     "/tracker/scan",
     asyncHandler(async (req, res) => {
       const authed = (req as AuthenticatedRequest).user
-      const results = await tracker.scanAll(authed?.email)
+      const scanSchema = z.object({
+        days: z.coerce.number().int().min(1).max(365).optional(),
+        maxMessages: z.coerce.number().int().min(1).max(2000).optional()
+      })
+      const opts = scanSchema.parse(req.body ?? {})
+      const results = await tracker.scanAll(authed?.email, opts)
       res.json(success({ results }))
     })
   )

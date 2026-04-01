@@ -78,6 +78,56 @@ function isAtsDomain(domain: string | undefined): boolean {
   return ATS_DOMAINS.some((ats) => lower.endsWith(ats))
 }
 
+/** Common email-sending subdomain prefixes */
+const EMAIL_PREFIXES = ["mail.", "email.", "no-reply.", "noreply.", "alerts.", "notifications.", "notify.", "updates."]
+
+/** Known two-part TLDs where the SLD is not the brand */
+const MULTI_PART_TLDS = ["co.uk", "com.au", "co.jp", "co.nz", "com.br", "co.in", "org.uk", "co.za"]
+
+/**
+ * Normalize sender domain for domain matching: strip email-sending prefixes
+ * and try to recover the root company domain.
+ *
+ *   mail.dropboxjobs.com → dropboxjobs.com
+ *   email.informeddelivery.usps.com → informeddelivery.usps.com
+ */
+function normalizeSenderDomain(domain: string): string {
+  const d = domain.toLowerCase()
+  const prefix = EMAIL_PREFIXES.find((p) => d.startsWith(p))
+  return prefix ? d.slice(prefix.length) : d
+}
+
+/**
+ * Extract the "brand" portion from a sender domain for fuzzy matching.
+ *
+ *   mail.dropboxjobs.com  → "dropbox"
+ *   stripe.com            → "stripe"
+ *   mongodb.com           → "mongodb"
+ *   nurture.icims.com     → "icims" (ATS — won't match companies, which is correct)
+ *   openloophealth.com    → "openloophealth"
+ *   company.co.uk         → "company"
+ */
+function extractBrandFromDomain(domain: string): string {
+  const d = normalizeSenderDomain(domain)
+
+  // Handle multi-part TLDs (e.g., company.co.uk → "company", not "co")
+  const multiTld = MULTI_PART_TLDS.find((tld) => d.endsWith(`.${tld}`))
+  let sld: string
+  if (multiTld) {
+    const withoutTld = d.slice(0, -(multiTld.length + 1))
+    const parts = withoutTld.split(".")
+    sld = parts[parts.length - 1]
+  } else {
+    const parts = d.split(".")
+    sld = parts.length >= 2 ? parts[parts.length - 2] : parts[0]
+  }
+
+  // Strip common suffixes from the SLD: "dropboxjobs" → "dropbox"
+  return sld
+    .replace(/(jobs|careers|recruiting|hiring|talent|mail|email)$/i, "")
+    .replace(/-$/, "") || sld
+}
+
 /**
  * Match an email against a list of active job applications.
  * Returns ranked match candidates with confidence scores.
@@ -106,7 +156,13 @@ export function matchEmailToApplications(
 
     // Signal 1: Company domain match (+40)
     if (email.senderDomain && companyDomain) {
-      if (email.senderDomain === companyDomain || email.senderDomain.endsWith(`.${companyDomain}`)) {
+      const normalizedSender = normalizeSenderDomain(email.senderDomain)
+      if (
+        email.senderDomain === companyDomain ||
+        email.senderDomain.endsWith(`.${companyDomain}`) ||
+        normalizedSender === companyDomain ||
+        normalizedSender.endsWith(`.${companyDomain}`)
+      ) {
         signals.companyDomainMatch = true
         score += 40
       }
@@ -144,7 +200,20 @@ export function matchEmailToApplications(
       }
     }
 
-    // Signal 4: Job title match (+20)
+    // Signal 4: Sender domain brand matches company name (+35)
+    // Fallback when company website/domain is missing — catches stripe.com→"Stripe", dropboxjobs.com→"Dropbox"
+    if (!signals.companyDomainMatch && !companyDomain && email.senderDomain && companyName && !isAtsDomain(email.senderDomain)) {
+      const normalizedCompany = normalizeCompanyName(companyName)
+      if (normalizedCompany.length >= 3) {
+        const brand = extractBrandFromDomain(email.senderDomain)
+        if (brand.length >= 3 && (brand.includes(normalizedCompany) || normalizedCompany.includes(brand))) {
+          signals.senderDomainNameMatch = true
+          score += 35
+        }
+      }
+    }
+
+    // Signal 5: Job title match (+20)
     if (jobTitle) {
       const normalizedJobTitle = normalizeTitle(jobTitle)
       if (normalizedJobTitle.length >= 5) {
@@ -156,7 +225,7 @@ export function matchEmailToApplications(
       }
     }
 
-    // Signal 5: Temporal proximity (+0-15)
+    // Signal 6: Temporal proximity (+0-15)
     const appliedAt = match.appliedAt ? new Date(String(match.appliedAt)) : new Date(String(match.updatedAt))
     const daysSinceApplied = (email.receivedAt.getTime() - appliedAt.getTime()) / (1000 * 60 * 60 * 24)
     if (daysSinceApplied >= 0 && daysSinceApplied < 1) {

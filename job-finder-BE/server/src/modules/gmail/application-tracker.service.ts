@@ -71,11 +71,13 @@ export class ApplicationTrackerService {
   private readonly historyRepo = new StatusHistoryRepository()
   private readonly matchRepo = new JobMatchRepository()
 
-  async scanAll(userEmail?: string): Promise<TrackerScanResult[]> {
+  async scanAll(userEmail?: string, options?: { days?: number; maxMessages?: number }): Promise<TrackerScanResult[]> {
     let accounts = this.auth.listAccounts()
     if (userEmail) {
       accounts = accounts.filter((a) => a.userEmail.toLowerCase() === userEmail.toLowerCase())
     }
+    const days = options?.days ?? 14
+    const maxMessages = options?.maxMessages ?? 50
     const results: TrackerScanResult[] = []
 
     for (const acct of accounts) {
@@ -91,7 +93,7 @@ export class ApplicationTrackerService {
           })
           continue
         }
-        const result = await this.scanAccount(acct.gmailEmail, tokens)
+        const result = await this.scanAccount(acct.gmailEmail, tokens, days, maxMessages)
         results.push(result)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -109,7 +111,7 @@ export class ApplicationTrackerService {
     return results
   }
 
-  private async scanAccount(gmailEmail: string, tokens: GmailTokenPayload): Promise<TrackerScanResult> {
+  private async scanAccount(gmailEmail: string, tokens: GmailTokenPayload, days: number, maxMessages: number): Promise<TrackerScanResult> {
     const result: TrackerScanResult = {
       gmailEmail,
       emailsProcessed: 0,
@@ -124,9 +126,8 @@ export class ApplicationTrackerService {
       return result
     }
 
-    // Build a query for application-related emails from the last 14 days
-    const query = "newer_than:14d"
-    const messages = await fetchMessageList(ensured.access_token, query, 50)
+    const query = `newer_than:${days}d`
+    const messages = await fetchMessageList(ensured.access_token, query, maxMessages)
 
     if (!messages.items.length) return result
 
