@@ -81,53 +81,51 @@ function isAtsDomain(domain: string | undefined): boolean {
 /** Common email-sending subdomain prefixes */
 const EMAIL_PREFIXES = ["mail.", "email.", "no-reply.", "noreply.", "alerts.", "notifications.", "notify.", "updates."]
 
-/**
- * Extract the "brand" portion from a sender domain for fuzzy matching.
- *
- *   mail.dropboxjobs.com  → "dropbox"
- *   stripe.com            → "stripe"
- *   no-reply@mongodb.com  → "mongodb"
- *   nurture.icims.com     → "icims" (ATS — won't match companies, which is correct)
- *   openloophealth.com    → "openloophealth"
- */
-function extractBrandFromDomain(domain: string): string {
-  let d = domain.toLowerCase()
-
-  // Strip common email-sending prefixes
-  for (const prefix of EMAIL_PREFIXES) {
-    if (d.startsWith(prefix)) {
-      d = d.slice(prefix.length)
-      break
-    }
-  }
-
-  // Extract the registrable domain (second-level + TLD)
-  const parts = d.split(".")
-  // e.g. ["dropboxjobs", "com"] or ["us", "greenhouse-mail", "io"]
-  const sld = parts.length >= 2 ? parts[parts.length - 2] : parts[0]
-
-  // Strip common suffixes from the SLD: "dropboxjobs" → "dropbox"
-  return sld
-    .replace(/(jobs|careers|recruiting|hiring|talent|mail|email)$/i, "")
-    .replace(/-$/, "") || sld
-}
+/** Known two-part TLDs where the SLD is not the brand */
+const MULTI_PART_TLDS = ["co.uk", "com.au", "co.jp", "co.nz", "com.br", "co.in", "org.uk", "co.za"]
 
 /**
  * Normalize sender domain for domain matching: strip email-sending prefixes
  * and try to recover the root company domain.
  *
- *   mail.dropboxjobs.com → dropboxjobs.com → (brand "dropbox")
+ *   mail.dropboxjobs.com → dropboxjobs.com
  *   email.informeddelivery.usps.com → informeddelivery.usps.com
  */
 function normalizeSenderDomain(domain: string): string {
-  let d = domain.toLowerCase()
-  for (const prefix of EMAIL_PREFIXES) {
-    if (d.startsWith(prefix)) {
-      d = d.slice(prefix.length)
-      break
-    }
+  const d = domain.toLowerCase()
+  const prefix = EMAIL_PREFIXES.find((p) => d.startsWith(p))
+  return prefix ? d.slice(prefix.length) : d
+}
+
+/**
+ * Extract the "brand" portion from a sender domain for fuzzy matching.
+ *
+ *   mail.dropboxjobs.com  → "dropbox"
+ *   stripe.com            → "stripe"
+ *   mongodb.com           → "mongodb"
+ *   nurture.icims.com     → "icims" (ATS — won't match companies, which is correct)
+ *   openloophealth.com    → "openloophealth"
+ *   company.co.uk         → "company"
+ */
+function extractBrandFromDomain(domain: string): string {
+  const d = normalizeSenderDomain(domain)
+
+  // Handle multi-part TLDs (e.g., company.co.uk → "company", not "co")
+  const multiTld = MULTI_PART_TLDS.find((tld) => d.endsWith(`.${tld}`))
+  let sld: string
+  if (multiTld) {
+    const withoutTld = d.slice(0, -(multiTld.length + 1))
+    const parts = withoutTld.split(".")
+    sld = parts[parts.length - 1]
+  } else {
+    const parts = d.split(".")
+    sld = parts.length >= 2 ? parts[parts.length - 2] : parts[0]
   }
-  return d
+
+  // Strip common suffixes from the SLD: "dropboxjobs" → "dropbox"
+  return sld
+    .replace(/(jobs|careers|recruiting|hiring|talent|mail|email)$/i, "")
+    .replace(/-$/, "") || sld
 }
 
 /**
@@ -203,8 +201,8 @@ export function matchEmailToApplications(
     }
 
     // Signal 4: Sender domain brand matches company name (+35)
-    // Catches cases like stripe.com→"Stripe", mongodb.com→"MongoDB", dropboxjobs.com→"Dropbox"
-    if (!signals.companyDomainMatch && email.senderDomain && companyName && !isAtsDomain(email.senderDomain)) {
+    // Fallback when company website/domain is missing — catches stripe.com→"Stripe", dropboxjobs.com→"Dropbox"
+    if (!signals.companyDomainMatch && !companyDomain && email.senderDomain && companyName && !isAtsDomain(email.senderDomain)) {
       const normalizedCompany = normalizeCompanyName(companyName)
       if (normalizedCompany.length >= 3) {
         const brand = extractBrandFromDomain(email.senderDomain)

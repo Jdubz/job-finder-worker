@@ -303,7 +303,8 @@ describe('email-application-matcher', () => {
     })
 
     it('does not fire for ATS domains', () => {
-      const matches = [buildMockMatch({ companyName: 'Greenhouse', website: 'https://unrelated.io', appliedAt: '2024-01-01T00:00:00Z' })]
+      const matches = [buildMockMatch({ companyName: 'Greenhouse', appliedAt: '2024-01-01T00:00:00Z' })]
+      matches[0].company = null
       const email = buildEmail({
         senderDomain: 'greenhouse.io',
         subject: 'Application update',
@@ -317,7 +318,7 @@ describe('email-application-matcher', () => {
       expect(brandMatches).toHaveLength(0)
     })
 
-    it('does not fire when companyDomainMatch already matched', () => {
+    it('does not fire when company has a website (companyDomain exists)', () => {
       const matches = [buildMockMatch({ companyName: 'Acme Corp', website: 'https://acme.com' })]
       const email = buildEmail({ senderDomain: 'acme.com' })
 
@@ -325,6 +326,21 @@ describe('email-application-matcher', () => {
 
       expect(candidates[0].signals.companyDomainMatch).toBe(true)
       expect(candidates[0].signals.senderDomainNameMatch).toBeUndefined()
+    })
+
+    it('handles multi-part TLDs like .co.uk correctly', () => {
+      const matches = [buildMockMatch({ companyName: 'Barclays' })]
+      matches[0].company = null
+      const email = buildEmail({
+        senderDomain: 'barclays.co.uk',
+        subject: 'Application update from Barclays',
+        body: 'Thank you for applying.'
+      })
+
+      const candidates = matchEmailToApplications(email, matches)
+
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0].signals.senderDomainNameMatch).toBe(true)
     })
   })
 
