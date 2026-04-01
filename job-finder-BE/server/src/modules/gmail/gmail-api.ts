@@ -54,20 +54,40 @@ export async function ensureAccessToken(tokens: GmailTokenPayload): Promise<Gmai
 export async function fetchMessageList(
   accessToken: string,
   q?: string,
-  maxResults: number = 50
+  maxResults: number = 200,
+  maxPages: number = 10
 ): Promise<MessageListResult> {
-  const params = new URLSearchParams({ maxResults: String(maxResults), includeSpamTrash: "false" })
-  if (q) params.set("q", q)
-  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Gmail list failed: ${res.status} ${text}`)
+  const items: Array<{ id: string; threadId: string }> = []
+  let pageToken: string | undefined
+
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({
+      maxResults: String(Math.min(maxResults - items.length, 500)),
+      includeSpamTrash: "false"
+    })
+    if (q) params.set("q", q)
+    if (pageToken) params.set("pageToken", pageToken)
+
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Gmail list failed: ${res.status} ${text}`)
+    }
+    const json = (await res.json()) as {
+      messages?: Array<{ id: string; threadId: string }>
+      nextPageToken?: string
+      resultSizeEstimate?: number
+    }
+
+    if (json.messages) items.push(...json.messages)
+    if (!json.nextPageToken || items.length >= maxResults) break
+    pageToken = json.nextPageToken
   }
-  const json = (await res.json()) as { messages?: Array<{ id: string; threadId: string }>; resultSizeEstimate?: number }
-  return { items: json.messages ?? [], latestHistoryId: undefined }
+
+  return { items, latestHistoryId: undefined }
 }
 
 export async function fetchHistoryDelta(

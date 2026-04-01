@@ -124,9 +124,9 @@ export class ApplicationTrackerService {
       return result
     }
 
-    // Build a query for application-related emails from the last 14 days
-    const query = "newer_than:14d"
-    const messages = await fetchMessageList(ensured.access_token, query, 50)
+    // Build a query for application-related emails from the last 90 days
+    const query = "newer_than:90d"
+    const messages = await fetchMessageList(ensured.access_token, query, 500)
 
     if (!messages.items.length) return result
 
