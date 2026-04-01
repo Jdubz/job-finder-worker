@@ -111,9 +111,9 @@ def test_choose_best_website_prefers_wiki_when_candidate_missing(monkeypatch):
     monkeypatch.setattr(fetcher, "_is_search_engine_url", lambda url: False)
 
     result = fetcher._choose_best_website(
-        candidate=None, wiki_website="https://wiki-site.com", company_name="Acme"
+        candidate=None, wiki_website="https://acme.com", company_name="Acme"
     )
-    assert result == "https://wiki-site.com"
+    assert result == "https://acme.com"
 
 
 def test_choose_best_website_uses_candidate_when_wiki_invalid(monkeypatch):

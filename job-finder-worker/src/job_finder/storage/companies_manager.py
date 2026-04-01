@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from job_finder.exceptions import StorageError
@@ -15,6 +17,34 @@ from job_finder.utils.company_name_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _domain_matches_company_name(domain: str, company_name: str) -> bool:
+    """Check that a domain plausibly belongs to the company.
+
+    Extracts the second-level domain (SLD) and checks if any significant
+    token (3+ chars) from the company name appears in it, or vice versa.
+    """
+    if not domain or not company_name:
+        return True  # can't validate — let it through
+
+    # Extract SLD: "www.stripe.com" → "stripe"
+    parts = domain.lower().replace("www.", "").split(".")
+    sld = parts[0] if parts else ""
+    if not sld or len(sld) < 3:
+        return True  # too short to validate
+
+    # Tokenize company name, keep significant words
+    company_lower = re.sub(
+        r",?\s*(inc\.?|llc\.?|corp\.?|ltd\.?|co\.?|company|corporation|limited|group|holdings?)$",
+        "",
+        company_name.lower(),
+    ).strip()
+    tokens = [t for t in re.findall(r"[a-z0-9]+", company_lower) if len(t) >= 3]
+    if not tokens:
+        return True  # can't validate
+
+    return any(tok in sld or sld in tok for tok in tokens)
 
 
 class CompaniesManager:
@@ -65,16 +95,18 @@ class CompaniesManager:
     def _normalize_name(self, name: str) -> str:
         return normalize_company_name(name)
 
-    def _validate_website(self, website: Optional[str]) -> Optional[str]:
-        """Validate and clean website URL, rejecting aggregator domains.
-
-        Uses JobSourcesManager.is_job_board_url() for database-driven domain checking.
+    def _validate_website(
+        self, website: Optional[str], company_name: Optional[str] = None
+    ) -> Optional[str]:
+        """Validate and clean website URL, rejecting aggregator domains and
+        URLs that don't match the company name.
 
         Args:
             website: The website URL to validate
+            company_name: The company name to cross-check against the domain
 
         Returns:
-            The validated website URL, or None if it's an aggregator domain
+            The validated website URL, or None if invalid
         """
         if not website:
             return None
@@ -92,6 +124,21 @@ class CompaniesManager:
                 "Skipping aggregator URL validation for '%s' - sources_manager not provided",
                 website,
             )
+
+        # Reject URLs whose domain doesn't match the company name
+        if company_name:
+            try:
+                parsed = urlparse(website if "://" in website else f"https://{website}")
+                domain = parsed.hostname or ""
+            except Exception:
+                domain = ""
+            if domain and not _domain_matches_company_name(domain, company_name):
+                logger.warning(
+                    "Rejecting website '%s' for '%s' — domain does not match company name",
+                    website,
+                    company_name,
+                )
+                return None
 
         return website
 
@@ -160,8 +207,8 @@ class CompaniesManager:
         elif isinstance(tech_stack, str):
             tech_stack = [tech_stack]
 
-        # Validate website - reject aggregator domains
-        website = self._validate_website(company_data.get("website"))
+        # Validate website - reject aggregator domains and mismatched domains
+        website = self._validate_website(company_data.get("website"), cleaned_name)
 
         # Coerce text fields — AI responses occasionally return dicts for string fields,
         # which SQLite cannot bind.  Join values as readable text (these fields are not
