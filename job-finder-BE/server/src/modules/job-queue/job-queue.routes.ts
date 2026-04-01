@@ -34,7 +34,8 @@ import {
   getWorkerHealth,
   getWorkerCliHealth,
   triggerLogRotation,
-  triggerSessionCleanup
+  triggerSessionCleanup,
+  triggerApplicationTracker
 } from '../../scheduler/cron'
 import { getLocalCliHealth, getLitellmModelHealth } from '../../services/cli-health.service'
 
@@ -447,6 +448,19 @@ export function buildJobQueueRouter() {
     requireRole('admin'),
     asyncHandler(async (_req, res) => {
       const result = await triggerSessionCleanup()
+      if (result.success) {
+        res.json(success(result))
+      } else {
+        res.status(503).json(failure(ApiErrorCode.SERVICE_UNAVAILABLE, result.error ?? 'Cron trigger failed'))
+      }
+    })
+  )
+
+  router.post(
+    '/cron/trigger/application-tracker',
+    requireRole('admin'),
+    asyncHandler(async (_req, res) => {
+      const result = await triggerApplicationTracker()
       if (result.success) {
         res.json(success(result))
       } else {

@@ -1,11 +1,15 @@
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
+import { useGoogleLogin } from "@react-oauth/google"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, User, Shield } from "lucide-react"
+import { Loader2, User, Shield, Mail, Trash2, RefreshCw } from "lucide-react"
+import { useAuth } from "@/contexts/AuthContext"
+import { gmailClient, type GmailAccountInfo, type TrackerScanResult } from "@/api/gmail-client"
 import type { PersonalInfo } from "@shared/types"
 
 
@@ -26,8 +30,96 @@ export function PersonalInfoTab({
   handleSavePersonalInfo,
   handleResetPersonalInfo,
 }: PersonalInfoTabProps) {
+  const { user } = useAuth()
   const [uploading, setUploading] = useState<{ avatar: boolean; logo: boolean }>({ avatar: false, logo: false })
   const [uploadError, setUploadError] = useState<string | null>(null)
+
+  // Gmail state
+  const [gmailAccounts, setGmailAccounts] = useState<GmailAccountInfo[]>([])
+  const [gmailLoading, setGmailLoading] = useState(true)
+  const [gmailConnecting, setGmailConnecting] = useState(false)
+  const [gmailRevoking, setGmailRevoking] = useState<string | null>(null)
+  const [gmailScanning, setGmailScanning] = useState(false)
+  const [gmailScanResults, setGmailScanResults] = useState<TrackerScanResult[] | null>(null)
+  const [gmailError, setGmailError] = useState<string | null>(null)
+  const [gmailSuccess, setGmailSuccess] = useState<string | null>(null)
+
+  const fetchGmailAccounts = useCallback(async () => {
+    try {
+      const data = await gmailClient.listAccounts()
+      setGmailAccounts(data)
+    } catch {
+      // Silently fail — Gmail may not be configured
+    } finally {
+      setGmailLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchGmailAccounts() }, [fetchGmailAccounts])
+
+  useEffect(() => {
+    if (!gmailSuccess) return
+    const t = setTimeout(() => setGmailSuccess(null), 5000)
+    return () => clearTimeout(t)
+  }, [gmailSuccess])
+
+  const connectGmail = useGoogleLogin({
+    flow: "auth-code",
+    scope: "https://www.googleapis.com/auth/gmail.readonly",
+    onSuccess: async (codeResponse) => {
+      if (!user?.email) return
+      setGmailConnecting(true)
+      setGmailError(null)
+      try {
+        const result = await gmailClient.exchangeOAuthCode({
+          code: codeResponse.code,
+          redirectUri: "postmessage",
+          userEmail: user.email,
+        })
+        setGmailSuccess(`Connected ${result.gmailEmail}`)
+        await fetchGmailAccounts()
+      } catch (err) {
+        setGmailError(err instanceof Error ? err.message : "Failed to connect Gmail")
+      } finally {
+        setGmailConnecting(false)
+      }
+    },
+    onError: (errorResponse) => {
+      if (errorResponse.error === "access_denied") return
+      setGmailError(errorResponse.error_description ?? "Gmail authorization failed")
+    },
+  })
+
+  const handleGmailRevoke = async (gmailEmail: string) => {
+    setGmailRevoking(gmailEmail)
+    setGmailError(null)
+    try {
+      await gmailClient.revokeAccount(gmailEmail)
+      setGmailSuccess(`Disconnected ${gmailEmail}`)
+      await fetchGmailAccounts()
+    } catch {
+      setGmailError(`Failed to disconnect ${gmailEmail}`)
+    } finally {
+      setGmailRevoking(null)
+    }
+  }
+
+  const handleGmailScan = async () => {
+    setGmailScanning(true)
+    setGmailError(null)
+    setGmailScanResults(null)
+    try {
+      const results = await gmailClient.triggerScan()
+      setGmailScanResults(results)
+      const total = results.reduce((s, r) => s + r.emailsProcessed, 0)
+      const linked = results.reduce((s, r) => s + r.emailsLinked, 0)
+      setGmailSuccess(`Scan complete: ${total} emails processed, ${linked} linked`)
+    } catch {
+      setGmailError("Email scan failed")
+    } finally {
+      setGmailScanning(false)
+    }
+  }
 
   if (!currentPersonalInfo) {
     return (
@@ -355,6 +447,129 @@ export function PersonalInfoTab({
             {isSaving ? "Saving..." : "Save"}
           </Button>
         </div>
+        </div>
+
+        {/* Gmail Integration */}
+        <div className="space-y-4 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-3 items-start">
+              <div className="rounded-full bg-muted p-2">
+                <Mail className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-medium">Gmail Integration</h3>
+                <p className="text-sm text-muted-foreground">
+                  Connect Gmail to automatically track application status from emails.
+                  Only read access is requested.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => connectGmail()}
+              disabled={gmailConnecting || gmailLoading}
+            >
+              {gmailConnecting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Connecting…
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Connect Gmail
+                </>
+              )}
+            </Button>
+          </div>
+
+          {gmailError && (
+            <Alert variant="destructive">
+              <AlertDescription>{gmailError}</AlertDescription>
+            </Alert>
+          )}
+          {gmailSuccess && (
+            <Alert>
+              <AlertDescription>{gmailSuccess}</AlertDescription>
+            </Alert>
+          )}
+
+          {gmailLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading accounts…
+            </div>
+          ) : gmailAccounts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No Gmail accounts connected.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {gmailAccounts.map((account) => (
+                <div
+                  key={account.gmailEmail}
+                  className="flex items-center justify-between rounded-md border p-3"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{account.gmailEmail}</span>
+                      {account.hasRefreshToken ? (
+                        <Badge variant="default" className="bg-green-600">Connected</Badge>
+                      ) : (
+                        <Badge variant="destructive">Token expired</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Updated {new Date(account.updatedAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGmailScan}
+                      disabled={gmailScanning}
+                    >
+                      {gmailScanning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleGmailRevoke(account.gmailEmail)}
+                      disabled={gmailRevoking === account.gmailEmail}
+                    >
+                      {gmailRevoking === account.gmailEmail ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {gmailScanResults && gmailScanResults.length > 0 && (
+            <div className="space-y-2">
+              {gmailScanResults.map((result) => (
+                <div key={result.gmailEmail} className="rounded-md border p-3 text-sm">
+                  <div className="flex gap-4 text-xs text-muted-foreground">
+                    <span>Processed: {result.emailsProcessed}</span>
+                    <span>Linked: {result.emailsLinked}</span>
+                    <span>Status changes: {result.statusChanges}</span>
+                  </div>
+                  {result.errors.length > 0 && (
+                    <p className="text-xs text-destructive mt-1">{result.errors.join(", ")}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

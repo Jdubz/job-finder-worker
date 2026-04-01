@@ -180,6 +180,11 @@ export class QueueClient extends BaseApiClient {
     return response.data
   }
 
+  async triggerCronApplicationTracker(): Promise<CronTriggerResult> {
+    const response = await this.post<ApiSuccessResponse<CronTriggerResult>>(`/queue/cron/trigger/application-tracker`)
+    return response.data
+  }
+
   async getWorkerHealth(): Promise<WorkerHealth> {
     const response = await this.get<ApiSuccessResponse<WorkerHealth>>(`/queue/worker/health`)
     return response.data
