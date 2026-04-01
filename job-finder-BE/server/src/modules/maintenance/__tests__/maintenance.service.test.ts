@@ -17,6 +17,7 @@ describe('MaintenanceService', () => {
   let mockRepo: {
     archiveOldListings: ReturnType<typeof vi.fn>
     archiveOldQueueItems: ReturnType<typeof vi.fn>
+    linkOrphanListings: ReturnType<typeof vi.fn>
     getStats: ReturnType<typeof vi.fn>
   }
   let mockCacheRepo: {
@@ -27,6 +28,7 @@ describe('MaintenanceService', () => {
     mockRepo = {
       archiveOldListings: vi.fn().mockReturnValue(5),
       archiveOldQueueItems: vi.fn().mockReturnValue(10),
+      linkOrphanListings: vi.fn().mockReturnValue(2),
       getStats: vi.fn().mockReturnValue({ archivedQueueItems: 100, archivedListings: 50 })
     }
     mockCacheRepo = {
@@ -47,7 +49,8 @@ describe('MaintenanceService', () => {
         success: true,
         archivedQueueItems: 10,
         archivedListings: 5,
-        prunedCacheEntries: 3
+        prunedCacheEntries: 3,
+        linkedOrphanListings: 2
       })
 
       // Verify called with correct day thresholds
@@ -68,6 +71,7 @@ describe('MaintenanceService', () => {
         archivedQueueItems: 0,
         archivedListings: 0,
         prunedCacheEntries: 0,
+        linkedOrphanListings: 0,
         error: 'DB locked'
       })
     })

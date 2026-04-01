@@ -133,11 +133,11 @@ export class ApplicationTrackerService {
 
     const fullMessages = await fetchFullMessages(ensured.access_token, messages.items)
 
-    // Get all active applications for matching
-    const appliedMatches = this.matchRepo.listWithListings({
-      status: "all",
-      limit: 200
-    }).filter((m) => ACTIVE_APPLICATION_STATUSES.includes(m.status as JobMatchStatus))
+    // Get all active applications for matching — query each status directly
+    // to avoid the limit cutting off results when mixed with ignored/other statuses
+    const appliedMatches = ACTIVE_APPLICATION_STATUSES.flatMap((s) =>
+      this.matchRepo.listWithListings({ status: s, limit: 500 })
+    )
 
     // Also build a set of company domains from applied matches for filtering
     const companyDomains = new Set<string>()

@@ -1069,12 +1069,14 @@ Be factual. Return ONLY valid JSON."""
     ) -> str:
         """
         Final website selection with a light touch:
+        - Reject candidates whose domain doesn't match the company name at all.
         - Prefer Wikipedia site if it exists.
         - Otherwise take candidate if it's not a job board/search URL.
         - Optionally probe homepage for brand mention; fall back to Wikipedia if probe fails.
         """
         wiki_normalized = self._normalize_url(wiki_website)
         candidate_normalized = self._normalize_url(candidate)
+        company_lower = company_name.lower().strip()
 
         wiki_valid = (
             wiki_normalized
@@ -1087,6 +1089,30 @@ Be factual. Return ONLY valid JSON."""
             and not self._is_job_board_url(candidate_normalized)
             and not self._is_search_engine_url(candidate_normalized)
         )
+
+        # Reject candidates whose domain has no relation to the company name.
+        # Better to store no website than a wrong one (e.g., investor, parent co).
+        if candidate_valid:
+            candidate_domain = self._domain_from_url(candidate_normalized)
+            if not self._domain_matches_company(candidate_domain, company_lower):
+                logger.warning(
+                    "Rejecting website '%s' for '%s' — domain does not match company name",
+                    candidate_normalized,
+                    company_name,
+                )
+                candidate_valid = False
+                candidate_normalized = ""
+
+        if wiki_valid:
+            wiki_domain = self._domain_from_url(wiki_normalized)
+            if not self._domain_matches_company(wiki_domain, company_lower):
+                logger.warning(
+                    "Rejecting Wikipedia website '%s' for '%s' — domain does not match company name",
+                    wiki_normalized,
+                    company_name,
+                )
+                wiki_valid = False
+                wiki_normalized = ""
 
         # Prefer a valid Wikipedia URL if the candidate is missing/invalid
         if wiki_valid and not candidate_valid:
@@ -1126,13 +1152,21 @@ Be factual. Return ONLY valid JSON."""
             return ""
 
     def _domain_matches_company(self, domain: str, company_lower: str) -> bool:
-        """Heuristic: does domain contain a token from the company name?"""
+        """Heuristic: does domain contain a token from the company name?
+
+        Uses get_root_domain (tldextract-aware) so subdomains and multi-part
+        TLDs (co.uk, com.au) are handled correctly.
+        """
         if not domain or not company_lower:
             return False
-        # remove tld
-        root = domain.split(":")[0].split(".")[0]
+        from job_finder.storage.companies_manager import _extract_sld
+
+        hostname = domain.split(":")[0].lower()
+        sld = _extract_sld(hostname)
+        if not sld:
+            return False
         tokens = [t for t in re.findall(r"[a-z0-9]+", company_lower) if len(t) >= 3]
-        return any(tok in root for tok in tokens)
+        return any(tok in sld or sld in tok for tok in tokens)
 
     def _homepage_mentions_brand(self, url: str, company_name: str, timeout: int = 5) -> bool:
         """

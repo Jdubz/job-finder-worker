@@ -344,9 +344,38 @@ describe('email-application-matcher', () => {
     })
   })
 
+  describe('website sanity check (wrong website protection)', () => {
+    it('ignores stored website when domain does not match company name', () => {
+      // Simulates AI enrichment storing mckinsey.com for "Alkami Technology"
+      const matches = [buildMockMatch({ companyName: 'Alkami Technology', website: 'https://mckinsey.com' })]
+      const email = buildEmail({
+        senderDomain: 'alkami.com',
+        subject: 'Thank you for applying to Alkami',
+        body: 'We received your application.'
+      })
+
+      const candidates = matchEmailToApplications(email, matches)
+
+      expect(candidates).toHaveLength(1)
+      // Should NOT use the wrong domain, should fall through to senderDomainNameMatch
+      expect(candidates[0].signals.companyDomainMatch).toBeUndefined()
+      expect(candidates[0].signals.senderDomainNameMatch).toBe(true)
+    })
+
+    it('accepts stored website when domain matches company name', () => {
+      const matches = [buildMockMatch({ companyName: 'Stripe', website: 'https://stripe.com' })]
+      const email = buildEmail({ senderDomain: 'stripe.com' })
+
+      const candidates = matchEmailToApplications(email, matches)
+
+      expect(candidates[0].signals.companyDomainMatch).toBe(true)
+      expect(candidates[0].signals.senderDomainNameMatch).toBeUndefined()
+    })
+  })
+
   describe('transactional subdomain normalization', () => {
     it('matches mail.company.com to company.com website', () => {
-      const matches = [buildMockMatch({ website: 'https://dropbox.com' })]
+      const matches = [buildMockMatch({ companyName: 'Dropbox', website: 'https://dropbox.com' })]
       const email = buildEmail({ senderDomain: 'mail.dropbox.com' })
 
       const candidates = matchEmailToApplications(email, matches)
@@ -356,7 +385,7 @@ describe('email-application-matcher', () => {
     })
 
     it('matches email.company.com to company.com website', () => {
-      const matches = [buildMockMatch({ website: 'https://acme.com' })]
+      const matches = [buildMockMatch({ companyName: 'Acme Corp', website: 'https://acme.com' })]
       const email = buildEmail({ senderDomain: 'email.acme.com' })
 
       const candidates = matchEmailToApplications(email, matches)
