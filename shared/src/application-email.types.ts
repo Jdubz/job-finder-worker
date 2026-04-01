@@ -10,6 +10,7 @@ export interface MatchSignals {
   companyNameInBody?: boolean
   jobTitleMatch?: boolean
   atsHeaderMatch?: boolean
+  senderDomainNameMatch?: boolean
   temporalProximity?: number
 }
 

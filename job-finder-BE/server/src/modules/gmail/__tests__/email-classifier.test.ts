@@ -150,6 +150,33 @@ describe('email-classifier', () => {
       )
       expect(result.classification).toBe('interviewing')
     })
+
+    it('detects "interview confirmation"', () => {
+      const result = classifyEmail(
+        'NewRocket Interview Confirmation-Forward Deployed AI Engineer',
+        'Thanks for submitting your availability. Below are some confirmation details for the call. This will be a video interview.',
+        'josh@newrocket.com'
+      )
+      expect(result.classification).toBe('interviewing')
+    })
+
+    it('detects "reminder for interview"', () => {
+      const result = classifyEmail(
+        'Reminder for interview with NewRocket for the Forward Deployed AI Engineer position',
+        'As a reminder, here is more information about your interview.',
+        'no-reply@greenhouse.io'
+      )
+      expect(result.classification).toBe('interviewing')
+    })
+
+    it('detects "your interview is scheduled"', () => {
+      const result = classifyEmail(
+        'Interview Details',
+        'Your interview is on April 1st at 2pm. Please join the video call using the link below.',
+        'recruiter@company.com'
+      )
+      expect(result.classification).toBe('interviewing')
+    })
   })
 
   describe('acknowledgment detection', () => {

@@ -35,7 +35,11 @@ const INTERVIEW_PATTERNS = [
   /coding\s+(challenge|test|exercise)/i,
   /panel\s+interview/i,
   /on-?site\s+interview/i,
-  /final\s+round/i
+  /final\s+round/i,
+  /interview\s+(confirmation|confirmed|scheduled)/i,
+  /reminder\s+(for|about|of)\s+(an?\s+|your\s+)?interview/i,
+  /your\s+interview\s+(is|with|on|at)\b/i,
+  /confirmation\s+details?\s+for\s+(the\s+|your\s+)?(call|interview)/i
 ]
 
 const ACKNOWLEDGMENT_PATTERNS = [
