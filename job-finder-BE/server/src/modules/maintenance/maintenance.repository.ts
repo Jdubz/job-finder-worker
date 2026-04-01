@@ -102,17 +102,23 @@ export class MaintenanceRepository {
 
   /**
    * Repair orphan job_listings that have a company_name but no company_id,
-   * where a matching company record exists.
+   * where a matching company record exists. Uses the indexed name_lower column.
    */
   linkOrphanListings(): number {
+    const now = new Date().toISOString()
     const result = this.db.prepare(`
       UPDATE job_listings SET company_id = (
-        SELECT c.id FROM companies c WHERE lower(c.name) = lower(job_listings.company_name) LIMIT 1
-      ), updated_at = datetime('now')
+        SELECT c.id FROM companies c
+        WHERE c.name_lower = lower(trim(job_listings.company_name))
+        LIMIT 1
+      ), updated_at = ?
       WHERE (company_id IS NULL OR company_id = '')
         AND company_name IS NOT NULL AND company_name != ''
-        AND EXISTS (SELECT 1 FROM companies c WHERE lower(c.name) = lower(job_listings.company_name))
-    `).run()
+        AND EXISTS (
+          SELECT 1 FROM companies c
+          WHERE c.name_lower = lower(trim(job_listings.company_name))
+        )
+    `).run(now)
     return result.changes
   }
 

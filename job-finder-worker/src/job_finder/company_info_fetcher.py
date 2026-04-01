@@ -1155,8 +1155,15 @@ Be factual. Return ONLY valid JSON."""
         """Heuristic: does domain contain a token from the company name?"""
         if not domain or not company_lower:
             return False
-        # remove tld
-        root = domain.split(":")[0].split(".")[0]
+        # Strip port and common subdomains, then extract SLD
+        hostname = domain.split(":")[0].lower()
+        for prefix in ("www.", "careers.", "jobs.", "mail.", "email."):
+            if hostname.startswith(prefix):
+                hostname = hostname[len(prefix) :]
+                break
+        parts = hostname.split(".")
+        # SLD is the second-to-last label (e.g., "stripe" from "stripe.com")
+        root = parts[-2] if len(parts) >= 2 else parts[0]
         tokens = [t for t in re.findall(r"[a-z0-9]+", company_lower) if len(t) >= 3]
         return any(tok in root for tok in tokens)
 
