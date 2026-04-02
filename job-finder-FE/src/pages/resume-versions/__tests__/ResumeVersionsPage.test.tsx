@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ResumeVersionsPage } from "../ResumeVersionsPage"
 import type { ResumeVersion, ResumeItemNode } from "@shared/types"
@@ -48,20 +49,22 @@ const mockItems: ResumeItemNode[] = [
   }
 ]
 
+const mockHookState = {
+  version: mockVersion as ResumeVersion | null,
+  items: mockItems,
+  contentFit: null,
+  loading: false,
+  error: null as Error | null,
+  mutationCount: 0,
+  createItem: vi.fn(),
+  updateItem: vi.fn(),
+  deleteItem: vi.fn(),
+  reorderItem: vi.fn(),
+  refetch: vi.fn()
+}
+
 vi.mock("@/hooks/useResumeVersion", () => ({
-  useResumeVersion: () => ({
-    version: mockVersion,
-    items: mockItems,
-    contentFit: null,
-    loading: false,
-    error: null,
-    mutationCount: 0,
-    createItem: vi.fn(),
-    updateItem: vi.fn(),
-    deleteItem: vi.fn(),
-    reorderItem: vi.fn(),
-    refetch: vi.fn()
-  })
+  useResumeVersion: () => mockHookState
 }))
 
 vi.mock("@/api", () => ({
@@ -89,6 +92,10 @@ describe("ResumeVersionsPage", () => {
     vi.clearAllMocks()
     mockAuth.user = null
     mockAuth.isOwner = false
+    mockHookState.loading = false
+    mockHookState.version = mockVersion
+    mockHookState.items = mockItems
+    mockHookState.error = null
   })
 
   describe("tab layout", () => {
@@ -178,6 +185,52 @@ describe("ResumeVersionsPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Test Tailoring")).toBeInTheDocument()
       })
+    })
+  })
+
+  describe("tab state persistence", () => {
+    it("preserves active tab across loading remounts", async () => {
+      mockAuth.user = { id: "user-1", email: "user@example.com" }
+      const user = userEvent.setup()
+
+      const { rerender } = render(<ResumeVersionsPage />)
+
+      // Switch to Build tab
+      await user.click(screen.getByRole("tab", { name: /Build Resume/i }))
+
+      // Verify Build tab is active
+      expect(screen.getByRole("tab", { name: /Build Resume/i })).toHaveAttribute("data-state", "active")
+
+      // Simulate loading=true (happens during refetch after mutation)
+      mockHookState.loading = true
+      rerender(<ResumeVersionsPage />)
+
+      // Simulate loading=false (refetch complete)
+      mockHookState.loading = false
+      rerender(<ResumeVersionsPage />)
+
+      // Build tab should still be active
+      expect(screen.getByRole("tab", { name: /Build Resume/i })).toHaveAttribute("data-state", "active")
+    })
+
+    it("falls back to Pool tab when user logs out while on Build tab", async () => {
+      mockAuth.user = { id: "user-1", email: "user@example.com" }
+      const user = userEvent.setup()
+
+      const { rerender } = render(<ResumeVersionsPage />)
+
+      // Switch to Build tab
+      await user.click(screen.getByRole("tab", { name: /Build Resume/i }))
+      expect(screen.getByRole("tab", { name: /Build Resume/i })).toHaveAttribute("data-state", "active")
+
+      // User logs out
+      mockAuth.user = null
+      rerender(<ResumeVersionsPage />)
+
+      // Build tab should be gone, Pool should be active
+      expect(screen.queryByRole("tab", { name: /Build Resume/i })).not.toBeInTheDocument()
+      const poolTab = screen.getByRole("tab", { name: /Pool/i })
+      expect(poolTab).toHaveAttribute("data-state", "active")
     })
   })
 })
