@@ -165,10 +165,7 @@ test.describe("Custom resume builder", () => {
     await expect(page.getByRole("button", { name: /Generate PDF/i })).toBeEnabled()
   })
 
-  // PDF generation requires a writable /data directory and Chromium on the backend,
-  // which aren't available in CI. The estimation test above validates the selection + API flow.
   test("generates a PDF and shows download button", async ({ page, request }) => {
-    test.skip(!!process.env.CI, "PDF build requires /data directory not available in CI")
     // Seed minimal pool items
     const skillsId = await seedResumePoolItem(request, {
       title: "E2E Build Skills",
