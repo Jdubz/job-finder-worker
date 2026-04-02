@@ -100,3 +100,25 @@ export interface PoolHealthSummary {
   education: number
   totalItems: number
 }
+
+// --- Custom resume builder endpoints ---
+
+export interface EstimateResumeRequest {
+  selectedItemIds: string[]
+  jobTitle?: string
+}
+
+export interface EstimateResumeResponse {
+  contentFit: ContentFitEstimate
+  selectedCount: number
+}
+
+export interface BuildCustomResumeRequest {
+  selectedItemIds: string[]
+  jobTitle?: string
+}
+
+export interface BuildCustomResumeResponse {
+  contentFit: ContentFitEstimate
+  pdfSizeBytes: number
+}
