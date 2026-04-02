@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises'
 import { z } from 'zod'
 import { ApiErrorCode } from '@shared/types'
 import type {
+  ContentFitEstimate,
   ListResumeVersionsResponse,
   GetResumeVersionResponse,
   ListResumeItemsResponse,
@@ -19,7 +20,9 @@ import type {
   ReorderResumeItemResponse,
   PublishResumeVersionResponse,
   TailorResumeResponse,
-  PoolHealthSummary
+  PoolHealthSummary,
+  EstimateResumeResponse,
+  BuildCustomResumeResponse
 } from '@shared/types'
 import {
   ResumeVersionRepository,
@@ -29,6 +32,7 @@ import {
   ResumeItemInvalidParentError
 } from './resume-version.repository'
 import { buildItemTree, transformItemsToResumeContent, publishResumeVersion, getResumePdfAbsolutePath } from './resume-version.publish'
+import { HtmlPdfService } from '../generator/workflow/services/html-pdf.service'
 import { ResumeSelectionService, PoolNotFoundError, JobMatchNotFoundError, PersonalInfoMissingError, AISelectionError } from './resume-selection.service'
 import { estimateContentFit, LAYOUT } from '../generator/workflow/services/content-fit.service'
 import { PersonalInfoStore } from '../generator/personal-info.store'
@@ -98,6 +102,22 @@ function getAuthenticatedUser(req: Request): AuthenticatedUser & { email: string
   return user as AuthenticatedUser & { email: string }
 }
 
+const artifactsRoot = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : path.resolve('/data/artifacts')
+
+/** Map internal FitEstimate to the shared ContentFitEstimate API shape. */
+function toContentFitEstimate(fit: ReturnType<typeof estimateContentFit>): ContentFitEstimate {
+  const usagePercent = Math.round((fit.mainColumnLines / LAYOUT.MAX_LINES) * 100)
+  return {
+    mainColumnLines: fit.mainColumnLines,
+    maxLines: LAYOUT.MAX_LINES,
+    usagePercent,
+    pageCount: fit.fits ? 1 : Math.ceil(fit.mainColumnLines / LAYOUT.MAX_LINES),
+    fits: fit.fits,
+    overflow: fit.overflow,
+    suggestions: fit.suggestions
+  }
+}
+
 function handleRouteError(err: unknown, res: Response): boolean {
   if (err instanceof z.ZodError) {
     res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')))
@@ -132,6 +152,8 @@ interface ResumeVersionRouterOptions {
 export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {}) {
   const router = Router()
   const repo = new ResumeVersionRepository()
+  const personalInfoStore = new PersonalInfoStore()
+  const htmlPdf = new HtmlPdfService()
 
   const defaultMutationGuard: RequestHandler = (req, _res, next) => {
     try {
@@ -223,8 +245,6 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
         return
       }
 
-      const defaultArtifactsDir = path.resolve('/data/artifacts')
-      const artifactsRoot = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : defaultArtifactsDir
       const absolutePath = path.join(artifactsRoot, pdfPath)
 
       try {
@@ -281,6 +301,152 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
     })
   )
 
+  // ── Custom resume builder endpoints ────────────────────────────
+
+  const builderRequestSchema = z.object({
+    selectedItemIds: z.array(z.string().min(1)).min(1, 'Select at least one item'),
+    jobTitle: z.string().max(200).optional()
+  })
+
+  /**
+   * Filter a flat item list to only the selected IDs, preserving parent-child
+   * relationships by including any parent whose child is selected.
+   */
+  function filterItemsToSelected(allItems: ReturnType<typeof repo.listItems>, selectedIds: Set<string>) {
+    // Collect all IDs we need: selected items + their ancestors
+    const needed = new Set<string>()
+    const byId = new Map(allItems.map((item) => [item.id, item]))
+
+    for (const id of selectedIds) {
+      let current = byId.get(id)
+      while (current) {
+        needed.add(current.id)
+        current = current.parentId ? byId.get(current.parentId) : undefined
+      }
+    }
+
+    return allItems.filter((item) => needed.has(item.id))
+  }
+
+  // POST /pool/estimate — estimate content fit for selected pool items
+  router.post(
+    '/pool/estimate',
+    ...authMiddleware,
+    asyncHandler(async (req, res) => {
+      try {
+        const { selectedItemIds, jobTitle } = builderRequestSchema.parse(req.body)
+
+        const pool = repo.getPoolVersion()
+        if (!pool) {
+          res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Resume pool not found'))
+          return
+        }
+
+        const allItems = repo.listItems(pool.id)
+        const selectedSet = new Set(selectedItemIds)
+        const filtered = filterItemsToSelected(allItems, selectedSet)
+        const tree = buildItemTree(filtered)
+
+        const personalInfo = await personalInfoStore.get()
+        if (!personalInfo) {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Personal info not configured'))
+          return
+        }
+
+        const resumeContent = transformItemsToResumeContent(tree, personalInfo, jobTitle)
+        const response: EstimateResumeResponse = {
+          contentFit: toContentFitEstimate(estimateContentFit(resumeContent)),
+          selectedCount: selectedItemIds.length
+        }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRouteError(err, res)) return
+        throw err
+      }
+    })
+  )
+
+  // POST /pool/build — render PDF from selected pool items
+  router.post(
+    '/pool/build',
+    ...authMiddleware,
+    asyncHandler(async (req, res) => {
+      try {
+        const { selectedItemIds, jobTitle } = builderRequestSchema.parse(req.body)
+        const user = getAuthenticatedUser(req)
+
+        const pool = repo.getPoolVersion()
+        if (!pool) {
+          res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'Resume pool not found'))
+          return
+        }
+
+        const allItems = repo.listItems(pool.id)
+        const selectedSet = new Set(selectedItemIds)
+        const filtered = filterItemsToSelected(allItems, selectedSet)
+
+        if (filtered.length === 0) {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'No valid pool items matched the selected IDs'))
+          return
+        }
+
+        const tree = buildItemTree(filtered)
+
+        const personalInfo = await personalInfoStore.get()
+        if (!personalInfo) {
+          res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Personal info not configured'))
+          return
+        }
+
+        const resumeContent = transformItemsToResumeContent(tree, personalInfo, jobTitle)
+
+        const pdfBuffer = await htmlPdf.renderResume(resumeContent, personalInfo)
+
+        // Save per-user to avoid race conditions between concurrent builds
+        const safeUid = user.uid.replace(/[^a-zA-Z0-9_-]/g, '_')
+        const resumesDir = path.join(artifactsRoot, 'resumes')
+        await fs.mkdir(resumesDir, { recursive: true })
+        await fs.writeFile(path.join(resumesDir, `custom-build-${safeUid}.pdf`), pdfBuffer)
+
+        const response: BuildCustomResumeResponse = {
+          contentFit: toContentFitEstimate(estimateContentFit(resumeContent)),
+          pdfSizeBytes: pdfBuffer.length
+        }
+        res.json(success(response))
+      } catch (err) {
+        if (handleRouteError(err, res)) return
+        if (err instanceof Error) {
+          logger.error({ err }, 'Custom resume build failed')
+          res.status(500).json(failure(ApiErrorCode.INTERNAL_ERROR, 'Resume build failed'))
+          return
+        }
+        throw err
+      }
+    })
+  )
+
+  // GET /pool/build/pdf — serve the authenticated user's most recent custom-build PDF
+  router.get(
+    '/pool/build/pdf',
+    ...authMiddleware,
+    asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      const safeUid = user.uid.replace(/[^a-zA-Z0-9_-]/g, '_')
+      const absolutePath = path.join(artifactsRoot, 'resumes', `custom-build-${safeUid}.pdf`)
+
+      try {
+        await fs.access(absolutePath)
+      } catch {
+        res.status(404).json(failure(ApiErrorCode.NOT_FOUND, 'No custom build PDF found. Generate one first.'))
+        return
+      }
+
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', 'inline; filename="custom-resume.pdf"')
+      await pipeline(createReadStream(absolutePath), res)
+    })
+  )
+
   // ── Version endpoints ──────────────────────────────────────────
 
   // GET /:slug — get version detail + items tree + content fit estimate
@@ -300,21 +466,10 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
       let contentFit: GetResumeVersionResponse['contentFit'] = null
       if (items.length > 0) {
         try {
-          const personalInfoStore = new PersonalInfoStore()
           const personalInfo = await personalInfoStore.get()
           if (personalInfo) {
             const resumeContent = transformItemsToResumeContent(tree, personalInfo)
-            const fit = estimateContentFit(resumeContent)
-            const usagePercent = Math.round((fit.mainColumnLines / LAYOUT.MAX_LINES) * 100)
-            contentFit = {
-              mainColumnLines: fit.mainColumnLines,
-              maxLines: LAYOUT.MAX_LINES,
-              usagePercent,
-              pageCount: fit.fits ? 1 : Math.ceil(fit.mainColumnLines / LAYOUT.MAX_LINES),
-              fits: fit.fits,
-              overflow: fit.overflow,
-              suggestions: fit.suggestions
-            }
+            contentFit = toContentFitEstimate(estimateContentFit(resumeContent))
           }
         } catch (err) {
           logger.warn({ err, slug }, 'Failed to compute content fit estimate for resume version')
@@ -420,10 +575,8 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
         // Clean up orphaned PDF files in background
         const orphanedPaths = repo.getOrphanedPdfPaths()
         if (orphanedPaths.length > 0) {
-          const defaultArtifactsDir = path.resolve('/data/artifacts')
-          const root = env.GENERATOR_ARTIFACTS_DIR ? path.resolve(env.GENERATOR_ARTIFACTS_DIR) : defaultArtifactsDir
           for (const pdfPath of orphanedPaths) {
-            fs.unlink(path.join(root, pdfPath)).catch(() => {})
+            fs.unlink(path.join(artifactsRoot, pdfPath)).catch(() => {})
           }
         }
       }

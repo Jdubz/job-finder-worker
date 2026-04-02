@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Plus, FileText, Sparkles, Download, CheckCircle } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Loader2, Plus, FileText, Sparkles, Download, CheckCircle, Wrench } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useResumeVersion } from "@/hooks/useResumeVersion"
 import { resumeVersionsClient } from "@/api"
 import { jobMatchesClient } from "@/api"
 import { ContentItemForm } from "../content-items/components/ContentItemForm"
 import { ContentItemCard } from "../content-items/components/ContentItemCard"
+import { ResumeBuilderTab } from "./ResumeBuilderTab"
 import type { ContentItemFormValues } from "@/types/content-items"
 import type {
   ContentItemNode,
@@ -66,6 +68,7 @@ export function ResumeVersionsPage() {
   const [alert, setAlert] = useState<AlertState | null>(null)
   const [poolHealth, setPoolHealth] = useState<PoolHealthSummary | null>(null)
 
+  const isAuthenticated = Boolean(user?.email)
   const isAdmin = Boolean(user?.email && isOwner)
   const canEdit = isAdmin && editMode
 
@@ -155,19 +158,11 @@ export function ResumeVersionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Resume Pool</h1>
+          <h1 className="text-2xl font-bold">Resumes</h1>
           <p className="text-muted-foreground">
-            Curated pool of resume content. AI selects the best subset per job application.
+            Curated resume pool and custom resume builder.
           </p>
         </div>
-        {isAdmin && (
-          <Button
-            variant={editMode ? "default" : "outline"}
-            onClick={() => setEditMode(!editMode)}
-          >
-            {editMode ? "Exit Edit Mode" : "Edit Mode"}
-          </Button>
-        )}
       </div>
 
       {alert && (
@@ -176,80 +171,118 @@ export function ResumeVersionsPage() {
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        {/* Pool sidebar */}
-        <div className="space-y-4">
-          {poolHealth && <PoolHealthCard health={poolHealth} />}
-          {isAdmin && <TestTailoringCard />}
-        </div>
-
-        {/* Pool content editor */}
-        <div className="space-y-4">
-          {version ? (
-            <>
-              {/* Items tree */}
-              <div className="space-y-4">
-                {canEdit && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowRootForm(!showRootForm)}
-                    >
-                      <Plus className="mr-1 h-4 w-4" /> Add Section
-                    </Button>
-                  </div>
-                )}
-
-                {showRootForm && canEdit && (
-                  <Card>
-                    <CardContent className="pt-6">
-                      <ContentItemForm
-                        onSubmit={handleCreateRoot}
-                        onCancel={() => setShowRootForm(false)}
-                        submitLabel="Create Section"
-                      />
-                    </CardContent>
-                  </Card>
-                )}
-
-                {sortedItems.length === 0 && !showRootForm ? (
-                  <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <FileText className="mb-3 h-10 w-10" />
-                      <p>No content in the pool yet.</p>
-                      {canEdit && (
-                        <p className="text-sm">Click "Add Section" to start building.</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                ) : (
-                  contentItems.map((item, index) => (
-                    <ContentItemCard
-                      key={item.id}
-                      item={item}
-                      siblings={contentItems}
-                      index={index}
-                      depth={0}
-                      canEdit={canEdit}
-                      onSave={handleSaveItem}
-                      onDelete={handleDeleteItem}
-                      onCreateChild={handleCreateChild}
-                      onMove={handleReorder}
-                    />
-                  ))
-                )}
-              </div>
-            </>
-          ) : (
-            <Alert>
-              <AlertDescription>
-                Resume pool not found. Run migration 063 to create it.
-              </AlertDescription>
-            </Alert>
+      <Tabs defaultValue={isAuthenticated ? "build" : "pool"}>
+        <TabsList>
+          {isAuthenticated && (
+            <TabsTrigger value="build">
+              <Wrench className="mr-1.5 h-4 w-4" /> Build Resume
+            </TabsTrigger>
           )}
-        </div>
-      </div>
+          <TabsTrigger value="pool">
+            <FileText className="mr-1.5 h-4 w-4" /> Pool
+          </TabsTrigger>
+        </TabsList>
+
+        {isAuthenticated && (
+          <TabsContent value="build">
+            {version ? (
+              <ResumeBuilderTab items={sortedItems} />
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  Resume pool not found. Run migration 063 to create it.
+                </AlertDescription>
+              </Alert>
+            )}
+          </TabsContent>
+        )}
+
+        <TabsContent value="pool">
+          <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+            {/* Pool sidebar */}
+            <div className="space-y-4">
+              {poolHealth && <PoolHealthCard health={poolHealth} />}
+              {isAdmin && <TestTailoringCard />}
+            </div>
+
+            {/* Pool content editor */}
+            <div className="space-y-4">
+              {isAdmin && (
+                <div className="flex justify-end">
+                  <Button
+                    variant={editMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEditMode(!editMode)}
+                  >
+                    {editMode ? "Exit Edit Mode" : "Edit Mode"}
+                  </Button>
+                </div>
+              )}
+
+              {version ? (
+                <div className="space-y-4">
+                  {canEdit && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowRootForm(!showRootForm)}
+                      >
+                        <Plus className="mr-1 h-4 w-4" /> Add Section
+                      </Button>
+                    </div>
+                  )}
+
+                  {showRootForm && canEdit && (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <ContentItemForm
+                          onSubmit={handleCreateRoot}
+                          onCancel={() => setShowRootForm(false)}
+                          submitLabel="Create Section"
+                        />
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {sortedItems.length === 0 && !showRootForm ? (
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <FileText className="mb-3 h-10 w-10" />
+                        <p>No content in the pool yet.</p>
+                        {canEdit && (
+                          <p className="text-sm">Click "Add Section" to start building.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    contentItems.map((item, index) => (
+                      <ContentItemCard
+                        key={item.id}
+                        item={item}
+                        siblings={contentItems}
+                        index={index}
+                        depth={0}
+                        canEdit={canEdit}
+                        onSave={handleSaveItem}
+                        onDelete={handleDeleteItem}
+                        onCreateChild={handleCreateChild}
+                        onMove={handleReorder}
+                      />
+                    ))
+                  )}
+                </div>
+              ) : (
+                <Alert>
+                  <AlertDescription>
+                    Resume pool not found. Run migration 063 to create it.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

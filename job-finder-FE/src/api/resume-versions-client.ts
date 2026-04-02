@@ -21,7 +21,9 @@ import type {
   CreateResumeVersionResponse,
   DeleteResumeVersionResponse,
   TailorResumeResponse,
-  PoolHealthSummary
+  PoolHealthSummary,
+  EstimateResumeResponse,
+  BuildCustomResumeResponse
 } from "@shared/types"
 import type { ApiSuccessResponse } from "@shared/types"
 
@@ -139,6 +141,26 @@ export class ResumeVersionsClient extends BaseApiClient {
       '/resume-versions/pool/health'
     )
     return response.data
+  }
+
+  async estimateResume(selectedItemIds: string[], jobTitle?: string): Promise<EstimateResumeResponse> {
+    const response = await this.post<ApiSuccessResponse<EstimateResumeResponse>>(
+      '/resume-versions/pool/estimate',
+      { selectedItemIds, jobTitle }
+    )
+    return response.data
+  }
+
+  async buildCustomResume(selectedItemIds: string[], jobTitle?: string): Promise<BuildCustomResumeResponse> {
+    const response = await this.post<ApiSuccessResponse<BuildCustomResumeResponse>>(
+      '/resume-versions/pool/build',
+      { selectedItemIds, jobTitle }
+    )
+    return response.data
+  }
+
+  getCustomBuildPdfUrl(): string {
+    return `${this.baseUrl}/resume-versions/pool/build/pdf`
   }
 }
 

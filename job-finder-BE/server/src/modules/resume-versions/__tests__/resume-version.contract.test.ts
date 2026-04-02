@@ -3,6 +3,7 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildResumeVersionRouter } from '../resume-version.routes'
 import { ResumeVersionRepository } from '../resume-version.repository'
+import { ConfigRepository } from '../../config/config.repository'
 import type { AuthenticatedRequest } from '../../../middleware/firebase-auth'
 import { getDb } from '../../../db/sqlite'
 
@@ -19,7 +20,7 @@ const createApp = () => {
     }
     next()
   })
-  app.use('/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: [] }))
+  app.use('/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: [], authMiddleware: [] }))
   return app
 }
 
@@ -33,6 +34,14 @@ describe('resume-version routes contract', () => {
     db.prepare('DELETE FROM resume_items').run()
     // Reset pool publish state (may be modified by repository tests sharing this DB)
     repo.unpublishVersion('pool')
+    // Seed personal info so estimate/build endpoints don't 400
+    const configRepo = new ConfigRepository()
+    configRepo.upsert('personal-info', {
+      name: 'Test User',
+      email: 'test@example.com',
+      title: 'Software Engineer',
+      location: 'San Francisco, CA'
+    })
   })
 
   // ── Version endpoints ──────────────────────────────────────────
@@ -320,6 +329,103 @@ describe('resume-version routes contract', () => {
     it('returns 404 for unknown slug', async () => {
       const res = await request(app).get('/resume-versions/nonexistent/pdf')
       expect(res.status).toBe(404)
+    })
+  })
+
+  // ── Custom builder endpoints ──────────────────────────────────
+
+  describe('POST /resume-versions/pool/estimate', () => {
+    it('returns content fit estimate for selected items', async () => {
+      const version = repo.getVersionBySlug('pool')!
+      const narrative = repo.createItem(version.id, {
+        title: 'Summary',
+        aiContext: 'narrative',
+        description: 'A seasoned full-stack engineer with 10 years of experience.',
+        userEmail
+      })
+      const work = repo.createItem(version.id, {
+        title: 'Acme Corp',
+        aiContext: 'work',
+        role: 'Senior Engineer',
+        startDate: '2022-01',
+        userEmail
+      })
+      const highlight = repo.createItem(version.id, {
+        parentId: work.id,
+        aiContext: 'highlight',
+        description: 'Led migration to microservices architecture.',
+        userEmail
+      })
+
+      const res = await request(app)
+        .post('/resume-versions/pool/estimate')
+        .send({ selectedItemIds: [narrative.id, work.id, highlight.id] })
+
+      expect(res.status).toBe(200)
+      expect(res.body.data.contentFit).toBeDefined()
+      expect(res.body.data.contentFit.usagePercent).toBeGreaterThan(0)
+      expect(res.body.data.contentFit.maxLines).toBeGreaterThan(0)
+      expect(res.body.data.selectedCount).toBe(3)
+    })
+
+    it('returns 400 for empty selection', async () => {
+      const res = await request(app)
+        .post('/resume-versions/pool/estimate')
+        .send({ selectedItemIds: [] })
+
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 for missing selectedItemIds', async () => {
+      const res = await request(app)
+        .post('/resume-versions/pool/estimate')
+        .send({})
+
+      expect(res.status).toBe(400)
+    })
+
+    it('accepts optional jobTitle', async () => {
+      const version = repo.getVersionBySlug('pool')!
+      const item = repo.createItem(version.id, {
+        title: 'Skills',
+        aiContext: 'skills',
+        skills: ['TypeScript', 'React'],
+        userEmail
+      })
+
+      const res = await request(app)
+        .post('/resume-versions/pool/estimate')
+        .send({ selectedItemIds: [item.id], jobTitle: 'Staff Engineer' })
+
+      expect(res.status).toBe(200)
+      expect(res.body.data.contentFit).toBeDefined()
+    })
+  })
+
+  describe('POST /resume-versions/pool/build', () => {
+    it('returns 400 for empty selection', async () => {
+      const res = await request(app)
+        .post('/resume-versions/pool/build')
+        .send({ selectedItemIds: [] })
+
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 for missing body', async () => {
+      const res = await request(app)
+        .post('/resume-versions/pool/build')
+        .send({})
+
+      expect(res.status).toBe(400)
+    })
+  })
+
+  describe('GET /resume-versions/pool/build/pdf', () => {
+    it('returns 404 when no build exists', async () => {
+      const res = await request(app).get('/resume-versions/pool/build/pdf')
+
+      expect(res.status).toBe(404)
+      expect(res.body.error.message).toContain('No custom build PDF found')
     })
   })
 })

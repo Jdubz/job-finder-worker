@@ -211,4 +211,58 @@ describe("ResumeVersionsClient", () => {
       expect(result).toEqual(health)
     })
   })
+
+  describe("estimateResume", () => {
+    it("posts selected item IDs for estimation", async () => {
+      const estimateData = { contentFit: { usagePercent: 82 }, selectedCount: 5 }
+      mockFetch.mockResolvedValue(mockSuccess(estimateData))
+
+      const result = await client.estimateResume(["id-1", "id-2"], "Senior Engineer")
+
+      expect(result).toEqual(estimateData)
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.test.com/resume-versions/pool/estimate",
+        expect.objectContaining({ method: "POST" })
+      )
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.selectedItemIds).toEqual(["id-1", "id-2"])
+      expect(body.jobTitle).toBe("Senior Engineer")
+    })
+
+    it("sends without jobTitle when omitted", async () => {
+      mockFetch.mockResolvedValue(mockSuccess({ contentFit: {}, selectedCount: 1 }))
+
+      await client.estimateResume(["id-1"])
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.selectedItemIds).toEqual(["id-1"])
+      expect(body.jobTitle).toBeUndefined()
+    })
+  })
+
+  describe("buildCustomResume", () => {
+    it("posts selected item IDs for PDF build", async () => {
+      const buildData = { contentFit: { usagePercent: 90 }, pdfSizeBytes: 12345 }
+      mockFetch.mockResolvedValue(mockSuccess(buildData))
+
+      const result = await client.buildCustomResume(["id-1", "id-3"], "Backend Engineer")
+
+      expect(result).toEqual(buildData)
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.test.com/resume-versions/pool/build",
+        expect.objectContaining({ method: "POST" })
+      )
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.selectedItemIds).toEqual(["id-1", "id-3"])
+      expect(body.jobTitle).toBe("Backend Engineer")
+    })
+  })
+
+  describe("getCustomBuildPdfUrl", () => {
+    it("returns the custom build PDF URL", () => {
+      const url = client.getCustomBuildPdfUrl()
+
+      expect(url).toBe("https://api.test.com/resume-versions/pool/build/pdf")
+    })
+  })
 })
