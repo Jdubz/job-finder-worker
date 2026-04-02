@@ -63,6 +63,7 @@ interface AlertState {
 
 export function ResumeVersionsPage() {
   const { user, isOwner } = useAuth()
+  const [activeTab, setActiveTab] = useState("pool")
   const [editMode, setEditMode] = useState(false)
   const [showRootForm, setShowRootForm] = useState(false)
   const [alert, setAlert] = useState<AlertState | null>(null)
@@ -171,7 +172,7 @@ export function ResumeVersionsPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="pool">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           {isAuthenticated && (
             <TabsTrigger value="build">
