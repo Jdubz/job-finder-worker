@@ -48,25 +48,29 @@ import type { AuthenticatedRequest, AuthenticatedUser } from '../../middleware/f
 const slugSchema = z.string().min(1)
 
 const monthSchema = z.preprocess(
-  (val) => (val === '' || val === null ? undefined : val),
+  (val) => (val === '' ? null : val),
   z
     .string()
     .regex(/^\d{4}-\d{2}$/, 'Date must be in YYYY-MM format')
+    .or(z.literal(null))
     .optional()
 )
+
+const nullableString = z.string().min(1).or(z.literal(null)).optional()
+const nullableUrl = z.string().url().or(z.literal(null)).optional()
 
 const itemFieldsSchema = z.object({
   parentId: z.string().min(1).or(z.literal(null)).optional(),
   orderIndex: z.number().int().min(0).optional(),
-  aiContext: z.enum(['work', 'highlight', 'project', 'education', 'skills', 'narrative', 'section']).optional(),
-  title: z.string().min(1).optional(),
-  role: z.string().min(1).optional(),
-  location: z.string().min(1).optional(),
-  website: z.string().url().optional(),
+  aiContext: z.enum(['work', 'highlight', 'project', 'education', 'skills', 'narrative', 'section']).or(z.literal(null)).optional(),
+  title: nullableString,
+  role: nullableString,
+  location: nullableString,
+  website: nullableUrl,
   startDate: monthSchema,
   endDate: monthSchema,
-  description: z.string().min(1).optional(),
-  skills: z.array(z.string().min(1)).optional()
+  description: nullableString,
+  skills: z.array(z.string().min(1)).or(z.literal(null)).optional()
 })
 
 const createRequestSchema = z.object({
