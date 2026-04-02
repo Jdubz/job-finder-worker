@@ -22,24 +22,28 @@ import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middlew
 
 const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
 const monthSchema = z.preprocess(
-  (val) => (val === '' || val === null ? undefined : val),
+  (val) => (val === '' ? null : val),
   z
     .string()
     .regex(/^\d{4}-\d{2}$/, 'Date must be in YYYY-MM format')
+    .or(z.literal(null))
     .optional()
 )
+
+const nullableString = z.string().min(1).or(z.literal(null)).optional()
+const nullableUrl = z.string().url().or(z.literal(null)).optional()
 
 const itemFieldsSchema = z.object({
   parentId: nullableIdSchema,
   orderIndex: z.number().int().min(0).optional(),
-  title: z.string().min(1).optional(),
-  role: z.string().min(1).optional(),
-  location: z.string().min(1).optional(),
-  website: z.string().url().optional(),
+  title: nullableString,
+  role: nullableString,
+  location: nullableString,
+  website: nullableUrl,
   startDate: monthSchema,
   endDate: monthSchema,
-  description: z.string().min(1).optional(),
-  skills: z.array(z.string().min(1)).optional()
+  description: nullableString,
+  skills: z.array(z.string().min(1)).or(z.literal(null)).optional()
 })
 
 const createRequestSchema = z.object({

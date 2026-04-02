@@ -52,6 +52,36 @@ test.describe("Resume pool editing", () => {
     await expect(itemCard.getByText("Original Role")).not.toBeVisible()
   })
 
+  test("clearing a field persists the removal", async ({ page, request }) => {
+    const itemId = await seedResumePoolItem(request, {
+      title: "E2E Clear Title Corp",
+      aiContext: "narrative",
+      role: "Should Be Cleared",
+      description: "This narrative should keep its description.",
+    })
+    seededIds.push(itemId)
+
+    await page.goto("/resumes")
+    await page.getByRole("tab", { name: /Pool/i }).click()
+    await page.getByRole("button", { name: /Edit Mode/i }).click()
+
+    const itemCard = page.getByTestId(`content-item-${itemId}`)
+    await expect(itemCard.getByText("E2E Clear Title Corp")).toBeVisible()
+    await itemCard.getByRole("button", { name: "Edit" }).click()
+
+    // Clear the title field entirely
+    await itemCard.getByLabel("Title").clear()
+    // Clear the role field entirely
+    await itemCard.getByLabel("Role").clear()
+
+    await itemCard.getByRole("button", { name: "Update Item" }).click()
+
+    // Title and role should no longer render on the card
+    await expect(itemCard.getByText("This narrative should keep its description.")).toBeVisible({ timeout: 10000 })
+    await expect(itemCard.getByText("E2E Clear Title Corp")).not.toBeVisible()
+    await expect(itemCard.getByText("Should Be Cleared")).not.toBeVisible()
+  })
+
   test("creates a new pool item and deletes it", async ({ page }) => {
     const uniqueTitle = `E2E Section ${Date.now()}`
 

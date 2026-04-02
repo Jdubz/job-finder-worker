@@ -59,26 +59,30 @@ export function ContentItemForm({
       const value = event.target.value
       setFormValues((prev) => ({
         ...prev,
-        [field]: value.length ? value : undefined
+        [field]: value.length ? value : null
       }))
     }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    // Normalize empty/whitespace strings to null so the backend knows to clear
+    // the field. Using null (not undefined) is critical: JSON.stringify drops
+    // undefined keys, so the backend would interpret missing keys as "keep
+    // existing value" on PATCH requests instead of clearing the field.
     const normalizedValues = Object.fromEntries(
       Object.entries(formValues).map(([key, value]) => {
         if (value === null || value === undefined) {
-          return [key, undefined]
+          return [key, null]
         }
         if (typeof value === "string" && value.trim().length === 0) {
-          return [key, undefined]
+          return [key, null]
         }
         return [key, value]
       })
     ) as ContentItemFormValues
     const payload: ContentItemFormValues = {
       ...normalizedValues,
-      skills: parseSkills(skillsText)
+      skills: parseSkills(skillsText) ?? null
     }
 
     setIsSubmitting(true)
@@ -227,7 +231,7 @@ export function ContentItemForm({
           onValueChange={(value) =>
             setFormValues((prev) => ({
               ...prev,
-              aiContext: value ? (value as ContentItemAIContext) : undefined
+              aiContext: value ? (value as ContentItemAIContext) : null
             }))
           }
         >
