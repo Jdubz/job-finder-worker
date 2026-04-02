@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, act, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ResumeBuilderTab } from "../ResumeBuilderTab"
@@ -187,6 +187,40 @@ const mockOverflowFit = {
   selectedCount: 10
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────
+
+/** Find a checkbox by its nearest label or container text. */
+function getCheckboxFor(text: string | RegExp): HTMLElement {
+  const el = screen.getByText(text)
+  // For items inside a <label>, the checkbox is a sibling
+  const label = el.closest("label")
+  if (label) {
+    const cb = label.querySelector('[role="checkbox"]')
+    if (cb) return cb as HTMLElement
+  }
+  // For items not in a <label> (e.g. work items), walk up to the border container
+  let container = el.parentElement
+  while (container) {
+    const cb = container.querySelector('[role="checkbox"]')
+    if (cb) return cb as HTMLElement
+    container = container.parentElement
+  }
+  throw new Error(`No checkbox found near text "${String(text)}"`)
+}
+
+/** Get a scoped `within()` for a category section by its heading title. */
+function withinSection(title: string) {
+  const heading = screen.getByText(title)
+  // Walk up to the Card root (the outermost section container)
+  let el: HTMLElement | null = heading
+  while (el && !el.getAttribute("class")?.includes("rounded")) {
+    el = el.parentElement
+  }
+  // Fallback: use the grandparent of the heading
+  const sectionRoot = el ?? heading.parentElement!.parentElement!
+  return within(sectionRoot)
+}
+
 // ─── Tests ───────────────────────────────────────────────────────
 
 describe("ResumeBuilderTab", () => {
@@ -235,18 +269,10 @@ describe("ResumeBuilderTab", () => {
     it("shows selection counts as 0/N initially for each category", () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      // Each category card shows its own count
-      const expSection = screen.getByText("Experience").closest("[class*='card']")!
-      expect(expSection.textContent).toContain("0/2 selected")
-
-      const skillsSection = screen.getByText("Skills").closest("[class*='card']")!
-      expect(skillsSection.textContent).toContain("0/2 selected")
-
-      const projSection = screen.getByText("Projects").closest("[class*='card']")!
-      expect(projSection.textContent).toContain("0/1 selected")
-
-      const eduSection = screen.getByText("Education").closest("[class*='card']")!
-      expect(eduSection.textContent).toContain("0/1 selected")
+      expect(withinSection("Experience").getByText("0/2 selected")).toBeInTheDocument()
+      expect(withinSection("Skills").getByText("0/2 selected")).toBeInTheDocument()
+      expect(withinSection("Projects").getByText("0/1 selected")).toBeInTheDocument()
+      expect(withinSection("Education").getByText("0/1 selected")).toBeInTheDocument()
     })
 
     it("displays work item metadata (role, dates, location)", () => {
@@ -306,35 +332,49 @@ describe("ResumeBuilderTab", () => {
     it("selects a narrative via radio button", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const radios = screen.getAllByRole("radio")
-      await act(async () => { fireEvent.click(radios[0]) })
+      const fullstack = screen.getByLabelText(/Fullstack Summary/i)
+      const backend = screen.getByLabelText(/Backend Summary/i)
+      await act(async () => { fireEvent.click(fullstack) })
 
-      expect(radios[0]).toBeChecked()
-      expect(radios[1]).not.toBeChecked()
+      expect(fullstack).toBeChecked()
+      expect(backend).not.toBeChecked()
     })
 
     it("switches between narratives (single selection)", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const radios = screen.getAllByRole("radio")
-      await act(async () => { fireEvent.click(radios[0]) })
-      expect(radios[0]).toBeChecked()
+      const fullstack = screen.getByLabelText(/Fullstack Summary/i)
+      const backend = screen.getByLabelText(/Backend Summary/i)
 
-      await act(async () => { fireEvent.click(radios[1]) })
-      expect(radios[0]).not.toBeChecked()
-      expect(radios[1]).toBeChecked()
+      await act(async () => { fireEvent.click(fullstack) })
+      expect(fullstack).toBeChecked()
+
+      await act(async () => { fireEvent.click(backend) })
+      expect(fullstack).not.toBeChecked()
+      expect(backend).toBeChecked()
+    })
+
+    it("deselects a narrative when clicking it again", async () => {
+      render(<ResumeBuilderTab items={allItems} />)
+
+      const fullstack = screen.getByLabelText(/Fullstack Summary/i)
+      await act(async () => { fireEvent.click(fullstack) })
+      expect(fullstack).toBeChecked()
+
+      await act(async () => { fireEvent.click(fullstack) })
+      expect(fullstack).not.toBeChecked()
     })
 
     it("updates summary selection count", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const summarySection = screen.getByText("Summary").closest("[class*='card']")!
-      expect(summarySection.textContent).toContain("0/2 selected")
+      const section = withinSection("Summary")
+      expect(section.getByText("0/2 selected")).toBeInTheDocument()
 
-      const radios = screen.getAllByRole("radio")
-      await act(async () => { fireEvent.click(radios[0]) })
+      const fullstack = screen.getByLabelText(/Fullstack Summary/i)
+      await act(async () => { fireEvent.click(fullstack) })
 
-      expect(summarySection.textContent).toContain("1/2 selected")
+      expect(section.getByText("1/2 selected")).toBeInTheDocument()
     })
   })
 
@@ -344,15 +384,10 @@ describe("ResumeBuilderTab", () => {
     it("selects a work item and reveals its highlights", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      // Highlights should not be visible initially
       expect(screen.queryByText(/Led migration/)).not.toBeInTheDocument()
 
-      // Click the Acme Corp checkbox
-      const checkboxes = screen.getAllByRole("checkbox")
-      const acmeCheckbox = checkboxes[0] // First checkbox is Acme Corp
-      await act(async () => { fireEvent.click(acmeCheckbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Acme Corp")) })
 
-      // Highlights should now be visible
       expect(screen.getByText(/Led migration/)).toBeInTheDocument()
       expect(screen.getByText(/Reduced API latency/)).toBeInTheDocument()
     })
@@ -360,29 +395,19 @@ describe("ResumeBuilderTab", () => {
     it("auto-selects all highlights when selecting a work item", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const checkboxes = screen.getAllByRole("checkbox")
-      await act(async () => { fireEvent.click(checkboxes[0]) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Acme Corp")) })
 
-      // Should show "2/2 highlights" (all selected)
       expect(screen.getByText("2/2 highlights")).toBeInTheDocument()
     })
 
     it("allows deselecting individual highlights", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      // Select Acme Corp
-      const checkboxes = screen.getAllByRole("checkbox")
-      await act(async () => { fireEvent.click(checkboxes[0]) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Acme Corp")) })
 
-      // Now there are more checkboxes (highlights appeared)
-      const allCheckboxes = screen.getAllByRole("checkbox")
-      // Find a highlight checkbox and uncheck it
-      const highlightCheckbox = allCheckboxes.find(
-        (cb) => cb.closest("label")?.textContent?.includes("Led migration")
-      )
-      expect(highlightCheckbox).toBeDefined()
-
-      await act(async () => { fireEvent.click(highlightCheckbox!) })
+      // Find the highlight checkbox by its description text
+      const hlCheckbox = getCheckboxFor(/Led migration/)
+      await act(async () => { fireEvent.click(hlCheckbox) })
 
       expect(screen.getByText("1/2 highlights")).toBeInTheDocument()
     })
@@ -390,24 +415,20 @@ describe("ResumeBuilderTab", () => {
     it("deselecting a work item removes all its highlights", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const checkboxes = screen.getAllByRole("checkbox")
-      // Select then deselect Acme Corp
-      await act(async () => { fireEvent.click(checkboxes[0]) })
+      const acmeCb = getCheckboxFor("Acme Corp")
+      await act(async () => { fireEvent.click(acmeCb) })
       expect(screen.getByText(/Led migration/)).toBeInTheDocument()
 
-      await act(async () => { fireEvent.click(checkboxes[0]) })
+      await act(async () => { fireEvent.click(acmeCb) })
       expect(screen.queryByText(/Led migration/)).not.toBeInTheDocument()
     })
 
     it("updates experience selection count", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const checkboxes = screen.getAllByRole("checkbox")
-      await act(async () => { fireEvent.click(checkboxes[0]) }) // Acme Corp
+      await act(async () => { fireEvent.click(getCheckboxFor("Acme Corp")) })
 
-      // Find the Experience section's count
-      const expSection = screen.getByText("Experience").closest("[class*='card']")
-      expect(expSection?.textContent).toContain("1/2 selected")
+      expect(withinSection("Experience").getByText("1/2 selected")).toBeInTheDocument()
     })
   })
 
@@ -417,8 +438,7 @@ describe("ResumeBuilderTab", () => {
     it("toggles a skill group on and off", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
+      const checkbox = getCheckboxFor("Languages")
 
       await act(async () => { fireEvent.click(checkbox) })
       expect(checkbox).toHaveAttribute("data-state", "checked")
@@ -430,8 +450,7 @@ describe("ResumeBuilderTab", () => {
     it("toggles an education item", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const eduLabel = screen.getByText("State University").closest("label")!
-      const checkbox = eduLabel.querySelector('[role="checkbox"]')!
+      const checkbox = getCheckboxFor("State University")
 
       await act(async () => { fireEvent.click(checkbox) })
       expect(checkbox).toHaveAttribute("data-state", "checked")
@@ -446,9 +465,7 @@ describe("ResumeBuilderTab", () => {
 
       expect(screen.queryByText(/Built CLI tool/)).not.toBeInTheDocument()
 
-      const projLabel = screen.getByText("Open Source CLI").closest("label")!
-      const checkbox = projLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Open Source CLI")) })
 
       expect(screen.getByText(/Built CLI tool/)).toBeInTheDocument()
       expect(screen.getByText("1/1 highlights")).toBeInTheDocument()
@@ -462,9 +479,7 @@ describe("ResumeBuilderTab", () => {
       render(<ResumeBuilderTab items={allItems} />)
 
       // Select a skill
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       // Advance past debounce
       await act(async () => { vi.advanceTimersByTime(350) })
@@ -484,9 +499,7 @@ describe("ResumeBuilderTab", () => {
       await user.type(titleInput, "Staff Engineer")
 
       // Select an item
-      const eduLabel = screen.getByText("State University").closest("label")!
-      const checkbox = eduLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("State University")) })
 
       await act(async () => { vi.advanceTimersByTime(350) })
 
@@ -499,9 +512,7 @@ describe("ResumeBuilderTab", () => {
     it("displays content fit bar after estimation completes", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
       await act(async () => { vi.advanceTimersByTime(350) })
 
       await waitFor(() => {
@@ -514,9 +525,7 @@ describe("ResumeBuilderTab", () => {
 
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
       await act(async () => { vi.advanceTimersByTime(350) })
 
       await waitFor(() => {
@@ -529,8 +538,7 @@ describe("ResumeBuilderTab", () => {
     it("clears estimation when all items are deselected", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
+      const checkbox = getCheckboxFor("Languages")
 
       // Select
       await act(async () => { fireEvent.click(checkbox) })
@@ -564,15 +572,11 @@ describe("ResumeBuilderTab", () => {
       render(<ResumeBuilderTab items={allItems} />)
 
       // First selection triggers first debounce
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
       await act(async () => { vi.advanceTimersByTime(350) })
 
       // Second selection triggers second debounce (first still pending)
-      const fwLabel = screen.getByText("Frameworks").closest("label")!
-      const fwCheckbox = fwLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(fwCheckbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Frameworks")) })
       await act(async () => { vi.advanceTimersByTime(350) })
 
       // Now resolve the first (stale) response
@@ -594,9 +598,7 @@ describe("ResumeBuilderTab", () => {
       const btn = screen.getByRole("button", { name: /Generate PDF/i })
       expect(btn).toBeDisabled()
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       expect(btn).toBeEnabled()
     })
@@ -605,12 +607,9 @@ describe("ResumeBuilderTab", () => {
       render(<ResumeBuilderTab items={allItems} />)
 
       // Select narrative + skill
-      const radios = screen.getAllByRole("radio")
-      await act(async () => { fireEvent.click(radios[0]) })
+      await act(async () => { fireEvent.click(screen.getByLabelText(/Fullstack Summary/i)) })
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       const btn = screen.getByRole("button", { name: /Generate PDF/i })
       await act(async () => { fireEvent.click(btn) })
@@ -624,9 +623,7 @@ describe("ResumeBuilderTab", () => {
     it("shows Download PDF button after successful build", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       const btn = screen.getByRole("button", { name: /Generate PDF/i })
       await act(async () => { fireEvent.click(btn) })
@@ -639,9 +636,7 @@ describe("ResumeBuilderTab", () => {
     it("opens PDF URL in new window on download click", async () => {
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       const generateBtn = screen.getByRole("button", { name: /Generate PDF/i })
       await act(async () => { fireEvent.click(generateBtn) })
@@ -663,9 +658,7 @@ describe("ResumeBuilderTab", () => {
 
       render(<ResumeBuilderTab items={allItems} />)
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       const btn = screen.getByRole("button", { name: /Generate PDF/i })
       await act(async () => { fireEvent.click(btn) })
@@ -679,9 +672,7 @@ describe("ResumeBuilderTab", () => {
       render(<ResumeBuilderTab items={allItems} />)
 
       // Select and build
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
       const btn = screen.getByRole("button", { name: /Generate PDF/i })
       await act(async () => { fireEvent.click(btn) })
 
@@ -690,9 +681,7 @@ describe("ResumeBuilderTab", () => {
       })
 
       // Change selection — Download should disappear
-      const eduLabel = screen.getByText("State University").closest("label")!
-      const eduCheckbox = eduLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(eduCheckbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("State University")) })
 
       expect(screen.queryByRole("button", { name: /Download PDF/i })).not.toBeInTheDocument()
     })
@@ -704,9 +693,7 @@ describe("ResumeBuilderTab", () => {
       const titleInput = screen.getByPlaceholderText(/Senior Software Engineer/)
       await user.type(titleInput, "Staff Engineer")
 
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const checkbox = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(checkbox) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       const btn = screen.getByRole("button", { name: /Generate PDF/i })
       await act(async () => { fireEvent.click(btn) })
@@ -725,17 +712,13 @@ describe("ResumeBuilderTab", () => {
       render(<ResumeBuilderTab items={allItems} />)
 
       // Select narrative
-      const radios = screen.getAllByRole("radio")
-      await act(async () => { fireEvent.click(radios[0]) })
+      await act(async () => { fireEvent.click(screen.getByLabelText(/Fullstack Summary/i)) })
 
       // Select Acme Corp (with highlights)
-      const checkboxes = screen.getAllByRole("checkbox")
-      await act(async () => { fireEvent.click(checkboxes[0]) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Acme Corp")) })
 
       // Select a skill
-      const langLabel = screen.getByText("Languages").closest("label")!
-      const langCb = langLabel.querySelector('[role="checkbox"]')!
-      await act(async () => { fireEvent.click(langCb) })
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
 
       await act(async () => { vi.advanceTimersByTime(350) })
 
