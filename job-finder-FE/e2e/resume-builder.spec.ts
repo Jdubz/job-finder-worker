@@ -53,6 +53,8 @@ test.describe("Resume pool editing", () => {
   })
 
   test("creates a new pool item and deletes it", async ({ page }) => {
+    const uniqueTitle = `E2E Section ${Date.now()}`
+
     await page.goto("/resumes")
     await page.getByRole("tab", { name: /Pool/i }).click()
     await page.getByRole("button", { name: /Edit Mode/i }).click()
@@ -61,7 +63,7 @@ test.describe("Resume pool editing", () => {
     await page.getByRole("button", { name: /Add Section/i }).click()
 
     // Fill the form
-    await page.getByLabel("Title").fill("E2E New Section")
+    await page.getByLabel("Title").fill(uniqueTitle)
     await page.getByLabel("AI Context").click()
     await page.getByRole("option", { name: /Skills/i }).click()
     await page.getByLabel("Skills (comma separated)").fill("TypeScript, React, Node.js")
@@ -70,14 +72,14 @@ test.describe("Resume pool editing", () => {
     await page.getByRole("button", { name: "Create Section" }).click()
 
     // Verify it appears
-    await expect(page.getByText("E2E New Section")).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 })
 
     // Find and delete it
-    const newItem = page.locator("[data-testid]", { hasText: "E2E New Section" }).first()
+    const newItem = page.locator("[data-testid]", { hasText: uniqueTitle }).first()
     await newItem.getByRole("button", { name: "Delete" }).click()
 
     // Verify it's gone
-    await expect(page.getByText("E2E New Section")).not.toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(uniqueTitle)).not.toBeVisible({ timeout: 10000 })
   })
 })
 

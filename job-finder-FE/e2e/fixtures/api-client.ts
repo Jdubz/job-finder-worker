@@ -393,7 +393,9 @@ export async function deleteResumePoolItem(
     { headers: { Authorization: `Bearer ${AUTH_TOKEN}` } }
   )
   if (!response.ok()) {
-    throw new Error(`Failed to delete resume pool item ${itemId}: ${response.status()}`)
+    throw new Error(
+      `Failed to delete resume pool item ${itemId}: ${response.status()} ${await response.text()}`
+    )
   }
 }
 
@@ -404,15 +406,15 @@ export async function listResumePoolItems(
     headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
   })
   if (!response.ok()) {
-    throw new Error(`Failed to list resume pool items: ${response.status()}`)
+    throw new Error(
+      `Failed to list resume pool items: ${response.status()} ${await response.text()}`
+    )
   }
-  const body = (await response.json()) as ApiSuccess<{
-    items: Array<{ id: string; title?: string | null; aiContext?: string | null; children?: Array<{ id: string; title?: string | null; aiContext?: string | null }> }>
-  }>
 
-  const flatten = (
-    nodes: Array<{ id: string; title?: string | null; aiContext?: string | null; children?: Array<{ id: string; title?: string | null; aiContext?: string | null }> }>
-  ): Array<{ id: string; title?: string | null; aiContext?: string | null }> =>
+  type PoolItem = { id: string; title?: string | null; aiContext?: string | null; children?: PoolItem[] }
+  const body = (await response.json()) as ApiSuccess<{ items: PoolItem[] }>
+
+  const flatten = (nodes: PoolItem[]): PoolItem[] =>
     nodes.flatMap((n) => [n, ...(n.children ? flatten(n.children) : [])])
 
   return flatten(body.data.items ?? [])

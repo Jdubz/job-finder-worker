@@ -98,6 +98,7 @@ export function ResumeVersionsPage() {
   }, [mutationCount])
 
   const handleCreateRoot = async (values: ContentItemFormValues) => {
+    setAlert(null)
     try {
       await createItem({ ...values, parentId: null })
       setShowRootForm(false)
@@ -108,6 +109,7 @@ export function ResumeVersionsPage() {
   }
 
   const handleCreateChild = async (parentId: string, values: ContentItemFormValues) => {
+    setAlert(null)
     try {
       await createItem({ ...values, parentId })
     } catch (err) {
@@ -116,6 +118,7 @@ export function ResumeVersionsPage() {
   }
 
   const handleSaveItem = async (id: string, values: ContentItemFormValues) => {
+    setAlert(null)
     try {
       await updateItem(id, values)
       setAlert({ type: "success", message: "Item updated" })
@@ -125,6 +128,7 @@ export function ResumeVersionsPage() {
   }
 
   const handleDeleteItem = async (id: string) => {
+    setAlert(null)
     try {
       await deleteItem(id)
     } catch (err) {
@@ -133,6 +137,7 @@ export function ResumeVersionsPage() {
   }
 
   const handleReorder = async (id: string, parentId: string | null, orderIndex: number) => {
+    setAlert(null)
     try {
       await reorderItem(id, parentId, orderIndex)
     } catch (err) {
@@ -151,7 +156,9 @@ export function ResumeVersionsPage() {
     )
   }
 
-  if (versionError) {
+  // Only show full-page error on initial load failure. During refetches,
+  // keep the page mounted and show an inline alert instead.
+  if (versionError && !version) {
     return (
       <Alert variant="destructive">
         <AlertDescription>Failed to load resume pool: {versionError.message}</AlertDescription>
