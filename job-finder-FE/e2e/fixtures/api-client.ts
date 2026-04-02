@@ -370,6 +370,58 @@ export async function listContentItems(
   return flatten(body.data.items ?? [])
 }
 
+// ─── Resume pool helpers ─────────────────────────────────────────
+
+export async function seedResumePoolItem(
+  request: APIRequestContext,
+  itemData: Record<string, unknown>
+): Promise<string> {
+  const data = await apiPost<{ item: { id: string } }>(
+    request,
+    "/resume-versions/pool/items",
+    { itemData }
+  )
+  return data.item.id
+}
+
+export async function deleteResumePoolItem(
+  request: APIRequestContext,
+  itemId: string
+) {
+  const response = await request.delete(
+    `${API_BASE}/resume-versions/pool/items/${itemId}`,
+    { headers: { Authorization: `Bearer ${AUTH_TOKEN}` } }
+  )
+  if (!response.ok()) {
+    throw new Error(
+      `Failed to delete resume pool item ${itemId}: ${response.status()} ${await response.text()}`
+    )
+  }
+}
+
+export async function listResumePoolItems(
+  request: APIRequestContext
+): Promise<Array<{ id: string; title?: string | null; aiContext?: string | null }>> {
+  const response = await request.get(`${API_BASE}/resume-versions/pool/items`, {
+    headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+  })
+  if (!response.ok()) {
+    throw new Error(
+      `Failed to list resume pool items: ${response.status()} ${await response.text()}`
+    )
+  }
+
+  type PoolItem = { id: string; title?: string | null; aiContext?: string | null; children?: PoolItem[] }
+  const body = (await response.json()) as ApiSuccess<{ items: PoolItem[] }>
+
+  const flatten = (nodes: PoolItem[]): PoolItem[] =>
+    nodes.flatMap((n) => [n, ...(n.children ? flatten(n.children) : [])])
+
+  return flatten(body.data.items ?? [])
+}
+
+// ─── Job listing / match helpers ─────────────────────────────────
+
 export async function seedJobListing(
   request: APIRequestContext,
   overrides: Record<string, unknown> = {}

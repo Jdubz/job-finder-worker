@@ -11,6 +11,8 @@ const dbName = `jobfinder-e2e-${process.pid}-${Date.now()}`
 // Shared in-memory DB; keep URI simple to avoid path directory checks in better-sqlite3
 const dbPath = `file:${dbName}?mode=memory&cache=shared`
 const migrationsDir = path.resolve(process.cwd(), "infra/sqlite/migrations")
+// Use a temp directory for generated artifacts (PDFs, etc.) so tests don't need /data
+const artifactsDir = path.join(os.tmpdir(), `jf-e2e-artifacts-${process.pid}`)
 
 const childEnv = {
   ...process.env,
@@ -19,6 +21,7 @@ const childEnv = {
   DATABASE_PATH: dbPath,
   TEST_AUTH_BYPASS_TOKEN: AUTH_TOKEN,
   JF_SQLITE_MIGRATIONS_DIR: migrationsDir,
+  GENERATOR_ARTIFACTS_DIR: artifactsDir,
 }
 
 const child = spawn("npm", ["run", "dev", "--workspace", "job-finder-BE/server"], {
