@@ -151,7 +151,7 @@ export class ContentItemRepository {
     const existing = this.getById(id)
     if (!existing) throw new ContentItemNotFoundError(`Content item not found: ${id}`)
 
-    const parentId = data.parentId ?? existing.parentId
+    const parentId = data.parentId !== undefined ? data.parentId : existing.parentId
     const order = data.orderIndex ?? existing.orderIndex ?? this.nextOrderIndex(parentId ?? null)
     const now = new Date().toISOString()
 
@@ -179,14 +179,16 @@ export class ContentItemRepository {
     stmt.run(
       parentId ?? null,
       order,
-      data.title ?? existing.title ?? null,
-      data.role ?? existing.role ?? null,
-      data.location ?? existing.location ?? null,
-      data.website ?? existing.website ?? null,
-      data.startDate ?? existing.startDate ?? null,
-      data.endDate ?? existing.endDate ?? null,
-      data.description ?? existing.description ?? null,
-      data.skills ? JSON.stringify(data.skills) : existing.skills ? JSON.stringify(existing.skills) : null,
+      data.title !== undefined ? data.title : existing.title ?? null,
+      data.role !== undefined ? data.role : existing.role ?? null,
+      data.location !== undefined ? data.location : existing.location ?? null,
+      data.website !== undefined ? data.website : existing.website ?? null,
+      data.startDate !== undefined ? data.startDate : existing.startDate ?? null,
+      data.endDate !== undefined ? data.endDate : existing.endDate ?? null,
+      data.description !== undefined ? data.description : existing.description ?? null,
+      data.skills !== undefined
+        ? data.skills ? JSON.stringify(data.skills) : null
+        : existing.skills ? JSON.stringify(existing.skills) : null,
       data.aiContext !== undefined ? data.aiContext : existing.aiContext ?? null,
       now,
       data.userEmail,

@@ -36,6 +36,7 @@ const nullableUrl = z.string().url().or(z.literal(null)).optional()
 const itemFieldsSchema = z.object({
   parentId: nullableIdSchema,
   orderIndex: z.number().int().min(0).optional(),
+  aiContext: z.enum(['work', 'highlight', 'project', 'education', 'skills', 'narrative', 'section']).or(z.literal(null)).optional(),
   title: nullableString,
   role: nullableString,
   location: nullableString,
