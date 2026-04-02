@@ -171,7 +171,7 @@ export function ResumeVersionsPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue={isAuthenticated ? "build" : "pool"}>
+      <Tabs defaultValue="pool">
         <TabsList>
           {isAuthenticated && (
             <TabsTrigger value="build">
