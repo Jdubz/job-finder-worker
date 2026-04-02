@@ -3,6 +3,7 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildResumeVersionRouter } from '../resume-version.routes'
 import { ResumeVersionRepository } from '../resume-version.repository'
+import { ConfigRepository } from '../../config/config.repository'
 import type { AuthenticatedRequest } from '../../../middleware/firebase-auth'
 import { getDb } from '../../../db/sqlite'
 
@@ -33,6 +34,14 @@ describe('resume-version routes contract', () => {
     db.prepare('DELETE FROM resume_items').run()
     // Reset pool publish state (may be modified by repository tests sharing this DB)
     repo.unpublishVersion('pool')
+    // Seed personal info so estimate/build endpoints don't 400
+    const configRepo = new ConfigRepository()
+    configRepo.upsert('personal-info', {
+      name: 'Test User',
+      email: 'test@example.com',
+      title: 'Software Engineer',
+      location: 'San Francisco, CA'
+    })
   })
 
   // ── Version endpoints ──────────────────────────────────────────
