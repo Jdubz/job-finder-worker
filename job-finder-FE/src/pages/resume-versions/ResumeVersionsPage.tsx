@@ -118,6 +118,7 @@ export function ResumeVersionsPage() {
   const handleSaveItem = async (id: string, values: ContentItemFormValues) => {
     try {
       await updateItem(id, values)
+      setAlert({ type: "success", message: "Item updated" })
     } catch (err) {
       setAlert({ type: "error", message: (err as Error).message })
     }
@@ -139,7 +140,10 @@ export function ResumeVersionsPage() {
     }
   }
 
-  if (versionLoading) {
+  // Only show the full-page spinner on initial load (no data yet).
+  // During refetches after mutations, keep the page mounted to preserve
+  // form state, alerts, and tab selection.
+  if (versionLoading && !version) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
