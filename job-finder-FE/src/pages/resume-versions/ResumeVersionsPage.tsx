@@ -68,6 +68,7 @@ export function ResumeVersionsPage() {
   const [alert, setAlert] = useState<AlertState | null>(null)
   const [poolHealth, setPoolHealth] = useState<PoolHealthSummary | null>(null)
 
+  const isAuthenticated = Boolean(user?.email)
   const isAdmin = Boolean(user?.email && isOwner)
   const canEdit = isAdmin && editMode
 
@@ -170,27 +171,31 @@ export function ResumeVersionsPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="build">
+      <Tabs defaultValue={isAuthenticated ? "build" : "pool"}>
         <TabsList>
-          <TabsTrigger value="build">
-            <Wrench className="mr-1.5 h-4 w-4" /> Build Resume
-          </TabsTrigger>
+          {isAuthenticated && (
+            <TabsTrigger value="build">
+              <Wrench className="mr-1.5 h-4 w-4" /> Build Resume
+            </TabsTrigger>
+          )}
           <TabsTrigger value="pool">
             <FileText className="mr-1.5 h-4 w-4" /> Pool
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="build">
-          {version ? (
-            <ResumeBuilderTab items={sortedItems} />
-          ) : (
-            <Alert>
-              <AlertDescription>
-                Resume pool not found. Run migration 063 to create it.
-              </AlertDescription>
-            </Alert>
-          )}
-        </TabsContent>
+        {isAuthenticated && (
+          <TabsContent value="build">
+            {version ? (
+              <ResumeBuilderTab items={sortedItems} />
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  Resume pool not found. Run migration 063 to create it.
+                </AlertDescription>
+              </Alert>
+            )}
+          </TabsContent>
+        )}
 
         <TabsContent value="pool">
           <div className="grid gap-6 lg:grid-cols-[280px_1fr]">

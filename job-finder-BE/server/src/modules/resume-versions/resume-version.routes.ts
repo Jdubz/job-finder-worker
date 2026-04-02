@@ -152,6 +152,8 @@ interface ResumeVersionRouterOptions {
 export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {}) {
   const router = Router()
   const repo = new ResumeVersionRepository()
+  const personalInfoStore = new PersonalInfoStore()
+  const htmlPdf = new HtmlPdfService()
 
   const defaultMutationGuard: RequestHandler = (req, _res, next) => {
     try {
@@ -329,7 +331,7 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // POST /pool/estimate — estimate content fit for selected pool items
   router.post(
     '/pool/estimate',
-    ...mutationsMiddleware,
+    ...authMiddleware,
     asyncHandler(async (req, res) => {
       try {
         const { selectedItemIds, jobTitle } = builderRequestSchema.parse(req.body)
@@ -345,7 +347,6 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
         const filtered = filterItemsToSelected(allItems, selectedSet)
         const tree = buildItemTree(filtered)
 
-        const personalInfoStore = new PersonalInfoStore()
         const personalInfo = await personalInfoStore.get()
         if (!personalInfo) {
           res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Personal info not configured'))
@@ -368,10 +369,11 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
   // POST /pool/build — render PDF from selected pool items
   router.post(
     '/pool/build',
-    ...mutationsMiddleware,
+    ...authMiddleware,
     asyncHandler(async (req, res) => {
       try {
         const { selectedItemIds, jobTitle } = builderRequestSchema.parse(req.body)
+        const user = getAuthenticatedUser(req)
 
         const pool = repo.getPoolVersion()
         if (!pool) {
@@ -390,7 +392,6 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
 
         const tree = buildItemTree(filtered)
 
-        const personalInfoStore = new PersonalInfoStore()
         const personalInfo = await personalInfoStore.get()
         if (!personalInfo) {
           res.status(400).json(failure(ApiErrorCode.INVALID_REQUEST, 'Personal info not configured'))
@@ -399,13 +400,13 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
 
         const resumeContent = transformItemsToResumeContent(tree, personalInfo, jobTitle)
 
-        const htmlPdf = new HtmlPdfService()
         const pdfBuffer = await htmlPdf.renderResume(resumeContent, personalInfo)
 
-        // Save to stable path (overwritten each build — single-user system)
+        // Save per-user to avoid race conditions between concurrent builds
+        const safeUid = user.uid.replace(/[^a-zA-Z0-9_-]/g, '_')
         const resumesDir = path.join(artifactsRoot, 'resumes')
         await fs.mkdir(resumesDir, { recursive: true })
-        await fs.writeFile(path.join(resumesDir, 'custom-build.pdf'), pdfBuffer)
+        await fs.writeFile(path.join(resumesDir, `custom-build-${safeUid}.pdf`), pdfBuffer)
 
         const response: BuildCustomResumeResponse = {
           contentFit: toContentFitEstimate(estimateContentFit(resumeContent)),
@@ -424,12 +425,14 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
     })
   )
 
-  // GET /pool/build/pdf — serve the most recent custom-build PDF
+  // GET /pool/build/pdf — serve the authenticated user's most recent custom-build PDF
   router.get(
     '/pool/build/pdf',
-    ...mutationsMiddleware,
-    asyncHandler(async (_req, res) => {
-      const absolutePath = path.join(artifactsRoot, 'resumes', 'custom-build.pdf')
+    ...authMiddleware,
+    asyncHandler(async (req, res) => {
+      const user = getAuthenticatedUser(req)
+      const safeUid = user.uid.replace(/[^a-zA-Z0-9_-]/g, '_')
+      const absolutePath = path.join(artifactsRoot, 'resumes', `custom-build-${safeUid}.pdf`)
 
       try {
         await fs.access(absolutePath)
@@ -463,7 +466,6 @@ export function buildResumeVersionRouter(options: ResumeVersionRouterOptions = {
       let contentFit: GetResumeVersionResponse['contentFit'] = null
       if (items.length > 0) {
         try {
-          const personalInfoStore = new PersonalInfoStore()
           const personalInfo = await personalInfoStore.get()
           if (personalInfo) {
             const resumeContent = transformItemsToResumeContent(tree, personalInfo)

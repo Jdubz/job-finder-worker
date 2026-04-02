@@ -296,9 +296,12 @@ export function ResumeBuilderTab({ items }: ResumeBuilderTabProps) {
                   type="radio"
                   name="narrative"
                   checked={selectedNarrative === n.id}
-                  onChange={() =>
-                    setSelectedNarrative(selectedNarrative === n.id ? null : n.id)
-                  }
+                  onClick={() => {
+                    if (selectedNarrative === n.id) {
+                      setSelectedNarrative(null)
+                    }
+                  }}
+                  onChange={() => setSelectedNarrative(n.id)}
                   className="mt-0.5 h-4 w-4 accent-primary"
                 />
                 <div className="flex-1 min-w-0">
