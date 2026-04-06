@@ -1,7 +1,7 @@
 import type { JobMatchWithListing, MatchSignals } from "@shared/types"
 
 /** Known ATS domains that send emails on behalf of companies */
-const ATS_DOMAINS = [
+export const ATS_DOMAINS = [
   "greenhouse.io",
   "lever.co",
   "ashbyhq.com",
@@ -35,7 +35,7 @@ export interface MatchCandidate {
 /**
  * Extract domain from a URL (e.g., "https://www.example.com/path" → "example.com")
  */
-function extractDomainFromUrl(url: string | undefined | null): string | undefined {
+export function extractDomainFromUrl(url: string | undefined | null): string | undefined {
   if (!url) return undefined
   try {
     const hostname = new URL(url).hostname.toLowerCase()
@@ -56,7 +56,7 @@ function extractDomainFromUrl(url: string | undefined | null): string | undefine
  *   ("meta.com", "Kustomer")         → undefined       ✗
  *   ("forhims.com", "Hims & Hers")  → "forhims.com"  ✓ (brand matches "hims")
  */
-function validateDomainForCompany(domain: string | undefined, companyName: string): string | undefined {
+export function validateDomainForCompany(domain: string | undefined, companyName: string): string | undefined {
   if (!domain || !companyName) return domain
 
   const normalizedCompany = normalizeCompanyName(companyName)
@@ -79,7 +79,7 @@ function validateDomainForCompany(domain: string | undefined, companyName: strin
  * Normalize a company name for fuzzy matching:
  * lowercase, strip common suffixes (Inc, LLC, Corp, Ltd, etc.), trim
  */
-function normalizeCompanyName(name: string): string {
+export function normalizeCompanyName(name: string): string {
   return name
     .toLowerCase()
     .replace(/,?\s*(inc\.?|llc\.?|corp\.?|ltd\.?|co\.?|company|corporation|limited|group|holdings?)$/i, "")
@@ -245,7 +245,7 @@ export function matchEmailToApplications(
       }
     }
 
-    // Signal 5: Job title match (+20)
+    // Signal 5: Job title match (subject: +20, body-only: +15)
     if (jobTitle) {
       const normalizedJobTitle = normalizeTitle(jobTitle)
       if (normalizedJobTitle.length >= 5) {
@@ -253,6 +253,14 @@ export function matchEmailToApplications(
         if (subjectLower.includes(normalizedJobTitle)) {
           signals.jobTitleMatch = true
           score += 20
+        } else if (normalizedJobTitle.length >= 12) {
+          // Only check body for sufficiently specific titles to avoid
+          // false positives with short generic terms like "engineer"
+          const plainBody = email.body.replace(/<[^>]*>/g, " ").toLowerCase()
+          if (plainBody.includes(normalizedJobTitle)) {
+            signals.jobTitleInBody = true
+            score += 15
+          }
         }
       }
     }

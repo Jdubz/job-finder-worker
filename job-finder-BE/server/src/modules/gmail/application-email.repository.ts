@@ -190,4 +190,16 @@ export class ApplicationEmailRepository {
       .get(gmailEmail, gmailMessageId)
     return Boolean(row)
   }
+
+  findLinkedMatchByThreadId(gmailThreadId: string): ApplicationEmail | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM application_emails
+         WHERE gmail_thread_id = ? AND job_match_id IS NOT NULL
+         ORDER BY received_at ASC
+         LIMIT 1`
+      )
+      .get(gmailThreadId) as ApplicationEmailRow | undefined
+    return row ? mapRow(row) : null
+  }
 }

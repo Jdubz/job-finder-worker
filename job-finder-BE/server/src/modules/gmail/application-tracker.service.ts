@@ -8,46 +8,19 @@ import {
   extractSenderDomain
 } from "./gmail-api"
 import { classifyEmail } from "./email-classifier"
-import { matchEmailToApplications, type ParsedEmail } from "./email-application-matcher"
+import {
+  matchEmailToApplications,
+  extractDomainFromUrl,
+  normalizeCompanyName,
+  validateDomainForCompany,
+  ATS_DOMAINS,
+  type ParsedEmail
+} from "./email-application-matcher"
 import { ApplicationEmailRepository, type CreateApplicationEmailInput } from "./application-email.repository"
 import { StatusHistoryRepository } from "./status-history.repository"
 import { JobMatchRepository } from "../job-matches/job-match.repository"
-import type { JobMatchStatus } from "@shared/types"
+import type { JobMatchStatus, JobMatchWithListing, MatchSignals } from "@shared/types"
 import { logger } from "../../logger"
-
-/** Known ATS/recruiting platform sender domains */
-const APPLICATION_SENDER_DOMAINS = [
-  "greenhouse.io",
-  "lever.co",
-  "ashbyhq.com",
-  "smartrecruiters.com",
-  "breezy.hr",
-  "workable.com",
-  "jobvite.com",
-  "icims.com",
-  "myworkdayjobs.com",
-  "linkedin.com",
-  "indeed.com",
-  "ziprecruiter.com",
-  "workday.com",
-  "hire.lever.co"
-]
-
-/** Keywords suggesting an application-related email */
-const APPLICATION_KEYWORDS = [
-  "application",
-  "applied",
-  "interview",
-  "candidacy",
-  "candidate",
-  "position",
-  "role",
-  "hiring",
-  "offer",
-  "unfortunately",
-  "move forward",
-  "next steps"
-]
 
 /** Statuses that represent an active application (eligible for email matching) */
 const ACTIVE_APPLICATION_STATUSES: JobMatchStatus[] = ["applied", "acknowledged", "interviewing"]
@@ -56,6 +29,11 @@ const ACTIVE_APPLICATION_STATUSES: JobMatchStatus[] = ["applied", "acknowledged"
 const HIGH_CONFIDENCE = 70
 /** Medium confidence threshold for linking without status update */
 const MEDIUM_CONFIDENCE = 40
+
+/** Max company domains per Gmail query (URL length safety) */
+const COMPANY_QUERY_CHUNK_SIZE = 25
+/** Max company names per ATS query */
+const ATS_QUERY_CHUNK_SIZE = 10
 
 export interface TrackerScanResult {
   gmailEmail: string
@@ -77,7 +55,6 @@ export class ApplicationTrackerService {
       accounts = accounts.filter((a) => a.userEmail.toLowerCase() === userEmail.toLowerCase())
     }
     const days = options?.days ?? 14
-    const maxMessages = options?.maxMessages ?? 50
     const results: TrackerScanResult[] = []
 
     for (const acct of accounts) {
@@ -93,7 +70,7 @@ export class ApplicationTrackerService {
           })
           continue
         }
-        const result = await this.scanAccount(acct.gmailEmail, tokens, days, maxMessages)
+        const result = await this.scanAccount(acct.gmailEmail, tokens, days)
         results.push(result)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -111,7 +88,11 @@ export class ApplicationTrackerService {
     return results
   }
 
-  private async scanAccount(gmailEmail: string, tokens: GmailTokenPayload, days: number, maxMessages: number): Promise<TrackerScanResult> {
+  private async scanAccount(
+    gmailEmail: string,
+    tokens: GmailTokenPayload,
+    days: number
+  ): Promise<TrackerScanResult> {
     const result: TrackerScanResult = {
       gmailEmail,
       emailsProcessed: 0,
@@ -126,33 +107,38 @@ export class ApplicationTrackerService {
       return result
     }
 
-    const query = `newer_than:${days}d`
-    const messages = await fetchMessageList(ensured.access_token, query, maxMessages)
-
-    if (!messages.items.length) return result
-
-    const fullMessages = await fetchFullMessages(ensured.access_token, messages.items)
-
-    // Get all active applications for matching — query each status directly
-    // to avoid the limit cutting off results when mixed with ignored/other statuses
+    // Get all active applications for matching
     const appliedMatches = ACTIVE_APPLICATION_STATUSES.flatMap((s) =>
       this.matchRepo.listWithListings({ status: s, limit: 500 })
     )
 
-    // Also build a set of company domains from applied matches for filtering
-    const companyDomains = new Set<string>()
-    for (const match of appliedMatches) {
-      const website = match.isGhost ? match.ghostUrl : match.company?.website
-      if (website) {
-        try {
-          const hostname = new URL(website).hostname.toLowerCase().replace(/^www\./, "")
-          companyDomains.add(hostname)
-        } catch { /* ignore invalid URLs */ }
-      }
-    }
+    if (appliedMatches.length === 0) return result
+
+    // Build targeted queries from active applications
+    const queries = this.buildTargetedQueries(appliedMatches, days)
+    if (queries.length === 0) return result
+
+    logger.info({ queryCount: queries.length, days }, "Executing targeted Gmail queries")
+
+    // Execute all queries in parallel, collect message stubs
+    const queryResults = await Promise.all(
+      queries.map((q) =>
+        fetchMessageList(ensured.access_token!, q, 200)
+          .then((r) => r.items)
+          .catch((err) => {
+            logger.warn({ query: q, error: String(err) }, "Gmail query failed, skipping")
+            return [] as Array<{ id: string; threadId: string }>
+          })
+      )
+    )
+    const uniqueItems = this.deduplicateMessages(queryResults.flat())
+
+    if (uniqueItems.length === 0) return result
+
+    logger.info({ messageCount: uniqueItems.length }, "Fetching full messages")
+    const fullMessages = await fetchFullMessages(ensured.access_token, uniqueItems)
 
     for (const msg of fullMessages) {
-      // Skip already-processed messages
       if (this.emailRepo.isProcessed(gmailEmail, msg.id)) continue
 
       const sender = getHeader(msg, "From") ?? ""
@@ -162,27 +148,36 @@ export class ApplicationTrackerService {
       const body = extractBody(msg)
       const senderDomain = extractSenderDomain(sender)
 
-      // Filter: is this email application-related?
-      if (!this.isApplicationRelated(sender, subject, body, senderDomain, companyDomains)) {
-        continue
-      }
-
       result.emailsProcessed++
 
-      // Classify the email
       const classification = classifyEmail(subject, body, sender)
 
-      // Match against applied jobs
-      const parsedEmail: ParsedEmail = {
-        sender,
-        senderDomain,
-        replyTo,
-        subject,
-        body,
-        receivedAt: dateHeader ? new Date(dateHeader) : new Date()
+      // Thread inheritance: if another email in this thread is already linked, inherit that match
+      let topCandidate: { jobMatchId: string; confidence: number; signals: MatchSignals } | null = null
+      if (msg.threadId) {
+        const linkedEmail = this.emailRepo.findLinkedMatchByThreadId(msg.threadId)
+        if (linkedEmail?.jobMatchId) {
+          topCandidate = {
+            jobMatchId: linkedEmail.jobMatchId,
+            confidence: 85,
+            signals: { threadInheritance: true }
+          }
+        }
       }
-      const candidates = matchEmailToApplications(parsedEmail, appliedMatches)
-      const topCandidate = candidates[0]
+
+      // Standard multi-signal scoring (only if no thread inheritance)
+      if (!topCandidate) {
+        const parsedEmail: ParsedEmail = {
+          sender,
+          senderDomain,
+          replyTo,
+          subject,
+          body,
+          receivedAt: dateHeader ? new Date(dateHeader) : new Date()
+        }
+        const candidates = matchEmailToApplications(parsedEmail, appliedMatches)
+        topCandidate = candidates[0] ?? null
+      }
 
       // Build the email record
       const emailInput: CreateApplicationEmailInput = {
@@ -192,7 +187,7 @@ export class ApplicationTrackerService {
         sender,
         senderDomain,
         subject,
-        receivedAt: parsedEmail.receivedAt.toISOString(),
+        receivedAt: (dateHeader ? new Date(dateHeader) : new Date()).toISOString(),
         snippet: msg.snippet ?? null,
         bodyPreview: body.slice(0, 500) || null,
         classification: classification.classification,
@@ -204,14 +199,12 @@ export class ApplicationTrackerService {
       }
 
       if (topCandidate && topCandidate.confidence >= HIGH_CONFIDENCE) {
-        // High confidence: auto-link and potentially update status
         emailInput.jobMatchId = topCandidate.jobMatchId
         emailInput.autoLinked = true
         result.emailsLinked++
 
         const appEmail = this.emailRepo.create(emailInput)
 
-        // Auto-update status if classification warrants it
         if (classification.classification !== "unclassified") {
           const match = this.matchRepo.getById(topCandidate.jobMatchId)
           if (match && this.shouldUpdateStatus(match.status as JobMatchStatus, classification.classification as JobMatchStatus)) {
@@ -232,13 +225,11 @@ export class ApplicationTrackerService {
           }
         }
       } else if (topCandidate && topCandidate.confidence >= MEDIUM_CONFIDENCE) {
-        // Medium confidence: link but don't auto-update status
         emailInput.jobMatchId = topCandidate.jobMatchId
         emailInput.autoLinked = false
         result.emailsLinked++
         this.emailRepo.create(emailInput)
       } else {
-        // No match or low confidence: create unlinked email
         this.emailRepo.create(emailInput)
       }
     }
@@ -247,28 +238,75 @@ export class ApplicationTrackerService {
   }
 
   /**
-   * Determine if an email is application-related based on sender, subject, and body.
+   * Build targeted Gmail search queries from active job matches.
+   *
+   * Two query categories:
+   * 1. Company-direct: from:(domain1 OR domain2 OR ...) newer_than:Nd
+   * 2. ATS: from:(ats1 OR ats2 OR ...) ("Company1" OR "Company2" OR ...) newer_than:Nd
    */
-  private isApplicationRelated(
-    sender: string,
-    subject: string,
-    body: string,
-    senderDomain: string | undefined,
-    companyDomains: Set<string>
-  ): boolean {
-    // Check if sender is from a known ATS/recruiting platform
-    if (senderDomain && APPLICATION_SENDER_DOMAINS.some((d) => senderDomain.endsWith(d))) {
-      return true
+  private buildTargetedQueries(matches: JobMatchWithListing[], days: number): string[] {
+    const queries: string[] = []
+    const companyDomains = new Set<string>()
+    const companyNames = new Set<string>()
+
+    for (const match of matches) {
+      const companyName = match.isGhost
+        ? match.ghostCompany ?? ""
+        : match.listing.companyName
+      const companyWebsite = match.isGhost
+        ? match.ghostUrl
+        : match.company?.website
+
+      const rawDomain = extractDomainFromUrl(companyWebsite)
+      const validatedDomain = validateDomainForCompany(rawDomain, companyName)
+
+      if (validatedDomain) {
+        companyDomains.add(validatedDomain)
+      }
+
+      const normalized = normalizeCompanyName(companyName)
+      if (normalized.length >= 3) {
+        companyNames.add(companyName)
+      }
     }
 
-    // Check if sender is from a company the user has applied to
-    if (senderDomain && companyDomains.has(senderDomain)) {
-      return true
+    const timeSuffix = `newer_than:${days}d`
+
+    // Category 1: Company-direct queries
+    const domainArray = [...companyDomains]
+    for (let i = 0; i < domainArray.length; i += COMPANY_QUERY_CHUNK_SIZE) {
+      const chunk = domainArray.slice(i, i + COMPANY_QUERY_CHUNK_SIZE)
+      const fromClause = chunk.join(" OR ")
+      queries.push(`from:(${fromClause}) ${timeSuffix}`)
     }
 
-    // Check for application-related keywords in subject
-    const textToCheck = `${subject}\n${body.slice(0, 2000)}`.toLowerCase()
-    return APPLICATION_KEYWORDS.some((kw) => textToCheck.includes(kw))
+    // Category 2: ATS queries (ATS senders mentioning applied company names)
+    const nameArray = [...companyNames]
+    if (nameArray.length > 0) {
+      const atsFromClause = ATS_DOMAINS.join(" OR ")
+      for (let i = 0; i < nameArray.length; i += ATS_QUERY_CHUNK_SIZE) {
+        const chunk = nameArray.slice(i, i + ATS_QUERY_CHUNK_SIZE)
+        const nameClause = chunk.map((n) => `"${n}"`).join(" OR ")
+        queries.push(`from:(${atsFromClause}) (${nameClause}) ${timeSuffix}`)
+      }
+    }
+
+    return queries
+  }
+
+  /**
+   * Deduplicate message stubs by message ID (multiple queries may return the same message).
+   */
+  private deduplicateMessages(
+    allItems: Array<{ id: string; threadId: string }>
+  ): Array<{ id: string; threadId: string }> {
+    const seen = new Map<string, { id: string; threadId: string }>()
+    for (const item of allItems) {
+      if (!seen.has(item.id)) {
+        seen.set(item.id, item)
+      }
+    }
+    return [...seen.values()]
   }
 
   /**
