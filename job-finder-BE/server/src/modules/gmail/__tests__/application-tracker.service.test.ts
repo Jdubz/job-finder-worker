@@ -225,4 +225,45 @@ describe('ApplicationTrackerService', () => {
     const emails = emailRepo.listAll()
     expect(emails).toHaveLength(1)
   })
+
+  it('does not auto-update to interviewing without a role-specific signal', async () => {
+    // Company with multiple positions — email has no title match
+    listingRepo.create(buildJobListingRecord({ id: 'l-guard-1', companyName: 'MultiCorp' }))
+    listingRepo.create(buildJobListingRecord({ id: 'l-guard-2', companyName: 'MultiCorp', title: 'Backend Engineer' }))
+    const match1 = matchRepo.upsert(buildJobMatchInput({
+      queueItemId: 'q-guard-1',
+      jobListingId: 'l-guard-1',
+      status: 'applied'
+    }))
+    matchRepo.updateStatus(match1.id!, 'applied')
+    const match2 = matchRepo.upsert(buildJobMatchInput({
+      queueItemId: 'q-guard-2',
+      jobListingId: 'l-guard-2',
+      status: 'applied'
+    }))
+    matchRepo.updateStatus(match2.id!, 'applied')
+
+    mockActiveAccount()
+    // Email classified as interviewing but with no title in subject or body
+    mockGmailMessage({
+      id: 'guard-msg-1',
+      threadId: 'guard-thread-1',
+      from: 'recruiter@multicorp.com',
+      subject: 'Phone Screen Availability',
+      body: 'Hi Josh, we would like to schedule a phone screen with you.',
+      senderDomain: 'multicorp.com'
+    })
+
+    const service = new ApplicationTrackerService()
+    const results = await service.scanAll()
+
+    expect(results).toHaveLength(1)
+    expect(results[0].emailsProcessed).toBe(1)
+    // Email is linked but status should NOT be updated to interviewing
+    const m1 = matchRepo.getById(match1.id!)
+    const m2 = matchRepo.getById(match2.id!)
+    expect(m1!.status).toBe('applied')
+    expect(m2!.status).toBe('applied')
+    expect(results[0].statusChanges).toBe(0)
+  })
 })

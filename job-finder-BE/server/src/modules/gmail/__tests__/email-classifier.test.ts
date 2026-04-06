@@ -142,10 +142,10 @@ describe('email-classifier', () => {
       expect(result.classification).toBe('interviewing')
     })
 
-    it('detects "next steps in the process"', () => {
+    it('detects "next steps for your" as interview', () => {
       const result = classifyEmail(
         'Application Progress',
-        'We are excited to share the next steps in our hiring process with you.',
+        'We are excited to share the next steps for your application with you.',
         'hr@company.com'
       )
       expect(result.classification).toBe('interviewing')
@@ -233,6 +233,46 @@ describe('email-classifier', () => {
         'no-reply@lever.co'
       )
       expect(result.classification).toBe('acknowledged')
+    })
+  })
+
+  describe('ack-vs-interview tiebreak', () => {
+    it('classifies ack email with boilerplate "next steps in the process" as acknowledged', () => {
+      const result = classifyEmail(
+        'Thank you for applying',
+        'We have received your application. Our hiring team will carefully review your qualifications. Should your profile align, we will be in touch regarding the next steps in the process.',
+        'hr@motional.com'
+      )
+      expect(result.classification).toBe('acknowledged')
+    })
+
+    it('classifies email with strong interview signals over weak ack as interviewing', () => {
+      const result = classifyEmail(
+        'Interview Scheduled',
+        'Thank you for applying. We would like to schedule an interview with you. Please book a time at calendly.com/recruiter.',
+        'recruiter@co.com'
+      )
+      expect(result.classification).toBe('interviewing')
+    })
+  })
+
+  describe('position filled denial variants', () => {
+    it('detects "recently filled this position"', () => {
+      const result = classifyEmail(
+        'Position Update',
+        'We have recently filled this position, but would love to consider you for future roles.',
+        'recruiting@calendly.com'
+      )
+      expect(result.classification).toBe('denied')
+    })
+
+    it('detects "position is no longer available"', () => {
+      const result = classifyEmail(
+        'Application Update',
+        'Unfortunately, the position is no longer available at this time.',
+        'hr@company.com'
+      )
+      expect(result.classification).toBe('denied')
     })
   })
 
