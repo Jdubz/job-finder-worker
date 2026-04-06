@@ -161,11 +161,22 @@ function extractBrandFromDomain(domain: string): string {
  * Match an email against a list of active job applications.
  * Returns ranked match candidates with confidence scores.
  */
+/** Min normalized title length to check body (avoids false positives from short generic terms) */
+const MIN_BODY_MATCH_TITLE_LENGTH = 12
+/** Score for job title found in subject */
+const JOB_TITLE_IN_SUBJECT_SCORE = 20
+/** Score for job title found in body only */
+const JOB_TITLE_IN_BODY_SCORE = 15
+
 export function matchEmailToApplications(
   email: ParsedEmail,
   appliedMatches: JobMatchWithListing[]
 ): MatchCandidate[] {
   const candidates: MatchCandidate[] = []
+
+  // Precompute normalized text once (used across all candidates)
+  const subjectLower = email.subject.toLowerCase()
+  const plainBodyLower = email.body.replace(/<[^>]*>/g, " ").toLowerCase()
 
   for (const match of appliedMatches) {
     const signals: MatchSignals = {}
@@ -249,17 +260,13 @@ export function matchEmailToApplications(
     if (jobTitle) {
       const normalizedJobTitle = normalizeTitle(jobTitle)
       if (normalizedJobTitle.length >= 5) {
-        const subjectLower = email.subject.toLowerCase()
         if (subjectLower.includes(normalizedJobTitle)) {
           signals.jobTitleMatch = true
-          score += 20
-        } else if (normalizedJobTitle.length >= 12) {
-          // Only check body for sufficiently specific titles to avoid
-          // false positives with short generic terms like "engineer"
-          const plainBody = email.body.replace(/<[^>]*>/g, " ").toLowerCase()
-          if (plainBody.includes(normalizedJobTitle)) {
+          score += JOB_TITLE_IN_SUBJECT_SCORE
+        } else if (normalizedJobTitle.length >= MIN_BODY_MATCH_TITLE_LENGTH) {
+          if (plainBodyLower.includes(normalizedJobTitle)) {
             signals.jobTitleInBody = true
-            score += 15
+            score += JOB_TITLE_IN_BODY_SCORE
           }
         }
       }

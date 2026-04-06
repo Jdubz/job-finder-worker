@@ -3,7 +3,6 @@ import { getDb } from '../../../db/sqlite'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { JobListingRepository } from '../../job-listings/job-listing.repository'
 import { ApplicationEmailRepository } from '../application-email.repository'
-import { StatusHistoryRepository } from '../status-history.repository'
 import { buildJobMatchInput, buildJobListingRecord } from '../../job-matches/__tests__/fixtures'
 
 // Mock the gmail-api module so we don't make real HTTP calls
@@ -35,12 +34,60 @@ import { ApplicationTrackerService } from '../application-tracker.service'
 import { GmailAuthService } from '../gmail-auth.service'
 import * as gmailApi from '../gmail-api'
 
+/** Configure auth mock to return a single active account with valid tokens */
+function mockActiveAccount(gmailEmail = 'user@gmail.com') {
+  (GmailAuthService as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+    listAccounts: vi.fn().mockReturnValue([{ gmailEmail, hasRefreshToken: true }]),
+    getTokensForGmailEmail: vi.fn().mockReturnValue({
+      refresh_token: 'r', access_token: 'a', expiry_date: Date.now() + 3600000
+    }),
+    saveHistoryId: vi.fn()
+  }))
+}
+
+/** Configure Gmail API mocks for a single message with consistent headers */
+function mockGmailMessage(msg: {
+  id: string
+  threadId: string
+  from: string
+  subject: string
+  body: string
+  senderDomain: string
+}) {
+  (gmailApi.fetchMessageList as ReturnType<typeof vi.fn>).mockResolvedValue({
+    items: [{ id: msg.id, threadId: msg.threadId }]
+  });
+  (gmailApi.fetchFullMessages as ReturnType<typeof vi.fn>).mockResolvedValue([{
+    id: msg.id,
+    threadId: msg.threadId,
+    snippet: msg.body.slice(0, 100),
+    payload: {
+      headers: [
+        { name: 'From', value: msg.from },
+        { name: 'Subject', value: msg.subject },
+        { name: 'Date', value: new Date().toISOString() }
+      ]
+    }
+  }]);
+  (gmailApi.getHeader as ReturnType<typeof vi.fn>).mockImplementation(
+    (_m: unknown, name: string) => {
+      const headers: Record<string, string> = {
+        from: msg.from,
+        subject: msg.subject,
+        date: new Date().toISOString()
+      }
+      return headers[name.toLowerCase()]
+    }
+  );
+  (gmailApi.extractBody as ReturnType<typeof vi.fn>).mockReturnValue(msg.body);
+  (gmailApi.extractSenderDomain as ReturnType<typeof vi.fn>).mockReturnValue(msg.senderDomain)
+}
+
 describe('ApplicationTrackerService', () => {
   const db = getDb()
   const matchRepo = new JobMatchRepository()
   const listingRepo = new JobListingRepository()
   const emailRepo = new ApplicationEmailRepository()
-  const historyRepo = new StatusHistoryRepository()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -59,7 +106,7 @@ describe('ApplicationTrackerService', () => {
   })
 
   it('returns error result when tokens are missing', async () => {
-    const mockAuth = (GmailAuthService as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+    (GmailAuthService as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
       listAccounts: vi.fn().mockReturnValue([{ gmailEmail: 'test@gmail.com' }]),
       getTokensForGmailEmail: vi.fn().mockReturnValue(null),
       saveHistoryId: vi.fn()
@@ -73,7 +120,6 @@ describe('ApplicationTrackerService', () => {
   })
 
   it('processes application-related emails and creates records', async () => {
-    // Set up a listing and applied match
     listingRepo.create(buildJobListingRecord({ id: 'l-scan', companyName: 'ScanCorp' }))
     const match = matchRepo.upsert(buildJobMatchInput({
       queueItemId: 'q-scan',
@@ -82,56 +128,15 @@ describe('ApplicationTrackerService', () => {
     }))
     matchRepo.updateStatus(match.id!, 'applied')
 
-    // Mock Gmail API to return an application email
-    const mockMessage = {
+    mockActiveAccount()
+    mockGmailMessage({
       id: 'gmail-msg-scan-1',
       threadId: 'thread-1',
-      snippet: 'Thank you for applying',
-      payload: {
-        headers: [
-          { name: 'From', value: 'hr@scancorp.com' },
-          { name: 'Subject', value: 'Application Received at ScanCorp' },
-          { name: 'Date', value: new Date().toISOString() }
-        ]
-      }
-    }
-
-    // Configure mocks for this test
-    const mockListAccounts = vi.fn().mockReturnValue([
-      { gmailEmail: 'user@gmail.com', hasRefreshToken: true }
-    ])
-    const mockGetTokens = vi.fn().mockReturnValue({
-      refresh_token: 'r', access_token: 'a', expiry_date: Date.now() + 3600000
-    });
-
-    (GmailAuthService as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-      listAccounts: mockListAccounts,
-      getTokensForGmailEmail: mockGetTokens,
-      saveHistoryId: vi.fn()
-    }));
-
-    (gmailApi.fetchMessageList as ReturnType<typeof vi.fn>).mockResolvedValue({
-      items: [{ id: 'gmail-msg-scan-1', threadId: 'thread-1' }]
-    });
-
-    (gmailApi.fetchFullMessages as ReturnType<typeof vi.fn>).mockResolvedValue([mockMessage]);
-
-    (gmailApi.getHeader as ReturnType<typeof vi.fn>).mockImplementation(
-      (_msg: unknown, name: string) => {
-        const headers: Record<string, string> = {
-          from: 'hr@scancorp.com',
-          subject: 'Application Received at ScanCorp',
-          date: new Date().toISOString()
-        }
-        return headers[name.toLowerCase()]
-      }
-    );
-
-    (gmailApi.extractBody as ReturnType<typeof vi.fn>).mockReturnValue(
-      'Thank you for applying to ScanCorp. We have received your application.'
-    );
-
-    (gmailApi.extractSenderDomain as ReturnType<typeof vi.fn>).mockReturnValue('scancorp.com')
+      from: 'hr@scancorp.com',
+      subject: 'Application Received at ScanCorp',
+      body: 'Thank you for applying to ScanCorp. We have received your application.',
+      senderDomain: 'scancorp.com'
+    })
 
     const service = new ApplicationTrackerService()
     const results = await service.scanAll()
@@ -139,14 +144,12 @@ describe('ApplicationTrackerService', () => {
     expect(results).toHaveLength(1)
     expect(results[0].emailsProcessed).toBeGreaterThanOrEqual(1)
 
-    // Check that an application email was created
     const emails = emailRepo.listAll()
     expect(emails.length).toBeGreaterThanOrEqual(1)
     expect(emails[0].classification).toBe('acknowledged')
   })
 
   it('inherits match from earlier email in the same thread', async () => {
-    // Set up a listing and applied match
     listingRepo.create(buildJobListingRecord({ id: 'l-thread', companyName: 'ThreadCorp' }))
     const match = matchRepo.upsert(buildJobMatchInput({
       queueItemId: 'q-thread',
@@ -170,42 +173,15 @@ describe('ApplicationTrackerService', () => {
       matchConfidence: 90
     })
 
-    // New message arrives in the same thread, no title in subject
-    const mockMessage = {
+    mockActiveAccount()
+    mockGmailMessage({
       id: 'thread-msg-2',
       threadId: 'shared-thread-99',
-      snippet: 'Next steps',
-      payload: {
-        headers: [
-          { name: 'From', value: 'hr@threadcorp.com' },
-          { name: 'Subject', value: 'Re: Next Steps' },
-          { name: 'Date', value: new Date().toISOString() }
-        ]
-      }
-    };
-
-    (GmailAuthService as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-      listAccounts: vi.fn().mockReturnValue([{ gmailEmail: 'user@gmail.com' }]),
-      getTokensForGmailEmail: vi.fn().mockReturnValue({ refresh_token: 'r', access_token: 'a', expiry_date: Date.now() + 3600000 }),
-      saveHistoryId: vi.fn()
-    }));
-
-    (gmailApi.fetchMessageList as ReturnType<typeof vi.fn>).mockResolvedValue({
-      items: [{ id: 'thread-msg-2', threadId: 'shared-thread-99' }]
-    });
-    (gmailApi.fetchFullMessages as ReturnType<typeof vi.fn>).mockResolvedValue([mockMessage]);
-    (gmailApi.getHeader as ReturnType<typeof vi.fn>).mockImplementation(
-      (_msg: unknown, name: string) => {
-        const headers: Record<string, string> = {
-          from: 'hr@threadcorp.com',
-          subject: 'Re: Next Steps',
-          date: new Date().toISOString()
-        }
-        return headers[name.toLowerCase()]
-      }
-    );
-    (gmailApi.extractBody as ReturnType<typeof vi.fn>).mockReturnValue('Looking forward to chatting.');
-    (gmailApi.extractSenderDomain as ReturnType<typeof vi.fn>).mockReturnValue('threadcorp.com')
+      from: 'hr@threadcorp.com',
+      subject: 'Re: Next Steps',
+      body: 'Looking forward to chatting.',
+      senderDomain: 'threadcorp.com'
+    })
 
     const service = new ApplicationTrackerService()
     const results = await service.scanAll()
@@ -214,7 +190,6 @@ describe('ApplicationTrackerService', () => {
     expect(results[0].emailsProcessed).toBe(1)
     expect(results[0].emailsLinked).toBe(1)
 
-    // The new email should be linked to the same match via thread inheritance
     const newEmail = emailRepo.getByGmailMessageId('user@gmail.com', 'thread-msg-2')
     expect(newEmail).not.toBeNull()
     expect(newEmail!.jobMatchId).toBe(match.id!)
@@ -223,7 +198,6 @@ describe('ApplicationTrackerService', () => {
   })
 
   it('skips already-processed messages', async () => {
-    // Pre-create a processed email
     emailRepo.create({
       gmailMessageId: 'already-processed',
       gmailEmail: 'user@gmail.com',
@@ -234,22 +208,13 @@ describe('ApplicationTrackerService', () => {
       autoLinked: false
     })
 
-    const mockMessage = {
-      id: 'already-processed',
-      threadId: 'thread-1',
-      snippet: 'Test'
-    };
+    mockActiveAccount()
 
-    (GmailAuthService as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
-      listAccounts: vi.fn().mockReturnValue([{ gmailEmail: 'user@gmail.com' }]),
-      getTokensForGmailEmail: vi.fn().mockReturnValue({ refresh_token: 'r', access_token: 'a', expiry_date: Date.now() + 3600000 }),
-      saveHistoryId: vi.fn()
-    }));
-
-    (gmailApi.fetchMessageList as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ;(gmailApi.fetchMessageList as ReturnType<typeof vi.fn>).mockResolvedValue({
       items: [{ id: 'already-processed', threadId: 'thread-1' }]
-    });
-    (gmailApi.fetchFullMessages as ReturnType<typeof vi.fn>).mockResolvedValue([mockMessage])
+    })
+    // fetchFullMessages should NOT be called since isProcessed filters the stub
+    ;(gmailApi.fetchFullMessages as ReturnType<typeof vi.fn>).mockResolvedValue([])
 
     const service = new ApplicationTrackerService()
     const results = await service.scanAll()
@@ -257,7 +222,6 @@ describe('ApplicationTrackerService', () => {
     expect(results).toHaveLength(1)
     expect(results[0].emailsProcessed).toBe(0)
 
-    // Should still only have the original email, no duplicates
     const emails = emailRepo.listAll()
     expect(emails).toHaveLength(1)
   })

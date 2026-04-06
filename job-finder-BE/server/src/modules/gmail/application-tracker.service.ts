@@ -29,11 +29,19 @@ const ACTIVE_APPLICATION_STATUSES: JobMatchStatus[] = ["applied", "acknowledged"
 const HIGH_CONFIDENCE = 70
 /** Medium confidence threshold for linking without status update */
 const MEDIUM_CONFIDENCE = 40
+/** Confidence assigned when a match is inherited from the same Gmail thread */
+const THREAD_INHERITANCE_CONFIDENCE = 85
 
+/** Max active matches to load per status */
+const MAX_ACTIVE_MATCHES_PER_STATUS = 500
+/** Max messages to fetch per Gmail query */
+const MAX_MESSAGES_PER_QUERY = 200
 /** Max company domains per Gmail query (URL length safety) */
 const COMPANY_QUERY_CHUNK_SIZE = 25
 /** Max company names per ATS query */
 const ATS_QUERY_CHUNK_SIZE = 10
+/** Max Gmail queries to execute concurrently */
+const QUERY_CONCURRENCY = 5
 
 export interface TrackerScanResult {
   gmailEmail: string
@@ -49,7 +57,7 @@ export class ApplicationTrackerService {
   private readonly historyRepo = new StatusHistoryRepository()
   private readonly matchRepo = new JobMatchRepository()
 
-  async scanAll(userEmail?: string, options?: { days?: number; maxMessages?: number }): Promise<TrackerScanResult[]> {
+  async scanAll(userEmail?: string, options?: { days?: number }): Promise<TrackerScanResult[]> {
     let accounts = this.auth.listAccounts()
     if (userEmail) {
       accounts = accounts.filter((a) => a.userEmail.toLowerCase() === userEmail.toLowerCase())
@@ -109,7 +117,7 @@ export class ApplicationTrackerService {
 
     // Get all active applications for matching
     const appliedMatches = ACTIVE_APPLICATION_STATUSES.flatMap((s) =>
-      this.matchRepo.listWithListings({ status: s, limit: 500 })
+      this.matchRepo.listWithListings({ status: s, limit: MAX_ACTIVE_MATCHES_PER_STATUS })
     )
 
     if (appliedMatches.length === 0) return result
@@ -120,27 +128,33 @@ export class ApplicationTrackerService {
 
     logger.info({ queryCount: queries.length, days }, "Executing targeted Gmail queries")
 
-    // Execute all queries in parallel, collect message stubs
-    const queryResults = await Promise.all(
-      queries.map((q) =>
-        fetchMessageList(ensured.access_token!, q, 200)
-          .then((r) => r.items)
-          .catch((err) => {
-            logger.warn({ query: q, error: String(err) }, "Gmail query failed, skipping")
-            return [] as Array<{ id: string; threadId: string }>
-          })
+    // Execute queries with limited concurrency
+    const allItems: Array<{ id: string; threadId: string }> = []
+    for (let i = 0; i < queries.length; i += QUERY_CONCURRENCY) {
+      const batch = queries.slice(i, i + QUERY_CONCURRENCY)
+      const batchResults = await Promise.all(
+        batch.map((q) =>
+          fetchMessageList(ensured.access_token!, q, MAX_MESSAGES_PER_QUERY)
+            .then((r) => r.items)
+            .catch((err) => {
+              logger.warn({ query: q, error: String(err) }, "Gmail query failed, skipping")
+              return [] as Array<{ id: string; threadId: string }>
+            })
+        )
       )
-    )
-    const uniqueItems = this.deduplicateMessages(queryResults.flat())
+      allItems.push(...batchResults.flat())
+    }
 
-    if (uniqueItems.length === 0) return result
+    // Deduplicate and pre-filter already-processed messages before expensive full fetch
+    const uniqueItems = this.deduplicateMessages(allItems)
+    const newItems = uniqueItems.filter((item) => !this.emailRepo.isProcessed(gmailEmail, item.id))
 
-    logger.info({ messageCount: uniqueItems.length }, "Fetching full messages")
-    const fullMessages = await fetchFullMessages(ensured.access_token, uniqueItems)
+    if (newItems.length === 0) return result
+
+    logger.info({ messageCount: newItems.length }, "Fetching full messages")
+    const fullMessages = await fetchFullMessages(ensured.access_token, newItems)
 
     for (const msg of fullMessages) {
-      if (this.emailRepo.isProcessed(gmailEmail, msg.id)) continue
-
       const sender = getHeader(msg, "From") ?? ""
       const subject = getHeader(msg, "Subject") ?? ""
       const replyTo = getHeader(msg, "Reply-To")
@@ -155,11 +169,11 @@ export class ApplicationTrackerService {
       // Thread inheritance: if another email in this thread is already linked, inherit that match
       let topCandidate: { jobMatchId: string; confidence: number; signals: MatchSignals } | null = null
       if (msg.threadId) {
-        const linkedEmail = this.emailRepo.findLinkedMatchByThreadId(msg.threadId)
+        const linkedEmail = this.emailRepo.findLinkedMatchByThreadId(gmailEmail, msg.threadId)
         if (linkedEmail?.jobMatchId) {
           topCandidate = {
             jobMatchId: linkedEmail.jobMatchId,
-            confidence: 85,
+            confidence: THREAD_INHERITANCE_CONFIDENCE,
             signals: { threadInheritance: true }
           }
         }
@@ -286,7 +300,7 @@ export class ApplicationTrackerService {
       const atsFromClause = ATS_DOMAINS.join(" OR ")
       for (let i = 0; i < nameArray.length; i += ATS_QUERY_CHUNK_SIZE) {
         const chunk = nameArray.slice(i, i + ATS_QUERY_CHUNK_SIZE)
-        const nameClause = chunk.map((n) => `"${n}"`).join(" OR ")
+        const nameClause = chunk.map((n) => `"${sanitizeQueryTerm(n)}"`).join(" OR ")
         queries.push(`from:(${atsFromClause}) (${nameClause}) ${timeSuffix}`)
       }
     }
@@ -330,4 +344,12 @@ export class ApplicationTrackerService {
     if (newStatus === "denied") return currentOrder >= 0
     return newOrder > currentOrder
   }
+}
+
+/**
+ * Strip characters that could break or widen a Gmail query term.
+ * Removes double quotes and backslashes to keep quoted phrases well-formed.
+ */
+function sanitizeQueryTerm(term: string): string {
+  return term.replace(/["\\]/g, "")
 }
