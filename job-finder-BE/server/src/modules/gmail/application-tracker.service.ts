@@ -220,7 +220,13 @@ export class ApplicationTrackerService {
         const appEmail = this.emailRepo.create(emailInput)
 
         if (classification.classification !== "unclassified") {
-          const match = this.matchRepo.getById(topCandidate.jobMatchId)
+          const hasRoleSignal = topCandidate.signals.jobTitleMatch
+            || topCandidate.signals.jobTitleInBody
+            || topCandidate.signals.threadInheritance
+          // Only auto-update to 'interviewing' if we have a role-specific signal.
+          // Interviews are role-specific; ack/denied are company-wide and safe to auto-update.
+          const safeToUpdate = classification.classification !== "interviewing" || hasRoleSignal
+          const match = safeToUpdate ? this.matchRepo.getById(topCandidate.jobMatchId) : null
           if (match && this.shouldUpdateStatus(match.status as JobMatchStatus, classification.classification as JobMatchStatus)) {
             const previousStatus = match.status as JobMatchStatus
             const newStatus = classification.classification as JobMatchStatus

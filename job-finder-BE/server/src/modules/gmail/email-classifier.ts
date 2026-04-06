@@ -18,13 +18,15 @@ const DENIAL_PATTERNS = [
   /decided\s+not\s+to\s+move\s+forward/i,
   /pursue\s+other\s+candidates/i,
   /no\s+longer\s+(considering|moving)/i,
-  /not\s+selected/i
+  /not\s+selected/i,
+  /(?:recently|already)\s+filled\s+(this|the)\s+position/i,
+  /position\s+(is|has\s+been)\s+(no\s+longer\s+available|closed|filled)/i
 ]
 
 const INTERVIEW_PATTERNS = [
   /schedule\s+(an?\s+)?interview/i,
   /invite\s+you\s+to\s+(an?\s+)?interview/i,
-  /next\s+steps?\s+in\s+(the\s+|our\s+)?(\w+\s+)?process/i,
+  /next\s+steps?\s+(for|with|regarding)\s+your\b/i,
   /like\s+to\s+(meet|speak|chat|connect)\s+with\s+you/i,
   /phone\s+(screen|call|interview)/i,
   /technical\s+(assessment|interview|screen)/i,
@@ -66,7 +68,13 @@ function testPatterns(text: string, patterns: RegExp[]): { matched: boolean; mat
 
 /**
  * Classify an email as application-related (acknowledged, interviewing, denied)
- * or unclassified. Classification order matters: denial > interview > acknowledgment.
+ * or unclassified.
+ *
+ * Priority: denial > interview > acknowledgment, with one exception:
+ * when interview patterns match but acknowledgment patterns are stronger
+ * (more matches), the email is classified as acknowledged. This prevents
+ * boilerplate ack emails with weak interview-adjacent language (e.g.
+ * "next steps") from being misclassified as interview invitations.
  */
 export function classifyEmail(subject: string, body: string, _sender: string): ClassificationResult {
   const text = `${subject}\n${body}`
@@ -82,6 +90,13 @@ export function classifyEmail(subject: string, body: string, _sender: string): C
   // Interview signals
   const interview = testPatterns(text, INTERVIEW_PATTERNS)
   if (interview.matched) {
+    // Guard: if acknowledgment signals are stronger, this is likely an ack
+    // email with boilerplate interview-adjacent language (e.g. "next steps")
+    const ack = testPatterns(text, ACKNOWLEDGMENT_PATTERNS)
+    if (ack.matched && ack.matchCount > interview.matchCount) {
+      const confidence = Math.min(90, 55 + ack.matchCount * 15)
+      return { classification: "acknowledged", confidence }
+    }
     const confidence = Math.min(95, 60 + interview.matchCount * 15)
     return { classification: "interviewing", confidence }
   }
