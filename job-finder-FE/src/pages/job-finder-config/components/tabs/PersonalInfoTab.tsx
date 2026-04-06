@@ -110,7 +110,7 @@ export function PersonalInfoTab({
     setGmailError(null)
     setGmailScanResults(null)
     try {
-      const results = await gmailClient.triggerScan({ days: 90, maxMessages: 500 })
+      const results = await gmailClient.triggerScan({ days: 90 })
       setGmailScanResults(results)
       const total = results.reduce((s, r) => s + r.emailsProcessed, 0)
       const linked = results.reduce((s, r) => s + r.emailsLinked, 0)

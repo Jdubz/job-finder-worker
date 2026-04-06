@@ -51,7 +51,7 @@ export class GmailClient extends BaseApiClient {
     return response.data
   }
 
-  async triggerScan(options?: { days?: number; maxMessages?: number }): Promise<TrackerScanResult[]> {
+  async triggerScan(options?: { days?: number }): Promise<TrackerScanResult[]> {
     const response = await this.post<ApiSuccessResponse<{ results: TrackerScanResult[] }>>(
       "/gmail/tracker/scan",
       options ?? {},

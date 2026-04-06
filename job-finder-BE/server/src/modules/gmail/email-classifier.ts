@@ -39,7 +39,9 @@ const INTERVIEW_PATTERNS = [
   /interview\s+(confirmation|confirmed|scheduled)/i,
   /reminder\s+(for|about|of)\s+(an?\s+|your\s+)?interview\b/i,
   /your\s+interview\s+(is|with|on|at)\b/i,
-  /confirmation\s+details?\s+for\s+(the\s+|your\s+)?(call|interview)\b/i
+  /confirmation\s+details?\s+for\s+(the\s+|your\s+)?(call|interview)\b/i,
+  /Invitation:\s*.*interview/i,
+  /Updated invitation:\s*.*interview/i
 ]
 
 const ACKNOWLEDGMENT_PATTERNS = [

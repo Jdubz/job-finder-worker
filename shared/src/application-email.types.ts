@@ -9,9 +9,11 @@ export interface MatchSignals {
   companyDomainMatch?: boolean
   companyNameInBody?: boolean
   jobTitleMatch?: boolean
+  jobTitleInBody?: boolean
   atsHeaderMatch?: boolean
   senderDomainNameMatch?: boolean
   temporalProximity?: number
+  threadInheritance?: boolean
 }
 
 /** An email tracked as part of the application lifecycle */

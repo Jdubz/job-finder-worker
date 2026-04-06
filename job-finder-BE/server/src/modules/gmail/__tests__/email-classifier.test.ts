@@ -177,6 +177,24 @@ describe('email-classifier', () => {
       )
       expect(result.classification).toBe('interviewing')
     })
+
+    it('detects calendar invite with interview in subject', () => {
+      const result = classifyEmail(
+        'Invitation: Zoom Interview with Okta | Solutions Engineer @ Thu Mar 12, 2026 3pm',
+        'You have been invited to the following event.',
+        'recruiter@okta.com'
+      )
+      expect(result.classification).toBe('interviewing')
+    })
+
+    it('detects updated calendar invite with interview in subject', () => {
+      const result = classifyEmail(
+        'Updated invitation: Zoom Interviews with Stripe - Joshua (Technical Solutions) @ Thu Apr 9',
+        'This event has been updated.',
+        'scheduler@stripe.com'
+      )
+      expect(result.classification).toBe('interviewing')
+    })
   })
 
   describe('acknowledgment detection', () => {

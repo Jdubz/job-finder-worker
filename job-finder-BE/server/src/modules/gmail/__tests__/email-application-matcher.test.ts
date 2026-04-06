@@ -190,6 +190,76 @@ describe('email-application-matcher', () => {
       expect(candidates).toHaveLength(1)
       expect(candidates[0].signals.jobTitleMatch).toBe(true)
     })
+
+    it('matches sufficiently specific job title in email body when not in subject', () => {
+      const matches = [buildMockMatch({
+        title: 'Technical Solutions Engineer',
+        website: 'https://acme.com'
+      })]
+      const email = buildEmail({
+        senderDomain: 'acme.com',
+        subject: 'Next Steps with Acme, Josh',
+        body: 'Hi Josh, we are excited to move forward with your Technical Solutions Engineer application.'
+      })
+
+      const candidates = matchEmailToApplications(email, matches)
+
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0].signals.jobTitleInBody).toBe(true)
+      expect(candidates[0].signals.jobTitleMatch).toBeUndefined()
+    })
+
+    it('does not check body for short generic titles', () => {
+      const matches = [buildMockMatch({
+        title: 'Senior Engineer',
+        companyName: 'Unrelated',
+        website: 'https://unrelated.io'
+      })]
+      const email = buildEmail({
+        senderDomain: 'other.com',
+        subject: 'Weekly newsletter',
+        body: 'Check out our latest blog post about engineering.',
+        receivedAt: new Date('2025-03-01T00:00:00Z')
+      })
+
+      const candidates = matchEmailToApplications(email, matches)
+      expect(candidates).toHaveLength(0)
+    })
+
+    it('prefers subject match over body match', () => {
+      const matches = [buildMockMatch({
+        title: 'Technical Solutions Engineer',
+        website: 'https://acme.com'
+      })]
+      const email = buildEmail({
+        senderDomain: 'acme.com',
+        subject: 'Technical Solutions Engineer - Interview Scheduled',
+        body: 'Your Technical Solutions Engineer interview is confirmed.'
+      })
+
+      const candidates = matchEmailToApplications(email, matches)
+
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0].signals.jobTitleMatch).toBe(true)
+      expect(candidates[0].signals.jobTitleInBody).toBeUndefined()
+    })
+
+    it('strips HTML tags from body before matching', () => {
+      const matches = [buildMockMatch({
+        title: 'Full Stack Software Engineer',
+        website: 'https://acme.com'
+      })]
+      const email = buildEmail({
+        senderDomain: 'acme.com',
+        subject: 'Next Steps',
+        body: '<p>We are pleased to advance your <b>Full Stack Software Engineer</b> application.</p>'
+      })
+
+      const candidates = matchEmailToApplications(email, matches)
+
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0].signals.jobTitleInBody).toBe(true)
+    })
   })
 
   describe('temporal proximity scoring', () => {
