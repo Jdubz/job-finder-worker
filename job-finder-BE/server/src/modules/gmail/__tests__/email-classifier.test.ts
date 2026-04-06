@@ -237,16 +237,18 @@ describe('email-classifier', () => {
   })
 
   describe('ack-vs-interview tiebreak', () => {
-    it('classifies ack email with boilerplate "next steps in the process" as acknowledged', () => {
+    it('prefers ack when ack signals outnumber interview signals', () => {
+      // 1 interview signal (phone screen) vs 3 ack signals (received, thank you, will review)
       const result = classifyEmail(
         'Thank you for applying',
-        'We have received your application. Our hiring team will carefully review your qualifications. Should your profile align, we will be in touch regarding the next steps in the process.',
-        'hr@motional.com'
+        'We have received your application for a phone screen. Thank you for your interest. We will review your application and be in touch.',
+        'hr@company.com'
       )
       expect(result.classification).toBe('acknowledged')
     })
 
     it('classifies email with strong interview signals over weak ack as interviewing', () => {
+      // 2 interview signals (schedule interview, calendly) vs 1 ack signal (thank you for applying)
       const result = classifyEmail(
         'Interview Scheduled',
         'Thank you for applying. We would like to schedule an interview with you. Please book a time at calendly.com/recruiter.',

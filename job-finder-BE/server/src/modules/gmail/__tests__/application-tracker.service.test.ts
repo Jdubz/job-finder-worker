@@ -4,6 +4,7 @@ import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { JobListingRepository } from '../../job-listings/job-listing.repository'
 import { ApplicationEmailRepository } from '../application-email.repository'
 import { buildJobMatchInput, buildJobListingRecord } from '../../job-matches/__tests__/fixtures'
+import { CompanyRepository } from '../../companies/company.repository'
 
 // Mock the gmail-api module so we don't make real HTTP calls
 vi.mock('../gmail-api', () => ({
@@ -88,6 +89,7 @@ describe('ApplicationTrackerService', () => {
   const matchRepo = new JobMatchRepository()
   const listingRepo = new JobListingRepository()
   const emailRepo = new ApplicationEmailRepository()
+  const companyRepo = new CompanyRepository()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -95,6 +97,7 @@ describe('ApplicationTrackerService', () => {
     db.prepare('DELETE FROM application_emails').run()
     db.prepare('DELETE FROM job_matches').run()
     db.prepare("DELETE FROM job_listings WHERE id != '__ghost_listing__'").run()
+    db.prepare('DELETE FROM companies').run()
   })
 
   it('returns empty results when no gmail accounts configured', async () => {
@@ -227,30 +230,37 @@ describe('ApplicationTrackerService', () => {
   })
 
   it('does not auto-update to interviewing without a role-specific signal', async () => {
-    // Company with multiple positions — email has no title match
-    listingRepo.create(buildJobListingRecord({ id: 'l-guard-1', companyName: 'MultiCorp' }))
-    listingRepo.create(buildJobListingRecord({ id: 'l-guard-2', companyName: 'MultiCorp', title: 'Backend Engineer' }))
+    // Create a company with website so domain matching reaches HIGH_CONFIDENCE
+    const company = companyRepo.create({ name: 'MultiCorp', website: 'https://multicorp.com' })
+    const now = new Date()
+
+    // Two positions at the same company — email won't mention either title
+    listingRepo.create(buildJobListingRecord({
+      id: 'l-guard-1', companyName: 'MultiCorp', companyId: company.id
+    }))
+    listingRepo.create(buildJobListingRecord({
+      id: 'l-guard-2', companyName: 'MultiCorp', companyId: company.id, title: 'Backend Engineer'
+    }))
     const match1 = matchRepo.upsert(buildJobMatchInput({
-      queueItemId: 'q-guard-1',
-      jobListingId: 'l-guard-1',
-      status: 'applied'
+      queueItemId: 'q-guard-1', jobListingId: 'l-guard-1',
+      status: 'applied', updatedAt: now
     }))
     matchRepo.updateStatus(match1.id!, 'applied')
     const match2 = matchRepo.upsert(buildJobMatchInput({
-      queueItemId: 'q-guard-2',
-      jobListingId: 'l-guard-2',
-      status: 'applied'
+      queueItemId: 'q-guard-2', jobListingId: 'l-guard-2',
+      status: 'applied', updatedAt: now
     }))
     matchRepo.updateStatus(match2.id!, 'applied')
 
     mockActiveAccount()
-    // Email classified as interviewing but with no title in subject or body
+    // Email from company domain, classified as interviewing, but NO title in subject or body
+    // Domain match (+40) + company name in body (+25) + temporal proximity (+15) = 80 > HIGH_CONFIDENCE
     mockGmailMessage({
       id: 'guard-msg-1',
       threadId: 'guard-thread-1',
       from: 'recruiter@multicorp.com',
       subject: 'Phone Screen Availability',
-      body: 'Hi Josh, we would like to schedule a phone screen with you.',
+      body: 'Hi Josh, the MultiCorp team would like to schedule a phone screen with you.',
       senderDomain: 'multicorp.com'
     })
 
@@ -259,11 +269,11 @@ describe('ApplicationTrackerService', () => {
 
     expect(results).toHaveLength(1)
     expect(results[0].emailsProcessed).toBe(1)
-    // Email is linked but status should NOT be updated to interviewing
-    const m1 = matchRepo.getById(match1.id!)
-    const m2 = matchRepo.getById(match2.id!)
-    expect(m1!.status).toBe('applied')
-    expect(m2!.status).toBe('applied')
+    // Email is auto-linked (high confidence) but status should NOT change
+    expect(results[0].emailsLinked).toBe(1)
     expect(results[0].statusChanges).toBe(0)
+    // Both matches remain 'applied'
+    expect(matchRepo.getById(match1.id!)!.status).toBe('applied')
+    expect(matchRepo.getById(match2.id!)!.status).toBe('applied')
   })
 })
