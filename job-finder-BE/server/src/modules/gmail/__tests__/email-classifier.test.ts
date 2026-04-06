@@ -80,6 +80,42 @@ describe('email-classifier', () => {
       expect(result.classification).toBe('denied')
     })
 
+    it('detects third-person "they have decided to move forward with other candidates"', () => {
+      const result = classifyEmail(
+        'Update',
+        'Unfortunately, at this time, they have decided to move forward with other candidates aligning more closely with the technical requirements.',
+        'recruiter@deepgram.com'
+      )
+      expect(result.classification).toBe('denied')
+    })
+
+    it('detects "move forward with another candidate"', () => {
+      const result = classifyEmail(
+        'Monetization Update',
+        'After debriefing with the full interview panel we have decided to move forward with another candidate that we feel is a better match for our current technical needs.',
+        'recruiter@calendly.com'
+      )
+      expect(result.classification).toBe('denied')
+    })
+
+    it('detects "decided to go in a different direction"', () => {
+      const result = classifyEmail(
+        'Update on your application',
+        'After much deliberation, the team has decided to go in a different direction for this role.',
+        'recruiter@company.com'
+      )
+      expect(result.classification).toBe('denied')
+    })
+
+    it('detects "unable to extend an offer"', () => {
+      const result = classifyEmail(
+        'Application Update',
+        'Thank you for your time throughout the process. Unfortunately we are unable to extend an offer at this time.',
+        'recruiter@company.com'
+      )
+      expect(result.classification).toBe('denied')
+    })
+
     it('increases confidence with multiple denial signals', () => {
       const single = classifyEmail(
         'Update',

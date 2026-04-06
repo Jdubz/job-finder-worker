@@ -7,8 +7,8 @@ export interface ClassificationResult {
 
 // Pattern sets ordered by priority (first match wins within a category)
 const DENIAL_PATTERNS = [
-  /we('ve| have)?\s+(decided|chosen)\s+to\s+(move forward|proceed)\s+with\s+other/i,
-  /unfortunately,?\s+(we|the\s+(team|position))/i,
+  /(we|they)('ve| have)?\s+(decided|chosen)\s+to\s+(move forward|proceed)\s+with\s+(other|another)/i,
+  /unfortunately.{0,40}(decided|chosen|move forward|proceed|not|unable)/i,
   /not\s+(moving|going)\s+forward/i,
   /position\s+has\s+been\s+filled/i,
   /will\s+not\s+be\s+(moving|proceeding)/i,
@@ -20,7 +20,9 @@ const DENIAL_PATTERNS = [
   /no\s+longer\s+(considering|moving)/i,
   /not\s+selected/i,
   /(?:recently|already)\s+filled\s+(this|the)\s+position/i,
-  /position\s+(is|has\s+been)\s+(no\s+longer\s+available|closed|filled)/i
+  /position\s+(is|has\s+been)\s+(no\s+longer\s+available|closed|filled)/i,
+  /decided\s+to\s+(go|move)\s+(in\s+)?(a\s+)?different\s+direction/i,
+  /(unable|not\s+able)\s+to\s+(extend|make)\s+(an?\s+)?offer/i
 ]
 
 const INTERVIEW_PATTERNS = [
