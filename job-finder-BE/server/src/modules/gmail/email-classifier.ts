@@ -5,10 +5,10 @@ export interface ClassificationResult {
   confidence: number
 }
 
-// Pattern sets ordered by priority (first match wins within a category)
+// Pattern sets grouped by category; all matching patterns in a category contribute to its match count.
 const DENIAL_PATTERNS = [
   /(we|they)('ve| have)?\s+(decided|chosen)\s+to\s+(move forward|proceed)\s+with\s+(other|another)/i,
-  /unfortunately.{0,40}(decided|chosen|move forward|proceed|not|unable)/i,
+  /unfortunately[\s\S]{0,40}(decided|chosen|unable)/i,
   /not\s+(moving|going)\s+forward/i,
   /position\s+has\s+been\s+filled/i,
   /will\s+not\s+be\s+(moving|proceeding)/i,

@@ -116,6 +116,33 @@ describe('email-classifier', () => {
       expect(result.classification).toBe('denied')
     })
 
+    it('detects "unfortunately" with newline before decision verb', () => {
+      const result = classifyEmail(
+        'Update',
+        'Unfortunately,\nwe have decided to go with another candidate.',
+        'recruiter@company.com'
+      )
+      expect(result.classification).toBe('denied')
+    })
+
+    it('does NOT classify "unfortunately the link is not working" as denial', () => {
+      const result = classifyEmail(
+        'Technical issue',
+        'Unfortunately, the scheduling link is not working. We will send a new one shortly.',
+        'recruiter@company.com'
+      )
+      expect(result.classification).not.toBe('denied')
+    })
+
+    it('does NOT classify "unfortunately there was a delay but we will move forward" as denial', () => {
+      const result = classifyEmail(
+        'Interview Update',
+        'Unfortunately, there was a delay, but we will move forward with your interview next week.',
+        'recruiter@company.com'
+      )
+      expect(result.classification).not.toBe('denied')
+    })
+
     it('increases confidence with multiple denial signals', () => {
       const single = classifyEmail(
         'Update',
