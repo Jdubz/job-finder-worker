@@ -8,8 +8,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { useAuth, type DevRole } from "@/contexts/AuthContext"
 import { LogOut, Shield, Info, User, Eye, Crown } from "lucide-react"
-import { useState } from "react"
-import { GoogleLogin } from "@react-oauth/google"
+import { useState, useEffect } from "react"
+import { GoogleLogin, useGoogleOAuth } from "@react-oauth/google"
 
 interface AuthModalProps {
   open: boolean
@@ -18,8 +18,22 @@ interface AuthModalProps {
 
 export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const { user, isOwner, signOut, loginWithGoogle, isDevelopment, setDevRole } = useAuth()
+  const { scriptLoadedSuccessfully } = useGoogleOAuth()
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [scriptTimedOut, setScriptTimedOut] = useState(false)
+
+  // Detect when GIS script fails to load (it renders nothing silently)
+  useEffect(() => {
+    if (scriptLoadedSuccessfully) {
+      setScriptTimedOut(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      if (!scriptLoadedSuccessfully) setScriptTimedOut(true)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [scriptLoadedSuccessfully, open])
 
   const handleDevRoleSelect = (role: DevRole) => {
     setDevRole(role)
@@ -166,6 +180,13 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                         shape="rectangular"
                       />
                     </div>
+
+                    {scriptTimedOut && (
+                      <div className="text-sm text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded p-3">
+                        <p className="font-medium mb-1">Google sign-in isn't loading</p>
+                        <p>This can happen if an ad blocker or browser privacy setting is blocking Google scripts. Try disabling your ad blocker for this site, or use a different browser.</p>
+                      </div>
+                    )}
 
                     {isLoading && (
                       <div className="text-sm text-muted-foreground text-center">
