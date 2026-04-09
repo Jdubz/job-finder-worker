@@ -23,17 +23,22 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [scriptTimedOut, setScriptTimedOut] = useState(false)
 
-  // Detect when GIS script fails to load (it renders nothing silently)
+  // Detect when GIS script fails to load (it renders nothing silently).
+  // Only run while the modal is open and showing the Google Login button,
+  // since AuthModal stays mounted in Navigation even when closed.
   useEffect(() => {
+    if (!open || user || isDevelopment) {
+      setScriptTimedOut(false)
+      return
+    }
     if (scriptLoadedSuccessfully) {
       setScriptTimedOut(false)
       return
     }
-    const timer = setTimeout(() => {
-      if (!scriptLoadedSuccessfully) setScriptTimedOut(true)
-    }, 5000)
+    setScriptTimedOut(false)
+    const timer = setTimeout(() => setScriptTimedOut(true), 5000)
     return () => clearTimeout(timer)
-  }, [scriptLoadedSuccessfully, open])
+  }, [scriptLoadedSuccessfully, open, user, isDevelopment])
 
   const handleDevRoleSelect = (role: DevRole) => {
     setDevRole(role)
@@ -182,9 +187,14 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                     </div>
 
                     {scriptTimedOut && (
-                      <div className="text-sm text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded p-3">
-                        <p className="font-medium mb-1">Google sign-in isn't loading</p>
-                        <p>This can happen if an ad blocker or browser privacy setting is blocking Google scripts. Try disabling your ad blocker for this site, or use a different browser.</p>
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+                        <div className="flex items-start gap-2">
+                          <Info className="w-4 h-4 mt-0.5 text-amber-600 flex-shrink-0" />
+                          <div className="text-sm text-amber-700 dark:text-amber-400">
+                            <p className="font-medium mb-1">Google sign-in isn&apos;t loading</p>
+                            <p>This can happen if an ad blocker or browser privacy setting is blocking Google scripts. Try disabling your ad blocker for this site, or use a different browser.</p>
+                          </div>
+                        </div>
                       </div>
                     )}
 
