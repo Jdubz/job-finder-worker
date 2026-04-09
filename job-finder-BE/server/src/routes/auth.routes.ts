@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type RequestHandler, type NextFunc
 import { parse as parseCookie } from 'cookie'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { verifyGoogleIdToken } from '../config/google-oauth'
+import { verifyGoogleIdToken, verifyGoogleAccessToken } from '../config/google-oauth'
 import { success } from '../utils/api-response'
 import { env } from '../config/env'
 import { DEV_TOKENS } from '../config/dev-tokens'
@@ -97,8 +97,14 @@ export function buildAuthRouter() {
       )
     }
 
-    // Production: validate Google OAuth credential
-    const googleUser = await verifyGoogleIdToken(credential)
+    // Production: validate Google OAuth credential.
+    // Try ID token (JWT from GoogleLogin component) first, then access token
+    // (opaque string from useGoogleLogin popup flow).
+    const isJwt = credential.split('.').length === 3
+    const googleUser = isJwt
+      ? await verifyGoogleIdToken(credential)
+      : await verifyGoogleAccessToken(credential)
+
     if (!googleUser || !googleUser.email) {
       throw new ApiHttpError(ApiErrorCode.INVALID_TOKEN, 'Invalid Google credential', {
         status: 401,
