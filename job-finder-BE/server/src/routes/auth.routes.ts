@@ -98,12 +98,11 @@ export function buildAuthRouter() {
     }
 
     // Production: validate Google OAuth credential.
-    // Try ID token (JWT from GoogleLogin component) first, then access token
-    // (opaque string from useGoogleLogin popup flow).
-    const isJwt = credential.split('.').length === 3
-    const googleUser = isJwt
-      ? await verifyGoogleIdToken(credential)
-      : await verifyGoogleAccessToken(credential)
+    // Try ID token first, fall back to access token. This avoids brittle
+    // format detection — verifyGoogleIdToken returns null fast for non-JWTs.
+    const googleUser =
+      await verifyGoogleIdToken(credential) ??
+      await verifyGoogleAccessToken(credential)
 
     if (!googleUser || !googleUser.email) {
       throw new ApiHttpError(ApiErrorCode.INVALID_TOKEN, 'Invalid Google credential', {

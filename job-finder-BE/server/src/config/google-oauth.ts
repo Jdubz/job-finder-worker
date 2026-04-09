@@ -68,6 +68,7 @@ export async function verifyGoogleAccessToken(accessToken: string): Promise<Goog
     // Fetch full profile (name, picture, and email fallback) from userinfo endpoint
     const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(5000),
     })
     const profile = userinfoRes.ok
       ? (await userinfoRes.json()) as {

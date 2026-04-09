@@ -150,7 +150,7 @@ describe('POST /auth/login', () => {
     getDb().prepare('DELETE FROM user_sessions').run()
   })
 
-  it('routes JWT credentials (3 dot-separated segments) to ID token verification', async () => {
+  it('succeeds when ID token verification passes', async () => {
     const fakeJwt = 'header.payload.signature'
     mockedVerifyIdToken.mockResolvedValueOnce({
       uid: 'google-123',
@@ -164,13 +164,15 @@ describe('POST /auth/login', () => {
       .send({ credential: fakeJwt })
 
     expect(mockedVerifyIdToken).toHaveBeenCalledWith(fakeJwt)
-    expect(mockedVerifyAccessToken).not.toHaveBeenCalled()
     expect(res.status).toBe(200)
     expect(res.body.data.user.email).toBe('jwt@test.dev')
   })
 
-  it('routes opaque credentials (no dots) to access token verification', async () => {
-    const accessToken = 'ya29_opaque_access_token_no_dots'
+  it('falls back to access token verification when ID token returns null', async () => {
+    const accessToken = 'ya29_opaque_access_token'
+    // ID token verification fails (not a JWT)
+    mockedVerifyIdToken.mockResolvedValueOnce(null)
+    // Access token verification succeeds
     mockedVerifyAccessToken.mockResolvedValueOnce({
       uid: 'google-456',
       email: 'access@test.dev',
@@ -182,18 +184,19 @@ describe('POST /auth/login', () => {
       .post('/auth/login')
       .send({ credential: accessToken })
 
+    expect(mockedVerifyIdToken).toHaveBeenCalledWith(accessToken)
     expect(mockedVerifyAccessToken).toHaveBeenCalledWith(accessToken)
-    expect(mockedVerifyIdToken).not.toHaveBeenCalled()
     expect(res.status).toBe(200)
     expect(res.body.data.user.email).toBe('access@test.dev')
   })
 
-  it('returns 401 when access token verification fails', async () => {
+  it('returns 401 when both verification methods fail', async () => {
+    mockedVerifyIdToken.mockResolvedValueOnce(null)
     mockedVerifyAccessToken.mockResolvedValueOnce(null)
 
     const res = await request(app)
       .post('/auth/login')
-      .send({ credential: 'invalid_access_token' })
+      .send({ credential: 'invalid_token' })
 
     expect(res.status).toBe(401)
     expect(res.body.error.code).toBe(ApiErrorCode.INVALID_TOKEN)
