@@ -5,6 +5,7 @@ import { buildAuthRouter } from '../auth.routes'
 import { apiErrorHandler } from '../../middleware/api-error'
 import { ApiErrorCode } from '@shared/types'
 import { UserRepository } from '../../modules/users/user.repository'
+import { getDb } from '../../db/sqlite'
 import { serialize as serializeCookie } from 'cookie'
 
 const userRepo = new UserRepository()
@@ -30,8 +31,7 @@ describe('GET /auth/session', () => {
   const app = buildTestApp()
 
   beforeEach(() => {
-    const db = userRepo['db']
-    db.prepare('DELETE FROM user_sessions').run()
+    getDb().prepare('DELETE FROM user_sessions').run()
   })
 
   // ── No cookie: "never logged in" is a valid state, not an error ──

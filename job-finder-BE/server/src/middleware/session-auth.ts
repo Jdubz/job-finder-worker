@@ -153,13 +153,12 @@ export async function verifySession(req: Request, res: Response, next: NextFunct
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (!sessionToken) {
-    const cookieHeader = req.headers.cookie
-    logger.warn(
+    logger.debug(
       {
         method: req.method,
         path: req.path,
-        hasCookieHeader: !!cookieHeader,
-        cookieKeys: cookieHeader ? Object.keys(parseCookie(cookieHeader)) : [],
+        hasCookieHeader: !!req.headers.cookie,
+        cookieKeys: Object.keys(cookies),
         origin: req.headers.origin,
         host: req.headers.host,
         ip: req.socket?.remoteAddress,
@@ -174,7 +173,7 @@ export async function verifySession(req: Request, res: Response, next: NextFunct
   // findBySessionToken handles expiry check and cleanup for both new and legacy sessions
   const sessionUser = userRepository.findBySessionToken(sessionToken)
   if (!sessionUser) {
-    logger.warn(
+    logger.debug(
       { method: req.method, path: req.path, origin: req.headers.origin },
       'Auth failed: session token present but not found in DB (expired or invalid)'
     )

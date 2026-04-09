@@ -40,13 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const response = await authClient.fetchSession()
         if (mounted) {
-          if (response.user) {
-            setUser(response.user)
-            setIsOwner(response.user.roles?.includes('admin') ?? false)
-          } else {
-            setUser(null)
-            setIsOwner(false)
-          }
+          setUser(response.user)
+          setIsOwner(response.user?.roles?.includes('admin') ?? false)
         }
       } catch (error) {
         // Real errors (network failure, server error) — log and treat as logged out

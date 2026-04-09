@@ -5,6 +5,7 @@ import { verifySession, type AuthenticatedRequest } from '../session-auth'
 import { apiErrorHandler } from '../api-error'
 import { ApiErrorCode } from '@shared/types'
 import { UserRepository } from '../../modules/users/user.repository'
+import { getDb } from '../../db/sqlite'
 import { serialize as serializeCookie } from 'cookie'
 
 const userRepo = new UserRepository()
@@ -37,8 +38,7 @@ describe('verifySession middleware', () => {
 
   beforeEach(() => {
     // Clean up sessions between tests so they don't interfere
-    const db = userRepo['db']
-    db.prepare('DELETE FROM user_sessions').run()
+    getDb().prepare('DELETE FROM user_sessions').run()
   })
 
   it('rejects with 401 when no Cookie header is present', async () => {
