@@ -15,7 +15,12 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <GoogleOAuthProvider clientId={clientId}>
+      <GoogleOAuthProvider
+        clientId={clientId}
+        onScriptLoadError={() =>
+          console.error("Google Identity Services script failed to load — sign-in button will not render")
+        }
+      >
         <AuthProvider>
           <EntityModalProvider>
             <RestartOverlay />
