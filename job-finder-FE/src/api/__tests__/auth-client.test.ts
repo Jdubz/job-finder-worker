@@ -156,6 +156,20 @@ describe('AuthClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(3)
     })
 
+    it('should throw on expired/invalid session (401)', async () => {
+      vi.clearAllMocks()
+
+      mockFetch.mockResolvedValue(
+        createMockResponse({
+          ok: false,
+          status: 401,
+          data: { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired session' } },
+        })
+      )
+
+      await expect(authClient.fetchSession()).rejects.toThrow('Invalid or expired session')
+    })
+
     it('should throw on real server errors (5xx)', async () => {
       vi.clearAllMocks()
 

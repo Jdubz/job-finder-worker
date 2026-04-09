@@ -3,6 +3,7 @@ import request from 'supertest'
 import { describe, expect, it, beforeEach } from 'vitest'
 import { buildAuthRouter } from '../auth.routes'
 import { apiErrorHandler } from '../../middleware/api-error'
+import { ApiErrorCode } from '@shared/types'
 import { UserRepository } from '../../modules/users/user.repository'
 import { serialize as serializeCookie } from 'cookie'
 
@@ -33,6 +34,8 @@ describe('GET /auth/session', () => {
     db.prepare('DELETE FROM user_sessions').run()
   })
 
+  // ── No cookie: "never logged in" is a valid state, not an error ──
+
   it('returns 200 with user: null when no cookie is present', async () => {
     const res = await request(app).get('/auth/session')
 
@@ -41,18 +44,29 @@ describe('GET /auth/session', () => {
     expect(res.body.data.user).toBeNull()
   })
 
-  it('returns 200 with user: null when session token is invalid', async () => {
-    const cookie = serializeCookie('jf_session', 'bogus-token')
+  it('returns 200 with user: null when cookie header exists but jf_session is missing', async () => {
     const res = await request(app)
       .get('/auth/session')
-      .set('Cookie', cookie)
+      .set('Cookie', 'other_cookie=abc123')
 
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
     expect(res.body.data.user).toBeNull()
   })
 
-  it('returns 200 with user: null when session is expired', async () => {
+  // ── Invalid/expired token: client sent a stale credential → 401 ──
+
+  it('returns 401 when session token is not found in DB', async () => {
+    const cookie = serializeCookie('jf_session', 'bogus-token')
+    const res = await request(app)
+      .get('/auth/session')
+      .set('Cookie', cookie)
+
+    expect(res.status).toBe(401)
+    expect(res.body.error.code).toBe(ApiErrorCode.UNAUTHORIZED)
+  })
+
+  it('returns 401 when session is expired', async () => {
     const { token } = seedSession('expired@test.dev', { expiredMs: Date.now() - 1000 })
     const cookie = serializeCookie('jf_session', token)
 
@@ -60,10 +74,11 @@ describe('GET /auth/session', () => {
       .get('/auth/session')
       .set('Cookie', cookie)
 
-    expect(res.status).toBe(200)
-    expect(res.body.success).toBe(true)
-    expect(res.body.data.user).toBeNull()
+    expect(res.status).toBe(401)
+    expect(res.body.error.code).toBe(ApiErrorCode.UNAUTHORIZED)
   })
+
+  // ── Valid session ──
 
   it('returns 200 with user data when session is valid', async () => {
     const { token } = seedSession('valid@test.dev')
@@ -84,22 +99,17 @@ describe('GET /auth/session', () => {
     )
   })
 
-  it('never returns 401 — "not logged in" is a valid state', async () => {
-    // No cookie
-    const res1 = await request(app).get('/auth/session')
-    expect(res1.status).not.toBe(401)
+  it('includes uid and name in the user response', async () => {
+    const { token } = seedSession('fields@test.dev')
+    const cookie = serializeCookie('jf_session', token)
 
-    // Invalid cookie
-    const res2 = await request(app)
+    const res = await request(app)
       .get('/auth/session')
-      .set('Cookie', serializeCookie('jf_session', 'bad'))
-    expect(res2.status).not.toBe(401)
+      .set('Cookie', cookie)
 
-    // Expired session
-    const { token } = seedSession('expired2@test.dev', { expiredMs: Date.now() - 1000 })
-    const res3 = await request(app)
-      .get('/auth/session')
-      .set('Cookie', serializeCookie('jf_session', token))
-    expect(res3.status).not.toBe(401)
+    const user = res.body.data.user
+    expect(user.uid).toBeDefined()
+    expect(user.name).toBe('Test User')
+    expect(user.email).toBe('fields@test.dev')
   })
 })
