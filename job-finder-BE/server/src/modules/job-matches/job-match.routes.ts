@@ -13,7 +13,7 @@ import type {
 import { JobMatchRepository } from './job-match.repository'
 import { ApplicationEmailRepository } from '../gmail/application-email.repository'
 import { StatusHistoryRepository } from '../gmail/status-history.repository'
-import { verifyFirebaseAuth, requireRole } from '../../middleware/firebase-auth'
+import { verifySession, requireRole } from '../../middleware/session-auth'
 import { logger } from '../../logger'
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
@@ -257,7 +257,7 @@ export function buildJobMatchRouter() {
   // Email activity and status history require admin role (sensitive cross-user data)
   router.get(
     '/:id/emails',
-    verifyFirebaseAuth,
+    verifySession,
     requireRole('admin'),
     asyncHandler((req, res) => {
       const emails = appEmailRepo.listByJobMatch(req.params.id)
@@ -267,7 +267,7 @@ export function buildJobMatchRouter() {
 
   router.get(
     '/:id/status-history',
-    verifyFirebaseAuth,
+    verifySession,
     requireRole('admin'),
     asyncHandler((req, res) => {
       const history = statusHistoryRepo.listByJobMatch(req.params.id)

@@ -16,7 +16,7 @@ import { buildGeneratorArtifactsRouter } from './modules/generator/generator.art
 import { buildGeneratorAssetsRouter, buildGeneratorAssetsServeRouter } from './modules/generator/generator.assets.routes'
 import { buildPromptsRouter } from './modules/prompts/prompts.routes'
 import { buildLoggingRouter } from './modules/logging/logging.routes'
-import { verifyFirebaseAuth, requireRole } from './middleware/firebase-auth'
+import { verifySession, requireRole } from './middleware/session-auth'
 import { publicReadAuthenticatedWrite, queuePublicJobSubmit, generatorSelectivePublicRead } from './middleware/optional-auth'
 import { buildLifecycleRouter } from './modules/lifecycle/lifecycle.routes'
 import { buildMaintenanceRouter } from './modules/maintenance'
@@ -119,12 +119,12 @@ export function buildApp() {
   app.use('/api/auth', buildAuthRouter())
 
   // Content items should be publicly readable. Mutations require admin role.
-  const contentItemMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
+  const contentItemMutationGuards: RequestHandler[] = [verifySession, requireRole('admin')]
   app.use('/api/content-items', buildContentItemRouter({ mutationsMiddleware: contentItemMutationGuards }))
 
   // Resume versions — public read, admin mutations + publish, auth-only for tailoring
-  const resumeVersionMutationGuards: RequestHandler[] = [verifyFirebaseAuth, requireRole('admin')]
-  const resumeVersionAuthGuards: RequestHandler[] = [verifyFirebaseAuth]
+  const resumeVersionMutationGuards: RequestHandler[] = [verifySession, requireRole('admin')]
+  const resumeVersionAuthGuards: RequestHandler[] = [verifySession]
   app.use('/api/resume-versions', buildResumeVersionRouter({ mutationsMiddleware: resumeVersionMutationGuards, authMiddleware: resumeVersionAuthGuards }))
 
   // Chat widget - public endpoint for visitor interactions
@@ -137,7 +137,7 @@ export function buildApp() {
   app.use('/api/queue', queuePublicJobSubmit, buildJobQueueRouter())
 
   // All other API routes require authentication
-  app.use('/api', verifyFirebaseAuth)
+  app.use('/api', verifySession)
   app.use('/api/applicator', buildApplicatorRouter())
   app.use('/api/job-listings', buildJobListingRouter())
   app.use('/api/companies', buildCompanyRouter())

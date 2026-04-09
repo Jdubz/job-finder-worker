@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { googleLogout } from '@react-oauth/google'
-import { authClient, AuthError } from '@/api/auth-client'
+import { authClient } from '@/api/auth-client'
 
 const IS_DEVELOPMENT = import.meta.env.VITE_ENVIRONMENT === 'development'
 
@@ -39,18 +39,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const restoreSession = async () => {
       try {
         const response = await authClient.fetchSession()
-        if (mounted && response.user) {
-          setUser(response.user)
-          // Check if user has admin role (users table is source of truth)
-          setIsOwner(response.user.roles?.includes('admin') ?? false)
+        if (mounted) {
+          if (response.user) {
+            setUser(response.user)
+            setIsOwner(response.user.roles?.includes('admin') ?? false)
+          } else {
+            setUser(null)
+            setIsOwner(false)
+          }
         }
       } catch (error) {
-        // 401 is expected when not logged in - silently ignore
-        if (error instanceof AuthError && error.statusCode === 401) {
-          // Not logged in, that's fine
-        } else {
-          console.warn('Failed to restore session:', error)
-        }
+        // Real errors (network failure, server error) — log and treat as logged out
+        console.warn('Failed to restore session:', error)
         if (mounted) {
           setUser(null)
           setIsOwner(false)

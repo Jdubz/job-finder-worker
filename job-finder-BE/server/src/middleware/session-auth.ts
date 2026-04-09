@@ -121,7 +121,7 @@ function isLocalhostRequest(req: Request): boolean {
  * In development/test: Also accepts dev tokens via Bearer header for testing
  * Localhost requests: Bypass auth for desktop app running on same machine
  */
-export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
+export async function verifySession(req: Request, res: Response, next: NextFunction) {
   // In development/test mode, check for dev tokens first
   if (IS_DEVELOPMENT || isTestEnv()) {
     const bearerToken = extractBearerToken(req)
@@ -153,6 +153,19 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   const sessionToken = cookies[SESSION_COOKIE]
 
   if (!sessionToken) {
+    const cookieHeader = req.headers.cookie
+    logger.warn(
+      {
+        method: req.method,
+        path: req.path,
+        hasCookieHeader: !!cookieHeader,
+        cookieKeys: cookieHeader ? Object.keys(parseCookie(cookieHeader)) : [],
+        origin: req.headers.origin,
+        host: req.headers.host,
+        ip: req.socket?.remoteAddress,
+      },
+      'Auth failed: no session cookie in request'
+    )
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Authentication required', { status: 401 })
     )
@@ -161,6 +174,10 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   // findBySessionToken handles expiry check and cleanup for both new and legacy sessions
   const sessionUser = userRepository.findBySessionToken(sessionToken)
   if (!sessionUser) {
+    logger.warn(
+      { method: req.method, path: req.path, origin: req.headers.origin },
+      'Auth failed: session token present but not found in DB (expired or invalid)'
+    )
     clearSessionCookie(res)
     return next(
       new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid or expired session', { status: 401 })
@@ -181,9 +198,12 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   return next()
 }
 
+/** @deprecated Use verifySession instead */
+export const verifyFirebaseAuth = verifySession
+
 /**
  * Role-based access control middleware.
- * Must be used after verifyFirebaseAuth.
+ * Must be used after verifySession.
  */
 export function requireRole(role: UserRole) {
   return (req: Request, res: Response, next: NextFunction) => {

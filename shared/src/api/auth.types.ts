@@ -32,10 +32,11 @@ export interface LoginResponseData {
 }
 
 /**
- * Session response data (unwrapped from ApiSuccessResponse)
+ * Session response data (unwrapped from ApiSuccessResponse).
+ * Returns null when no valid session exists (not logged in).
  */
 export interface SessionResponseData {
-  user: SessionUser
+  user: SessionUser | null
 }
 
 /**

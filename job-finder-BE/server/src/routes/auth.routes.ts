@@ -140,21 +140,21 @@ export function buildAuthRouter() {
   /**
    * GET /auth/session
    * Restore session from cookie. No Bearer token required.
-   * Returns user info if session is valid, 401 if not.
+   * Returns { user } if session is valid, { user: null } if not.
    */
   router.get('/session', asyncHandler(async (req, res) => {
     const cookies = req.headers.cookie ? parseCookie(req.headers.cookie) : {}
     const sessionToken = cookies[SESSION_COOKIE]
 
     if (!sessionToken) {
-      throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'No session cookie', { status: 401 })
+      return res.json(success({ user: null }))
     }
 
     // findBySessionToken handles expiry check and cleanup
     const user = userRepository.findBySessionToken(sessionToken)
     if (!user) {
       clearSessionCookie(res)
-      throw new ApiHttpError(ApiErrorCode.UNAUTHORIZED, 'Invalid or expired session', { status: 401 })
+      return res.json(success({ user: null }))
     }
 
     userRepository.touchLastLogin(user.id)

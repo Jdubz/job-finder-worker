@@ -50,16 +50,8 @@ vi.mock("@/api/auth-client", () => {
           },
         })
       ),
-      fetchSession: vi.fn(() => Promise.reject({ statusCode: 401 })),
+      fetchSession: vi.fn(() => Promise.resolve({ user: null })),
       logout: vi.fn(() => Promise.resolve({ loggedOut: true })),
-    },
-    AuthError: class AuthError extends Error {
-      statusCode: number
-      constructor(message: string, statusCode: number) {
-        super(message)
-        this.name = "AuthError"
-        this.statusCode = statusCode
-      }
     },
   }
 })

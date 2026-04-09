@@ -26,7 +26,7 @@ import {
   sendCommandToWorker
 } from './queue-events'
 import { ApiHttpError } from '../../middleware/api-error'
-import { requireRole } from '../../middleware/firebase-auth'
+import { requireRole } from '../../middleware/session-auth'
 import {
   enqueueScrapeJob,
   triggerMaintenance,
