@@ -101,6 +101,38 @@ describe("AuthContext", () => {
     })
   })
 
+  it("treats fetchSession error as logged out without crashing", async () => {
+    vi.mocked(authClient.fetchSession).mockRejectedValueOnce(new Error("Network error"))
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    )
+
+    // Should settle to unauthenticated state, not crash
+    await waitFor(() => {
+      expect(screen.getByTestId("user-email")).toHaveTextContent("No user")
+      expect(screen.getByTestId("is-owner")).toHaveTextContent("Viewer")
+    })
+  })
+
+  it("treats 401 session error as logged out without crashing", async () => {
+    const apiError = new Error("Invalid or expired session")
+    Object.assign(apiError, { statusCode: 401, name: "ApiError" })
+    vi.mocked(authClient.fetchSession).mockRejectedValueOnce(apiError)
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId("user-email")).toHaveTextContent("No user")
+    })
+  })
+
   it("clears state on sign out", async () => {
     render(
       <AuthProvider>
