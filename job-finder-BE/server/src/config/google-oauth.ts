@@ -56,23 +56,41 @@ export async function verifyGoogleAccessToken(accessToken: string): Promise<Goog
   try {
     const tokenInfo = await oauthClient.getTokenInfo(accessToken)
 
-    if (!tokenInfo.email) {
-      logger.warn("Google access token missing email scope")
+    // Reject tokens minted for a different OAuth client
+    if (env.GOOGLE_OAUTH_CLIENT_ID && tokenInfo.aud !== env.GOOGLE_OAUTH_CLIENT_ID) {
+      logger.warn(
+        { expected: env.GOOGLE_OAUTH_CLIENT_ID, got: tokenInfo.aud },
+        "Google access token audience mismatch"
+      )
       return null
     }
 
-    // Fetch full profile (name, picture) from userinfo endpoint
+    // Fetch full profile (name, picture, and email fallback) from userinfo endpoint
     const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     const profile = userinfoRes.ok
-      ? (await userinfoRes.json()) as { sub?: string; name?: string; picture?: string }
+      ? (await userinfoRes.json()) as {
+          sub?: string
+          email?: string
+          email_verified?: boolean
+          name?: string
+          picture?: string
+        }
       : {}
+
+    const email = tokenInfo.email ?? profile.email
+    const emailVerified = tokenInfo.email_verified ?? profile.email_verified ?? undefined
+
+    if (!email) {
+      logger.warn("Google access token missing email scope")
+      return null
+    }
 
     return {
       uid: tokenInfo.sub ?? profile.sub ?? "",
-      email: tokenInfo.email,
-      emailVerified: tokenInfo.email_verified ?? undefined,
+      email,
+      emailVerified,
       name: profile.name,
       picture: profile.picture,
     }
