@@ -1,12 +1,27 @@
 import express from 'express'
 import request from 'supertest'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { buildAuthRouter } from '../auth.routes'
 import { apiErrorHandler } from '../../middleware/api-error'
 import { ApiErrorCode } from '@shared/types'
 import { UserRepository } from '../../modules/users/user.repository'
 import { getDb } from '../../db/sqlite'
 import { serialize as serializeCookie } from 'cookie'
+
+// Mock Google OAuth verification — real Google APIs aren't available in tests
+vi.mock('../../config/google-oauth', async (importOriginal) => {
+  const actual: Record<string, unknown> = await importOriginal()
+  return {
+    ...actual,
+    verifyGoogleIdToken: vi.fn().mockResolvedValue(null),
+    verifyGoogleAccessToken: vi.fn().mockResolvedValue(null),
+  }
+})
+
+import { verifyGoogleIdToken, verifyGoogleAccessToken } from '../../config/google-oauth'
+
+const mockedVerifyIdToken = vi.mocked(verifyGoogleIdToken)
+const mockedVerifyAccessToken = vi.mocked(verifyGoogleAccessToken)
 
 const userRepo = new UserRepository()
 
@@ -111,5 +126,96 @@ describe('GET /auth/session', () => {
     expect(user.uid).toBeDefined()
     expect(user.name).toBe('Test User')
     expect(user.email).toBe('fields@test.dev')
+  })
+
+  it('clears the session cookie when returning 401 for invalid token', async () => {
+    const cookie = serializeCookie('jf_session', 'stale-token')
+    const res = await request(app)
+      .get('/auth/session')
+      .set('Cookie', cookie)
+
+    expect(res.status).toBe(401)
+    // Server should send Set-Cookie to expire the stale cookie
+    const setCookie = res.headers['set-cookie']
+    expect(setCookie).toBeDefined()
+    expect(setCookie.toString()).toMatch(/jf_session=;/)
+  })
+})
+
+describe('POST /auth/login', () => {
+  const app = buildTestApp()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getDb().prepare('DELETE FROM user_sessions').run()
+  })
+
+  it('succeeds when ID token verification passes', async () => {
+    const fakeJwt = 'header.payload.signature'
+    mockedVerifyIdToken.mockResolvedValueOnce({
+      uid: 'google-123',
+      email: 'jwt@test.dev',
+      name: 'JWT User',
+      picture: 'https://photo.test/jwt.jpg',
+    })
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ credential: fakeJwt })
+
+    expect(mockedVerifyIdToken).toHaveBeenCalledWith(fakeJwt)
+    expect(res.status).toBe(200)
+    expect(res.body.data.user.email).toBe('jwt@test.dev')
+  })
+
+  it('falls back to access token verification when ID token returns null', async () => {
+    const accessToken = 'ya29_opaque_access_token'
+    // ID token verification fails (not a JWT)
+    mockedVerifyIdToken.mockResolvedValueOnce(null)
+    // Access token verification succeeds
+    mockedVerifyAccessToken.mockResolvedValueOnce({
+      uid: 'google-456',
+      email: 'access@test.dev',
+      name: 'Access User',
+      picture: 'https://photo.test/access.jpg',
+    })
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ credential: accessToken })
+
+    expect(mockedVerifyIdToken).toHaveBeenCalledWith(accessToken)
+    expect(mockedVerifyAccessToken).toHaveBeenCalledWith(accessToken)
+    expect(res.status).toBe(200)
+    expect(res.body.data.user.email).toBe('access@test.dev')
+  })
+
+  it('returns 401 when both verification methods fail', async () => {
+    mockedVerifyIdToken.mockResolvedValueOnce(null)
+    mockedVerifyAccessToken.mockResolvedValueOnce(null)
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ credential: 'invalid_token' })
+
+    expect(res.status).toBe(401)
+    expect(res.body.error.code).toBe(ApiErrorCode.INVALID_TOKEN)
+  })
+
+  it('sets session cookie on successful login', async () => {
+    mockedVerifyAccessToken.mockResolvedValueOnce({
+      uid: 'google-789',
+      email: 'cookie@test.dev',
+      name: 'Cookie User',
+    })
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ credential: 'valid_access_token' })
+
+    expect(res.status).toBe(200)
+    const setCookie = res.headers['set-cookie']
+    expect(setCookie).toBeDefined()
+    expect(setCookie.toString()).toMatch(/jf_session=/)
   })
 })

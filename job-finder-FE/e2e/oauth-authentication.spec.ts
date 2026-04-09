@@ -10,62 +10,66 @@ test.describe('Google OAuth Authentication Flow', () => {
     // No init script needed - we want empty localStorage for these tests
   })
 
-  // Skip this test - Google OAuth doesn't work in test environment without real client ID
-  test.skip('sign in modal appears when clicking sign in button', async ({ page }) => {
+  test('sign in modal renders with interactive content', async ({ page }) => {
     await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
 
-    // Find and click the sign in button
-    const signInButton = page.getByRole('button', { name: /sign in|log in/i }).first()
-    await expect(signInButton).toBeVisible({ timeout: 10000 })
-    await signInButton.click()
+    const authModal = await openAuthModal(page, 'anonymous')
 
-    // Modal should appear
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10000 })
+    // In dev mode: role selector buttons should be visible (not blank)
+    // In prod mode: "Continue with Google" button should be visible
+    // Either way, the modal must have interactive content — not a blank screen
+    const hasDevButtons = await authModal.getByRole('button', { name: /Admin/i }).isVisible().catch(() => false)
+    const hasGoogleButton = await authModal.getByRole('button', { name: /Continue with Google/i }).isVisible().catch(() => false)
 
-    // Google Sign In button should be present
-    await expect(page.getByText(/continue with google|sign in with google/i).first()).toBeVisible({ timeout: 10000 })
+    expect(hasDevButtons || hasGoogleButton).toBe(true)
   })
 
-  // Skip this test - requires OAuth modal which won't work in test environment
-  test.skip('sign in modal can be closed', async ({ page }) => {
-    await page.goto(ROUTES.HOME)
+  test('sign in modal can be closed with Escape', async ({ page }) => {
+    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
 
-    const signInButton = page.getByRole('button', { name: /sign in|log in/i }).first()
-    if (await signInButton.isVisible()) {
-      await signInButton.click()
+    const modal = await openAuthModal(page, 'anonymous')
+    await expect(modal).toBeVisible()
 
-      const modal = page.getByRole('dialog')
-      await expect(modal).toBeVisible({ timeout: 5000 })
-
-      // Close modal (look for X button or close button)
-      const closeButton = page.getByRole('button', { name: /close/i }).first()
-      if (await closeButton.isVisible()) {
-        await closeButton.click()
-        await expect(modal).not.toBeVisible()
-      } else {
-        // Try ESC key
-        await page.keyboard.press('Escape')
-        await expect(modal).not.toBeVisible()
-      }
-    }
+    await page.keyboard.press('Escape')
+    await expect(modal).not.toBeVisible()
   })
 
-  // Skip this test - requires OAuth modal which won't work in test environment
-  test.skip('sign in modal appears when trying to access admin page while unauthenticated', async ({ page }) => {
-    await page.goto(ROUTES.AI_PROMPTS, { waitUntil: 'domcontentloaded' })
+  test('session endpoint returns 200 with user: null on cold load (no cookie)', async ({ page }) => {
+    // Intercept the session API call that AuthContext makes on mount
+    const sessionResponsePromise = page.waitForResponse(
+      (res) => res.url().includes('/auth/session') && res.request().method() === 'GET'
+    )
 
-    // Should be on unauthorized page
-    await expect(page).toHaveURL(ROUTES.UNAUTHORIZED, { timeout: 10000 })
+    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
 
-    // Should have a sign in button/link
-    const signInButton = page.getByRole('button', { name: /sign in|log in/i }).first()
-    if (await signInButton.isVisible({ timeout: 10000 }).catch(() => false)) {
-      await signInButton.click()
+    const sessionResponse = await sessionResponsePromise
+    expect(sessionResponse.status()).toBe(200)
 
-      // Modal should appear
-      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10000 })
-      await expect(page.getByText(/continue with google|sign in with google/i).first()).toBeVisible({ timeout: 10000 })
-    }
+    const body = await sessionResponse.json()
+    expect(body.success).toBe(true)
+    expect(body.data.user).toBeNull()
+  })
+
+  test('session endpoint returns 200 with user data after login', async ({ context }) => {
+    await loginWithDevToken(context, 'dev-admin-token')
+    const page = await context.newPage()
+
+    const sessionResponsePromise = page.waitForResponse(
+      (res) => res.url().includes('/auth/session') && res.request().method() === 'GET'
+    )
+
+    await page.goto(ROUTES.HOME, { waitUntil: 'domcontentloaded' })
+
+    const sessionResponse = await sessionResponsePromise
+    expect(sessionResponse.status()).toBe(200)
+
+    const body = await sessionResponse.json()
+    expect(body.success).toBe(true)
+    expect(body.data.user).toBeTruthy()
+    expect(body.data.user.email).toBeDefined()
+    expect(body.data.user.roles).toBeDefined()
+
+    await page.close()
   })
 
   test('successful authentication with viewer email redirects correctly', async ({ context }) => {
@@ -178,20 +182,4 @@ test.describe('Google OAuth Authentication Flow', () => {
     await page.close()
   })
 
-  // These tests are no longer relevant with proper backend session auth
-  // The backend validates sessions, not localStorage tokens
-
-  // Skip this test - requires Google OAuth button which won't work in test environment
-  test.skip('Google Sign In button uses correct branding', async ({ page }) => {
-    await page.goto(ROUTES.HOME)
-
-    const signInButton = page.getByRole('button', { name: /sign in|log in/i }).first()
-    if (await signInButton.isVisible()) {
-      await signInButton.click()
-
-      // Should see Google-branded button
-      const googleButton = page.locator('[role="button"]', { hasText: /continue with google|sign in with google/i })
-      await expect(googleButton.first()).toBeVisible({ timeout: 5000 })
-    }
-  })
 })
