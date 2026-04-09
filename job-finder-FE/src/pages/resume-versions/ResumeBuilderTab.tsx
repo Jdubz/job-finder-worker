@@ -137,7 +137,11 @@ export function ResumeBuilderTab({ items }: ResumeBuilderTabProps) {
             setContentFit(res.contentFit)
           }
         } catch {
-          // Estimation is best-effort — don't block the UI
+          // Error toast is already shown by the base client.
+          // Clear stale fit data so the UI doesn't show outdated info.
+          if (seq === estimateSeqRef.current) {
+            setContentFit(null)
+          }
         } finally {
           if (seq === estimateSeqRef.current) {
             setEstimating(false)

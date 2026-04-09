@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildResumeVersionRouter } from '../resume-version.routes'
 import { ResumeVersionRepository } from '../resume-version.repository'
 import { ConfigRepository } from '../../config/config.repository'
-import type { AuthenticatedRequest } from '../../../middleware/firebase-auth'
+import type { AuthenticatedRequest } from '../../../middleware/session-auth'
 import { getDb } from '../../../db/sqlite'
 
 const createApp = () => {

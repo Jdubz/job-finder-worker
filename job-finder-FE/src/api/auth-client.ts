@@ -55,19 +55,14 @@ class AuthClient extends BaseApiClient {
 
   /**
    * Restore session from cookie.
-   * Returns user info if session is valid, throws if not.
-   * Retries on network errors with exponential backoff.
+   * - No cookie → 200 { user: null }
+   * - Invalid/expired token → throws ApiError (401)
+   * - Valid token → 200 { user }
+   * - Network/server failure → throws ApiError (5xx)
    */
   async fetchSession(): Promise<SessionResponse> {
-    try {
-      const response = await this.get<ApiSuccessResponse<SessionResponseData>>("/auth/session")
-      return response.data
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw new AuthError(error.message, error.statusCode ?? 500)
-      }
-      throw error
-    }
+    const response = await this.get<ApiSuccessResponse<SessionResponseData>>("/auth/session")
+    return response.data
   }
 
   /**

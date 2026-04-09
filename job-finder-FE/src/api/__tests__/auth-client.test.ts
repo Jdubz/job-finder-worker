@@ -124,22 +124,16 @@ describe('AuthClient', () => {
       )
     })
 
-    it('should throw AuthError when no session exists (401)', async () => {
+    it('should return null user when no session exists', async () => {
       mockFetch.mockResolvedValueOnce(
         createMockResponse({
-          ok: false,
-          status: 401,
-          data: { success: false, error: { message: 'No session cookie' } },
+          ok: true,
+          data: { success: true, data: { user: null } },
         })
       )
 
-      try {
-        await authClient.fetchSession()
-        expect.fail('Expected fetchSession to throw')
-      } catch (error) {
-        expect(error).toBeInstanceOf(AuthError)
-        expect((error as AuthError).statusCode).toBe(401)
-      }
+      const result = await authClient.fetchSession()
+      expect(result.user).toBeNull()
     })
 
     it('should retry on network errors with exponential backoff', async () => {
@@ -162,27 +156,32 @@ describe('AuthClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(3)
     })
 
-    it('should throw AuthError immediately on HTTP client errors (like 401)', async () => {
-      // Clear mocks to ensure clean state
+    it('should throw on expired/invalid session (401)', async () => {
       vi.clearAllMocks()
 
       mockFetch.mockResolvedValue(
         createMockResponse({
           ok: false,
           status: 401,
-          data: { success: false, error: { message: 'Unauthorized' } },
+          data: { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired session' } },
         })
       )
 
-      // The key behavior: 401 should result in AuthError being thrown
-      try {
-        await authClient.fetchSession()
-        expect.fail('Expected fetchSession to throw')
-      } catch (error) {
-        expect(error).toBeInstanceOf(AuthError)
-        expect((error as AuthError).statusCode).toBe(401)
-        expect((error as AuthError).message).toContain('Unauthorized')
-      }
+      await expect(authClient.fetchSession()).rejects.toThrow('Invalid or expired session')
+    })
+
+    it('should throw on real server errors (5xx)', async () => {
+      vi.clearAllMocks()
+
+      mockFetch.mockResolvedValue(
+        createMockResponse({
+          ok: false,
+          status: 500,
+          data: { success: false, error: { message: 'Internal server error' } },
+        })
+      )
+
+      await expect(authClient.fetchSession()).rejects.toThrow()
     })
   })
 

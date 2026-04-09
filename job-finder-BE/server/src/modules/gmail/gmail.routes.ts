@@ -8,7 +8,7 @@ import { exchangeAuthCode } from "./gmail-oauth"
 import { ApplicationTrackerService } from "./application-tracker.service"
 import { ApplicationEmailRepository } from "./application-email.repository"
 import { asyncHandler } from "../../utils/async-handler"
-import type { AuthenticatedRequest } from "../../middleware/firebase-auth"
+import type { AuthenticatedRequest } from "../../middleware/session-auth"
 
 const service = new GmailAuthService()
 const tracker = new ApplicationTrackerService()

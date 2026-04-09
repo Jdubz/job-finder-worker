@@ -18,7 +18,7 @@ import { invalidateDocumentCacheAsync } from '../generator/document-cache-invali
 import { asyncHandler } from '../../utils/async-handler'
 import { success, failure } from '../../utils/api-response'
 import { ApiHttpError } from '../../middleware/api-error'
-import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/firebase-auth'
+import { type AuthenticatedRequest, type AuthenticatedUser } from '../../middleware/session-auth'
 
 const nullableIdSchema = z.string().min(1).or(z.literal(null)).optional()
 const monthSchema = z.preprocess(
