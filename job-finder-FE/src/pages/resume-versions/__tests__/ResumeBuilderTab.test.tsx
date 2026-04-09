@@ -589,6 +589,55 @@ describe("ResumeBuilderTab", () => {
     })
   })
 
+  // ── Estimation error handling ─────────────────────────────
+
+  describe("estimation errors", () => {
+    it("clears content fit when estimation fails", async () => {
+      render(<ResumeBuilderTab items={allItems} />)
+
+      // First: successful estimation
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
+      await act(async () => { vi.advanceTimersByTime(350) })
+      await waitFor(() => {
+        expect(screen.getByText("82% of 1 page")).toBeInTheDocument()
+      })
+
+      // Now make estimation fail
+      mockEstimateResume.mockRejectedValue(new Error("Auth failed"))
+
+      // Select another item to trigger a new estimation
+      await act(async () => { fireEvent.click(getCheckboxFor("Frameworks")) })
+      await act(async () => { vi.advanceTimersByTime(350) })
+
+      // Content fit bar should be gone — replaced by the empty-state prompt
+      await waitFor(() => {
+        expect(screen.queryByText("82% of 1 page")).not.toBeInTheDocument()
+      })
+    })
+
+    it("recovers after a failed estimation when next one succeeds", async () => {
+      render(<ResumeBuilderTab items={allItems} />)
+
+      // First call fails
+      mockEstimateResume.mockRejectedValueOnce(new Error("Network error"))
+
+      await act(async () => { fireEvent.click(getCheckboxFor("Languages")) })
+      await act(async () => { vi.advanceTimersByTime(350) })
+
+      // Let the rejection settle
+      await act(async () => { await Promise.resolve() })
+
+      // Next call succeeds (default mock is back)
+      mockEstimateResume.mockResolvedValue(mockFit)
+      await act(async () => { fireEvent.click(getCheckboxFor("Frameworks")) })
+      await act(async () => { vi.advanceTimersByTime(350) })
+
+      await waitFor(() => {
+        expect(screen.getByText("82% of 1 page")).toBeInTheDocument()
+      })
+    })
+  })
+
   // ── Generate PDF ──────────────────────────────────────────
 
   describe("PDF generation", () => {
