@@ -279,7 +279,7 @@ export function JobListingsPage() {
 
       {/* Listings Table */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Job Listings</CardTitle>
@@ -335,7 +335,7 @@ export function JobListingsPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-2 pb-4 sm:px-6 sm:pb-6">
           <div className="overflow-x-auto">
             <JobListingsTable
               listings={filteredListings}

@@ -220,7 +220,7 @@ export function JobApplicationsPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Matches</h1>
@@ -274,7 +274,7 @@ export function JobApplicationsPage() {
 
       {/* Job Matches List */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle>Job Matches</CardTitle>
@@ -331,7 +331,7 @@ export function JobApplicationsPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-2 pb-4 sm:px-6 sm:pb-6">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -360,16 +360,16 @@ export function JobApplicationsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[640px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[180px]">Job Title</TableHead>
-                    <TableHead className="min-w-[140px]">Company</TableHead>
-                    <TableHead className="hidden md:table-cell min-w-[120px]">Location</TableHead>
-                    <TableHead className="hidden lg:table-cell min-w-[100px]">Posted</TableHead>
-                    <TableHead className="text-center min-w-[80px]">Score</TableHead>
-                    <TableHead className="hidden sm:table-cell min-w-[100px]">Status</TableHead>
-                    <TableHead className="text-center min-w-[80px]">Actions</TableHead>
+                    <TableHead className="min-w-[130px]">Job Title</TableHead>
+                    <TableHead className="min-w-[90px] max-w-[140px]">Company</TableHead>
+                    <TableHead className="min-w-[80px]">Location</TableHead>
+                    <TableHead className="min-w-[70px]">Posted</TableHead>
+                    <TableHead className="text-center min-w-[50px]">Score</TableHead>
+                    <TableHead className="min-w-[70px]">Status</TableHead>
+                    <TableHead className="text-center w-[44px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -379,12 +379,12 @@ export function JobApplicationsPage() {
                       className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                       onClick={() => handleRowClick(match)}
                     >
-                      <TableCell className="max-w-[300px]">
+                      <TableCell className="max-w-[200px]">
                         <div className="font-medium truncate" title={match.listing.title}>
                           {match.listing.title}
                         </div>
                       </TableCell>
-                      <TableCell className="max-w-[200px]">
+                      <TableCell className="max-w-[140px]">
                         <button
                           type="button"
                           className="text-blue-600 hover:underline text-left truncate block w-full"
@@ -399,24 +399,20 @@ export function JobApplicationsPage() {
                         >
                           {match.listing.companyName}
                         </button>
-                        {/* Show location on mobile as secondary text */}
-                        <div className="md:hidden text-xs text-muted-foreground mt-0.5 truncate">
-                          {match.listing.location || ""}
-                        </div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground max-w-[160px]">
+                      <TableCell className="text-muted-foreground max-w-[120px]">
                         <span className="truncate block" title={match.listing.location || undefined}>
                           {match.listing.location || "—"}
                         </span>
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell text-muted-foreground whitespace-nowrap">
+                      <TableCell className="text-muted-foreground whitespace-nowrap">
                         {formatDate(match.listing.postedDate)}
                       </TableCell>
                       <TableCell className="text-center whitespace-nowrap">
                         <span className={getScoreColor(match.matchScore)}>{match.matchScore}%</span>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${statusBadgeClass(match.status ?? "active")}`}>
+                      <TableCell>
+                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap ${statusBadgeClass(match.status ?? "active")}`}>
                           {match.status ?? "active"}
                         </span>
                       </TableCell>
