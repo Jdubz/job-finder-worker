@@ -57,7 +57,7 @@ describe("MainLayout", () => {
     )
 
     const main = screen.getByTestId("outlet").parentElement
-    expect(main).toHaveClass("container", "mx-auto", "px-4", "py-8", "flex-1")
+    expect(main).toHaveClass("mx-auto", "w-full", "max-w-7xl", "py-8", "flex-1")
   })
 
   it("renders navigation at the top", () => {
