@@ -7,9 +7,9 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useAuth, type DevRole } from "@/contexts/AuthContext"
-import { LogOut, Shield, Info, User, Eye, Crown, Loader2 } from "lucide-react"
+import { LogOut, Shield, Info, User, Eye, Crown } from "lucide-react"
 import { useState, useEffect } from "react"
-import { GoogleLogin, useGoogleOAuth } from "@react-oauth/google"
+import { GoogleLogin } from "@react-oauth/google"
 
 interface AuthModalProps {
   open: boolean
@@ -18,28 +18,21 @@ interface AuthModalProps {
 
 export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const { user, isOwner, signOut, loginWithGoogle, isDevelopment, setDevRole } = useAuth()
-  const { scriptLoadedSuccessfully } = useGoogleOAuth()
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [buttonTimedOut, setButtonTimedOut] = useState(false)
 
-  // The GoogleLogin component renders a button inside an iframe from Google.
-  // If the iframe fails to render (script blocked, FedCM issue), the space is
-  // blank with no error. Detect this and show an actionable message.
+  // If the Google sign-in button never becomes visible (script blocked, iframe
+  // fails to render), show an actionable fallback after 5s. Suppress the
+  // warning while a login is actively in progress.
   useEffect(() => {
-    if (!open || user || isDevelopment) {
+    if (!open || user || isDevelopment || isLoading) {
       setButtonTimedOut(false)
       return
     }
-    if (scriptLoadedSuccessfully) {
-      // Script loaded but button might still fail to render — give it time
-      const timer = setTimeout(() => setButtonTimedOut(true), 5000)
-      return () => clearTimeout(timer)
-    }
-    // Script itself didn't load
     const timer = setTimeout(() => setButtonTimedOut(true), 5000)
     return () => clearTimeout(timer)
-  }, [scriptLoadedSuccessfully, open, user, isDevelopment])
+  }, [open, user, isDevelopment, isLoading])
 
   const handleDevRoleSelect = (role: DevRole) => {
     setDevRole(role)
@@ -169,13 +162,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex justify-center min-h-[44px] items-center">
-                      {!scriptLoadedSuccessfully && !buttonTimedOut && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading sign-in...
-                        </div>
-                      )}
+                    <div className={`flex justify-center min-h-[44px] items-center ${isLoading ? "pointer-events-none opacity-50" : ""}`}>
                       <GoogleLogin
                         onSuccess={(response) => {
                           if (response.credential) {
