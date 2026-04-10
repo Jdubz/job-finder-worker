@@ -59,15 +59,15 @@ export function JobListingsTable({
   }
 
   return (
-    <Table>
+    <Table className="min-w-[580px]">
       <TableHeader>
         <TableRow>
-          <TableHead className="min-w-[180px]">Title</TableHead>
-          <TableHead className="hidden md:table-cell min-w-[140px]">Company</TableHead>
-          <TableHead className="hidden lg:table-cell min-w-[120px]">Location</TableHead>
-          <TableHead className="hidden sm:table-cell min-w-[80px]">Score</TableHead>
-          <TableHead className="min-w-[100px]">Status</TableHead>
-          <TableHead className="hidden md:table-cell min-w-[120px]">Updated</TableHead>
+          <TableHead className="min-w-[130px]">Title</TableHead>
+          <TableHead className="min-w-[90px] max-w-[140px]">Company</TableHead>
+          <TableHead className="min-w-[80px]">Location</TableHead>
+          <TableHead className="min-w-[50px]">Score</TableHead>
+          <TableHead className="min-w-[70px]">Status</TableHead>
+          <TableHead className="min-w-[70px]">Updated</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -77,26 +77,10 @@ export function JobListingsTable({
             className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
             onClick={() => onRowClick(listing)}
           >
-            <TableCell className="max-w-[300px]">
+            <TableCell className="max-w-[200px]">
               <div className="font-medium truncate">{listing.title}</div>
-              {/* Show company and location on mobile as secondary text */}
-              <div className="md:hidden text-xs text-muted-foreground mt-0.5 flex min-w-0">
-                <span className="truncate">
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:underline"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCompanyClick(listing.companyId || undefined)
-                    }}
-                  >
-                    {listing.companyName}
-                  </button>
-                </span>
-                {listing.location && <span className="flex-shrink-0">{` • ${listing.location}`}</span>}
-              </div>
             </TableCell>
-            <TableCell className="hidden md:table-cell max-w-[200px]">
+            <TableCell className="max-w-[140px]">
               <button
                 type="button"
                 className="text-blue-600 hover:underline text-left truncate block w-full"
@@ -108,17 +92,17 @@ export function JobListingsTable({
                 {listing.companyName}
               </button>
             </TableCell>
-            <TableCell className="hidden lg:table-cell text-muted-foreground max-w-[160px]">
+            <TableCell className="text-muted-foreground max-w-[120px]">
               <span className="truncate block" title={listing.location || undefined}>{listing.location || "—"}</span>
             </TableCell>
-            <TableCell className="hidden sm:table-cell text-muted-foreground">
+            <TableCell className="text-muted-foreground">
               {(() => {
                 const score = extractMatchScore(listing)
                 return score !== null ? `${score}` : "—"
               })()}
             </TableCell>
             <TableCell>{getStatusBadge(listing.status)}</TableCell>
-            <TableCell className="hidden md:table-cell text-muted-foreground text-sm whitespace-nowrap">
+            <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
               {formatDateTime(listing.updatedAt)}
             </TableCell>
           </TableRow>
