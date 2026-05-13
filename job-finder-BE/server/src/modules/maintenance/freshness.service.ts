@@ -241,14 +241,23 @@ export class FreshnessService {
     }
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8', { fatal: false })
+    const cap = this.opts.maxBodyBytes
     let received = 0
     let out = ''
     try {
-      while (received < this.opts.maxBodyBytes) {
+      while (received < cap) {
         const { done, value } = await reader.read()
         if (done) break
-        received += value.byteLength
-        out += decoder.decode(value, { stream: true })
+        const remaining = cap - received
+        if (value.byteLength <= remaining) {
+          received += value.byteLength
+          out += decoder.decode(value, { stream: true })
+        } else {
+          // Last chunk pushes us over the cap — slice and stop reading.
+          out += decoder.decode(value.subarray(0, remaining), { stream: true })
+          received = cap
+          break
+        }
       }
       out += decoder.decode()
     } finally {
@@ -304,11 +313,15 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Public unicast check.
- *  - Rejects loopback, private (RFC1918), link-local, unspecified, multicast,
- *    broadcast, carrier-grade NAT, cloud metadata (169.254.169.254), and IPv6
- *    ULA / link-local / loopback.
+ *
+ * Rejects every IANA-reserved IPv4 block (RFC 6890 et al.) and every IPv6
+ * non-global range we don't want the freshness probe to reach: loopback,
+ * private (RFC1918), CGNAT, link-local, multicast, broadcast, cloud-metadata,
+ * documentation (TEST-NET-1/2/3, 2001:db8::/32), benchmarking (198.18.0.0/15),
+ * 6to4 anycast, IETF protocol assignments, ULA (fc00::/7), discard-only
+ * (100::/64), and IPv4-mapped wrappers around any of the above.
  */
-function isPublicIp(ip: string): boolean {
+export function isPublicIp(ip: string): boolean {
   const family = isIP(ip)
   if (family === 4) return isPublicIPv4(ip)
   if (family === 6) return isPublicIPv6(ip)
@@ -318,27 +331,72 @@ function isPublicIp(ip: string): boolean {
 function isPublicIPv4(ip: string): boolean {
   const parts = ip.split('.').map((p) => Number(p))
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false
-  const [a, b] = parts
-  if (a === 0) return false                            // 0.0.0.0/8
-  if (a === 10) return false                           // 10.0.0.0/8
-  if (a === 127) return false                          // 127.0.0.0/8 loopback
-  if (a === 169 && b === 254) return false             // 169.254.0.0/16 link-local (incl. AWS metadata)
-  if (a === 172 && b >= 16 && b <= 31) return false    // 172.16.0.0/12
-  if (a === 192 && b === 168) return false             // 192.168.0.0/16
-  if (a === 100 && b >= 64 && b <= 127) return false   // 100.64.0.0/10 CGNAT
-  if (a >= 224) return false                           // multicast + reserved
-  if (a === 255) return false                          // broadcast
+  const [a, b, c] = parts
+  if (a === 0) return false                                 // 0.0.0.0/8 "this network"
+  if (a === 10) return false                                // 10.0.0.0/8 RFC1918
+  if (a === 100 && b >= 64 && b <= 127) return false        // 100.64.0.0/10 CGNAT
+  if (a === 127) return false                               // 127.0.0.0/8 loopback
+  if (a === 169 && b === 254) return false                  // 169.254.0.0/16 link-local (incl. AWS metadata)
+  if (a === 172 && b >= 16 && b <= 31) return false         // 172.16.0.0/12 RFC1918
+  if (a === 192 && b === 0 && c === 0) return false         // 192.0.0.0/24 IETF protocol assignments
+  if (a === 192 && b === 0 && c === 2) return false         // 192.0.2.0/24 TEST-NET-1 (docs)
+  if (a === 192 && b === 88 && c === 99) return false       // 192.88.99.0/24 6to4 relay anycast
+  if (a === 192 && b === 168) return false                  // 192.168.0.0/16 RFC1918
+  if (a === 198 && (b === 18 || b === 19)) return false     // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 51 && c === 100) return false      // 198.51.100.0/24 TEST-NET-2 (docs)
+  if (a === 203 && b === 0 && c === 113) return false       // 203.0.113.0/24 TEST-NET-3 (docs)
+  if (a >= 224) return false                                // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved
+  if (a === 255) return false                               // 255.255.255.255 broadcast
   return true
 }
 
 function isPublicIPv6(ip: string): boolean {
   const lower = ip.toLowerCase()
-  if (lower === '::' || lower === '::1') return false                       // unspecified, loopback
-  if (lower.startsWith('fe80:') || lower.startsWith('fe80::')) return false // link-local
-  if (/^f[cd][0-9a-f]{2}:/.test(lower)) return false                        // unique local fc00::/7
-  if (lower.startsWith('ff')) return false                                  // multicast
-  // IPv4-mapped (e.g. ::ffff:127.0.0.1)
+  // IPv4-mapped (e.g. ::ffff:127.0.0.1) — defer to the IPv4 check.
   const v4mapped = lower.match(/^::ffff:([0-9.]+)$/)
   if (v4mapped) return isPublicIPv4(v4mapped[1])
+
+  const groups = expandIPv6(lower)
+  if (!groups) return false
+
+  const [g0, g1, g2, g3] = groups
+  // Unspecified ::
+  if (groups.every((g) => g === 0)) return false
+  // Loopback ::1
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && groups[4] === 0 && groups[5] === 0 && groups[6] === 0 && groups[7] === 1) return false
+  // 100::/64 discard-only (RFC 6666)
+  if (g0 === 0x100 && g1 === 0 && g2 === 0 && g3 === 0) return false
+  // 2001:db8::/32 documentation
+  if (g0 === 0x2001 && g1 === 0x0db8) return false
+  // fc00::/7 unique-local
+  if ((g0 & 0xfe00) === 0xfc00) return false
+  // fe80::/10 link-local
+  if ((g0 & 0xffc0) === 0xfe80) return false
+  // ff00::/8 multicast
+  if ((g0 & 0xff00) === 0xff00) return false
   return true
+}
+
+/** Expand an IPv6 address into exactly 8 numeric groups, or null if malformed. */
+function expandIPv6(ip: string): number[] | null {
+  const dcIdx = ip.indexOf('::')
+  let parts: string[]
+  if (dcIdx === -1) {
+    parts = ip.split(':')
+    if (parts.length !== 8) return null
+  } else {
+    const head = ip.slice(0, dcIdx)
+    const tail = ip.slice(dcIdx + 2)
+    const headParts = head === '' ? [] : head.split(':')
+    const tailParts = tail === '' ? [] : tail.split(':')
+    const zerosNeeded = 8 - headParts.length - tailParts.length
+    if (zerosNeeded < 0) return null
+    parts = [...headParts, ...new Array(zerosNeeded).fill('0'), ...tailParts]
+  }
+  const out: number[] = []
+  for (const p of parts) {
+    if (!/^[0-9a-f]{1,4}$/.test(p)) return null
+    out.push(parseInt(p, 16))
+  }
+  return out
 }

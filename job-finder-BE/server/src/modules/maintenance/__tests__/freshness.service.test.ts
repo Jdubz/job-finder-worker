@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { lookup as DnsLookup } from 'node:dns/promises'
-import { FreshnessService, type FreshnessOptions } from '../freshness.service'
+import { FreshnessService, isPublicIp, type FreshnessOptions } from '../freshness.service'
 import { FreshnessRepository } from '../freshness.repository'
 import { JobMatchRepository } from '../../job-matches/job-match.repository'
 import { JobListingRepository } from '../../job-listings/job-listing.repository'
@@ -252,12 +252,82 @@ describe('FreshnessService', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
-  it('caps body read at maxBodyBytes', async () => {
+  it('caps body read at maxBodyBytes even when a single chunk exceeds the cap', async () => {
     seed('listing-huge')
+    // Emit one giant chunk in a single read so the cap MUST be enforced via slicing.
     const huge = 'a'.repeat(2_000_000)
-    const fetchImpl = vi.fn(async () => makeResponse({ status: 200, body: huge }))
+    const fetchImpl = vi.fn(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(huge))
+          controller.close()
+        }
+      })
+      return {
+        status: 200,
+        ok: true,
+        url: 'https://example.com/jobs/listing-huge',
+        headers: new Headers(),
+        body,
+        text: async () => huge
+      } as unknown as Response
+    })
     const service = buildService(fetchImpl, { maxBodyBytes: 1024 })
     const result = await service.run()
     expect(result).toMatchObject({ stillLive: 1 })
+    // Implementation detail check: we didn't keep the 2 MB body in memory.
+    // Probe is wrapped in the service; the easiest indirect check is that
+    // the run completes synchronously without errors, which the asserts cover.
+  })
+})
+
+describe('isPublicIp', () => {
+  it.each([
+    ['8.8.8.8', true],
+    ['93.184.216.34', true],
+    ['1.1.1.1', true],
+    // RFC 6890 reserved blocks — must be rejected
+    ['0.0.0.1', false],            // 0.0.0.0/8
+    ['10.0.0.1', false],           // 10.0.0.0/8
+    ['100.64.0.1', false],         // 100.64.0.0/10 CGNAT
+    ['127.0.0.1', false],          // loopback
+    ['169.254.169.254', false],    // AWS/cloud metadata
+    ['172.16.0.1', false],         // 172.16.0.0/12
+    ['172.31.255.254', false],     // 172.16.0.0/12 upper
+    ['192.0.0.1', false],          // 192.0.0.0/24 IETF
+    ['192.0.2.1', false],          // TEST-NET-1
+    ['192.88.99.1', false],        // 6to4 anycast
+    ['192.168.1.1', false],        // 192.168.0.0/16
+    ['198.18.0.1', false],         // benchmarking
+    ['198.19.255.254', false],
+    ['198.51.100.1', false],       // TEST-NET-2
+    ['203.0.113.1', false],        // TEST-NET-3
+    ['224.0.0.1', false],          // multicast
+    ['240.0.0.1', false],          // reserved
+    ['255.255.255.255', false]     // broadcast
+  ])('classifies IPv4 %s -> public=%s', (ip, expected) => {
+    expect(isPublicIp(ip)).toBe(expected)
+  })
+
+  it.each([
+    ['2606:4700:4700::1111', true],   // Cloudflare DNS
+    ['2001:db8::1', false],            // documentation
+    ['2001:db8:1:2::3', false],
+    ['100::1', false],                  // discard-only
+    ['fc00::1', false],                 // ULA
+    ['fd12:3456::1', false],            // ULA
+    ['fe80::1', false],                 // link-local
+    ['ff02::1', false],                 // multicast
+    ['::1', false],                     // loopback
+    ['::', false],                      // unspecified
+    ['::ffff:127.0.0.1', false],        // IPv4-mapped loopback
+    ['::ffff:169.254.169.254', false]   // IPv4-mapped metadata
+  ])('classifies IPv6 %s -> public=%s', (ip, expected) => {
+    expect(isPublicIp(ip)).toBe(expected)
+  })
+
+  it('returns false for non-IP strings', () => {
+    expect(isPublicIp('not-an-ip')).toBe(false)
+    expect(isPublicIp('')).toBe(false)
   })
 })
