@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import type { JobMatch, JobMatchWithListing, JobListingRecord, JobListingStatus, Company, TimestampLike, JobMatchStats, JobMatchStatus } from '@shared/types'
+import type { JobMatch, JobMatchWithListing, JobListingRecord, JobListingStatus, Company, TimestampLike, JobMatchStats, JobMatchStatus, StatusActor } from '@shared/types'
 import { getDb } from '../../db/sqlite'
 import { JobListingRepository } from '../job-listings/job-listing.repository'
 import { CompanyRepository } from '../companies/company.repository'
@@ -70,7 +70,7 @@ const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   status: (row.status as JobMatchStatus) ?? 'active',
   ignoredAt: row.ignored_at ? parseTimestamp(row.ignored_at) : undefined,
   appliedAt: row.applied_at ? parseTimestamp(row.applied_at) : undefined,
-  statusUpdatedBy: row.status_updated_by as "user" | "email_tracker" | null,
+  statusUpdatedBy: row.status_updated_by as StatusActor | null,
   statusNote: row.status_note,
   isGhost: Boolean(row.is_ghost),
   ghostCompany: row.ghost_company,
