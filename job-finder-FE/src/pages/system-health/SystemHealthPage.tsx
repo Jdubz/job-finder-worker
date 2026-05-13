@@ -37,6 +37,7 @@ const CRON_JOB_LABELS: Record<CronJobKey, string> = {
   logrotate: "Log Rotation",
   sessionCleanup: "Session Cleanup",
   applicationTracker: "Application Tracker",
+  freshness: "Listing Freshness",
 }
 
 function formatHoursInput(hours: number[]): string {

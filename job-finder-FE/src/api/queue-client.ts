@@ -217,6 +217,7 @@ export interface CronStatus {
     logrotate: CronJobStatus
     sessionCleanup: CronJobStatus
     applicationTracker?: CronJobStatus
+    freshness?: CronJobStatus
   }
   workerMaintenanceUrl: string
   logDir: string
