@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { getDb } from '../../db/sqlite'
 
@@ -8,8 +9,6 @@ export interface ListingToVerify {
   url: string
   applyUrl: string | null
   companyName: string
-  matchId: string
-  matchStatus: string
 }
 
 export class FreshnessRepository {
@@ -24,25 +23,20 @@ export class FreshnessRepository {
    *  - it has at least one job_match with status='active' (the only state we'll auto-flip), and
    *  - it has never been verified, or was last verified before `cutoffIso`.
    *
-   * Returns one row per candidate listing (joined to the highest-score active match
-   * so we have a match_id handy for auto-ignore writes).
+   * Returns one row per candidate listing. Auto-ignore later applies to every
+   * active match for the listing, not just the top one — see autoIgnoreActiveMatchesForListing.
    */
   selectListingsToVerify(cutoffIso: string, limit: number): ListingToVerify[] {
     const rows = this.db
       .prepare(
         `
-        SELECT l.id, l.url, l.apply_url, l.company_name,
-               m.id AS match_id, m.status AS match_status
+        SELECT l.id, l.url, l.apply_url, l.company_name
         FROM job_listings l
-        JOIN job_matches m
-          ON m.job_listing_id = l.id
-         AND m.id = (
-           SELECT id FROM job_matches
-           WHERE job_listing_id = l.id AND status = 'active'
-           ORDER BY match_score DESC, analyzed_at DESC
-           LIMIT 1
-         )
         WHERE (l.last_verified_at IS NULL OR l.last_verified_at < ?)
+          AND EXISTS (
+            SELECT 1 FROM job_matches m
+            WHERE m.job_listing_id = l.id AND m.status = 'active'
+          )
         ORDER BY COALESCE(l.last_verified_at, '0000') ASC
         LIMIT ?
         `
@@ -52,17 +46,13 @@ export class FreshnessRepository {
       url: string
       apply_url: string | null
       company_name: string
-      match_id: string
-      match_status: string
     }>
 
     return rows.map((row) => ({
       id: row.id,
       url: row.url,
       applyUrl: row.apply_url,
-      companyName: row.company_name,
-      matchId: row.match_id,
-      matchStatus: row.match_status
+      companyName: row.company_name
     }))
   }
 
@@ -77,39 +67,43 @@ export class FreshnessRepository {
   }
 
   /**
-   * Flip an `active` job_match to `ignored` because the underlying listing is no
-   * longer live. Writes an application_status_history row so the change is
-   * auditable. No-op if the match is no longer `active`.
+   * Flip every `active` job_match for a listing to `ignored` because the
+   * underlying listing is no longer live. Writes one application_status_history
+   * row per flipped match so the change is auditable. Returns the count of
+   * rows actually flipped (zero if no matches were active anymore).
    */
-  autoIgnoreMatch(matchId: string, note: string, atIso: string, historyId: string): boolean {
-    const result = this.db.transaction(() => {
-      const current = this.db
-        .prepare(`SELECT status FROM job_matches WHERE id = ?`)
-        .get(matchId) as { status: string } | undefined
-      if (!current || current.status !== 'active') return false
+  autoIgnoreActiveMatchesForListing(listingId: string, note: string, atIso: string): number {
+    return this.db.transaction(() => {
+      const active = this.db
+        .prepare(`SELECT id FROM job_matches WHERE job_listing_id = ? AND status = 'active'`)
+        .all(listingId) as Array<{ id: string }>
 
-      this.db
-        .prepare(
-          `UPDATE job_matches
-              SET status = 'ignored',
-                  ignored_at = ?,
-                  status_note = ?,
-                  status_updated_by = 'freshness-service',
-                  updated_at = ?
-            WHERE id = ?`
-        )
-        .run(atIso, note, atIso, matchId)
+      if (active.length === 0) return 0
 
-      this.db
-        .prepare(
-          `INSERT INTO application_status_history
-             (id, job_match_id, from_status, to_status, changed_by, application_email_id, note, created_at)
-           VALUES (?, ?, 'active', 'ignored', 'email_tracker', NULL, ?, ?)`
-        )
-        .run(historyId, matchId, note, atIso)
+      const updateMatch = this.db.prepare(
+        `UPDATE job_matches
+            SET status = 'ignored',
+                ignored_at = ?,
+                status_note = ?,
+                status_updated_by = 'freshness-service',
+                updated_at = ?
+          WHERE id = ? AND status = 'active'`
+      )
+      const insertHistory = this.db.prepare(
+        `INSERT INTO application_status_history
+           (id, job_match_id, from_status, to_status, changed_by, application_email_id, note, created_at)
+         VALUES (?, ?, 'active', 'ignored', 'freshness-service', NULL, ?, ?)`
+      )
 
-      return true
+      let flipped = 0
+      for (const row of active) {
+        const result = updateMatch.run(atIso, note, atIso, row.id)
+        if (result.changes > 0) {
+          insertHistory.run(randomUUID(), row.id, note, atIso)
+          flipped++
+        }
+      }
+      return flipped
     })()
-    return result
   }
 }
