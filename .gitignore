@@ -83,3 +83,8 @@ infra/sqlite/seeders/output/**/*.json
 
 .gemini/
 gha-creds-*.json
+
+# One-off reconciliation data files (contain personal application history)
+scripts/reconcile-*.csv
+scripts/reconcile-*.tsv
+scripts/reconcile-*.input
