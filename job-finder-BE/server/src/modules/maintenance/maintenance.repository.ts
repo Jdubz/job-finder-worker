@@ -60,7 +60,12 @@ export class MaintenanceRepository {
 
   /**
    * Archive job_listings older than specified days.
-   * Note: Associated job_matches will be deleted via CASCADE.
+   *
+   * Listings with at least one job_match in a user-meaningful state
+   * (applied, acknowledged, interviewing, denied) are kept regardless of age.
+   * Those matches represent real application history and would be destroyed
+   * by the cascade. Listings whose only matches are 'active' or 'ignored'
+   * remain eligible for archive.
    */
   archiveOldListings(olderThanDays: number): number {
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString()
@@ -84,6 +89,11 @@ export class MaintenanceRepository {
           ?
         FROM job_listings
         WHERE created_at < ?
+          AND NOT EXISTS (
+            SELECT 1 FROM job_matches m
+            WHERE m.job_listing_id = job_listings.id
+              AND m.status IN ('applied','acknowledged','interviewing','denied')
+          )
       `)
       const insertResult = insertStmt.run(now, cutoff)
 
@@ -91,6 +101,11 @@ export class MaintenanceRepository {
       const deleteStmt = this.db.prepare(`
         DELETE FROM job_listings
         WHERE created_at < ?
+          AND NOT EXISTS (
+            SELECT 1 FROM job_matches m
+            WHERE m.job_listing_id = job_listings.id
+              AND m.status IN ('applied','acknowledged','interviewing','denied')
+          )
       `)
       deleteStmt.run(cutoff)
 
