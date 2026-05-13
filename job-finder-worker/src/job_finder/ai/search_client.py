@@ -129,9 +129,10 @@ class BraveSearchClient(SearchClient):
         Args:
             api_key: Brave API key (defaults to BRAVE_API_KEY env var)
         """
-        self.api_key = api_key or os.getenv("BRAVE_API_KEY")
-        if not self.api_key:
+        resolved_key = api_key or os.getenv("BRAVE_API_KEY")
+        if not resolved_key:
             raise ValueError("BRAVE_API_KEY not set")
+        self.api_key: str = resolved_key
 
         self.base_url = "https://api.search.brave.com/res/v1/web/search"
 

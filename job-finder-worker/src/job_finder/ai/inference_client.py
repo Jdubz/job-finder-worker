@@ -71,7 +71,11 @@ class InferenceClient:
             timeout: Request timeout in seconds (default: 120)
         """
         self._base_url = base_url or os.getenv("LITELLM_BASE_URL", _DEFAULT_BASE_URL)
-        self._api_key = api_key or os.getenv("LITELLM_MASTER_KEY", "")
+        # The OpenAI SDK rejects empty/None api_key at construction time. Fall back
+        # to a placeholder so unit tests that never make real calls can still build
+        # the client; real calls will be rejected by the LiteLLM proxy if the
+        # placeholder leaks into a runtime path.
+        self._api_key = api_key or os.getenv("LITELLM_MASTER_KEY") or "missing-litellm-key"
         self._timeout = (
             timeout
             if timeout is not None
