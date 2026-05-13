@@ -1104,10 +1104,15 @@ class SourceProcessor(BaseProcessor):
             return ProbeResult(status="error", hint=f"Unknown source type {sc.type}")
 
         except Exception as exc:  # noqa: BLE001
-            status_code = getattr(resp, "status_code", None) if resp is not None else None
+            err_status_code: Optional[int] = (
+                getattr(resp, "status_code", None) if resp is not None else None
+            )
             # Include captured sample so _is_protected_error can detect patterns
             return ProbeResult(
-                status="error", status_code=status_code, hint=str(exc), sample=text_sample or ""
+                status="error",
+                status_code=err_status_code,
+                hint=str(exc),
+                sample=text_sample or "",
             )
 
     def _check_field_extraction(
