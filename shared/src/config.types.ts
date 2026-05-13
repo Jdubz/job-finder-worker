@@ -563,6 +563,7 @@ export interface CronConfig {
     /** @deprecated LiteLLM handles budgets; kept optional for existing DB rows */
     agentReset?: CronJobSchedule
     applicationTracker?: CronJobSchedule
+    freshness?: CronJobSchedule
   }
 }
 

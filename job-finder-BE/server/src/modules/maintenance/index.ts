@@ -1,3 +1,5 @@
 export { MaintenanceRepository } from './maintenance.repository'
 export { MaintenanceService, type MaintenanceResult } from './maintenance.service'
+export { FreshnessRepository, type VerificationStatus, type ListingToVerify } from './freshness.repository'
+export { FreshnessService, type FreshnessResult, type FreshnessOptions } from './freshness.service'
 export { buildMaintenanceRouter } from './maintenance.routes'

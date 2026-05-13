@@ -8,18 +8,19 @@ import { env } from '../config/env'
 import { JobQueueService } from '../modules/job-queue/job-queue.service'
 import { ConfigRepository } from '../modules/config/config.repository'
 import { isWorkerSettings, isCronConfig, type WorkerSettings, type CronConfig } from '@shared/types'
-import { MaintenanceService } from '../modules/maintenance'
+import { MaintenanceService, FreshnessService } from '../modules/maintenance'
 import { UserRepository } from '../modules/users/user.repository'
 import { ApplicationTrackerService } from '../modules/gmail/application-tracker.service'
 
-type CronJobKey = keyof CronConfig['jobs'] & ('scrape' | 'maintenance' | 'logrotate' | 'sessionCleanup' | 'applicationTracker')
+type CronJobKey = keyof CronConfig['jobs'] & ('scrape' | 'maintenance' | 'logrotate' | 'sessionCleanup' | 'applicationTracker' | 'freshness')
 
 const DEFAULT_CRON_CONFIG: CronConfig = {
   jobs: {
     scrape: { enabled: true, hours: [0, 6, 12, 18], lastRun: null },
     maintenance: { enabled: true, hours: [0], lastRun: null },
     logrotate: { enabled: true, hours: [0], lastRun: null },
-    sessionCleanup: { enabled: true, hours: [3], lastRun: null }
+    sessionCleanup: { enabled: true, hours: [3], lastRun: null },
+    freshness: { enabled: true, hours: [4, 16], lastRun: null }
   }
 }
 
@@ -61,6 +62,14 @@ const getTrackerService = (() => {
   let svc: ApplicationTrackerService | null = null
   return () => {
     if (!svc) svc = new ApplicationTrackerService()
+    return svc
+  }
+})()
+
+const getFreshnessService = (() => {
+  let svc: FreshnessService | null = null
+  return () => {
+    if (!svc) svc = new FreshnessService()
     return svc
   }
 })()
@@ -209,6 +218,18 @@ export async function triggerApplicationTracker() {
   }
 }
 
+export async function triggerFreshness() {
+  try {
+    logger.info({ at: utcNowIso() }, 'Cron freshness check starting')
+    const result = await getFreshnessService().run()
+    logger.info({ result, at: utcNowIso() }, 'Cron freshness check completed')
+    return result
+  } catch (error) {
+    logger.error({ error, at: utcNowIso() }, 'Cron freshness check failed')
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 export async function triggerSessionCleanup() {
   try {
     logger.info({ at: utcNowIso() }, 'Cron session cleanup starting')
@@ -228,7 +249,8 @@ const lastRunHourKey: Record<CronJobKey, string | null> = {
   maintenance: null,
   logrotate: null,
   sessionCleanup: null,
-  applicationTracker: null
+  applicationTracker: null,
+  freshness: null
 }
 
 function getContainerTimezone(): string {
@@ -251,6 +273,9 @@ function loadCronConfig(): CronConfig {
   if (payload?.jobs && !payload.jobs.applicationTracker) {
     payload.jobs.applicationTracker = { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
   }
+  if (payload?.jobs && !payload.jobs.freshness) {
+    payload.jobs.freshness = { ...DEFAULT_CRON_CONFIG.jobs.freshness! }
+  }
 
   if (payload && isCronConfig(payload)) {
     const defaultAppTracker = { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
@@ -258,13 +283,18 @@ function loadCronConfig(): CronConfig {
     const appTracker = rawAppTracker && Array.isArray(rawAppTracker.hours)
       ? rawAppTracker
       : defaultAppTracker
+    const rawFreshness = payload.jobs.freshness
+    const freshness = rawFreshness && Array.isArray(rawFreshness.hours)
+      ? rawFreshness
+      : { ...DEFAULT_CRON_CONFIG.jobs.freshness! }
     return {
       jobs: {
         scrape: { ...payload.jobs.scrape, hours: normalizeHours(payload.jobs.scrape.hours) },
         maintenance: { ...payload.jobs.maintenance, hours: normalizeHours(payload.jobs.maintenance.hours) },
         logrotate: { ...payload.jobs.logrotate, hours: normalizeHours(payload.jobs.logrotate.hours) },
         sessionCleanup: { ...payload.jobs.sessionCleanup, hours: normalizeHours(payload.jobs.sessionCleanup.hours) },
-        applicationTracker: { ...appTracker, hours: normalizeHours(appTracker.hours) }
+        applicationTracker: { ...appTracker, hours: normalizeHours(appTracker.hours) },
+        freshness: { ...freshness, hours: normalizeHours(freshness.hours) }
       }
     }
   }
@@ -275,7 +305,8 @@ function loadCronConfig(): CronConfig {
       scrape: { ...DEFAULT_CRON_CONFIG.jobs.scrape, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.scrape.hours) },
       maintenance: { ...DEFAULT_CRON_CONFIG.jobs.maintenance, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.maintenance.hours) },
       logrotate: { ...DEFAULT_CRON_CONFIG.jobs.logrotate, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.logrotate.hours) },
-      sessionCleanup: { ...DEFAULT_CRON_CONFIG.jobs.sessionCleanup, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.sessionCleanup.hours) }
+      sessionCleanup: { ...DEFAULT_CRON_CONFIG.jobs.sessionCleanup, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.sessionCleanup.hours) },
+      freshness: { ...DEFAULT_CRON_CONFIG.jobs.freshness!, hours: normalizeHours(DEFAULT_CRON_CONFIG.jobs.freshness!.hours) }
     }
   }
   persistCronConfig(defaults, 'system-bootstrap')
@@ -303,7 +334,8 @@ async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
     maintenance: triggerMaintenance,
     logrotate: rotateLogs,
     sessionCleanup: triggerSessionCleanup,
-    applicationTracker: triggerApplicationTracker
+    applicationTracker: triggerApplicationTracker,
+    freshness: triggerFreshness
   })
 }
 
