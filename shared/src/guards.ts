@@ -419,6 +419,9 @@ export function isCronConfig(value: unknown): value is CronConfig {
   if (!coreValid) return false
   // agentReset is deprecated/optional — accept if present and valid, or absent
   if ((jobs as any).agentReset && !isCronJobSchedule((jobs as any).agentReset)) return false
+  // Optional jobs added after the original schema — accept if absent, validate if present
+  if ((jobs as any).applicationTracker && !isCronJobSchedule((jobs as any).applicationTracker)) return false
+  if ((jobs as any).freshness && !isCronJobSchedule((jobs as any).freshness)) return false
   return true
 }
 

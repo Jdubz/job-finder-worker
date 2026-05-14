@@ -1,13 +1,17 @@
 import { Router } from 'express'
 import { asyncHandler } from '../../utils/async-handler'
 import { success } from '../../utils/api-response'
+import { logger } from '../../logger'
 import { MaintenanceService } from './maintenance.service'
 import { FreshnessService } from './freshness.service'
 
-export function buildMaintenanceRouter() {
+export function buildMaintenanceRouter(deps: {
+  maintenanceService?: MaintenanceService
+  freshnessService?: FreshnessService
+} = {}) {
   const router = Router()
-  const service = new MaintenanceService()
-  const freshness = new FreshnessService()
+  const service = deps.maintenanceService ?? new MaintenanceService()
+  const freshness = deps.freshnessService ?? new FreshnessService()
 
   // POST /api/maintenance/run - Trigger maintenance manually
   router.post(
@@ -27,12 +31,17 @@ export function buildMaintenanceRouter() {
     })
   )
 
-  // POST /api/maintenance/freshness - Re-verify matched listings are still live
+  // POST /api/maintenance/freshness — fire-and-forget. A run can take several
+  // minutes at default batch size, longer than typical proxy/client timeouts,
+  // so we return 202 immediately and log the outcome when the run finishes.
   router.post(
     '/freshness',
     asyncHandler(async (_req, res) => {
-      const result = await freshness.run()
-      res.json(success(result))
+      void freshness
+        .run()
+        .then((result) => logger.info({ result }, 'Background freshness run completed'))
+        .catch((error) => logger.error({ error }, 'Background freshness run failed'))
+      res.status(202).json(success({ accepted: true, message: 'Freshness run started in background' }))
     })
   )
 

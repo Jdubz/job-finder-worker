@@ -349,6 +349,11 @@ export interface ResumeIntakeData {
 /** All valid statuses for job match lifecycle */
 export type JobMatchStatus = "active" | "ignored" | "applied" | "acknowledged" | "interviewing" | "denied"
 
+/** Actor that performed a status change. `user` and `email_tracker` are the
+ * historical values; `freshness-service` is the listing-liveness verifier;
+ * `reconciliation-script` is one-off manual cleanup tooling. */
+export type StatusActor = "user" | "email_tracker" | "freshness-service" | "reconciliation-script"
+
 export interface JobMatch {
   /** Database record ID */
   id?: string
@@ -411,7 +416,7 @@ export interface JobMatch {
   appliedAt?: TimestampLike
 
   /** Who last changed the status */
-  statusUpdatedBy?: "user" | "email_tracker" | null
+  statusUpdatedBy?: StatusActor | null
 
   /** Free-text note for the current status (e.g., interview stage details) */
   statusNote?: string | null

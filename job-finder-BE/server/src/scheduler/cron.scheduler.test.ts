@@ -8,7 +8,8 @@ const baseConfig: CronConfig = {
     maintenance: { enabled: true, hours: [3], lastRun: null },
     logrotate: { enabled: true, hours: [3], lastRun: null },
     sessionCleanup: { enabled: true, hours: [3], lastRun: null },
-    applicationTracker: { enabled: false, hours: [2, 8, 14, 20], lastRun: null }
+    applicationTracker: { enabled: false, hours: [2, 8, 14, 20], lastRun: null },
+    freshness: { enabled: false, hours: [4, 16], lastRun: null }
   }
 }
 
@@ -90,5 +91,33 @@ describe('cron scheduler logic', () => {
     expect(ranAgain).toBe(true)
     expect(config.jobs.scrape.lastRun).toBe(noon.toISOString())
     expect(state.scrape).toBe('2025-2-1-12')
+  })
+
+  it('does not double-launch a long-running job during overlapping ticks', async () => {
+    let release: () => void = () => {}
+    const pending = new Promise<void>((resolve) => { release = resolve })
+    const actions = {
+      scrape: vi.fn().mockResolvedValue({}),
+      maintenance: vi.fn(),
+      logrotate: vi.fn(),
+      sessionCleanup: vi.fn(),
+      applicationTracker: vi.fn(),
+      freshness: vi.fn().mockImplementation(() => pending)
+    }
+    const config: CronConfig = JSON.parse(JSON.stringify(baseConfig))
+    config.jobs.freshness = { enabled: true, hours: [4], lastRun: null }
+    const state = { scrape: null, maintenance: null, logrotate: null, sessionCleanup: null, applicationTracker: null, freshness: null }
+    const inFlight = new Set<string>()
+    const now = new Date(2025, 1, 1, 4, 5)
+
+    const first = cronTest.maybeRunJobWithState('freshness', config, now, state, actions, inFlight as Set<never>)
+    const second = await cronTest.maybeRunJobWithState('freshness', config, now, state, actions, inFlight as Set<never>)
+
+    expect(second).toBe(false)
+    expect(actions.freshness).toHaveBeenCalledTimes(1)
+
+    release()
+    await first
+    expect(inFlight.has('freshness')).toBe(false)
   })
 })

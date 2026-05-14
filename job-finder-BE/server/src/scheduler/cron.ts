@@ -20,7 +20,9 @@ const DEFAULT_CRON_CONFIG: CronConfig = {
     maintenance: { enabled: true, hours: [0], lastRun: null },
     logrotate: { enabled: true, hours: [0], lastRun: null },
     sessionCleanup: { enabled: true, hours: [3], lastRun: null },
-    freshness: { enabled: true, hours: [4, 16], lastRun: null }
+    // Disabled by default: freshness probes external URLs and auto-flips
+    // active matches to ignored. Admins must opt-in via System Health.
+    freshness: { enabled: false, hours: [4, 16], lastRun: null }
   }
 }
 
@@ -253,6 +255,13 @@ const lastRunHourKey: Record<CronJobKey, string | null> = {
   freshness: null
 }
 
+/**
+ * Per-job in-flight guard. A long-running action (freshness probes can take
+ * minutes; the scrape job can run hours) must not be re-launched by the next
+ * one-minute tick. Entries are added before awaiting and removed in finally.
+ */
+const inFlight: Set<CronJobKey> = new Set()
+
 function getContainerTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || 'UTC'
 }
@@ -336,7 +345,7 @@ async function maybeRunJob(jobKey: CronJobKey, config: CronConfig, now: Date) {
     sessionCleanup: triggerSessionCleanup,
     applicationTracker: triggerApplicationTracker,
     freshness: triggerFreshness
-  })
+  }, inFlight)
 }
 
 type JobActions = Record<CronJobKey, () => Promise<unknown>>
@@ -346,7 +355,8 @@ async function maybeRunJobWithState(
   config: CronConfig,
   now: Date,
   state: Record<CronJobKey, string | null>,
-  actions: JobActions
+  actions: JobActions,
+  inFlightSet: Set<CronJobKey> = inFlight
 ) {
   const schedule = config.jobs[jobKey]
   if (!schedule || !schedule.enabled) return false
@@ -355,13 +365,23 @@ async function maybeRunJobWithState(
   const hourKey = buildHourKey(now)
   if (!schedule.hours.includes(currentHour)) return false
   if (state[jobKey] === hourKey) return false
+  if (inFlightSet.has(jobKey)) {
+    // Previous invocation hasn't completed; let it finish before scheduling again.
+    return false
+  }
 
-  await actions[jobKey]()
-
-  const iso = now.toISOString()
-  config.jobs[jobKey]!.lastRun = iso
+  // Mark as ran-for-this-hour up front so a re-entrant tick within the same
+  // minute window doesn't double-launch (in addition to the in-flight set).
   state[jobKey] = hourKey
-  return true
+  inFlightSet.add(jobKey)
+  try {
+    await actions[jobKey]()
+    const iso = now.toISOString()
+    config.jobs[jobKey]!.lastRun = iso
+    return true
+  } finally {
+    inFlightSet.delete(jobKey)
+  }
 }
 
 async function schedulerTick() {
