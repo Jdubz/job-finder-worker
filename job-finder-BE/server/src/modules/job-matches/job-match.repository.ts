@@ -4,11 +4,13 @@ import type { JobMatch, JobMatchWithListing, JobListingRecord, JobListingStatus,
 import { getDb } from '../../db/sqlite'
 import { JobListingRepository } from '../job-listings/job-listing.repository'
 import { CompanyRepository } from '../companies/company.repository'
+import { loadFreshnessConfig, computeLiveFreshnessAdjustment, clampScore } from './freshness-scorer'
 
 type JobMatchRow = {
   id: string
   job_listing_id: string
   match_score: number
+  static_score: number | null
   matched_skills: string | null
   missing_skills: string | null
   match_reasons: string | null
@@ -49,10 +51,23 @@ const parseJsonArray = (value: string | null): string[] => {
   }
 }
 
+function applyLiveFreshness(
+  match: JobMatch,
+  listing: JobListingRecord,
+  freshness: ReturnType<typeof loadFreshnessConfig>,
+  now: Date
+): JobMatch {
+  if (!freshness || match.staticScore == null) return match
+  const reference = listing.postedDate ?? listing.createdAt
+  const adjustment = computeLiveFreshnessAdjustment(reference, freshness, now)
+  return { ...match, matchScore: clampScore(match.staticScore + adjustment) }
+}
+
 const buildJobMatch = (row: JobMatchRow): JobMatch => ({
   id: row.id,
   jobListingId: row.job_listing_id,
   matchScore: row.match_score,
+  staticScore: row.static_score,
   matchedSkills: parseJsonArray(row.matched_skills),
   missingSkills: parseJsonArray(row.missing_skills),
   matchReasons: parseJsonArray(row.match_reasons),
@@ -356,6 +371,11 @@ export class JobMatchRepository {
 
     const rows = this.db.prepare(sql).all(...params, limit, offset) as JoinedRow[]
 
+    // Load freshness policy once for the whole batch so we re-apply the same
+    // age curve to every match without hitting the config repo per row.
+    const freshnessConfig = loadFreshnessConfig()
+    const now = new Date()
+
     return rows.map((row) => {
       const match = buildJobMatch(row)
       if (match.isGhost || !row.l_id || row.l_id === '__ghost_listing__') {
@@ -380,13 +400,22 @@ export class JobMatchRepository {
         }
         return { ...match, listing: ghostListing, company: null }
       }
+      const listing = buildListingFromRow(row)
+      const live = applyLiveFreshness(match, listing, freshnessConfig, now)
       return {
-        ...match,
-        listing: buildListingFromRow(row),
+        ...live,
+        listing,
         company: buildCompanyFromRow(row)
       }
     })
   }
+
+  /**
+   * Re-derive `matchScore` from `staticScore` + the listing's current age so
+   * a job posted a week ago decays toward the staleScore even if it was
+   * scored when it was fresh. Falls back to the stored match_score when
+   * static_score is NULL (legacy rows that haven't been re-scored yet).
+   */
 
   getById(id: string): JobMatch | null {
     const row = this.db.prepare('SELECT * FROM job_matches WHERE id = ?').get(id) as JobMatchRow | undefined
@@ -425,8 +454,8 @@ export class JobMatchRepository {
     if (!listing) return null
 
     const company = listing.companyId ? this.companyRepo.getById(listing.companyId) : null
-
-    return { ...match, listing, company }
+    const live = applyLiveFreshness(match, listing, loadFreshnessConfig(), new Date())
+    return { ...live, listing, company }
   }
 
   getByJobListingId(jobListingId: string): JobMatch | null {
@@ -444,15 +473,16 @@ export class JobMatchRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO job_matches (
-        id, job_listing_id, match_score, matched_skills, missing_skills,
+        id, job_listing_id, match_score, static_score, matched_skills, missing_skills,
         match_reasons, key_strengths, potential_concerns, experience_match,
         customization_recommendations, resume_intake_json,
         analyzed_at, submitted_by, queue_item_id, created_at, updated_at,
         status, ignored_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         job_listing_id = excluded.job_listing_id,
         match_score = excluded.match_score,
+        static_score = excluded.static_score,
         matched_skills = excluded.matched_skills,
         missing_skills = excluded.missing_skills,
         match_reasons = excluded.match_reasons,
@@ -473,6 +503,7 @@ export class JobMatchRepository {
       id,
       match.jobListingId,
       match.matchScore,
+      match.staticScore ?? null,
       JSON.stringify(match.matchedSkills ?? []),
       JSON.stringify(match.missingSkills ?? []),
       JSON.stringify(match.matchReasons ?? []),
