@@ -211,6 +211,42 @@ class TestScoringEngine:
         assert isinstance(result.passed, bool)
         assert 0 <= result.final_score <= 100
 
+    def test_static_score_excludes_freshness_component(self, engine_factory):
+        """static_score = final_score - sum(freshness adjustments).
+
+        Verified by running the same extraction with and without a freshness
+        signal and checking the static_score matches.
+        """
+        engine = engine_factory()
+        fresh_extraction = JobExtractionResult(
+            work_arrangement="remote", days_old=1  # triggers freshScore
+        )
+        no_age_extraction = JobExtractionResult(work_arrangement="remote", days_old=None)
+
+        fresh_result = engine.score(fresh_extraction, "Engineer", "")
+        no_age_result = engine.score(no_age_extraction, "Engineer", "")
+
+        # Freshness adjustments must total to the freshScore from the config.
+        assert fresh_result.freshness_points == 10
+        # static_score should match the no-age run.
+        assert fresh_result.static_score == no_age_result.final_score
+
+    def test_freshness_points_is_zero_when_no_freshness_signal(self, engine_factory):
+        engine = engine_factory()
+        extraction = JobExtractionResult(work_arrangement="remote", days_old=None)
+        result = engine.score(extraction, "Engineer", "")
+        assert result.freshness_points == 0
+        assert result.static_score == result.final_score
+
+    def test_to_dict_includes_static_score_and_freshness_points(self, engine_factory):
+        engine = engine_factory()
+        result = engine.score(
+            JobExtractionResult(work_arrangement="remote", days_old=1), "Engineer", ""
+        )
+        payload = result.to_dict()
+        assert payload["staticScore"] == result.static_score
+        assert payload["freshnessPoints"] == result.freshness_points
+
     def test_parallel_skill_prevents_penalty(self, default_config, profile):
         """Parallel skills from taxonomy prevent missing penalty but don't give bonus.
 

@@ -74,11 +74,28 @@ class ScoreBreakdown:
     passed: bool = True
     rejection_reason: Optional[str] = None
 
+    @property
+    def freshness_points(self) -> int:
+        """Sum of freshness-category adjustments (positive when fresh, negative when stale)."""
+        return int(sum(adj.points for adj in self.adjustments if adj.category == "freshness"))
+
+    @property
+    def static_score(self) -> int:
+        """Score with the freshness component subtracted out.
+
+        The API recomputes freshness live from the listing's posted_date so an
+        aging job decays toward the staleScore without a periodic re-score job.
+        Persisting `static_score` lets the API do that math at read time.
+        """
+        return self.final_score - self.freshness_points
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "baseScore": self.base_score,
             "finalScore": self.final_score,
+            "staticScore": self.static_score,
+            "freshnessPoints": self.freshness_points,
             "adjustments": [adj.to_dict() for adj in self.adjustments],
             "passed": self.passed,
             "rejectionReason": self.rejection_reason,

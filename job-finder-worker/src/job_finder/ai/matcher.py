@@ -49,6 +49,14 @@ class JobMatchResult(BaseModel):
 
     # Match Analysis
     match_score: int = Field(..., ge=0, le=100, description="Overall match score (0-100)")
+    static_score: Optional[int] = Field(
+        default=None,
+        description=(
+            "Deterministic score without the freshness component. The API adds "
+            "freshness live from the listing's posted_date so the score decays "
+            "as the listing ages."
+        ),
+    )
     matched_skills: List[str] = Field(default_factory=list)
     missing_skills: List[str] = Field(default_factory=list)
     experience_match: str = ""
@@ -145,6 +153,11 @@ class AIJobMatcher:
                     "All jobs must be scored by ScoringEngine before AI analysis."
                 )
             match_score = int(deterministic_score)
+            # The freshness contribution is removed at storage time so the API can
+            # recompute freshness live from the listing's posted_date.
+            static_score = job.get("deterministic_static_score")
+            if static_score is not None:
+                static_score = int(static_score)
 
             # Build score breakdown
             score_breakdown = ScoreBreakdown(
@@ -163,7 +176,9 @@ class AIJobMatcher:
                 return None
 
             # Build and return result
-            result = self._build_match_result(job, match_analysis, match_score, score_breakdown)
+            result = self._build_match_result(
+                job, match_analysis, match_score, score_breakdown, static_score=static_score
+            )
 
             logger.info(f"Successfully analyzed {job.get('title')} - Score: {match_score}")
             return result
@@ -178,6 +193,7 @@ class AIJobMatcher:
         match_analysis: Dict[str, Any],
         match_score: int,
         score_breakdown: Optional[ScoreBreakdown] = None,
+        static_score: Optional[int] = None,
     ) -> JobMatchResult:
         """
         Build JobMatchResult from job data and analysis.
@@ -203,6 +219,7 @@ class AIJobMatcher:
             salary_range=job.get("salary") or job.get("salary_range"),
             company_info=job.get("company_info"),
             match_score=match_score,
+            static_score=static_score,
             matched_skills=matched_skills,
             missing_skills=missing_skills,
             experience_match=match_analysis.get("experience_match", ""),
