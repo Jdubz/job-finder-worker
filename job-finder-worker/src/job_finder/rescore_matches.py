@@ -276,15 +276,19 @@ def main() -> int:
 
     import os
 
-    db_path = os.environ.get("SQLITE_DB_PATH")
+    db_path: Optional[str] = os.environ.get("SQLITE_DB_PATH")
     if not db_path:
         try:
             from job_finder.storage.sqlite_client import resolve_db_path
 
-            db_path = resolve_db_path(None)
+            resolved = resolve_db_path(None)
+            db_path = str(resolved) if resolved else None
         except Exception as exc:
             logger.error("Could not resolve a SQLite path: %s", exc)
             return 2
+    if not db_path:
+        logger.error("SQLITE_DB_PATH is not set and could not be resolved.")
+        return 2
     config_loader = ConfigLoader(db_path=db_path)
 
     match_policy = config_loader.get_match_policy()
