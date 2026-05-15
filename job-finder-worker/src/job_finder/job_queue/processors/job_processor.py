@@ -1095,7 +1095,9 @@ class JobProcessor(BaseProcessor):
             **job_data,
             "extraction": ctx.extraction.to_dict() if ctx.extraction else {},
             "deterministic_score": ctx.score_result.final_score if ctx.score_result else 0,
-            "deterministic_static_score": ctx.score_result.static_score if ctx.score_result else None,
+            "deterministic_static_score": (
+                ctx.score_result.static_score if ctx.score_result else None
+            ),
         }
 
         try:

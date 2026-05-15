@@ -38,7 +38,6 @@ import json
 import logging
 import sys
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -133,9 +132,7 @@ def rescore_one(
         return None  # No snapshot to re-score against; skip silently
 
     extraction = JobExtractionResult.from_dict(extraction_dict)
-    breakdown = engine.score(
-        extraction, record.get("title") or "", record.get("description") or ""
-    )
+    breakdown = engine.score(extraction, record.get("title") or "", record.get("description") or "")
 
     new_match_score = breakdown.final_score
     new_static_score = breakdown.static_score
@@ -278,10 +275,12 @@ def main() -> int:
         )
 
     import os
+
     db_path = os.environ.get("SQLITE_DB_PATH")
     if not db_path:
         try:
             from job_finder.storage.sqlite_client import resolve_db_path
+
             db_path = resolve_db_path(None)
         except Exception as exc:
             logger.error("Could not resolve a SQLite path: %s", exc)
