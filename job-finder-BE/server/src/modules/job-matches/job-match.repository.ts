@@ -280,6 +280,15 @@ export class JobMatchRepository {
   /**
    * List job matches with their associated listing and company data.
    * Uses a single JOIN query instead of N+1 individual lookups.
+   *
+   * When a `staticScore` is present the returned `matchScore` is recomputed
+   * live from the listing's age. That means we can't trust the persisted
+   * `m.match_score` for score-based filtering or sorting — a row with
+   * `m.match_score = 90` may actually be 70 once it goes stale. To keep
+   * filters and ordering consistent with what the caller receives, we drop
+   * the score filter/sort from SQL and apply them in-memory after the live
+   * freshness adjustment. Status/jobListingId/search filters stay in SQL
+   * since they are not affected by freshness.
    */
   listWithListings(options: JobMatchListOptions = {}): JobMatchWithListing[] {
     const {
@@ -297,14 +306,6 @@ export class JobMatchRepository {
     const conditions: string[] = []
     const params: unknown[] = []
 
-    if (typeof minScore === 'number') {
-      conditions.push('m.match_score >= ?')
-      params.push(minScore)
-    }
-    if (typeof maxScore === 'number') {
-      conditions.push('m.match_score <= ?')
-      params.push(maxScore)
-    }
     if (jobListingId) {
       conditions.push('m.job_listing_id = ?')
       params.push(jobListingId)
@@ -320,13 +321,25 @@ export class JobMatchRepository {
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-    const sortColumnMap: Record<string, string> = {
+    const ascDesc = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+
+    // SQL-side ordering: stable but not the final order when sortBy='score'.
+    // For 'score' we still pre-sort by m.match_score (the persisted score) so
+    // the in-memory re-sort below has a deterministic starting point.
+    const sqlSortColumnMap: Record<string, string> = {
       score: 'm.match_score',
       date: 'm.created_at',
       updated: 'm.updated_at'
     }
-    const orderColumn = sortColumnMap[sortBy] ?? 'm.updated_at'
-    const orderDirection = (sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+    const sqlOrderColumn = sqlSortColumnMap[sortBy] ?? 'm.updated_at'
+
+    // When the caller filters or sorts by score we must consider the entire
+    // candidate set, not a SQL-paginated window, because live-adjusted scores
+    // can move rows in and out of the [minScore, maxScore] range. For other
+    // sorts the persisted columns are stable, so SQL-level pagination is safe.
+    const usingScoreFilter = typeof minScore === 'number' || typeof maxScore === 'number' || sortBy === 'score'
+    const sqlPagination = usingScoreFilter ? '' : 'LIMIT ? OFFSET ?'
+    const sqlParams = usingScoreFilter ? params : [...params, limit, offset]
 
     const sql = `
       SELECT
@@ -365,18 +378,18 @@ export class JobMatchRepository {
       LEFT JOIN job_listings l ON l.id = m.job_listing_id
       LEFT JOIN companies c ON c.id = l.company_id
       ${whereClause}
-      ORDER BY ${orderColumn} ${orderDirection}
-      LIMIT ? OFFSET ?
+      ORDER BY ${sqlOrderColumn} ${ascDesc}
+      ${sqlPagination}
     `
 
-    const rows = this.db.prepare(sql).all(...params, limit, offset) as JoinedRow[]
+    const rows = this.db.prepare(sql).all(...sqlParams) as JoinedRow[]
 
     // Load freshness policy once for the whole batch so we re-apply the same
     // age curve to every match without hitting the config repo per row.
     const freshnessConfig = loadFreshnessConfig()
     const now = new Date()
 
-    return rows.map((row) => {
+    let results: JobMatchWithListing[] = rows.map((row) => {
       const match = buildJobMatch(row)
       if (match.isGhost || !row.l_id || row.l_id === '__ghost_listing__') {
         const ghostListing: JobListingRecord = {
@@ -408,14 +421,24 @@ export class JobMatchRepository {
         company: buildCompanyFromRow(row)
       }
     })
-  }
 
-  /**
-   * Re-derive `matchScore` from `staticScore` + the listing's current age so
-   * a job posted a week ago decays toward the staleScore even if it was
-   * scored when it was fresh. Falls back to the stored match_score when
-   * static_score is NULL (legacy rows that haven't been re-scored yet).
-   */
+    if (usingScoreFilter) {
+      if (typeof minScore === 'number') {
+        results = results.filter((r) => r.matchScore >= minScore)
+      }
+      if (typeof maxScore === 'number') {
+        results = results.filter((r) => r.matchScore <= maxScore)
+      }
+      if (sortBy === 'score') {
+        results = results.slice().sort((a, b) =>
+          ascDesc === 'ASC' ? a.matchScore - b.matchScore : b.matchScore - a.matchScore
+        )
+      }
+      results = results.slice(offset, offset + limit)
+    }
+
+    return results
+  }
 
   getById(id: string): JobMatch | null {
     const row = this.db.prepare('SELECT * FROM job_matches WHERE id = ?').get(id) as JobMatchRow | undefined

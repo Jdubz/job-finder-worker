@@ -18,17 +18,20 @@ Their score is updated for visibility but their status is preserved — those
 represent real user/recruiter signal that re-scoring must not blow away.
 
 Usage:
-    # Dry run (default — prints what would change)
-    ENVIRONMENT=production python -m job_finder.rescore_matches --dry-run
+    # Dry run (default — prints what would change, no DB writes)
+    ENVIRONMENT=production python -m job_finder.rescore_matches
 
     # Apply changes
-    ENVIRONMENT=production python -m job_finder.rescore_matches
+    ENVIRONMENT=production python -m job_finder.rescore_matches --apply
 
     # Limit which statuses get re-evaluated (default: active,ignored)
     python -m job_finder.rescore_matches --statuses active
 
     # Process only N matches (useful for spot-checking)
     python -m job_finder.rescore_matches --limit 25
+
+    # Tune batch size for memory pressure on large databases
+    python -m job_finder.rescore_matches --batch-size 500
 """
 
 from __future__ import annotations
@@ -39,7 +42,7 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 # Add src to path when run as a script
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -50,12 +53,14 @@ from job_finder.job_queue.config_loader import ConfigLoader
 from job_finder.profile.reducer import load_scoring_profile
 from job_finder.scoring.engine import ScoringEngine
 from job_finder.scoring.taxonomy import SkillTaxonomyRepository
+from job_finder.storage.companies_manager import CompaniesManager
 from job_finder.storage.sqlite_client import sqlite_connection, utcnow_iso
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_STATUSES = ("active", "ignored")
 TERMINAL_USER_STATUSES = frozenset({"applied", "acknowledged", "interviewing", "denied"})
+DEFAULT_BATCH_SIZE = 500
 
 
 def build_engine(config_loader: ConfigLoader, db_path: Optional[str]) -> ScoringEngine:
@@ -91,9 +96,14 @@ def parse_filter_result(raw: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
-def fetch_candidates(
-    db_path: str, statuses: Set[str], limit: Optional[int]
-) -> List[Dict[str, Any]]:
+def iter_candidates(
+    db_path: str, statuses: Set[str], limit: Optional[int], batch_size: int
+) -> Iterator[Dict[str, Any]]:
+    """Stream matching rows from sqlite in chunks via fetchmany().
+
+    Avoids loading the entire job_matches table into memory — production has
+    tens of thousands of rows and a naive fetchall() can OOM the worker.
+    """
     placeholders = ",".join("?" for _ in statuses)
     sql = f"""
         SELECT m.id            AS match_id,
@@ -103,7 +113,8 @@ def fetch_candidates(
                l.id            AS listing_id,
                l.title         AS title,
                l.description   AS description,
-               l.filter_result AS filter_result
+               l.filter_result AS filter_result,
+               l.company_id    AS company_id
           FROM job_matches m
           JOIN job_listings l ON l.id = m.job_listing_id
          WHERE m.status IN ({placeholders})
@@ -116,13 +127,20 @@ def fetch_candidates(
         params.append(limit)
 
     with sqlite_connection(db_path) as conn:
-        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        cursor = conn.execute(sql, params)
+        while True:
+            rows = cursor.fetchmany(batch_size)
+            if not rows:
+                break
+            for row in rows:
+                yield dict(row)
 
 
 def rescore_one(
     engine: ScoringEngine,
     record: Dict[str, Any],
     min_score: int,
+    company_data: Optional[Dict[str, Any]] = None,
     title_filter: Optional[TitleFilter] = None,
 ) -> Optional[Dict[str, Any]]:
     """Return a diff dict if the row needs an UPDATE, else None."""
@@ -132,7 +150,12 @@ def rescore_one(
         return None  # No snapshot to re-score against; skip silently
 
     extraction = JobExtractionResult.from_dict(extraction_dict)
-    breakdown = engine.score(extraction, record.get("title") or "", record.get("description") or "")
+    breakdown = engine.score(
+        extraction,
+        record.get("title") or "",
+        record.get("description") or "",
+        company_data=company_data,
+    )
 
     new_match_score = breakdown.final_score
     new_static_score = breakdown.static_score
@@ -185,6 +208,11 @@ def rescore_one(
 
 
 def apply_changes(db_path: str, changes: List[Dict[str, Any]]) -> None:
+    """Apply a chunk of changes inside a single transaction.
+
+    Caller is responsible for chunking; we keep this function small and atomic
+    so partial failures don't leave half-written batches.
+    """
     if not changes:
         return
     now = utcnow_iso()
@@ -250,7 +278,11 @@ def apply_changes(db_path: str, changes: List[Dict[str, Any]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Re-score job_matches under current config")
-    parser.add_argument("--dry-run", action="store_true", help="Print changes without applying")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply changes to the database. Default is dry-run (no writes).",
+    )
     parser.add_argument(
         "--statuses",
         type=str,
@@ -258,6 +290,12 @@ def main() -> int:
         help=f"Comma-separated job_matches.status values to consider (default: {','.join(DEFAULT_STATUSES)})",
     )
     parser.add_argument("--limit", type=int, default=None, help="Max matches to process")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Rows streamed per fetch and written per transaction (default: {DEFAULT_BATCH_SIZE})",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -302,50 +340,83 @@ def main() -> int:
         else None
     )
 
-    candidates = fetch_candidates(db_path, statuses, args.limit)
-    logger.info("Loaded %d candidate matches (statuses=%s)", len(candidates), sorted(statuses))
+    companies_manager = CompaniesManager(db_path=db_path)
+    company_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 
-    changes: List[Dict[str, Any]] = []
+    def get_company(company_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not company_id:
+            return None
+        if company_id not in company_cache:
+            company_cache[company_id] = companies_manager.get_company_by_id(company_id)
+        return company_cache[company_id]
+
+    batch_size = max(1, args.batch_size)
+    pending_batch: List[Dict[str, Any]] = []
+    total_changes = 0
     flipped = 0
     skipped_no_extraction = 0
+    seen = 0
 
-    for rec in candidates:
-        diff = rescore_one(engine, rec, min_score, title_filter=title_filter)
-        if diff is None:
-            if not parse_filter_result(rec.get("filter_result")).get("extraction"):
-                skipped_no_extraction += 1
+    def flush() -> None:
+        nonlocal pending_batch
+        if not pending_batch:
+            return
+        if not args.apply:
+            pending_batch = []
+            return
+        apply_changes(db_path, pending_batch)
+        logger.debug("Applied batch of %d changes", len(pending_batch))
+        pending_batch = []
+
+    for rec in iter_candidates(db_path, statuses, args.limit, batch_size):
+        seen += 1
+        if not parse_filter_result(rec.get("filter_result")).get("extraction"):
+            skipped_no_extraction += 1
             continue
-        changes.append(diff)
+
+        company_data = get_company(rec.get("company_id"))
+        diff = rescore_one(
+            engine, rec, min_score, company_data=company_data, title_filter=title_filter
+        )
+        if diff is None:
+            continue
+
+        if args.verbose and total_changes < 20:
+            logger.info(
+                "  %s: %s->%s, score %d->%d (static %s->%d)%s",
+                diff["match_id"][:8],
+                diff["status"],
+                diff["next_status"],
+                diff["old_match_score"],
+                diff["new_match_score"],
+                diff["old_static_score"],
+                diff["new_static_score"],
+                f"  [{diff['note']}]" if diff["note"] else "",
+            )
+
+        pending_batch.append(diff)
+        total_changes += 1
         if diff["next_status"] != diff["status"]:
             flipped += 1
 
+        if len(pending_batch) >= batch_size:
+            flush()
+
+    flush()
+
     logger.info(
-        "Planned changes: %d (status flips: %d, skipped no-extraction: %d)",
-        len(changes),
+        "Scanned %d matches; planned %d changes (status flips: %d, skipped no-extraction: %d)",
+        seen,
+        total_changes,
         flipped,
         skipped_no_extraction,
     )
 
-    if args.verbose:
-        for c in changes[:20]:
-            logger.info(
-                "  %s: %s->%s, score %d->%d (static %s->%d)%s",
-                c["match_id"][:8],
-                c["status"],
-                c["next_status"],
-                c["old_match_score"],
-                c["new_match_score"],
-                c["old_static_score"],
-                c["new_static_score"],
-                f"  [{c['note']}]" if c["note"] else "",
-            )
-
-    if args.dry_run:
-        logger.info("[DRY RUN] no changes applied")
+    if not args.apply:
+        logger.info("[DRY RUN] no changes applied — re-run with --apply to commit")
         return 0
 
-    apply_changes(db_path, changes)
-    logger.info("Applied %d changes", len(changes))
+    logger.info("Applied %d changes", total_changes)
     return 0
 
 

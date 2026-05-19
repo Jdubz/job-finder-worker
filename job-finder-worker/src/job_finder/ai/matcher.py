@@ -152,12 +152,12 @@ class AIJobMatcher:
                     f"Job '{job.get('title')}' missing required 'deterministic_score'. "
                     "All jobs must be scored by ScoringEngine before AI analysis."
                 )
-            match_score = int(deterministic_score)
+            match_score = round(deterministic_score)
             # The freshness contribution is removed at storage time so the API can
             # recompute freshness live from the listing's posted_date.
             static_score = job.get("deterministic_static_score")
             if static_score is not None:
-                static_score = int(static_score)
+                static_score = round(static_score)
 
             # Build score breakdown
             score_breakdown = ScoreBreakdown(
