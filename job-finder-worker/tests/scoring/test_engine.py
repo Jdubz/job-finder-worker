@@ -211,6 +211,103 @@ class TestScoringEngine:
         assert isinstance(result.passed, bool)
         assert 0 <= result.final_score <= 100
 
+    def test_static_score_excludes_freshness_component(self, engine_factory):
+        """static_score = final_score - sum(freshness adjustments).
+
+        Verified by running the same extraction with and without a freshness
+        signal and checking the static_score matches.
+        """
+        engine = engine_factory()
+        fresh_extraction = JobExtractionResult(
+            work_arrangement="remote", days_old=1  # triggers freshScore
+        )
+        no_age_extraction = JobExtractionResult(work_arrangement="remote", days_old=None)
+
+        fresh_result = engine.score(fresh_extraction, "Engineer", "")
+        no_age_result = engine.score(no_age_extraction, "Engineer", "")
+
+        # Freshness adjustments must total to the freshScore from the config.
+        assert fresh_result.freshness_points == 10
+        # static_score should match the no-age run.
+        assert fresh_result.static_score == no_age_result.final_score
+
+    def test_freshness_points_is_zero_when_no_freshness_signal(self, engine_factory):
+        engine = engine_factory()
+        extraction = JobExtractionResult(work_arrangement="remote", days_old=None)
+        result = engine.score(extraction, "Engineer", "")
+        assert result.freshness_points == 0
+        assert result.static_score == result.final_score
+
+    def test_to_dict_includes_static_score_and_freshness_points(self, engine_factory):
+        engine = engine_factory()
+        result = engine.score(
+            JobExtractionResult(work_arrangement="remote", days_old=1), "Engineer", ""
+        )
+        payload = result.to_dict()
+        assert payload["staticScore"] == result.static_score
+        assert payload["freshnessPoints"] == result.freshness_points
+
+    def test_repost_penalty_excluded_from_freshness_points(self, engine_factory):
+        """Repost adjustment lives in its own category and must stay in static_score.
+
+        The API does not re-apply the repost penalty during live freshness
+        recomputation, so it must NOT be subtracted out when persisting the
+        static baseline.
+        """
+        engine = engine_factory()
+        extraction = JobExtractionResult(work_arrangement="remote", days_old=1, is_repost=True)
+
+        result = engine.score(extraction, "Engineer", "")
+
+        # Repost is its own category, not "freshness"
+        repost_adjustments = [a for a in result.adjustments if a.category == "repost"]
+        assert len(repost_adjustments) == 1
+        # freshness_points only counts age-based adjustments
+        assert result.freshness_points == 10  # freshScore only, no repost
+        # static_score keeps the repost penalty baked in
+        no_repost = engine.score(
+            JobExtractionResult(work_arrangement="remote", days_old=1, is_repost=False),
+            "Engineer",
+            "",
+        )
+        assert result.static_score == no_repost.static_score - 5  # repostScore
+
+    def test_static_score_clamped_when_raw_exceeds_100(self, default_config, profile):
+        """When raw score exceeds 100, static_score clamps at 100 rather than
+        being silently reduced by the freshness bonus."""
+        # Build a config where a remote, fresh, senior, on-target-salary job
+        # plus a large preferred-city company can push raw above 100.
+        engine = ScoringEngine(
+            default_config,
+            skill_years={"typescript": 10, "react": 10, "python": 10},
+            user_experience_years=12,
+        )
+        extraction = JobExtractionResult(
+            seniority="senior",
+            work_arrangement="remote",
+            timezone=-8,
+            technologies=["typescript", "react", "python"],
+            salary_min=210000,
+            salary_max=220000,
+            days_old=1,  # +freshScore
+            role_types=["backend", "ml-ai"],
+        )
+        company_data = {
+            "employeeCount": 20000,
+            "isRemoteFirst": True,
+            "aiMlFocus": True,
+            "hasPortlandOffice": True,
+            "headquartersLocation": "Portland, OR",
+            "about": "AI/ML platform",
+            "techStack": ["pytorch"],
+        }
+
+        result = engine.score(extraction, "Senior Engineer", "Great job", company_data)
+
+        # final_score caps at 100; static_score also caps at 100 (rather than 90).
+        assert result.final_score == 100
+        assert result.static_score == 100
+
     def test_parallel_skill_prevents_penalty(self, default_config, profile):
         """Parallel skills from taxonomy prevent missing penalty but don't give bonus.
 

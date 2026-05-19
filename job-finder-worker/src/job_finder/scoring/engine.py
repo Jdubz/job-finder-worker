@@ -70,15 +70,32 @@ class ScoreBreakdown:
 
     base_score: int
     final_score: int
+    # Clamped baseline excluding age-based freshness. Persisted so the API can
+    # add a live freshness adjustment computed from the listing's current age.
+    # Set explicitly by ScoringEngine.score() rather than derived from final_score,
+    # because final_score is already clamped to 0..100 and subtracting freshness
+    # from a clamped value misrepresents the true baseline when raw>100.
+    static_score: int = 0
     adjustments: List[ScoreAdjustment] = field(default_factory=list)
     passed: bool = True
     rejection_reason: Optional[str] = None
+
+    @property
+    def freshness_points(self) -> int:
+        """Sum of age-based freshness adjustments (positive when fresh, negative when stale).
+
+        Reposts use a separate `repost` category — the API does not re-apply
+        the repost penalty at read time, so it stays inside `static_score`.
+        """
+        return round(sum(adj.points for adj in self.adjustments if adj.category == "freshness"))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "baseScore": self.base_score,
             "finalScore": self.final_score,
+            "staticScore": self.static_score,
+            "freshnessPoints": self.freshness_points,
             "adjustments": [adj.to_dict() for adj in self.adjustments],
             "passed": self.passed,
             "rejectionReason": self.rejection_reason,
@@ -228,6 +245,7 @@ class ScoringEngine:
             return ScoreBreakdown(
                 base_score=50,
                 final_score=0,
+                static_score=0,
                 adjustments=adjustments,
                 passed=False,
                 rejection_reason=f"Rejected seniority level: {extraction.seniority}",
@@ -243,6 +261,7 @@ class ScoringEngine:
             return ScoreBreakdown(
                 base_score=50,
                 final_score=0,
+                static_score=0,
                 adjustments=adjustments,
                 passed=False,
                 rejection_reason=location_result.get(
@@ -270,6 +289,7 @@ class ScoringEngine:
             return ScoreBreakdown(
                 base_score=50,
                 final_score=0,
+                static_score=0,
                 adjustments=adjustments,
                 passed=False,
                 rejection_reason=f"Salary below minimum: ${extraction.salary_max or extraction.salary_min}",
@@ -290,6 +310,7 @@ class ScoringEngine:
             return ScoreBreakdown(
                 base_score=50,
                 final_score=0,
+                static_score=0,
                 adjustments=adjustments,
                 passed=False,
                 rejection_reason=role_fit_result.get(
@@ -305,11 +326,21 @@ class ScoringEngine:
 
         # Clamp to 0-100
         final_score = max(0, min(100, score))
+
+        # Compute the static baseline: the score the API should start from when
+        # re-applying live freshness. Subtract the age-based freshness from the
+        # *unclamped* running score, then clamp — that way a job whose raw score
+        # exceeds 100 keeps a baseline at the ceiling instead of being silently
+        # demoted by the amount of the freshness bonus.
+        age_freshness_total = sum(adj.points for adj in adjustments if adj.category == "freshness")
+        static_score = max(0, min(100, round(score - age_freshness_total)))
+
         passed = final_score >= self.min_score
 
         return ScoreBreakdown(
             base_score=50,
             final_score=final_score,
+            static_score=static_score,
             adjustments=adjustments,
             passed=passed,
             rejection_reason=(
@@ -918,12 +949,14 @@ class ScoringEngine:
                 )
             )
 
-        # Additional adjustment for reposts
+        # Additional adjustment for reposts. Tagged as its own category so it
+        # is excluded from `freshness_points` — the API's live recompute does
+        # not re-apply the repost penalty, so it must stay inside static_score.
         if is_repost:
             points += repost_score
             adjustments.append(
                 ScoreAdjustment(
-                    category="freshness",
+                    category="repost",
                     reason="Reposted job",
                     points=repost_score,
                 )

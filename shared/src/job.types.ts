@@ -361,8 +361,14 @@ export interface JobMatch {
   /** Foreign key to job_listings table */
   jobListingId: string
 
-  /** AI match score (0-100) */
+  /** AI match score (0-100). When `staticScore` is present, the API replaces this
+   * with a freshness-adjusted score computed from the listing's age at read time. */
   matchScore: number
+
+  /** Match score with the freshness component removed. NULL for legacy rows
+   * scored before migration 070. The API computes live freshness from the
+   * listing's posted_date/created_at and adds it to this baseline. */
+  staticScore?: number | null
 
   /** Skills that match job requirements */
   matchedSkills: string[]

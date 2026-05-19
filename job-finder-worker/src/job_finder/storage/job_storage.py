@@ -150,17 +150,18 @@ class JobStorage:
                 conn.execute(
                     """
                     INSERT INTO job_matches (
-                        id, job_listing_id, match_score,
+                        id, job_listing_id, match_score, static_score,
                         matched_skills, missing_skills, match_reasons, key_strengths,
                         potential_concerns, experience_match,
                         customization_recommendations, resume_intake_json, analyzed_at,
                         submitted_by, queue_item_id, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         job_id,
                         job_listing_id,
                         match_result.match_score,
+                        getattr(match_result, "static_score", None),
                         _serialize_list(match_result.matched_skills),
                         _serialize_list(match_result.missing_skills),
                         _serialize_list(match_reasons),
